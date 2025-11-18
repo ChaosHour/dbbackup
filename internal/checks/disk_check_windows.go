@@ -1,5 +1,5 @@
-//go:build !windows && !openbsd && !netbsd
-// +build !windows,!openbsd,!netbsd
+//go:build windows
+// +build windows
 
 package checks
 
@@ -7,9 +7,15 @@ import (
 	"fmt"
 	"path/filepath"
 	"syscall"
+	"unsafe"
 )
 
-// CheckDiskSpace checks available disk space for a given path
+var (
+	kernel32           = syscall.NewLazyDLL("kernel32.dll")
+	getDiskFreeSpaceEx = kernel32.NewProc("GetDiskFreeSpaceExW")
+)
+
+// CheckDiskSpace checks available disk space for a given path (Windows implementation)
 func CheckDiskSpace(path string) *DiskSpaceCheck {
 	// Get absolute path
 	absPath, err := filepath.Abs(path)
@@ -17,10 +23,25 @@ func CheckDiskSpace(path string) *DiskSpaceCheck {
 		absPath = path
 	}
 
-	// Get filesystem stats
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(absPath, &stat); err != nil {
-		// Return error state
+	// Get the drive root (e.g., "C:\")
+	vol := filepath.VolumeName(absPath)
+	if vol == "" {
+		// If no volume, try current directory
+		vol = "."
+	}
+	
+	var freeBytesAvailable, totalNumberOfBytes, totalNumberOfFreeBytes uint64
+
+	// Call Windows API
+	pathPtr, _ := syscall.UTF16PtrFromString(vol)
+	ret, _, _ := getDiskFreeSpaceEx.Call(
+		uintptr(unsafe.Pointer(pathPtr)),
+		uintptr(unsafe.Pointer(&freeBytesAvailable)),
+		uintptr(unsafe.Pointer(&totalNumberOfBytes)),
+		uintptr(unsafe.Pointer(&totalNumberOfFreeBytes)))
+
+	if ret == 0 {
+		// API call failed, return error state
 		return &DiskSpaceCheck{
 			Path:       absPath,
 			Critical:   true,
@@ -28,16 +49,14 @@ func CheckDiskSpace(path string) *DiskSpaceCheck {
 		}
 	}
 
-	// Calculate space (handle different types on different platforms)
-	totalBytes := uint64(stat.Blocks) * uint64(stat.Bsize)
-	availableBytes := uint64(stat.Bavail) * uint64(stat.Bsize)
-	usedBytes := totalBytes - availableBytes
-	usedPercent := float64(usedBytes) / float64(totalBytes) * 100
+	// Calculate usage
+	usedBytes := totalNumberOfBytes - totalNumberOfFreeBytes
+	usedPercent := float64(usedBytes) / float64(totalNumberOfBytes) * 100
 
 	check := &DiskSpaceCheck{
 		Path:           absPath,
-		TotalBytes:     totalBytes,
-		AvailableBytes: availableBytes,
+		TotalBytes:     totalNumberOfBytes,
+		AvailableBytes: freeBytesAvailable,
 		UsedBytes:      usedBytes,
 		UsedPercent:    usedPercent,
 	}
@@ -109,32 +128,4 @@ func FormatDiskSpaceMessage(check *DiskSpaceCheck) string {
 
 	return msg
 }
-
-// EstimateBackupSize estimates backup size based on database size
-func EstimateBackupSize(databaseSize uint64, compressionLevel int) uint64 {
-	// Typical compression ratios:
-	// Level 0 (no compression): 1.0x
-	// Level 1-3 (fast): 0.4-0.6x
-	// Level 4-6 (balanced): 0.3-0.4x
-	// Level 7-9 (best): 0.2-0.3x
-
-	var compressionRatio float64
-	if compressionLevel == 0 {
-		compressionRatio = 1.0
-	} else if compressionLevel <= 3 {
-		compressionRatio = 0.5
-	} else if compressionLevel <= 6 {
-		compressionRatio = 0.35
-	} else {
-		compressionRatio = 0.25
-	}
-
-	estimated := uint64(float64(databaseSize) * compressionRatio)
-
-	// Add 10% buffer for metadata, indexes, etc.
-	return uint64(float64(estimated) * 1.1)
-}
-
-
-
 

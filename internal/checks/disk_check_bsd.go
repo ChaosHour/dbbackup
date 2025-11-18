@@ -1,5 +1,5 @@
-//go:build !windows && !openbsd && !netbsd
-// +build !windows,!openbsd,!netbsd
+//go:build openbsd || netbsd
+// +build openbsd netbsd
 
 package checks
 
@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-// CheckDiskSpace checks available disk space for a given path
+// CheckDiskSpace checks available disk space for a given path (OpenBSD/NetBSD implementation)
 func CheckDiskSpace(path string) *DiskSpaceCheck {
 	// Get absolute path
 	absPath, err := filepath.Abs(path)
@@ -28,9 +28,9 @@ func CheckDiskSpace(path string) *DiskSpaceCheck {
 		}
 	}
 
-	// Calculate space (handle different types on different platforms)
-	totalBytes := uint64(stat.Blocks) * uint64(stat.Bsize)
-	availableBytes := uint64(stat.Bavail) * uint64(stat.Bsize)
+	// Calculate space (OpenBSD/NetBSD use different field names)
+	totalBytes := uint64(stat.F_blocks) * uint64(stat.F_bsize)
+	availableBytes := uint64(stat.F_bavail) * uint64(stat.F_bsize)
 	usedBytes := totalBytes - availableBytes
 	usedPercent := float64(usedBytes) / float64(totalBytes) * 100
 
@@ -109,32 +109,3 @@ func FormatDiskSpaceMessage(check *DiskSpaceCheck) string {
 
 	return msg
 }
-
-// EstimateBackupSize estimates backup size based on database size
-func EstimateBackupSize(databaseSize uint64, compressionLevel int) uint64 {
-	// Typical compression ratios:
-	// Level 0 (no compression): 1.0x
-	// Level 1-3 (fast): 0.4-0.6x
-	// Level 4-6 (balanced): 0.3-0.4x
-	// Level 7-9 (best): 0.2-0.3x
-
-	var compressionRatio float64
-	if compressionLevel == 0 {
-		compressionRatio = 1.0
-	} else if compressionLevel <= 3 {
-		compressionRatio = 0.5
-	} else if compressionLevel <= 6 {
-		compressionRatio = 0.35
-	} else {
-		compressionRatio = 0.25
-	}
-
-	estimated := uint64(float64(databaseSize) * compressionRatio)
-
-	// Add 10% buffer for metadata, indexes, etc.
-	return uint64(float64(estimated) * 1.1)
-}
-
-
-
-

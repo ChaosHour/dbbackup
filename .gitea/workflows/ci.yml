@@ -65,7 +65,7 @@ jobs:
       image: golang:1.24-bookworm
     strategy:
       matrix:
-        goos: [linux, darwin, windows]
+        goos: [linux, darwin]
         goarch: [amd64, arm64]
     steps:
       - name: Install git
@@ -83,9 +83,6 @@ jobs:
           CGO_ENABLED: 0
         run: |
           BINARY_NAME=dbbackup
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            BINARY_NAME="${BINARY_NAME}.exe"
-          fi
           go build -ldflags="-s -w" -o dist/${BINARY_NAME}-${{ matrix.goos }}-${{ matrix.goarch }} .
 
   sbom:

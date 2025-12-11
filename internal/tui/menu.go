@@ -68,7 +68,7 @@ type MenuModel struct {
 	closeOnce sync.Once
 }
 
-func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
+func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	dbTypes := []dbTypeOption{
@@ -84,7 +84,7 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) MenuModel {
 		dbCursor = 2
 	}
 
-	model := MenuModel{
+	model := &MenuModel{
 		choices: []string{
 			"Single Database Backup",
 			"Sample Database Backup (with ratio)",
@@ -129,7 +129,7 @@ var _ io.Closer = (*MenuModel)(nil)
 type autoSelectMsg struct{}
 
 // Init initializes the model
-func (m MenuModel) Init() tea.Cmd {
+func (m *MenuModel) Init() tea.Cmd {
 	// Auto-select menu option if specified
 	if m.config.TUIAutoSelect >= 0 && m.config.TUIAutoSelect < len(m.choices) {
 		m.logger.Info("TUI Auto-select enabled", "option", m.config.TUIAutoSelect, "label", m.choices[m.config.TUIAutoSelect])
@@ -143,7 +143,7 @@ func (m MenuModel) Init() tea.Cmd {
 }
 
 // Update handles messages
-func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case autoSelectMsg:
 		// Handle auto-selection
@@ -272,7 +272,7 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View renders the simple menu
-func (m MenuModel) View() string {
+func (m *MenuModel) View() string {
 	if m.quitting {
 		return "Thanks for using DB Backup Tool!\n"
 	}
@@ -328,19 +328,19 @@ func (m MenuModel) View() string {
 }
 
 // handleSingleBackup opens database selector for single backup
-func (m MenuModel) handleSingleBackup() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleSingleBackup() (tea.Model, tea.Cmd) {
 	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "🗄️  Single Database Backup", "single")
 	return selector, selector.Init()
 }
 
 // handleSampleBackup opens database selector for sample backup
-func (m MenuModel) handleSampleBackup() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleSampleBackup() (tea.Model, tea.Cmd) {
 	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "📊 Sample Database Backup", "sample")
 	return selector, selector.Init()
 }
 
 // handleClusterBackup shows confirmation and executes cluster backup
-func (m MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
 	if !m.config.IsPostgreSQL() {
 		m.message = errorStyle.Render("❌ Cluster backup is available only for PostgreSQL targets")
 		return m, nil
@@ -356,38 +356,38 @@ func (m MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
 }
 
 // handleViewOperations shows active operations
-func (m MenuModel) handleViewOperations() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleViewOperations() (tea.Model, tea.Cmd) {
 	ops := NewOperationsView(m.config, m.logger, m)
 	return ops, nil
 }
 
 // handleOperationHistory shows operation history
-func (m MenuModel) handleOperationHistory() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleOperationHistory() (tea.Model, tea.Cmd) {
 	history := NewHistoryView(m.config, m.logger, m)
 	return history, nil
 }
 
 // handleStatus shows database status
-func (m MenuModel) handleStatus() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleStatus() (tea.Model, tea.Cmd) {
 	status := NewStatusView(m.config, m.logger, m)
 	return status, status.Init()
 }
 
 // handleSettings opens settings
-func (m MenuModel) handleSettings() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleSettings() (tea.Model, tea.Cmd) {
 	// Create and return the settings model
 	settingsModel := NewSettingsModel(m.config, m.logger, m)
 	return settingsModel, nil
 }
 
 // handleRestoreSingle opens archive browser for single restore
-func (m MenuModel) handleRestoreSingle() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleRestoreSingle() (tea.Model, tea.Cmd) {
 	browser := NewArchiveBrowser(m.config, m.logger, m, m.ctx, "restore-single")
 	return browser, browser.Init()
 }
 
 // handleRestoreCluster opens archive browser for cluster restore
-func (m MenuModel) handleRestoreCluster() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleRestoreCluster() (tea.Model, tea.Cmd) {
 	if !m.config.IsPostgreSQL() {
 		m.message = errorStyle.Render("❌ Cluster restore is available only for PostgreSQL")
 		return m, nil
@@ -397,7 +397,7 @@ func (m MenuModel) handleRestoreCluster() (tea.Model, tea.Cmd) {
 }
 
 // handleBackupManager opens backup management view
-func (m MenuModel) handleBackupManager() (tea.Model, tea.Cmd) {
+func (m *MenuModel) handleBackupManager() (tea.Model, tea.Cmd) {
 	manager := NewBackupManager(m.config, m.logger, m, m.ctx)
 	return manager, manager.Init()
 }

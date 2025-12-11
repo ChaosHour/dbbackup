@@ -8,9 +8,6 @@ on:
   pull_request:
     branches: [main, master]
 
-env:
-  GO_VERSION: '1.23'
-
 jobs:
   test:
     name: Test
@@ -18,10 +15,13 @@ jobs:
     container:
       image: golang:1.23-bookworm
     steps:
+      - name: Install git
+        run: apt-get update && apt-get install -y git
+
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --depth 1 --branch ${GITHUB_REF_NAME} ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git .
 
       - name: Download dependencies
         run: go mod download
@@ -40,10 +40,13 @@ jobs:
     container:
       image: golang:1.23-bookworm
     steps:
+      - name: Install git
+        run: apt-get update && apt-get install -y git
+
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --depth 1 --branch ${GITHUB_REF_NAME} ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git .
 
       - name: Install golangci-lint
         run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin v1.62.2
@@ -62,10 +65,13 @@ jobs:
         goos: [linux, darwin, windows]
         goarch: [amd64, arm64]
     steps:
+      - name: Install git
+        run: apt-get update && apt-get install -y git
+
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --depth 1 --branch ${GITHUB_REF_NAME} ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git .
 
       - name: Build binary
         env:
@@ -86,10 +92,13 @@ jobs:
     container:
       image: golang:1.23-bookworm
     steps:
+      - name: Install git
+        run: apt-get update && apt-get install -y git
+
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --depth 1 --branch ${GITHUB_REF_NAME} ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git .
 
       - name: Install Syft
         run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
@@ -107,16 +116,17 @@ jobs:
     container:
       image: golang:1.23-bookworm
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Install tools
         run: |
           apt-get update && apt-get install -y git
           curl -sSfL https://github.com/goreleaser/goreleaser/releases/download/v2.4.8/goreleaser_Linux_x86_64.tar.gz | tar xz -C /usr/local/bin goreleaser
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Checkout code
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --branch ${GITHUB_REF_NAME} ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git .
+          git fetch --tags
 
       - name: Run goreleaser
         env:

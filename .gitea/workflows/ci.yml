@@ -30,6 +30,8 @@ jobs:
         run: go mod download
 
       - name: Run tests with race detection
+        env:
+          GOMAXPROCS: 8
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Generate coverage report
@@ -55,6 +57,8 @@ jobs:
         run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
 
       - name: Run golangci-lint
+        env:
+          GOMAXPROCS: 8
         run: golangci-lint run --timeout=5m ./...
 
   build:
@@ -64,6 +68,7 @@ jobs:
     container:
       image: golang:1.24-bookworm
     strategy:
+      max-parallel: 8
       matrix:
         goos: [linux, darwin]
         goarch: [amd64, arm64]
@@ -81,6 +86,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
+          GOMAXPROCS: 8
         run: |
           BINARY_NAME=dbbackup
           go build -ldflags="-s -w" -o dist/${BINARY_NAME}-${{ matrix.goos }}-${{ matrix.goarch }} .

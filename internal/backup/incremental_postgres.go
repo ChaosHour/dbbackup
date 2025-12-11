@@ -40,7 +40,7 @@ func (e *PostgresIncrementalEngine) FindChangedFiles(ctx context.Context, config
 		return nil, fmt.Errorf("failed to load base backup info: %w", err)
 	}
 
-	// Validate base backup is full backup  
+	// Validate base backup is full backup
 	if baseInfo.BackupType != "" && baseInfo.BackupType != "full" {
 		return nil, fmt.Errorf("base backup must be a full backup, got: %s", baseInfo.BackupType)
 	}
@@ -50,7 +50,7 @@ func (e *PostgresIncrementalEngine) FindChangedFiles(ctx context.Context, config
 
 	// Scan data directory for changed files
 	var changedFiles []ChangedFile
-	
+
 	err = filepath.Walk(config.DataDirectory, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -160,7 +160,7 @@ func (e *PostgresIncrementalEngine) CreateIncrementalBackup(ctx context.Context,
 
 	// Generate output filename: dbname_incr_TIMESTAMP.tar.gz
 	timestamp := time.Now().Format("20060102_150405")
-	outputFile := filepath.Join(filepath.Dir(config.BaseBackupPath), 
+	outputFile := filepath.Join(filepath.Dir(config.BaseBackupPath),
 		fmt.Sprintf("%s_incr_%s.tar.gz", baseInfo.Database, timestamp))
 
 	e.log.Info("Creating incremental archive", "output", outputFile)
@@ -190,19 +190,19 @@ func (e *PostgresIncrementalEngine) CreateIncrementalBackup(ctx context.Context,
 
 	// Create incremental metadata
 	metadata := &metadata.BackupMetadata{
-		Version:         "2.2.0",
-		Timestamp:       time.Now(),
-		Database:        baseInfo.Database,
-		DatabaseType:    baseInfo.DatabaseType,
-		Host:            baseInfo.Host,
-		Port:            baseInfo.Port,
-		User:            baseInfo.User,
-		BackupFile:      outputFile,
-		SizeBytes:       stat.Size(),
-		SHA256:          checksum,
-		Compression:     "gzip",
-		BackupType:      "incremental",
-		BaseBackup:      filepath.Base(config.BaseBackupPath),
+		Version:      "2.2.0",
+		Timestamp:    time.Now(),
+		Database:     baseInfo.Database,
+		DatabaseType: baseInfo.DatabaseType,
+		Host:         baseInfo.Host,
+		Port:         baseInfo.Port,
+		User:         baseInfo.User,
+		BackupFile:   outputFile,
+		SizeBytes:    stat.Size(),
+		SHA256:       checksum,
+		Compression:  "gzip",
+		BackupType:   "incremental",
+		BaseBackup:   filepath.Base(config.BaseBackupPath),
 		Incremental: &metadata.IncrementalMetadata{
 			BaseBackupID:        baseInfo.SHA256,
 			BaseBackupPath:      filepath.Base(config.BaseBackupPath),
@@ -329,7 +329,7 @@ func (e *PostgresIncrementalEngine) CalculateFileChecksum(path string) (string, 
 // buildBackupChain constructs the backup chain from base backup to current incremental
 func buildBackupChain(baseInfo *metadata.BackupMetadata, currentBackup string) []string {
 	chain := []string{}
-	
+
 	// If base backup has a chain (is itself incremental), use that
 	if baseInfo.Incremental != nil && len(baseInfo.Incremental.BackupChain) > 0 {
 		chain = append(chain, baseInfo.Incremental.BackupChain...)
@@ -337,9 +337,9 @@ func buildBackupChain(baseInfo *metadata.BackupMetadata, currentBackup string) [
 		// Base is a full backup, start chain with it
 		chain = append(chain, filepath.Base(baseInfo.BackupFile))
 	}
-	
+
 	// Add current incremental to chain
 	chain = append(chain, currentBackup)
-	
+
 	return chain
 }

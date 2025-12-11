@@ -10,10 +10,10 @@ import (
 
 // RecoveryTarget represents a PostgreSQL recovery target
 type RecoveryTarget struct {
-	Type     string // "time", "xid", "lsn", "name", "immediate"
-	Value    string // The target value (timestamp, XID, LSN, or restore point name)
-	Action   string // "promote", "pause", "shutdown"
-	Timeline string // Timeline to follow ("latest" or timeline ID)
+	Type      string // "time", "xid", "lsn", "name", "immediate"
+	Value     string // The target value (timestamp, XID, LSN, or restore point name)
+	Action    string // "promote", "pause", "shutdown"
+	Timeline  string // Timeline to follow ("latest" or timeline ID)
 	Inclusive bool   // Whether target is inclusive (default: true)
 }
 
@@ -128,13 +128,13 @@ func (rt *RecoveryTarget) validateTime() error {
 
 	// Try parsing various timestamp formats
 	formats := []string{
-		"2006-01-02 15:04:05",           // Standard format
-		"2006-01-02 15:04:05.999999",    // With microseconds
-		"2006-01-02T15:04:05",           // ISO 8601
-		"2006-01-02T15:04:05Z",          // ISO 8601 with UTC
-		"2006-01-02T15:04:05-07:00",     // ISO 8601 with timezone
-		time.RFC3339,                     // RFC3339
-		time.RFC3339Nano,                 // RFC3339 with nanoseconds
+		"2006-01-02 15:04:05",        // Standard format
+		"2006-01-02 15:04:05.999999", // With microseconds
+		"2006-01-02T15:04:05",        // ISO 8601
+		"2006-01-02T15:04:05Z",       // ISO 8601 with UTC
+		"2006-01-02T15:04:05-07:00",  // ISO 8601 with timezone
+		time.RFC3339,                 // RFC3339
+		time.RFC3339Nano,             // RFC3339 with nanoseconds
 	}
 
 	var parseErr error
@@ -283,24 +283,24 @@ func FormatConfigLine(key, value string) string {
 // String returns a human-readable representation of the recovery target
 func (rt *RecoveryTarget) String() string {
 	var sb strings.Builder
-	
+
 	sb.WriteString("Recovery Target:\n")
 	sb.WriteString(fmt.Sprintf("  Type:      %s\n", rt.Type))
-	
+
 	if rt.Type != TargetTypeImmediate {
 		sb.WriteString(fmt.Sprintf("  Value:     %s\n", rt.Value))
 	}
-	
+
 	sb.WriteString(fmt.Sprintf("  Action:    %s\n", rt.Action))
-	
+
 	if rt.Timeline != "" {
 		sb.WriteString(fmt.Sprintf("  Timeline:  %s\n", rt.Timeline))
 	}
-	
+
 	if rt.Type != TargetTypeImmediate && rt.Type != TargetTypeName {
 		sb.WriteString(fmt.Sprintf("  Inclusive: %v\n", rt.Inclusive))
 	}
-	
+
 	return sb.String()
 }
 

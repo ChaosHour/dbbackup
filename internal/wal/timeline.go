@@ -40,9 +40,9 @@ type TimelineInfo struct {
 
 // TimelineHistory represents the complete timeline branching structure
 type TimelineHistory struct {
-	Timelines      []*TimelineInfo          // All timelines sorted by ID
+	Timelines       []*TimelineInfo          // All timelines sorted by ID
 	CurrentTimeline uint32                   // Current active timeline
-	TimelineMap    map[uint32]*TimelineInfo // Quick lookup by timeline ID
+	TimelineMap     map[uint32]*TimelineInfo // Quick lookup by timeline ID
 }
 
 // ParseTimelineHistory parses timeline history from an archive directory
@@ -74,10 +74,10 @@ func (tm *TimelineManager) ParseTimelineHistory(ctx context.Context, archiveDir 
 	// Always add timeline 1 (base timeline) if not present
 	if _, exists := history.TimelineMap[1]; !exists {
 		baseTimeline := &TimelineInfo{
-			TimelineID:     1,
-			ParentTimeline: 0,
-			SwitchPoint:    "0/0",
-			Reason:         "Base timeline",
+			TimelineID:      1,
+			ParentTimeline:  0,
+			SwitchPoint:     "0/0",
+			Reason:          "Base timeline",
 			FirstWALSegment: 0,
 		}
 		history.Timelines = append(history.Timelines, baseTimeline)
@@ -201,7 +201,7 @@ func (tm *TimelineManager) scanWALSegments(archiveDir string, history *TimelineH
 	// Process each WAL file
 	for _, walFile := range walFiles {
 		filename := filepath.Base(walFile)
-		
+
 		// Remove extensions
 		filename = strings.TrimSuffix(filename, ".gz.enc")
 		filename = strings.TrimSuffix(filename, ".enc")
@@ -255,7 +255,7 @@ func (tm *TimelineManager) ValidateTimelineConsistency(ctx context.Context, hist
 
 		parent, exists := history.TimelineMap[tl.ParentTimeline]
 		if !exists {
-			return fmt.Errorf("timeline %d references non-existent parent timeline %d", 
+			return fmt.Errorf("timeline %d references non-existent parent timeline %d",
 				tl.TimelineID, tl.ParentTimeline)
 		}
 
@@ -274,29 +274,29 @@ func (tm *TimelineManager) ValidateTimelineConsistency(ctx context.Context, hist
 // GetTimelinePath returns the path from timeline 1 to the target timeline
 func (tm *TimelineManager) GetTimelinePath(history *TimelineHistory, targetTimeline uint32) ([]*TimelineInfo, error) {
 	path := make([]*TimelineInfo, 0)
-	
+
 	currentTL := targetTimeline
 	for currentTL > 0 {
 		tl, exists := history.TimelineMap[currentTL]
 		if !exists {
 			return nil, fmt.Errorf("timeline %d not found in history", currentTL)
 		}
-		
+
 		// Prepend to path (we're walking backwards)
 		path = append([]*TimelineInfo{tl}, path...)
-		
+
 		// Move to parent
 		if currentTL == 1 {
 			break // Reached base timeline
 		}
 		currentTL = tl.ParentTimeline
-		
+
 		// Prevent infinite loops
 		if len(path) > 100 {
 			return nil, fmt.Errorf("timeline path too long (possible cycle)")
 		}
 	}
-	
+
 	return path, nil
 }
 
@@ -305,13 +305,13 @@ func (tm *TimelineManager) FindTimelineAtPoint(history *TimelineHistory, targetL
 	// Start from current timeline and walk backwards
 	for i := len(history.Timelines) - 1; i >= 0; i-- {
 		tl := history.Timelines[i]
-		
+
 		// Compare LSNs (simplified - in production would need proper LSN comparison)
 		if tl.SwitchPoint <= targetLSN || tl.SwitchPoint == "0/0" {
 			return tl.TimelineID, nil
 		}
 	}
-	
+
 	// Default to timeline 1
 	return 1, nil
 }
@@ -384,23 +384,23 @@ func (tm *TimelineManager) formatTimelineNode(sb *strings.Builder, history *Time
 	}
 
 	sb.WriteString(fmt.Sprintf("%s%s Timeline %d", indent, marker, tl.TimelineID))
-	
+
 	if tl.TimelineID == history.CurrentTimeline {
 		sb.WriteString(" [CURRENT]")
 	}
-	
+
 	if tl.SwitchPoint != "" && tl.SwitchPoint != "0/0" {
 		sb.WriteString(fmt.Sprintf(" (switched at %s)", tl.SwitchPoint))
 	}
-	
+
 	if tl.FirstWALSegment > 0 {
 		sb.WriteString(fmt.Sprintf("\n%s   WAL segments: %d files", indent, tl.LastWALSegment-tl.FirstWALSegment+1))
 	}
-	
+
 	if tl.Reason != "" {
 		sb.WriteString(fmt.Sprintf("\n%s   Reason: %s", indent, tl.Reason))
 	}
-	
+
 	sb.WriteString("\n")
 
 	// Find and format children

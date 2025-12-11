@@ -53,14 +53,14 @@ type dbTypeOption struct {
 
 // MenuModel represents the simple menu state
 type MenuModel struct {
-	choices         []string
-	cursor          int
-	config          *config.Config
-	logger          logger.Logger
-	quitting        bool
-	message         string
-	dbTypes         []dbTypeOption
-	dbTypeCursor    int
+	choices      []string
+	cursor       int
+	config       *config.Config
+	logger       logger.Logger
+	quitting     bool
+	message      string
+	dbTypes      []dbTypeOption
+	dbTypeCursor int
 
 	// Background operations
 	ctx       context.Context
@@ -133,7 +133,7 @@ func (m MenuModel) Init() tea.Cmd {
 	// Auto-select menu option if specified
 	if m.config.TUIAutoSelect >= 0 && m.config.TUIAutoSelect < len(m.choices) {
 		m.logger.Info("TUI Auto-select enabled", "option", m.config.TUIAutoSelect, "label", m.choices[m.config.TUIAutoSelect])
-		
+
 		// Return command to trigger auto-selection
 		return func() tea.Msg {
 			return autoSelectMsg{}
@@ -150,7 +150,7 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.config.TUIAutoSelect >= 0 && m.config.TUIAutoSelect < len(m.choices) {
 			m.cursor = m.config.TUIAutoSelect
 			m.logger.Info("Auto-selecting option", "cursor", m.cursor, "choice", m.choices[m.cursor])
-			
+
 			// Trigger the selection based on cursor position
 			switch m.cursor {
 			case 0: // Single Database Backup
@@ -184,7 +184,7 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -192,13 +192,13 @@ func (m MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cancel != nil {
 				m.cancel()
 			}
-			
+
 			// Clean up any orphaned processes before exit
 			m.logger.Info("Cleaning up processes before exit")
 			if err := cleanup.KillOrphanedProcesses(m.logger); err != nil {
 				m.logger.Warn("Failed to clean up all processes", "error", err)
 			}
-			
+
 			m.quitting = true
 			return m, tea.Quit
 

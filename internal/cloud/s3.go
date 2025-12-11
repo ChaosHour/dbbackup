@@ -30,11 +30,11 @@ func NewS3Backend(cfg *Config) (*S3Backend, error) {
 	}
 
 	ctx := context.Background()
-	
+
 	// Build AWS config
 	var awsCfg aws.Config
 	var err error
-	
+
 	if cfg.AccessKey != "" && cfg.SecretKey != "" {
 		// Use explicit credentials
 		credsProvider := credentials.NewStaticCredentialsProvider(
@@ -42,7 +42,7 @@ func NewS3Backend(cfg *Config) (*S3Backend, error) {
 			cfg.SecretKey,
 			"",
 		)
-		
+
 		awsCfg, err = config.LoadDefaultConfig(ctx,
 			config.WithCredentialsProvider(credsProvider),
 			config.WithRegion(cfg.Region),
@@ -53,7 +53,7 @@ func NewS3Backend(cfg *Config) (*S3Backend, error) {
 			config.WithRegion(cfg.Region),
 		)
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
@@ -69,7 +69,7 @@ func NewS3Backend(cfg *Config) (*S3Backend, error) {
 			}
 		},
 	}
-	
+
 	client := s3.NewFromConfig(awsCfg, clientOptions...)
 
 	return &S3Backend{
@@ -114,7 +114,7 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, pr
 
 	// Use multipart upload for files larger than 100MB
 	const multipartThreshold = 100 * 1024 * 1024 // 100 MB
-	
+
 	if fileSize > multipartThreshold {
 		return s.uploadMultipart(ctx, file, key, fileSize, progress)
 	}
@@ -137,7 +137,7 @@ func (s *S3Backend) uploadSimple(ctx context.Context, file *os.File, key string,
 		Key:    aws.String(key),
 		Body:   reader,
 	})
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to upload to S3: %w", err)
 	}
@@ -151,10 +151,10 @@ func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key stri
 	uploader := manager.NewUploader(s.client, func(u *manager.Uploader) {
 		// Part size: 10MB
 		u.PartSize = 10 * 1024 * 1024
-		
+
 		// Upload up to 10 parts concurrently
 		u.Concurrency = 10
-		
+
 		// Leave parts on failure for debugging
 		u.LeavePartsOnError = false
 	})
@@ -245,10 +245,10 @@ func (s *S3Backend) List(ctx context.Context, prefix string) ([]BackupInfo, erro
 		if obj.Key == nil {
 			continue
 		}
-		
+
 		key := *obj.Key
 		name := filepath.Base(key)
-		
+
 		// Skip if it's just a directory marker
 		if strings.HasSuffix(key, "/") {
 			continue
@@ -260,11 +260,11 @@ func (s *S3Backend) List(ctx context.Context, prefix string) ([]BackupInfo, erro
 			Size:         *obj.Size,
 			LastModified: *obj.LastModified,
 		}
-		
+
 		if obj.ETag != nil {
 			info.ETag = *obj.ETag
 		}
-		
+
 		if obj.StorageClass != "" {
 			info.StorageClass = string(obj.StorageClass)
 		} else {
@@ -285,7 +285,7 @@ func (s *S3Backend) Delete(ctx context.Context, remotePath string) error {
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	})
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to delete object: %w", err)
 	}
@@ -301,7 +301,7 @@ func (s *S3Backend) Exists(ctx context.Context, remotePath string) (bool, error)
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	})
-	
+
 	if err != nil {
 		// Check if it's a "not found" error
 		if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "404") {
@@ -321,7 +321,7 @@ func (s *S3Backend) GetSize(ctx context.Context, remotePath string) (int64, erro
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
 	})
-	
+
 	if err != nil {
 		return 0, fmt.Errorf("failed to get object metadata: %w", err)
 	}
@@ -338,7 +338,7 @@ func (s *S3Backend) BucketExists(ctx context.Context) (bool, error) {
 	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: aws.String(s.bucket),
 	})
-	
+
 	if err != nil {
 		if strings.Contains(err.Error(), "NotFound") || strings.Contains(err.Error(), "404") {
 			return false, nil
@@ -355,7 +355,7 @@ func (s *S3Backend) CreateBucket(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	
+
 	if exists {
 		return nil
 	}
@@ -363,7 +363,7 @@ func (s *S3Backend) CreateBucket(ctx context.Context) error {
 	_, err = s.client.CreateBucket(ctx, &s3.CreateBucketInput{
 		Bucket: aws.String(s.bucket),
 	})
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to create bucket: %w", err)
 	}

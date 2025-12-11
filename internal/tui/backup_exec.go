@@ -78,10 +78,10 @@ type backupCompleteMsg struct {
 
 func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
 	return func() tea.Msg {
-			// Use configurable cluster timeout (minutes) from config; default set in config.New()
-			// Use parent context to inherit cancellation from TUI
-			clusterTimeout := time.Duration(cfg.ClusterTimeoutMinutes) * time.Minute
-			ctx, cancel := context.WithTimeout(parentCtx, clusterTimeout)
+		// Use configurable cluster timeout (minutes) from config; default set in config.New()
+		// Use parent context to inherit cancellation from TUI
+		clusterTimeout := time.Duration(cfg.ClusterTimeoutMinutes) * time.Minute
+		ctx, cancel := context.WithTimeout(parentCtx, clusterTimeout)
 		defer cancel()
 
 		start := time.Now()
@@ -151,10 +151,10 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.done {
 			// Increment spinner frame for smooth animation
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
-			
+
 			// Update status based on elapsed time to show progress
 			elapsedSec := int(time.Since(m.startTime).Seconds())
-			
+
 			if elapsedSec < 2 {
 				m.status = "Initializing backup..."
 			} else if elapsedSec < 5 {
@@ -180,7 +180,7 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.status = fmt.Sprintf("Backing up database '%s'...", m.databaseName)
 				}
 			}
-			
+
 			return m, backupTickCmd()
 		}
 		return m, nil
@@ -239,7 +239,7 @@ func (m BackupExecutionModel) View() string {
 		s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
 	} else {
 		s.WriteString(fmt.Sprintf("  %s\n\n", m.status))
-		
+
 		if m.err != nil {
 			s.WriteString(fmt.Sprintf("  ❌ Error: %v\n", m.err))
 		} else if m.result != "" {

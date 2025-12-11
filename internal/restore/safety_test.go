@@ -23,7 +23,7 @@ func TestValidateArchive_FileNotFound(t *testing.T) {
 func TestValidateArchive_EmptyFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	emptyFile := filepath.Join(tmpDir, "empty.dump")
-	
+
 	if err := os.WriteFile(emptyFile, []byte{}, 0644); err != nil {
 		t.Fatalf("Failed to create empty file: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestCheckDiskSpace_InsufficientSpace(t *testing.T) {
 	// Just ensure the function doesn't panic
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.dump")
-	
+
 	// Create a small test file
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)

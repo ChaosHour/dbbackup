@@ -171,9 +171,9 @@ func (m *Manager) Setup() error {
 
 	// Log current swap status
 	if total, used, free, err := m.GetCurrentSwap(); err == nil {
-		m.log.Info("Swap status after setup", 
-			"total_mb", total, 
-			"used_mb", used, 
+		m.log.Info("Swap status after setup",
+			"total_mb", total,
+			"used_mb", used,
 			"free_mb", free,
 			"added_gb", m.sizeGB)
 	}

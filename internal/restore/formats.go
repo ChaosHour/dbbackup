@@ -1,24 +1,24 @@
 package restore
 
 import (
-"compress/gzip"
-"io"
-"os"
-"strings"
+	"compress/gzip"
+	"io"
+	"os"
+	"strings"
 )
 
 // ArchiveFormat represents the type of backup archive
 type ArchiveFormat string
 
 const (
-FormatPostgreSQLDump   ArchiveFormat = "PostgreSQL Dump (.dump)"
-FormatPostgreSQLDumpGz ArchiveFormat = "PostgreSQL Dump Compressed (.dump.gz)"
-FormatPostgreSQLSQL    ArchiveFormat = "PostgreSQL SQL (.sql)"
-FormatPostgreSQLSQLGz  ArchiveFormat = "PostgreSQL SQL Compressed (.sql.gz)"
-FormatMySQLSQL         ArchiveFormat = "MySQL SQL (.sql)"
-FormatMySQLSQLGz       ArchiveFormat = "MySQL SQL Compressed (.sql.gz)"
-FormatClusterTarGz     ArchiveFormat = "Cluster Archive (.tar.gz)"
-FormatUnknown          ArchiveFormat = "Unknown"
+	FormatPostgreSQLDump   ArchiveFormat = "PostgreSQL Dump (.dump)"
+	FormatPostgreSQLDumpGz ArchiveFormat = "PostgreSQL Dump Compressed (.dump.gz)"
+	FormatPostgreSQLSQL    ArchiveFormat = "PostgreSQL SQL (.sql)"
+	FormatPostgreSQLSQLGz  ArchiveFormat = "PostgreSQL SQL Compressed (.sql.gz)"
+	FormatMySQLSQL         ArchiveFormat = "MySQL SQL (.sql)"
+	FormatMySQLSQLGz       ArchiveFormat = "MySQL SQL Compressed (.sql.gz)"
+	FormatClusterTarGz     ArchiveFormat = "Cluster Archive (.tar.gz)"
+	FormatUnknown          ArchiveFormat = "Unknown"
 )
 
 // DetectArchiveFormat detects the format of a backup archive from its filename and content
@@ -37,7 +37,7 @@ func DetectArchiveFormat(filename string) ArchiveFormat {
 		result := isCustomFormat(filename, true)
 		// If file doesn't exist or we can't read it, trust the extension
 		// If file exists and has PGDMP signature, it's custom format
-// If file exists but doesn't have signature, it might be SQL named as .dump
+		// If file exists but doesn't have signature, it might be SQL named as .dump
 		if result == formatCheckCustom || result == formatCheckFileNotFound {
 			return FormatPostgreSQLDumpGz
 		}
@@ -81,9 +81,9 @@ func DetectArchiveFormat(filename string) ArchiveFormat {
 type formatCheckResult int
 
 const (
-formatCheckFileNotFound formatCheckResult = iota
-formatCheckCustom
-formatCheckNotCustom
+	formatCheckFileNotFound formatCheckResult = iota
+	formatCheckCustom
+	formatCheckNotCustom
 )
 
 // isCustomFormat checks if a file is PostgreSQL custom format (has PGDMP signature)

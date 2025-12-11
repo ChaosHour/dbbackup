@@ -28,12 +28,12 @@ func main() {
 
 	// Initialize configuration
 	cfg := config.New()
-	
+
 	// Set version information
 	cfg.Version = version
 	cfg.BuildTime = buildTime
 	cfg.GitCommit = gitCommit
-	
+
 	// Optimize CPU settings if auto-detect is enabled
 	if cfg.AutoDetectCores {
 		if err := cfg.OptimizeForCPU(); err != nil {
@@ -46,13 +46,13 @@ func main() {
 
 	// Initialize global metrics
 	metrics.InitGlobalMetrics(log)
-	
+
 	// Show session summary on exit
 	defer func() {
 		if metrics.GlobalMetrics != nil {
 			avgs := metrics.GlobalMetrics.GetAverages()
 			if ops, ok := avgs["total_operations"].(int); ok && ops > 0 {
-				fmt.Printf("\n📊 Session Summary: %d operations, %.1f%% success rate\n", 
+				fmt.Printf("\n📊 Session Summary: %d operations, %.1f%% success rate\n",
 					ops, avgs["success_rate"])
 			}
 		}

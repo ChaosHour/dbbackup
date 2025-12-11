@@ -52,13 +52,13 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.archives = msg.archives
-		
+
 		// Calculate total size
 		m.totalSize = 0
 		for _, archive := range m.archives {
 			m.totalSize += archive.Size
 		}
-		
+
 		// Get free space (simplified - just show message)
 		m.message = fmt.Sprintf("Loaded %d archive(s)", len(m.archives))
 		return m, nil

@@ -7,6 +7,7 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/security"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -42,13 +43,13 @@ For help with specific commands, use: dbbackup [command] --help`,
 		if cfg == nil {
 			return nil
 		}
-		
+
 		// Store which flags were explicitly set by user
 		flagsSet := make(map[string]bool)
 		cmd.Flags().Visit(func(f *pflag.Flag) {
 			flagsSet[f.Name] = true
 		})
-		
+
 		// Load local config if not disabled
 		if !cfg.NoLoadConfig {
 			if localCfg, err := config.LoadLocalConfig(); err != nil {
@@ -65,11 +66,11 @@ For help with specific commands, use: dbbackup [command] --help`,
 				savedDumpJobs := cfg.DumpJobs
 				savedRetentionDays := cfg.RetentionDays
 				savedMinBackups := cfg.MinBackups
-				
+
 				// Apply config from file
 				config.ApplyLocalConfig(cfg, localCfg)
 				log.Info("Loaded configuration from .dbbackup.conf")
-				
+
 				// Restore explicitly set flag values (flags have priority)
 				if flagsSet["backup-dir"] {
 					cfg.BackupDir = savedBackupDir
@@ -103,7 +104,7 @@ For help with specific commands, use: dbbackup [command] --help`,
 				}
 			}
 		}
-		
+
 		return cfg.SetDatabaseType(cfg.DatabaseType)
 	},
 }
@@ -112,10 +113,10 @@ For help with specific commands, use: dbbackup [command] --help`,
 func Execute(ctx context.Context, config *config.Config, logger logger.Logger) error {
 	cfg = config
 	log = logger
-	
+
 	// Initialize audit logger
 	auditLogger = security.NewAuditLogger(logger, true)
-	
+
 	// Initialize rate limiter
 	rateLimiter = security.NewRateLimiter(config.MaxRetries, logger)
 
@@ -143,7 +144,7 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	rootCmd.PersistentFlags().IntVar(&cfg.CompressionLevel, "compression", cfg.CompressionLevel, "Compression level (0-9)")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoSaveConfig, "no-save-config", false, "Don't save configuration after successful operations")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoLoadConfig, "no-config", false, "Don't load configuration from .dbbackup.conf")
-	
+
 	// Security flags (MEDIUM priority)
 	rootCmd.PersistentFlags().IntVar(&cfg.RetentionDays, "retention-days", cfg.RetentionDays, "Backup retention period in days (0=disabled)")
 	rootCmd.PersistentFlags().IntVar(&cfg.MinBackups, "min-backups", cfg.MinBackups, "Minimum number of backups to keep")

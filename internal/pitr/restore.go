@@ -284,7 +284,7 @@ func (ro *RestoreOrchestrator) startPostgreSQL(ctx context.Context, opts *Restor
 	}
 
 	cmd := exec.CommandContext(ctx, pgCtl, "-D", opts.TargetDataDir, "-l", filepath.Join(opts.TargetDataDir, "logfile"), "start")
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		ro.log.Error("PostgreSQL startup failed", "output", string(output))
@@ -321,18 +321,18 @@ func (ro *RestoreOrchestrator) monitorRecovery(ctx context.Context, opts *Restor
 			pidFile := filepath.Join(opts.TargetDataDir, "postmaster.pid")
 			if _, err := os.Stat(pidFile); err == nil {
 				ro.log.Info("✅ PostgreSQL is running")
-				
+
 				// Check if recovery files still exist
 				recoverySignal := filepath.Join(opts.TargetDataDir, "recovery.signal")
 				recoveryConf := filepath.Join(opts.TargetDataDir, "recovery.conf")
-				
+
 				if _, err := os.Stat(recoverySignal); os.IsNotExist(err) {
 					if _, err := os.Stat(recoveryConf); os.IsNotExist(err) {
 						ro.log.Info("✅ Recovery completed - PostgreSQL promoted to primary")
 						return nil
 					}
 				}
-				
+
 				ro.log.Info("Recovery in progress...")
 			} else {
 				ro.log.Info("PostgreSQL not yet started or crashed")

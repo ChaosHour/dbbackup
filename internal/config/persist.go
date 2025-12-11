@@ -39,7 +39,7 @@ type LocalConfig struct {
 // LoadLocalConfig loads configuration from .dbbackup.conf in current directory
 func LoadLocalConfig() (*LocalConfig, error) {
 	configPath := filepath.Join(".", ConfigFileName)
-	
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -54,7 +54,7 @@ func LoadLocalConfig() (*LocalConfig, error) {
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		
+
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -143,7 +143,7 @@ func LoadLocalConfig() (*LocalConfig, error) {
 // SaveLocalConfig saves configuration to .dbbackup.conf in current directory
 func SaveLocalConfig(cfg *LocalConfig) error {
 	var sb strings.Builder
-	
+
 	sb.WriteString("# dbbackup configuration\n")
 	sb.WriteString("# This file is auto-generated. Edit with care.\n\n")
 

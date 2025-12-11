@@ -17,32 +17,32 @@ type DetailedReporter struct {
 
 // OperationStatus represents the status of a backup/restore operation
 type OperationStatus struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Type        string            `json:"type"` // "backup", "restore", "verify"
-	Status      string            `json:"status"` // "running", "completed", "failed"
-	StartTime   time.Time         `json:"start_time"`
-	EndTime     *time.Time        `json:"end_time,omitempty"`
-	Duration    time.Duration     `json:"duration"`
-	Progress    int               `json:"progress"` // 0-100
-	Message     string            `json:"message"`
-	Details     map[string]string `json:"details"`
-	Steps       []StepStatus      `json:"steps"`
-	BytesTotal  int64             `json:"bytes_total"`
-	BytesDone   int64             `json:"bytes_done"`
-	FilesTotal  int               `json:"files_total"`
-	FilesDone   int               `json:"files_done"`
-	Errors      []string          `json:"errors,omitempty"`
+	ID         string            `json:"id"`
+	Name       string            `json:"name"`
+	Type       string            `json:"type"`   // "backup", "restore", "verify"
+	Status     string            `json:"status"` // "running", "completed", "failed"
+	StartTime  time.Time         `json:"start_time"`
+	EndTime    *time.Time        `json:"end_time,omitempty"`
+	Duration   time.Duration     `json:"duration"`
+	Progress   int               `json:"progress"` // 0-100
+	Message    string            `json:"message"`
+	Details    map[string]string `json:"details"`
+	Steps      []StepStatus      `json:"steps"`
+	BytesTotal int64             `json:"bytes_total"`
+	BytesDone  int64             `json:"bytes_done"`
+	FilesTotal int               `json:"files_total"`
+	FilesDone  int               `json:"files_done"`
+	Errors     []string          `json:"errors,omitempty"`
 }
 
 // StepStatus represents individual steps within an operation
 type StepStatus struct {
-	Name      string     `json:"name"`
-	Status    string     `json:"status"`
-	StartTime time.Time  `json:"start_time"`
-	EndTime   *time.Time `json:"end_time,omitempty"`
+	Name      string        `json:"name"`
+	Status    string        `json:"status"`
+	StartTime time.Time     `json:"start_time"`
+	EndTime   *time.Time    `json:"end_time,omitempty"`
 	Duration  time.Duration `json:"duration"`
-	Message   string     `json:"message"`
+	Message   string        `json:"message"`
 }
 
 // Logger interface for detailed reporting
@@ -79,7 +79,7 @@ func (dr *DetailedReporter) StartOperation(id, name, opType string) *OperationTr
 	}
 
 	dr.operations = append(dr.operations, operation)
-	
+
 	if dr.startTime.IsZero() {
 		dr.startTime = time.Now()
 	}
@@ -90,9 +90,9 @@ func (dr *DetailedReporter) StartOperation(id, name, opType string) *OperationTr
 	}
 
 	// Log operation start
-	dr.logger.Info("Operation started", 
-		"id", id, 
-		"name", name, 
+	dr.logger.Info("Operation started",
+		"id", id,
+		"name", name,
 		"type", opType,
 		"timestamp", operation.StartTime.Format(time.RFC3339))
 
@@ -117,7 +117,7 @@ func (ot *OperationTracker) UpdateProgress(progress int, message string) {
 		if ot.reporter.operations[i].ID == ot.operationID {
 			ot.reporter.operations[i].Progress = progress
 			ot.reporter.operations[i].Message = message
-			
+
 			// Update visual indicator
 			if ot.reporter.indicator != nil {
 				progressMsg := fmt.Sprintf("[%d%%] %s", progress, message)
@@ -150,7 +150,7 @@ func (ot *OperationTracker) AddStep(name, message string) *StepTracker {
 	for i := range ot.reporter.operations {
 		if ot.reporter.operations[i].ID == ot.operationID {
 			ot.reporter.operations[i].Steps = append(ot.reporter.operations[i].Steps, step)
-			
+
 			// Log step start
 			ot.reporter.logger.Info("Step started",
 				"operation_id", ot.operationID,
@@ -190,7 +190,7 @@ func (ot *OperationTracker) SetFileProgress(filesDone, filesTotal int) {
 		if ot.reporter.operations[i].ID == ot.operationID {
 			ot.reporter.operations[i].FilesDone = filesDone
 			ot.reporter.operations[i].FilesTotal = filesTotal
-			
+
 			if filesTotal > 0 {
 				progress := (filesDone * 100) / filesTotal
 				ot.reporter.operations[i].Progress = progress
@@ -209,25 +209,25 @@ func (ot *OperationTracker) SetByteProgress(bytesDone, bytesTotal int64) {
 		if ot.reporter.operations[i].ID == ot.operationID {
 			ot.reporter.operations[i].BytesDone = bytesDone
 			ot.reporter.operations[i].BytesTotal = bytesTotal
-			
+
 			if bytesTotal > 0 {
 				progress := int((bytesDone * 100) / bytesTotal)
 				ot.reporter.operations[i].Progress = progress
-				
+
 				// Calculate ETA and speed
 				elapsed := time.Since(ot.reporter.operations[i].StartTime).Seconds()
 				if elapsed > 0 && bytesDone > 0 {
 					speed := float64(bytesDone) / elapsed // bytes/sec
 					remaining := bytesTotal - bytesDone
 					eta := time.Duration(float64(remaining)/speed) * time.Second
-					
+
 					// Update progress message with ETA and speed
 					if ot.reporter.indicator != nil {
 						speedStr := formatSpeed(int64(speed))
 						etaStr := formatDuration(eta)
-						progressMsg := fmt.Sprintf("[%d%%] %s / %s (%s/s, ETA: %s)", 
-							progress, 
-							formatBytes(bytesDone), 
+						progressMsg := fmt.Sprintf("[%d%%] %s / %s (%s/s, ETA: %s)",
+							progress,
+							formatBytes(bytesDone),
 							formatBytes(bytesTotal),
 							speedStr,
 							etaStr)
@@ -253,7 +253,7 @@ func (ot *OperationTracker) Complete(message string) {
 			ot.reporter.operations[i].EndTime = &now
 			ot.reporter.operations[i].Duration = now.Sub(ot.reporter.operations[i].StartTime)
 			ot.reporter.operations[i].Message = message
-			
+
 			// Complete visual indicator
 			if ot.reporter.indicator != nil {
 				ot.reporter.indicator.Complete(fmt.Sprintf("✅ %s", message))
@@ -283,7 +283,7 @@ func (ot *OperationTracker) Fail(err error) {
 			ot.reporter.operations[i].Duration = now.Sub(ot.reporter.operations[i].StartTime)
 			ot.reporter.operations[i].Message = err.Error()
 			ot.reporter.operations[i].Errors = append(ot.reporter.operations[i].Errors, err.Error())
-			
+
 			// Fail visual indicator
 			if ot.reporter.indicator != nil {
 				ot.reporter.indicator.Fail(fmt.Sprintf("❌ %s", err.Error()))
@@ -321,7 +321,7 @@ func (st *StepTracker) Complete(message string) {
 					st.reporter.operations[i].Steps[j].EndTime = &now
 					st.reporter.operations[i].Steps[j].Duration = now.Sub(st.reporter.operations[i].Steps[j].StartTime)
 					st.reporter.operations[i].Steps[j].Message = message
-					
+
 					// Log step completion
 					st.reporter.logger.Info("Step completed",
 						"operation_id", st.operationID,
@@ -351,7 +351,7 @@ func (st *StepTracker) Fail(err error) {
 					st.reporter.operations[i].Steps[j].EndTime = &now
 					st.reporter.operations[i].Steps[j].Duration = now.Sub(st.reporter.operations[i].Steps[j].StartTime)
 					st.reporter.operations[i].Steps[j].Message = err.Error()
-					
+
 					// Log step failure
 					st.reporter.logger.Error("Step failed",
 						"operation_id", st.operationID,
@@ -428,8 +428,8 @@ type OperationSummary struct {
 func (os *OperationSummary) FormatSummary() string {
 	return fmt.Sprintf(
 		"📊 Operations Summary:\n"+
-		"  Total: %d | Completed: %d | Failed: %d | Running: %d\n"+
-		"  Total Duration: %s",
+			"  Total: %d | Completed: %d | Failed: %d | Running: %d\n"+
+			"  Total Duration: %s",
 		os.TotalOperations,
 		os.CompletedOperations,
 		os.FailedOperations,
@@ -461,7 +461,7 @@ func formatBytes(bytes int64) string {
 		GB = 1024 * MB
 		TB = 1024 * GB
 	)
-	
+
 	switch {
 	case bytes >= TB:
 		return fmt.Sprintf("%.2f TB", float64(bytes)/float64(TB))
@@ -483,7 +483,7 @@ func formatSpeed(bytesPerSec int64) string {
 		MB = 1024 * KB
 		GB = 1024 * MB
 	)
-	
+
 	switch {
 	case bytesPerSec >= GB:
 		return fmt.Sprintf("%.2f GB", float64(bytesPerSec)/float64(GB))

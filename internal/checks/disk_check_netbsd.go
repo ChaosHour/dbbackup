@@ -37,7 +37,7 @@ func CheckDiskSpace(path string) *DiskSpaceCheck {
 func CheckDiskSpaceForRestore(path string, archiveSize int64) *DiskSpaceCheck {
 	check := CheckDiskSpace(path)
 	requiredBytes := uint64(archiveSize) * 4 // Account for decompression
-	
+
 	// Override status based on required space
 	if check.AvailableBytes < requiredBytes {
 		check.Critical = true
@@ -47,7 +47,7 @@ func CheckDiskSpaceForRestore(path string, archiveSize int64) *DiskSpaceCheck {
 		check.Warning = true
 		check.Sufficient = false
 	}
-	
+
 	return check
 }
 

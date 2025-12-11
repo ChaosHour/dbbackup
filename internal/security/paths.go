@@ -49,7 +49,7 @@ func ValidateArchivePath(path string) (string, error) {
 	// Must have a valid archive extension
 	ext := strings.ToLower(filepath.Ext(cleaned))
 	validExtensions := []string{".dump", ".sql", ".gz", ".tar"}
-	
+
 	valid := false
 	for _, validExt := range validExtensions {
 		if strings.HasSuffix(cleaned, validExt) {

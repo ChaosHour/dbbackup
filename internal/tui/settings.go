@@ -75,7 +75,7 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				}
 				nextIdx := (currentIdx + 1) % len(workloads)
 				c.CPUWorkloadType = workloads[nextIdx]
-				
+
 				// Recalculate Jobs and DumpJobs based on workload type
 				if c.CPUInfo != nil && c.AutoDetectCores {
 					switch c.CPUWorkloadType {
@@ -329,7 +329,7 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 		{
 			Key:         "cloud_access_key",
 			DisplayName: "Cloud Access Key",
-			Value:       func(c *config.Config) string {
+			Value: func(c *config.Config) string {
 				if c.CloudAccessKey != "" {
 					return "***" + c.CloudAccessKey[len(c.CloudAccessKey)-4:]
 				}
@@ -624,7 +624,7 @@ func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 // cycleDatabaseType cycles through database type options
 func (m SettingsModel) cycleDatabaseType() (tea.Model, tea.Cmd) {
 	dbTypes := []string{"postgres", "mysql", "mariadb"}
-	
+
 	// Find current index
 	currentIdx := 0
 	for i, dbType := range dbTypes {
@@ -633,17 +633,17 @@ func (m SettingsModel) cycleDatabaseType() (tea.Model, tea.Cmd) {
 			break
 		}
 	}
-	
+
 	// Cycle to next
 	nextIdx := (currentIdx + 1) % len(dbTypes)
 	newType := dbTypes[nextIdx]
-	
+
 	// Update config
 	if err := m.config.SetDatabaseType(newType); err != nil {
 		m.message = errorStyle.Render(fmt.Sprintf("❌ Failed to set database type: %s", err.Error()))
 		return m, nil
 	}
-	
+
 	m.message = successStyle.Render(fmt.Sprintf("✅ Database type set to %s", m.config.DisplayDatabaseType()))
 	return m, nil
 }
@@ -726,7 +726,7 @@ func (m SettingsModel) View() string {
 			fmt.Sprintf("Compression: Level %d", m.config.CompressionLevel),
 			fmt.Sprintf("Jobs: %d parallel, %d dump", m.config.Jobs, m.config.DumpJobs),
 		}
-		
+
 		if m.config.CloudEnabled {
 			cloudInfo := fmt.Sprintf("Cloud: %s (%s)", m.config.CloudProvider, m.config.CloudBucket)
 			if m.config.CloudAutoUpload {

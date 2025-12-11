@@ -9,14 +9,14 @@ import (
 
 // Result represents the outcome of a verification operation
 type Result struct {
-	Valid           bool
-	BackupFile      string
-	ExpectedSHA256  string
+	Valid            bool
+	BackupFile       string
+	ExpectedSHA256   string
 	CalculatedSHA256 string
-	SizeMatch       bool
-	FileExists      bool
-	MetadataExists  bool
-	Error           error
+	SizeMatch        bool
+	FileExists       bool
+	MetadataExists   bool
+	Error            error
 }
 
 // Verify checks the integrity of a backup file
@@ -47,7 +47,7 @@ func Verify(backupFile string) (*Result, error) {
 	// Check size match
 	if info.Size() != meta.SizeBytes {
 		result.SizeMatch = false
-		result.Error = fmt.Errorf("size mismatch: expected %d bytes, got %d bytes", 
+		result.Error = fmt.Errorf("size mismatch: expected %d bytes, got %d bytes",
 			meta.SizeBytes, info.Size())
 		return result, nil
 	}
@@ -64,7 +64,7 @@ func Verify(backupFile string) (*Result, error) {
 	// Compare checksums
 	if actualSHA256 != meta.SHA256 {
 		result.Valid = false
-		result.Error = fmt.Errorf("checksum mismatch: expected %s, got %s", 
+		result.Error = fmt.Errorf("checksum mismatch: expected %s, got %s",
 			meta.SHA256, actualSHA256)
 		return result, nil
 	}
@@ -77,7 +77,7 @@ func Verify(backupFile string) (*Result, error) {
 // VerifyMultiple verifies multiple backup files
 func VerifyMultiple(backupFiles []string) ([]*Result, error) {
 	var results []*Result
-	
+
 	for _, file := range backupFiles {
 		result, err := Verify(file)
 		if err != nil {
@@ -106,7 +106,7 @@ func QuickCheck(backupFile string) error {
 
 	// Check size
 	if info.Size() != meta.SizeBytes {
-		return fmt.Errorf("size mismatch: expected %d bytes, got %d bytes", 
+		return fmt.Errorf("size mismatch: expected %d bytes, got %d bytes",
 			meta.SizeBytes, info.Size())
 	}
 

@@ -21,26 +21,26 @@ type Archiver struct {
 
 // ArchiveConfig holds WAL archiving configuration
 type ArchiveConfig struct {
-	ArchiveDir      string // Directory to store archived WAL files
-	CompressWAL     bool   // Compress WAL files with gzip
-	EncryptWAL      bool   // Encrypt WAL files
-	EncryptionKey   []byte // 32-byte key for AES-256-GCM encryption
-	RetentionDays   int    // Days to keep WAL archives
-	VerifyChecksum  bool   // Verify WAL file checksums
+	ArchiveDir     string // Directory to store archived WAL files
+	CompressWAL    bool   // Compress WAL files with gzip
+	EncryptWAL     bool   // Encrypt WAL files
+	EncryptionKey  []byte // 32-byte key for AES-256-GCM encryption
+	RetentionDays  int    // Days to keep WAL archives
+	VerifyChecksum bool   // Verify WAL file checksums
 }
 
 // WALArchiveInfo contains metadata about an archived WAL file
 type WALArchiveInfo struct {
-	WALFileName    string    `json:"wal_filename"`
-	ArchivePath    string    `json:"archive_path"`
-	OriginalSize   int64     `json:"original_size"`
-	ArchivedSize   int64     `json:"archived_size"`
-	Checksum       string    `json:"checksum"`
-	Timeline       uint32    `json:"timeline"`
-	Segment        uint64    `json:"segment"`
-	ArchivedAt     time.Time `json:"archived_at"`
-	Compressed     bool      `json:"compressed"`
-	Encrypted      bool      `json:"encrypted"`
+	WALFileName  string    `json:"wal_filename"`
+	ArchivePath  string    `json:"archive_path"`
+	OriginalSize int64     `json:"original_size"`
+	ArchivedSize int64     `json:"archived_size"`
+	Checksum     string    `json:"checksum"`
+	Timeline     uint32    `json:"timeline"`
+	Segment      uint64    `json:"segment"`
+	ArchivedAt   time.Time `json:"archived_at"`
+	Compressed   bool      `json:"compressed"`
+	Encrypted    bool      `json:"encrypted"`
 }
 
 // NewArchiver creates a new WAL archiver
@@ -77,7 +77,7 @@ func (a *Archiver) ArchiveWALFile(ctx context.Context, walFilePath, walFileName 
 	// Process WAL file: compression and/or encryption
 	var archivePath string
 	var archivedSize int64
-	
+
 	if config.CompressWAL && config.EncryptWAL {
 		// Compress then encrypt
 		archivePath, archivedSize, err = a.compressAndEncryptWAL(walFilePath, walFileName, config)
@@ -150,7 +150,7 @@ func (a *Archiver) copyWAL(walFilePath, walFileName string, config ArchiveConfig
 // compressWAL compresses a WAL file using gzip
 func (a *Archiver) compressWAL(walFilePath, walFileName string, config ArchiveConfig) (string, int64, error) {
 	archivePath := filepath.Join(config.ArchiveDir, walFileName+".gz")
-	
+
 	compressor := NewCompressor(a.log)
 	compressedSize, err := compressor.CompressWALFile(walFilePath, archivePath, 6) // gzip level 6 (balanced)
 	if err != nil {
@@ -163,12 +163,12 @@ func (a *Archiver) compressWAL(walFilePath, walFileName string, config ArchiveCo
 // encryptWAL encrypts a WAL file
 func (a *Archiver) encryptWAL(walFilePath, walFileName string, config ArchiveConfig) (string, int64, error) {
 	archivePath := filepath.Join(config.ArchiveDir, walFileName+".enc")
-	
+
 	encryptor := NewEncryptor(a.log)
 	encOpts := EncryptionOptions{
 		Key: config.EncryptionKey,
 	}
-	
+
 	encryptedSize, err := encryptor.EncryptWALFile(walFilePath, archivePath, encOpts)
 	if err != nil {
 		return "", 0, fmt.Errorf("WAL encryption failed: %w", err)
@@ -199,7 +199,7 @@ func (a *Archiver) compressAndEncryptWAL(walFilePath, walFileName string, config
 	encOpts := EncryptionOptions{
 		Key: config.EncryptionKey,
 	}
-	
+
 	encryptedSize, err := encryptor.EncryptWALFile(tempCompressed, archivePath, encOpts)
 	if err != nil {
 		return "", 0, fmt.Errorf("WAL encryption failed: %w", err)
@@ -340,7 +340,7 @@ func (a *Archiver) GetArchiveStats(config ArchiveConfig) (*ArchiveStats, error) 
 
 	for _, archive := range archives {
 		stats.TotalSize += archive.ArchivedSize
-		
+
 		if archive.Compressed {
 			stats.CompressedFiles++
 		}

@@ -242,7 +242,7 @@ func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplie
 	}
 
 	archiveSize := stat.Size()
-	
+
 	// Estimate required space (archive size * multiplier for decompression/extraction)
 	requiredSpace := int64(float64(archiveSize) * multiplier)
 
@@ -323,12 +323,12 @@ func (s *Safety) checkPostgresDatabaseExists(ctx context.Context, dbName string)
 		"-d", "postgres",
 		"-tAc", fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname='%s'", dbName),
 	}
-	
+
 	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
 	if s.cfg.Host != "localhost" && s.cfg.Host != "127.0.0.1" && s.cfg.Host != "" {
 		args = append([]string{"-h", s.cfg.Host}, args...)
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "psql", args...)
 
 	// Set password if provided
@@ -351,12 +351,12 @@ func (s *Safety) checkMySQLDatabaseExists(ctx context.Context, dbName string) (b
 		"-u", s.cfg.User,
 		"-e", fmt.Sprintf("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='%s'", dbName),
 	}
-	
+
 	// Only add -h flag if host is not localhost (to use Unix socket)
 	if s.cfg.Host != "localhost" && s.cfg.Host != "127.0.0.1" && s.cfg.Host != "" {
 		args = append([]string{"-h", s.cfg.Host}, args...)
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "mysql", args...)
 
 	if s.cfg.Password != "" {
@@ -386,7 +386,7 @@ func (s *Safety) ListUserDatabases(ctx context.Context) ([]string, error) {
 func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error) {
 	// Query to get non-template databases excluding 'postgres' system DB
 	query := "SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'postgres' ORDER BY datname"
-	
+
 	args := []string{
 		"-p", fmt.Sprintf("%d", s.cfg.Port),
 		"-U", s.cfg.User,
@@ -394,12 +394,12 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 		"-tA", // Tuples only, unaligned
 		"-c", query,
 	}
-	
+
 	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
 	if s.cfg.Host != "localhost" && s.cfg.Host != "127.0.0.1" && s.cfg.Host != "" {
 		args = append([]string{"-h", s.cfg.Host}, args...)
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "psql", args...)
 
 	// Set password if provided
@@ -429,19 +429,19 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 func (s *Safety) listMySQLUserDatabases(ctx context.Context) ([]string, error) {
 	// Exclude system databases
 	query := "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') ORDER BY SCHEMA_NAME"
-	
+
 	args := []string{
 		"-P", fmt.Sprintf("%d", s.cfg.Port),
 		"-u", s.cfg.User,
 		"-N", // Skip column names
 		"-e", query,
 	}
-	
+
 	// Only add -h flag if host is not localhost (to use Unix socket)
 	if s.cfg.Host != "localhost" && s.cfg.Host != "127.0.0.1" && s.cfg.Host != "" {
 		args = append([]string{"-h", s.cfg.Host}, args...)
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "mysql", args...)
 
 	if s.cfg.Password != "" {

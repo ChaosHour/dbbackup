@@ -76,7 +76,7 @@ func ParseCloudURI(uri string) (*CloudURI, error) {
 		if len(parts) >= 3 {
 			// Extract bucket name (first part)
 			bucket = parts[0]
-			
+
 			// Extract region if present
 			// bucket.s3.us-west-2.amazonaws.com -> us-west-2
 			// bucket.s3-us-west-2.amazonaws.com -> us-west-2

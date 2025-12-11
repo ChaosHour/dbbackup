@@ -24,18 +24,18 @@ func NewRecoveryConfigGenerator(log logger.Logger) *RecoveryConfigGenerator {
 // RecoveryConfig holds all recovery configuration parameters
 type RecoveryConfig struct {
 	// Core recovery settings
-	Target       *RecoveryTarget
-	WALArchiveDir string
+	Target         *RecoveryTarget
+	WALArchiveDir  string
 	RestoreCommand string
-	
+
 	// PostgreSQL version
 	PostgreSQLVersion int // Major version (12, 13, 14, etc.)
-	
+
 	// Additional settings
-	PrimaryConnInfo   string // For standby mode
-	PrimarySlotName   string // Replication slot name
+	PrimaryConnInfo       string // For standby mode
+	PrimarySlotName       string // Replication slot name
 	RecoveryMinApplyDelay string // Min delay for replay
-	
+
 	// Paths
 	DataDir string // PostgreSQL data directory
 }
@@ -61,7 +61,7 @@ func (rcg *RecoveryConfigGenerator) generateModernRecoveryConfig(config *Recover
 	// Create recovery.signal file (empty file that triggers recovery mode)
 	recoverySignalPath := filepath.Join(config.DataDir, "recovery.signal")
 	rcg.log.Info("Creating recovery.signal file", "path", recoverySignalPath)
-	
+
 	signalFile, err := os.Create(recoverySignalPath)
 	if err != nil {
 		return fmt.Errorf("failed to create recovery.signal: %w", err)
@@ -180,7 +180,7 @@ func (rcg *RecoveryConfigGenerator) generateLegacyRecoveryConfig(config *Recover
 func (rcg *RecoveryConfigGenerator) generateRestoreCommand(walArchiveDir string) string {
 	// The restore_command is executed by PostgreSQL to fetch WAL files
 	// %f = WAL filename, %p = full path to copy WAL file to
-	
+
 	// Try multiple extensions (.gz.enc, .enc, .gz, plain)
 	// This handles compressed and/or encrypted WAL files
 	return fmt.Sprintf(`bash -c 'for ext in .gz.enc .enc .gz ""; do [ -f "%s/%%f$ext" ] && { [ -z "$ext" ] && cp "%s/%%f$ext" "%%p" || case "$ext" in *.gz.enc) gpg -d "%s/%%f$ext" | gunzip > "%%p" ;; *.enc) gpg -d "%s/%%f$ext" > "%%p" ;; *.gz) gunzip -c "%s/%%f$ext" > "%%p" ;; esac; exit 0; }; done; exit 1'`,
@@ -232,14 +232,14 @@ func (rcg *RecoveryConfigGenerator) ValidateDataDirectory(dataDir string) error 
 // DetectPostgreSQLVersion detects the PostgreSQL version from the data directory
 func (rcg *RecoveryConfigGenerator) DetectPostgreSQLVersion(dataDir string) (int, error) {
 	pgVersionPath := filepath.Join(dataDir, "PG_VERSION")
-	
+
 	content, err := os.ReadFile(pgVersionPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read PG_VERSION: %w", err)
 	}
 
 	versionStr := strings.TrimSpace(string(content))
-	
+
 	// Parse major version (e.g., "14" or "14.2")
 	parts := strings.Split(versionStr, ".")
 	if len(parts) == 0 {

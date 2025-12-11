@@ -17,18 +17,18 @@ import (
 // KillOrphanedProcesses finds and kills any orphaned pg_dump, pg_restore, gzip, or pigz processes (Windows implementation)
 func KillOrphanedProcesses(log logger.Logger) error {
 	processNames := []string{"pg_dump.exe", "pg_restore.exe", "gzip.exe", "pigz.exe", "gunzip.exe"}
-	
+
 	myPID := os.Getpid()
 	var killed []string
 	var errors []error
-	
+
 	for _, procName := range processNames {
 		pids, err := findProcessesByNameWindows(procName, myPID)
 		if err != nil {
 			log.Warn("Failed to search for processes", "process", procName, "error", err)
 			continue
 		}
-		
+
 		for _, pid := range pids {
 			if err := killProcessWindows(pid); err != nil {
 				errors = append(errors, fmt.Errorf("failed to kill %s (PID %d): %w", procName, pid, err))
@@ -37,15 +37,15 @@ func KillOrphanedProcesses(log logger.Logger) error {
 			}
 		}
 	}
-	
+
 	if len(killed) > 0 {
 		log.Info("Cleaned up orphaned processes", "count", len(killed), "processes", strings.Join(killed, ", "))
 	}
-	
+
 	if len(errors) > 0 {
 		return fmt.Errorf("some processes could not be killed: %v", errors)
 	}
-	
+
 	return nil
 }
 
@@ -58,35 +58,35 @@ func findProcessesByNameWindows(name string, excludePID int) ([]int, error) {
 		// No processes found or command failed
 		return []int{}, nil
 	}
-	
+
 	var pids []int
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	for _, line := range lines {
 		if line == "" {
 			continue
 		}
-		
+
 		// Parse CSV output: "name","pid","session","mem"
 		fields := strings.Split(line, ",")
 		if len(fields) < 2 {
 			continue
 		}
-		
+
 		// Remove quotes from PID field
 		pidStr := strings.Trim(fields[1], `"`)
 		pid, err := strconv.Atoi(pidStr)
 		if err != nil {
 			continue
 		}
-		
+
 		// Don't kill our own process
 		if pid == excludePID {
 			continue
 		}
-		
+
 		pids = append(pids, pid)
 	}
-	
+
 	return pids, nil
 }
 
@@ -111,7 +111,7 @@ func KillCommandGroup(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return nil
 	}
-	
+
 	// On Windows, just kill the process directly
 	return cmd.Process.Kill()
 }

@@ -41,13 +41,13 @@ var (
 
 // ArchiveInfo holds information about a backup archive
 type ArchiveInfo struct {
-	Name         string
-	Path         string
-	Format       restore.ArchiveFormat
-	Size         int64
-	Modified     time.Time
-	DatabaseName string
-	Valid        bool
+	Name          string
+	Path          string
+	Format        restore.ArchiveFormat
+	Size          int64
+	Modified      time.Time
+	DatabaseName  string
+	Valid         bool
 	ValidationMsg string
 }
 
@@ -132,13 +132,13 @@ func loadArchives(cfg *config.Config, log logger.Logger) tea.Cmd {
 			}
 
 			archives = append(archives, ArchiveInfo{
-				Name:         name,
-				Path:         fullPath,
-				Format:       format,
-				Size:         info.Size(),
-				Modified:     info.ModTime(),
-				DatabaseName: dbName,
-				Valid:        valid,
+				Name:          name,
+				Path:          fullPath,
+				Format:        format,
+				Size:          info.Size(),
+				Modified:      info.ModTime(),
+				DatabaseName:  dbName,
+				Valid:         valid,
 				ValidationMsg: validationMsg,
 			})
 		}
@@ -196,13 +196,13 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", " ":
 			if len(m.archives) > 0 && m.cursor < len(m.archives) {
 				selected := m.archives[m.cursor]
-				
+
 				// Validate selection based on mode
 				if m.mode == "restore-cluster" && !selected.Format.IsClusterBackup() {
 					m.message = errorStyle.Render("❌ Please select a cluster backup (.tar.gz)")
 					return m, nil
 				}
-				
+
 				if m.mode == "restore-single" && selected.Format.IsClusterBackup() {
 					m.message = errorStyle.Render("❌ Please select a single database backup")
 					return m, nil
@@ -239,7 +239,7 @@ func (m ArchiveBrowserModel) View() string {
 	} else if m.mode == "restore-cluster" {
 		title = "📦 Select Archive to Restore (Cluster)"
 	}
-	
+
 	s.WriteString(titleStyle.Render(title))
 	s.WriteString("\n\n")
 

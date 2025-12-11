@@ -22,22 +22,22 @@ import (
 )
 
 var (
-	restoreConfirm   bool
-	restoreDryRun    bool
-	restoreForce     bool
-	restoreClean     bool
-	restoreCreate    bool
-	restoreJobs      int
-	restoreTarget    string
-	restoreVerbose   bool
-	restoreNoProgress bool
-	restoreWorkdir   string
+	restoreConfirm      bool
+	restoreDryRun       bool
+	restoreForce        bool
+	restoreClean        bool
+	restoreCreate       bool
+	restoreJobs         int
+	restoreTarget       string
+	restoreVerbose      bool
+	restoreNoProgress   bool
+	restoreWorkdir      string
 	restoreCleanCluster bool
-	
+
 	// Encryption flags
 	restoreEncryptionKeyFile string
 	restoreEncryptionKeyEnv  string = "DBBACKUP_ENCRYPTION_KEY"
-	
+
 	// PITR restore flags (additional to pitr.go)
 	pitrBaseBackup  string
 	pitrWALArchive  string
@@ -244,7 +244,7 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
-	
+
 	// PITR restore flags
 	restorePITRCmd.Flags().StringVar(&pitrBaseBackup, "base-backup", "", "Path to base backup file (.tar.gz) (required)")
 	restorePITRCmd.Flags().StringVar(&pitrWALArchive, "wal-archive", "", "Path to WAL archive directory (required)")
@@ -260,7 +260,7 @@ func init() {
 	restorePITRCmd.Flags().BoolVar(&pitrSkipExtract, "skip-extraction", false, "Skip base backup extraction (data dir exists)")
 	restorePITRCmd.Flags().BoolVar(&pitrAutoStart, "auto-start", false, "Automatically start PostgreSQL after setup")
 	restorePITRCmd.Flags().BoolVar(&pitrMonitor, "monitor", false, "Monitor recovery progress (requires --auto-start)")
-	
+
 	restorePITRCmd.MarkFlagRequired("base-backup")
 	restorePITRCmd.MarkFlagRequired("wal-archive")
 	restorePITRCmd.MarkFlagRequired("target-dir")
@@ -269,13 +269,13 @@ func init() {
 // runRestoreSingle restores a single database
 func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	archivePath := args[0]
-	
+
 	// Check if this is a cloud URI
 	var cleanupFunc func() error
-	
+
 	if cloud.IsCloudURI(archivePath) {
 		log.Info("Detected cloud URI, downloading backup...", "uri", archivePath)
-		
+
 		// Download from cloud
 		result, err := restore.DownloadFromCloudURI(cmd.Context(), archivePath, restore.DownloadOptions{
 			VerifyChecksum: true,
@@ -284,10 +284,10 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to download from cloud: %w", err)
 		}
-		
+
 		archivePath = result.LocalPath
 		cleanupFunc = result.Cleanup
-		
+
 		// Ensure cleanup happens on exit
 		defer func() {
 			if cleanupFunc != nil {
@@ -296,7 +296,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 				}
 			}
 		}()
-		
+
 		log.Info("Download completed", "local_path", archivePath)
 	} else {
 		// Convert to absolute path for local files
@@ -409,7 +409,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigChan) // Ensure signal cleanup on exit
-	
+
 	go func() {
 		<-sigChan
 		log.Warn("Restore interrupted by user")
@@ -418,7 +418,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 
 	// Execute restore
 	log.Info("Starting restore...", "database", targetDB)
-	
+
 	// Audit log: restore start
 	user := security.GetCurrentUser()
 	startTime := time.Now()
@@ -428,7 +428,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 		auditLogger.LogRestoreFailed(user, targetDB, err)
 		return fmt.Errorf("restore failed: %w", err)
 	}
-	
+
 	// Audit log: restore success
 	auditLogger.LogRestoreComplete(user, targetDB, time.Since(startTime))
 
@@ -491,7 +491,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		checkDir := cfg.BackupDir
 		if restoreWorkdir != "" {
 			checkDir = restoreWorkdir
-			
+
 			// Verify workdir exists or create it
 			if _, err := os.Stat(restoreWorkdir); os.IsNotExist(err) {
 				log.Warn("Working directory does not exist, will be created", "path", restoreWorkdir)
@@ -499,7 +499,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 					return fmt.Errorf("cannot create working directory: %w", err)
 				}
 			}
-			
+
 			log.Warn("⚠️  Using alternative working directory for extraction")
 			log.Warn("    This is recommended when system disk space is limited")
 			log.Warn("    Location: " + restoreWorkdir)
@@ -515,7 +515,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		if err := safety.VerifyTools("postgres"); err != nil {
 			return fmt.Errorf("tool verification failed: %w", err)
 		}
-	}	// Create database instance for pre-checks
+	} // Create database instance for pre-checks
 	db, err := database.New(cfg, log)
 	if err != nil {
 		return fmt.Errorf("failed to create database instance: %w", err)
@@ -592,7 +592,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sigChan) // Ensure signal cleanup on exit
-	
+
 	go func() {
 		<-sigChan
 		log.Warn("Restore interrupted by user")
@@ -622,7 +622,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 
 	// Execute cluster restore
 	log.Info("Starting cluster restore...")
-	
+
 	// Audit log: restore start
 	user := security.GetCurrentUser()
 	startTime := time.Now()
@@ -632,7 +632,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		auditLogger.LogRestoreFailed(user, "all_databases", err)
 		return fmt.Errorf("cluster restore failed: %w", err)
 	}
-	
+
 	// Audit log: restore success
 	auditLogger.LogRestoreComplete(user, "all_databases", time.Since(startTime))
 

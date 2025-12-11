@@ -19,12 +19,12 @@ type Policy struct {
 
 // CleanupResult contains information about cleanup operations
 type CleanupResult struct {
-	TotalBackups    int
+	TotalBackups        int
 	EligibleForDeletion int
-	Deleted         []string
-	Kept            []string
-	SpaceFreed      int64
-	Errors          []error
+	Deleted             []string
+	Kept                []string
+	SpaceFreed          int64
+	Errors              []error
 }
 
 // ApplyPolicy enforces the retention policy on backups in a directory
@@ -63,13 +63,13 @@ func ApplyPolicy(backupDir string, policy Policy) (*CleanupResult, error) {
 		// Check if backup is older than retention period
 		if backup.Timestamp.Before(cutoffDate) {
 			result.EligibleForDeletion++
-			
+
 			if policy.DryRun {
 				result.Deleted = append(result.Deleted, backup.BackupFile)
 			} else {
 				// Delete backup file and associated metadata
 				if err := deleteBackup(backup.BackupFile); err != nil {
-					result.Errors = append(result.Errors, 
+					result.Errors = append(result.Errors,
 						fmt.Errorf("failed to delete %s: %w", backup.BackupFile, err))
 				} else {
 					result.Deleted = append(result.Deleted, backup.BackupFile)
@@ -204,7 +204,7 @@ func CleanupByPattern(backupDir, pattern string, policy Policy) (*CleanupResult,
 
 		if backup.Timestamp.Before(cutoffDate) {
 			result.EligibleForDeletion++
-			
+
 			if policy.DryRun {
 				result.Deleted = append(result.Deleted, backup.BackupFile)
 			} else {

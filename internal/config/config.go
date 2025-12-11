@@ -45,11 +45,11 @@ type Config struct {
 	SampleValue    int
 
 	// Output options
-	NoColor      bool
-	Debug        bool
-	LogLevel     string
-	LogFormat    string
-	
+	NoColor   bool
+	Debug     bool
+	LogLevel  string
+	LogFormat string
+
 	// Config persistence
 	NoSaveConfig bool
 	NoLoadConfig bool
@@ -194,11 +194,11 @@ func New() *Config {
 		AutoSwap:       getEnvBool("AUTO_SWAP", false),
 
 		// Security defaults (MEDIUM priority)
-		RetentionDays:  getEnvInt("RETENTION_DAYS", 30),        // Keep backups for 30 days
-		MinBackups:     getEnvInt("MIN_BACKUPS", 5),            // Keep at least 5 backups
-		MaxRetries:     getEnvInt("MAX_RETRIES", 3),            // Maximum 3 retry attempts
-		AllowRoot:      getEnvBool("ALLOW_ROOT", false),        // Disallow root by default
-		CheckResources: getEnvBool("CHECK_RESOURCES", true),    // Check resources by default
+		RetentionDays:  getEnvInt("RETENTION_DAYS", 30),     // Keep backups for 30 days
+		MinBackups:     getEnvInt("MIN_BACKUPS", 5),         // Keep at least 5 backups
+		MaxRetries:     getEnvInt("MAX_RETRIES", 3),         // Maximum 3 retry attempts
+		AllowRoot:      getEnvBool("ALLOW_ROOT", false),     // Disallow root by default
+		CheckResources: getEnvBool("CHECK_RESOURCES", true), // Check resources by default
 
 		// TUI automation defaults (for testing)
 		TUIAutoSelect:   getEnvInt("TUI_AUTO_SELECT", -1),      // -1 = disabled

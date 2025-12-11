@@ -43,22 +43,22 @@ type SafetyCheck struct {
 
 // RestorePreviewModel shows restore preview and safety checks
 type RestorePreviewModel struct {
-	config       *config.Config
-	logger       logger.Logger
-	parent       tea.Model
-	ctx          context.Context
-	archive      ArchiveInfo
-	mode         string
-	targetDB     string
-	cleanFirst   bool
-	createIfMissing bool
-	cleanClusterFirst bool // For cluster restore: drop all user databases first
-	existingDBCount  int    // Number of existing user databases
-	existingDBs      []string // List of existing user databases
-	safetyChecks []SafetyCheck
-	checking     bool
-	canProceed   bool
-	message      string
+	config            *config.Config
+	logger            logger.Logger
+	parent            tea.Model
+	ctx               context.Context
+	archive           ArchiveInfo
+	mode              string
+	targetDB          string
+	cleanFirst        bool
+	createIfMissing   bool
+	cleanClusterFirst bool     // For cluster restore: drop all user databases first
+	existingDBCount   int      // Number of existing user databases
+	existingDBs       []string // List of existing user databases
+	safetyChecks      []SafetyCheck
+	checking          bool
+	canProceed        bool
+	message           string
 }
 
 // NewRestorePreview creates a new restore preview
@@ -70,16 +70,16 @@ func NewRestorePreview(cfg *config.Config, log logger.Logger, parent tea.Model, 
 	}
 
 	return RestorePreviewModel{
-		config:       cfg,
-		logger:       log,
-		parent:       parent,
-		ctx:          ctx,
-		archive:      archive,
-		mode:         mode,
-		targetDB:     targetDB,
-		cleanFirst:   false,
+		config:          cfg,
+		logger:          log,
+		parent:          parent,
+		ctx:             ctx,
+		archive:         archive,
+		mode:            mode,
+		targetDB:        targetDB,
+		cleanFirst:      false,
 		createIfMissing: true,
-		checking:     true,
+		checking:        true,
 		safetyChecks: []SafetyCheck{
 			{Name: "Archive integrity", Status: "pending", Critical: true},
 			{Name: "Disk space", Status: "pending", Critical: true},
@@ -156,7 +156,7 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		// 4. Target database check (skip for cluster restores)
 		existingDBCount := 0
 		existingDBs := []string{}
-		
+
 		if !archive.Format.IsClusterBackup() {
 			check = SafetyCheck{Name: "Target database", Status: "checking", Critical: false}
 			exists, err := safety.CheckDatabaseExists(ctx, targetDB)
@@ -174,7 +174,7 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		} else {
 			// For cluster restores, detect existing user databases
 			check = SafetyCheck{Name: "Existing databases", Status: "checking", Critical: false}
-			
+
 			// Get list of existing user databases (exclude templates and system DBs)
 			dbList, err := safety.ListUserDatabases(ctx)
 			if err != nil {
@@ -183,7 +183,7 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 			} else {
 				existingDBCount = len(dbList)
 				existingDBs = dbList
-				
+
 				if existingDBCount > 0 {
 					check.Status = "warning"
 					check.Message = fmt.Sprintf("Found %d existing user database(s) - can be cleaned before restore", existingDBCount)
@@ -288,13 +288,13 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString("\n")
 		s.WriteString(fmt.Sprintf("  Database: %s\n", m.targetDB))
 		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
-		
+
 		cleanIcon := "✗"
 		if m.cleanFirst {
 			cleanIcon = "✓"
 		}
 		s.WriteString(fmt.Sprintf("  Clean First: %s %v\n", cleanIcon, m.cleanFirst))
-		
+
 		createIcon := "✗"
 		if m.createIfMissing {
 			createIcon = "✓"
@@ -305,10 +305,10 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(archiveHeaderStyle.Render("🎯 Cluster Restore Options"))
 		s.WriteString("\n")
 		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
-		
+
 		if m.existingDBCount > 0 {
 			s.WriteString(fmt.Sprintf("  Existing Databases: %d found\n", m.existingDBCount))
-			
+
 			// Show first few database names
 			maxShow := 5
 			for i, db := range m.existingDBs {
@@ -319,7 +319,7 @@ func (m RestorePreviewModel) View() string {
 				}
 				s.WriteString(fmt.Sprintf("    - %s\n", db))
 			}
-			
+
 			cleanIcon := "✗"
 			cleanStyle := infoStyle
 			if m.cleanClusterFirst {
@@ -344,7 +344,7 @@ func (m RestorePreviewModel) View() string {
 		for _, check := range m.safetyChecks {
 			icon := "○"
 			style := checkPendingStyle
-			
+
 			switch check.Status {
 			case "passed":
 				icon = "✓"

@@ -14,7 +14,7 @@ import (
 // The original file is replaced with the encrypted version
 func EncryptBackupFile(backupPath string, key []byte, log logger.Logger) error {
 	log.Info("Encrypting backup file", "file", filepath.Base(backupPath))
-	
+
 	// Validate key
 	if err := crypto.ValidateKey(key); err != nil {
 		return fmt.Errorf("invalid encryption key: %w", err)
@@ -81,25 +81,25 @@ func IsBackupEncrypted(backupPath string) bool {
 		// All databases are unencrypted
 		return false
 	}
-	
+
 	// Try single database metadata
 	if meta, err := metadata.Load(backupPath); err == nil {
 		return meta.Encrypted
 	}
-	
+
 	// Fallback: check if file starts with encryption nonce
 	file, err := os.Open(backupPath)
 	if err != nil {
 		return false
 	}
 	defer file.Close()
-	
+
 	// Try to read nonce - if it succeeds, likely encrypted
 	nonce := make([]byte, crypto.NonceSize)
 	if n, err := file.Read(nonce); err != nil || n != crypto.NonceSize {
 		return false
 	}
-	
+
 	return true
 }
 

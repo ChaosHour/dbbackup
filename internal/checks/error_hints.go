@@ -8,10 +8,10 @@ import (
 
 // Compiled regex patterns for robust error matching
 var errorPatterns = map[string]*regexp.Regexp{
-	"already_exists":   regexp.MustCompile(`(?i)(already exists|duplicate key|unique constraint|relation.*exists)`),
-	"disk_full":        regexp.MustCompile(`(?i)(no space left|disk.*full|write.*failed.*space|insufficient.*space)`),
-	"lock_exhaustion":  regexp.MustCompile(`(?i)(max_locks_per_transaction|out of shared memory|lock.*exhausted|could not open large object)`),
-	"syntax_error":     regexp.MustCompile(`(?i)syntax error at.*line \d+`),
+	"already_exists":    regexp.MustCompile(`(?i)(already exists|duplicate key|unique constraint|relation.*exists)`),
+	"disk_full":         regexp.MustCompile(`(?i)(no space left|disk.*full|write.*failed.*space|insufficient.*space)`),
+	"lock_exhaustion":   regexp.MustCompile(`(?i)(max_locks_per_transaction|out of shared memory|lock.*exhausted|could not open large object)`),
+	"syntax_error":      regexp.MustCompile(`(?i)syntax error at.*line \d+`),
 	"permission_denied": regexp.MustCompile(`(?i)(permission denied|must be owner|access denied)`),
 	"connection_failed": regexp.MustCompile(`(?i)(connection refused|could not connect|no pg_hba\.conf entry)`),
 	"version_mismatch":  regexp.MustCompile(`(?i)(version mismatch|incompatible|unsupported version)`),
@@ -135,9 +135,9 @@ func ClassifyError(errorMsg string) *ErrorClassification {
 	}
 
 	// Lock exhaustion errors
-	if strings.Contains(lowerMsg, "max_locks_per_transaction") || 
-	   strings.Contains(lowerMsg, "out of shared memory") ||
-	   strings.Contains(lowerMsg, "could not open large object") {
+	if strings.Contains(lowerMsg, "max_locks_per_transaction") ||
+		strings.Contains(lowerMsg, "out of shared memory") ||
+		strings.Contains(lowerMsg, "could not open large object") {
 		return &ErrorClassification{
 			Type:     "critical",
 			Category: "locks",
@@ -173,9 +173,9 @@ func ClassifyError(errorMsg string) *ErrorClassification {
 	}
 
 	// Connection errors
-	if strings.Contains(lowerMsg, "connection refused") || 
-	   strings.Contains(lowerMsg, "could not connect") ||
-	   strings.Contains(lowerMsg, "no pg_hba.conf entry") {
+	if strings.Contains(lowerMsg, "connection refused") ||
+		strings.Contains(lowerMsg, "could not connect") ||
+		strings.Contains(lowerMsg, "no pg_hba.conf entry") {
 		return &ErrorClassification{
 			Type:     "critical",
 			Category: "network",

@@ -358,21 +358,21 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 			e.log.Warn("Restore completed with ignorable errors", "error_count", errorCount, "last_error", lastError)
 			return nil // Success despite ignorable errors
 		}
-		
+
 		// Classify error and provide helpful hints
 		if lastError != "" {
 			classification := checks.ClassifyError(lastError)
-			e.log.Error("Restore command failed", 
-				"error", err, 
-				"last_stderr", lastError, 
+			e.log.Error("Restore command failed",
+				"error", err,
+				"last_stderr", lastError,
 				"error_count", errorCount,
 				"error_type", classification.Type,
 				"hint", classification.Hint,
 				"action", classification.Action)
-			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s", 
+			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s",
 				err, lastError, errorCount, classification.Hint)
 		}
-		
+
 		e.log.Error("Restore command failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
 		return fmt.Errorf("restore failed: %w", err)
 	}
@@ -440,21 +440,21 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 			e.log.Warn("Restore with decompression completed with ignorable errors", "error_count", errorCount, "last_error", lastError)
 			return nil // Success despite ignorable errors
 		}
-		
+
 		// Classify error and provide helpful hints
 		if lastError != "" {
 			classification := checks.ClassifyError(lastError)
-			e.log.Error("Restore with decompression failed", 
-				"error", err, 
-				"last_stderr", lastError, 
+			e.log.Error("Restore with decompression failed",
+				"error", err,
+				"last_stderr", lastError,
 				"error_count", errorCount,
 				"error_type", classification.Type,
 				"hint", classification.Hint,
 				"action", classification.Action)
-			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s", 
+			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s",
 				err, lastError, errorCount, classification.Hint)
 		}
-		
+
 		e.log.Error("Restore with decompression failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
 		return fmt.Errorf("restore failed: %w", err)
 	}
@@ -530,20 +530,20 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		operation.Fail("Invalid cluster archive format")
 		return fmt.Errorf("not a cluster archive: %s (detected format: %s)", archivePath, format)
 	}
-	
+
 	// Check disk space before starting restore
 	e.log.Info("Checking disk space for restore")
 	archiveInfo, err := os.Stat(archivePath)
 	if err == nil {
 		spaceCheck := checks.CheckDiskSpaceForRestore(e.cfg.BackupDir, archiveInfo.Size())
-		
+
 		if spaceCheck.Critical {
 			operation.Fail("Insufficient disk space")
 			return fmt.Errorf("insufficient disk space for restore: %.1f%% used - need at least 4x archive size", spaceCheck.UsedPercent)
 		}
-		
+
 		if spaceCheck.Warning {
-			e.log.Warn("Low disk space - restore may fail", 
+			e.log.Warn("Low disk space - restore may fail",
 				"available_gb", float64(spaceCheck.AvailableBytes)/(1024*1024*1024),
 				"used_percent", spaceCheck.UsedPercent)
 		}
@@ -638,13 +638,13 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 
 	// Check for large objects in dump files and adjust parallelism
 	hasLargeObjects := e.detectLargeObjectsInDumps(dumpsDir, entries)
-	
+
 	// Use worker pool for parallel restore
 	parallelism := e.cfg.ClusterParallelism
 	if parallelism < 1 {
 		parallelism = 1 // Ensure at least sequential
 	}
-	
+
 	// Automatically reduce parallelism if large objects detected
 	if hasLargeObjects && parallelism > 1 {
 		e.log.Warn("Large objects detected in dump files - reducing parallelism to avoid lock contention",
@@ -731,13 +731,13 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 				mu.Lock()
 				e.log.Error("Failed to restore database", "name", dbName, "file", dumpFile, "error", restoreErr)
 				mu.Unlock()
-				
+
 				// Check for specific recoverable errors
 				errMsg := restoreErr.Error()
 				if strings.Contains(errMsg, "max_locks_per_transaction") {
 					mu.Lock()
-					e.log.Warn("Database restore failed due to insufficient locks - this is a PostgreSQL configuration issue", 
-						"database", dbName, 
+					e.log.Warn("Database restore failed due to insufficient locks - this is a PostgreSQL configuration issue",
+						"database", dbName,
 						"solution", "increase max_locks_per_transaction in postgresql.conf")
 					mu.Unlock()
 				} else if strings.Contains(errMsg, "total errors:") && strings.Contains(errMsg, "2562426") {
@@ -747,7 +747,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 						"errors", "2562426")
 					mu.Unlock()
 				}
-				
+
 				failedDBsMu.Lock()
 				// Include more context in the error message
 				failedDBs = append(failedDBs, fmt.Sprintf("%s: restore failed: %v", dbName, restoreErr))
@@ -770,16 +770,16 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 
 	if failCountFinal > 0 {
 		failedList := strings.Join(failedDBs, "\n  ")
-		
+
 		// Log summary
 		e.log.Info("Cluster restore completed with failures",
 			"succeeded", successCountFinal,
 			"failed", failCountFinal,
 			"total", totalDBs)
-		
+
 		e.progress.Fail(fmt.Sprintf("Cluster restore: %d succeeded, %d failed out of %d total", successCountFinal, failCountFinal, totalDBs))
 		operation.Complete(fmt.Sprintf("Partial restore: %d/%d databases succeeded", successCountFinal, totalDBs))
-		
+
 		return fmt.Errorf("cluster restore completed with %d failures:\n  %s", failCountFinal, failedList)
 	}
 
@@ -1079,48 +1079,48 @@ func (e *Engine) detectLargeObjectsInDumps(dumpsDir string, entries []os.DirEntr
 	hasLargeObjects := false
 	checkedCount := 0
 	maxChecks := 5 // Only check first 5 dumps to avoid slowdown
-	
+
 	for _, entry := range entries {
 		if entry.IsDir() || checkedCount >= maxChecks {
 			continue
 		}
-		
+
 		dumpFile := filepath.Join(dumpsDir, entry.Name())
-		
+
 		// Skip compressed SQL files (can't easily check without decompressing)
 		if strings.HasSuffix(dumpFile, ".sql.gz") {
 			continue
 		}
-		
+
 		// Use pg_restore -l to list contents (fast, doesn't restore data)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		
+
 		cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
 		output, err := cmd.Output()
-		
+
 		if err != nil {
 			// If pg_restore -l fails, it might not be custom format - skip
 			continue
 		}
-		
+
 		checkedCount++
-		
+
 		// Check if output contains "BLOB" or "LARGE OBJECT" entries
 		outputStr := string(output)
-		if strings.Contains(outputStr, "BLOB") || 
-		   strings.Contains(outputStr, "LARGE OBJECT") ||
-		   strings.Contains(outputStr, " BLOBS ") {
+		if strings.Contains(outputStr, "BLOB") ||
+			strings.Contains(outputStr, "LARGE OBJECT") ||
+			strings.Contains(outputStr, " BLOBS ") {
 			e.log.Info("Large objects detected in dump file", "file", entry.Name())
 			hasLargeObjects = true
 			// Don't break - log all files with large objects
 		}
 	}
-	
+
 	if hasLargeObjects {
 		e.log.Warn("Cluster contains databases with large objects - parallel restore may cause lock contention")
 	}
-	
+
 	return hasLargeObjects
 }
 
@@ -1128,13 +1128,13 @@ func (e *Engine) detectLargeObjectsInDumps(dumpsDir string, entries []os.DirEntr
 func (e *Engine) isIgnorableError(errorMsg string) bool {
 	// Convert to lowercase for case-insensitive matching
 	lowerMsg := strings.ToLower(errorMsg)
-	
+
 	// CRITICAL: Syntax errors are NOT ignorable - indicates corrupted dump
 	if strings.Contains(lowerMsg, "syntax error") {
 		e.log.Error("CRITICAL: Syntax error in dump file - dump may be corrupted", "error", errorMsg)
 		return false
 	}
-	
+
 	// CRITICAL: If error count is extremely high (>100k), dump is likely corrupted
 	if strings.Contains(errorMsg, "total errors:") {
 		// Extract error count if present in message
@@ -1149,21 +1149,21 @@ func (e *Engine) isIgnorableError(errorMsg string) bool {
 			}
 		}
 	}
-	
+
 	// List of ignorable error patterns (objects that already exist)
 	ignorablePatterns := []string{
 		"already exists",
 		"duplicate key",
 		"does not exist, skipping", // For DROP IF EXISTS
-		"no pg_hba.conf entry",      // Permission warnings (not fatal)
+		"no pg_hba.conf entry",     // Permission warnings (not fatal)
 	}
-	
+
 	for _, pattern := range ignorablePatterns {
 		if strings.Contains(lowerMsg, pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 

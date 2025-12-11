@@ -14,6 +14,7 @@ import (
 	"dbbackup/internal/auth"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/tui"
+
 	"github.com/spf13/cobra"
 )
 
@@ -42,9 +43,9 @@ var listCmd = &cobra.Command{
 }
 
 var interactiveCmd = &cobra.Command{
-	Use:     "interactive",
-	Short:   "Start interactive menu mode",
-	Long:    `Start the interactive menu system for guided backup operations.
+	Use:   "interactive",
+	Short: "Start interactive menu mode",
+	Long: `Start the interactive menu system for guided backup operations.
 
 TUI Automation Flags (for testing and CI/CD):
   --auto-select <index>     Automatically select menu option (0-13)
@@ -64,7 +65,7 @@ TUI Automation Flags (for testing and CI/CD):
 		cfg.TUIDryRun, _ = cmd.Flags().GetBool("dry-run")
 		cfg.TUIVerbose, _ = cmd.Flags().GetBool("verbose-tui")
 		cfg.TUILogFile, _ = cmd.Flags().GetString("tui-log-file")
-		
+
 		// Check authentication before starting TUI
 		if cfg.IsPostgreSQL() {
 			if mismatch, msg := auth.CheckAuthenticationMismatch(cfg); mismatch {
@@ -72,7 +73,7 @@ TUI Automation Flags (for testing and CI/CD):
 				return fmt.Errorf("authentication configuration required")
 			}
 		}
-		
+
 		// Use verbose logger if TUI verbose mode enabled
 		var interactiveLog logger.Logger
 		if cfg.TUIVerbose {
@@ -80,7 +81,7 @@ TUI Automation Flags (for testing and CI/CD):
 		} else {
 			interactiveLog = logger.NewSilent()
 		}
-		
+
 		// Start the interactive TUI
 		return tui.RunInteractiveMenu(cfg, interactiveLog)
 	},
@@ -768,12 +769,12 @@ func containsSQLKeywords(content string) bool {
 
 func mysqlRestoreCommand(archivePath string, compressed bool) string {
 	parts := []string{"mysql"}
-	
+
 	// Only add -h flag if host is not localhost (to use Unix socket)
 	if cfg.Host != "localhost" && cfg.Host != "127.0.0.1" && cfg.Host != "" {
 		parts = append(parts, "-h", cfg.Host)
 	}
-	
+
 	parts = append(parts,
 		"-P", fmt.Sprintf("%d", cfg.Port),
 		"-u", cfg.User,

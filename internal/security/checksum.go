@@ -42,7 +42,7 @@ func VerifyChecksum(path string, expectedChecksum string) error {
 func SaveChecksum(archivePath string, checksum string) error {
 	checksumPath := archivePath + ".sha256"
 	content := fmt.Sprintf("%s  %s\n", checksum, archivePath)
-	
+
 	if err := os.WriteFile(checksumPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to save checksum: %w", err)
 	}
@@ -53,7 +53,7 @@ func SaveChecksum(archivePath string, checksum string) error {
 // LoadChecksum loads checksum from a .sha256 file
 func LoadChecksum(archivePath string) (string, error) {
 	checksumPath := archivePath + ".sha256"
-	
+
 	data, err := os.ReadFile(checksumPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read checksum file: %w", err)

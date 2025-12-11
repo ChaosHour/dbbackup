@@ -23,20 +23,20 @@ func NewPrivilegeChecker(log logger.Logger) *PrivilegeChecker {
 // CheckAndWarn checks if running with elevated privileges and warns
 func (pc *PrivilegeChecker) CheckAndWarn(allowRoot bool) error {
 	isRoot, user := pc.isRunningAsRoot()
-	
+
 	if isRoot {
 		pc.log.Warn("⚠️  Running with elevated privileges (root/Administrator)")
 		pc.log.Warn("Security recommendation: Create a dedicated backup user with minimal privileges")
-		
+
 		if !allowRoot {
 			return fmt.Errorf("running as root is not recommended, use --allow-root to override")
 		}
-		
+
 		pc.log.Warn("Proceeding with root privileges (--allow-root specified)")
 	} else {
 		pc.log.Debug("Running as non-privileged user", "user", user)
 	}
-	
+
 	return nil
 }
 
@@ -52,7 +52,7 @@ func (pc *PrivilegeChecker) isRunningAsRoot() (bool, string) {
 func (pc *PrivilegeChecker) isUnixRoot() (bool, string) {
 	uid := os.Getuid()
 	user := GetCurrentUser()
-	
+
 	isRoot := uid == 0 || user == "root"
 	return isRoot, user
 }
@@ -62,10 +62,10 @@ func (pc *PrivilegeChecker) isWindowsAdmin() (bool, string) {
 	// Check if running as Administrator on Windows
 	// This is a simplified check - full implementation would use Windows API
 	user := GetCurrentUser()
-	
+
 	// Common admin user patterns on Windows
 	isAdmin := user == "Administrator" || user == "SYSTEM"
-	
+
 	return isAdmin, user
 }
 
@@ -89,11 +89,11 @@ func (pc *PrivilegeChecker) GetSecurityRecommendations() []string {
 		"Regularly rotate database passwords",
 		"Monitor audit logs for unauthorized access attempts",
 	}
-	
+
 	if runtime.GOOS != "windows" {
 		recommendations = append(recommendations,
 			fmt.Sprintf("Run as non-root user: sudo -u %s dbbackup ...", pc.GetRecommendedUser()))
 	}
-	
+
 	return recommendations
 }

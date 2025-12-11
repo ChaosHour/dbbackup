@@ -46,13 +46,13 @@ func (rp *RetentionPolicy) CleanupOldBackups(backupDir string) (int, int64, erro
 	}
 
 	if len(archives) <= rp.MinBackups {
-		rp.log.Debug("Keeping all backups (below minimum threshold)", 
+		rp.log.Debug("Keeping all backups (below minimum threshold)",
 			"count", len(archives), "min_backups", rp.MinBackups)
 		return 0, 0, nil
 	}
 
 	cutoffTime := time.Now().AddDate(0, 0, -rp.RetentionDays)
-	
+
 	// Sort by modification time (oldest first)
 	sort.Slice(archives, func(i, j int) bool {
 		return archives[i].ModTime.Before(archives[j].ModTime)
@@ -65,14 +65,14 @@ func (rp *RetentionPolicy) CleanupOldBackups(backupDir string) (int, int64, erro
 		// Keep minimum number of backups
 		remaining := len(archives) - i
 		if remaining <= rp.MinBackups {
-			rp.log.Debug("Stopped cleanup to maintain minimum backups", 
+			rp.log.Debug("Stopped cleanup to maintain minimum backups",
 				"remaining", remaining, "min_backups", rp.MinBackups)
 			break
 		}
 
 		// Delete if older than retention period
 		if archive.ModTime.Before(cutoffTime) {
-			rp.log.Info("Removing old backup", 
+			rp.log.Info("Removing old backup",
 				"file", filepath.Base(archive.Path),
 				"age_days", int(time.Since(archive.ModTime).Hours()/24),
 				"size_mb", archive.Size/1024/1024)
@@ -100,7 +100,7 @@ func (rp *RetentionPolicy) CleanupOldBackups(backupDir string) (int, int64, erro
 	}
 
 	if deletedCount > 0 {
-		rp.log.Info("Cleanup completed", 
+		rp.log.Info("Cleanup completed",
 			"deleted_backups", deletedCount,
 			"freed_space_mb", freedSpace/1024/1024,
 			"retention_days", rp.RetentionDays)
@@ -124,7 +124,7 @@ func (rp *RetentionPolicy) scanBackupArchives(backupDir string) ([]ArchiveInfo, 
 		}
 
 		name := entry.Name()
-		
+
 		// Skip non-backup files
 		if !isBackupArchive(name) {
 			continue
@@ -161,7 +161,7 @@ func isBackupArchive(name string) bool {
 // extractDatabaseName extracts database name from archive filename
 func extractDatabaseName(filename string) string {
 	base := filepath.Base(filename)
-	
+
 	// Remove extensions
 	for {
 		oldBase := base
@@ -170,7 +170,7 @@ func extractDatabaseName(filename string) string {
 			break
 		}
 	}
-	
+
 	// Remove timestamp patterns
 	if len(base) > 20 {
 		// Typically: db_name_20240101_120000
@@ -184,7 +184,7 @@ func extractDatabaseName(filename string) string {
 			}
 		}
 	}
-	
+
 	return base
 }
 

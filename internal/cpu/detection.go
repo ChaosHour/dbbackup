@@ -1,24 +1,24 @@
 package cpu
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
-	"os"
-	"os/exec"
-	"bufio"
 )
 
 // CPUInfo holds information about the system CPU
 type CPUInfo struct {
-	LogicalCores  int     `json:"logical_cores"`
-	PhysicalCores int     `json:"physical_cores"`
-	Architecture  string  `json:"architecture"`
-	ModelName     string  `json:"model_name"`
-	MaxFrequency  float64 `json:"max_frequency_mhz"`
-	CacheSize     string  `json:"cache_size"`
-	Vendor        string  `json:"vendor"`
+	LogicalCores  int      `json:"logical_cores"`
+	PhysicalCores int      `json:"physical_cores"`
+	Architecture  string   `json:"architecture"`
+	ModelName     string   `json:"model_name"`
+	MaxFrequency  float64  `json:"max_frequency_mhz"`
+	CacheSize     string   `json:"cache_size"`
+	Vendor        string   `json:"vendor"`
 	Features      []string `json:"features"`
 }
 
@@ -78,7 +78,7 @@ func (d *Detector) detectLinux(info *CPUInfo) error {
 
 	scanner := bufio.NewScanner(file)
 	physicalCoreCount := make(map[string]bool)
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.TrimSpace(line) == "" {
@@ -324,11 +324,11 @@ func (d *Detector) GetCPUInfo() *CPUInfo {
 // FormatCPUInfo returns a formatted string representation of CPU info
 func (info *CPUInfo) FormatCPUInfo() string {
 	var sb strings.Builder
-	
+
 	sb.WriteString(fmt.Sprintf("Architecture: %s\n", info.Architecture))
 	sb.WriteString(fmt.Sprintf("Logical Cores: %d\n", info.LogicalCores))
 	sb.WriteString(fmt.Sprintf("Physical Cores: %d\n", info.PhysicalCores))
-	
+
 	if info.ModelName != "" {
 		sb.WriteString(fmt.Sprintf("Model: %s\n", info.ModelName))
 	}
@@ -341,6 +341,6 @@ func (info *CPUInfo) FormatCPUInfo() string {
 	if info.CacheSize != "" {
 		sb.WriteString(fmt.Sprintf("Cache Size: %s\n", info.CacheSize))
 	}
-	
+
 	return sb.String()
 }

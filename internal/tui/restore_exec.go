@@ -20,54 +20,54 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 
 // RestoreExecutionModel handles restore execution with progress
 type RestoreExecutionModel struct {
-	config          *config.Config
-	logger          logger.Logger
-	parent          tea.Model
-	ctx             context.Context
-	archive         ArchiveInfo
-	targetDB        string
-	cleanFirst      bool
-	createIfMissing bool
-	restoreType     string
+	config            *config.Config
+	logger            logger.Logger
+	parent            tea.Model
+	ctx               context.Context
+	archive           ArchiveInfo
+	targetDB          string
+	cleanFirst        bool
+	createIfMissing   bool
+	restoreType       string
 	cleanClusterFirst bool     // Drop all user databases before cluster restore
-	existingDBs     []string   // List of databases to drop
-	
+	existingDBs       []string // List of databases to drop
+
 	// Progress tracking
-	status       string
-	phase        string
-	progress     int
-	details      []string
-	startTime    time.Time
-	spinnerFrame int
+	status        string
+	phase         string
+	progress      int
+	details       []string
+	startTime     time.Time
+	spinnerFrame  int
 	spinnerFrames []string
-	
+
 	// Results
-	done         bool
-	err          error
-	result       string
-	elapsed      time.Duration
+	done    bool
+	err     error
+	result  string
+	elapsed time.Duration
 }
 
 // NewRestoreExecution creates a new restore execution model
 func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) RestoreExecutionModel {
 	return RestoreExecutionModel{
-		config:          cfg,
-		logger:          log,
-		parent:          parent,
-		ctx:             ctx,
-		archive:         archive,
-		targetDB:        targetDB,
-		cleanFirst:      cleanFirst,
-		createIfMissing: createIfMissing,
-		restoreType:     restoreType,
+		config:            cfg,
+		logger:            log,
+		parent:            parent,
+		ctx:               ctx,
+		archive:           archive,
+		targetDB:          targetDB,
+		cleanFirst:        cleanFirst,
+		createIfMissing:   createIfMissing,
+		restoreType:       restoreType,
 		cleanClusterFirst: cleanClusterFirst,
-		existingDBs:     existingDBs,
-		status:          "Initializing...",
-		phase:           "Starting",
-		startTime:       time.Now(),
-		details:         []string{},
-		spinnerFrames:   spinnerFrames, // Use package-level constant
-		spinnerFrame:    0,
+		existingDBs:       existingDBs,
+		status:            "Initializing...",
+		phase:             "Starting",
+		startTime:         time.Now(),
+		details:           []string{},
+		spinnerFrames:     spinnerFrames, // Use package-level constant
+		spinnerFrame:      0,
 	}
 }
 
@@ -123,7 +123,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		// STEP 1: Clean cluster if requested (drop all existing user databases)
 		if restoreType == "restore-cluster" && cleanClusterFirst && len(existingDBs) > 0 {
 			log.Info("Dropping existing user databases before cluster restore", "count", len(existingDBs))
-			
+
 			// Drop databases using command-line psql (no connection required)
 			// This matches how cluster restore works - uses CLI tools, not database connections
 			droppedCount := 0
@@ -139,13 +139,13 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 				}
 				dropCancel() // Clean up context
 			}
-			
+
 			log.Info("Cluster cleanup completed", "dropped", droppedCount, "total", len(existingDBs))
 		}
 
 		// STEP 2: Create restore engine with silent progress (no stdout interference with TUI)
 		engine := restore.NewSilent(cfg, log, dbClient)
-		
+
 		// Set up progress callback (but it won't work in goroutine - progress is already sent via logs)
 		// The TUI will just use spinner animation to show activity
 
@@ -186,11 +186,11 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.done {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(m.spinnerFrames)
 			m.elapsed = time.Since(m.startTime)
-			
+
 			// Update status based on elapsed time to show progress
 			// This provides visual feedback even though we don't have real-time progress
 			elapsedSec := int(m.elapsed.Seconds())
-			
+
 			if elapsedSec < 2 {
 				m.status = "Initializing restore..."
 				m.phase = "Starting"
@@ -222,7 +222,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.phase = "Restore"
 				}
 			}
-			
+
 			return m, restoreTickCmd()
 		}
 		return m, nil
@@ -245,7 +245,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.result = msg.result
 		m.elapsed = msg.elapsed
-		
+
 		if m.err == nil {
 			m.status = "Restore completed successfully"
 			m.phase = "Done"
@@ -311,7 +311,7 @@ func (m RestoreExecutionModel) View() string {
 	} else {
 		// Show progress
 		s.WriteString(fmt.Sprintf("Phase: %s\n", m.phase))
-		
+
 		// Show status with rotating spinner (unified indicator for all operations)
 		spinner := m.spinnerFrames[m.spinnerFrame]
 		s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
@@ -339,10 +339,10 @@ func (m RestoreExecutionModel) View() string {
 func renderProgressBar(percent int) string {
 	width := 40
 	filled := (percent * width) / 100
-	
+
 	bar := strings.Repeat("█", filled)
 	empty := strings.Repeat("░", width-filled)
-	
+
 	return successStyle.Render(bar) + infoStyle.Render(empty)
 }
 
@@ -370,24 +370,23 @@ func dropDatabaseCLI(ctx context.Context, cfg *config.Config, dbName string) err
 		"-d", "postgres", // Connect to postgres maintenance DB
 		"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName),
 	}
-	
+
 	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
 	if cfg.Host != "localhost" && cfg.Host != "127.0.0.1" && cfg.Host != "" {
 		args = append([]string{"-h", cfg.Host}, args...)
 	}
-	
+
 	cmd := exec.CommandContext(ctx, "psql", args...)
-	
+
 	// Set password if provided
 	if cfg.Password != "" {
 		cmd.Env = append(cmd.Environ(), fmt.Sprintf("PGPASSWORD=%s", cfg.Password))
 	}
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to drop database %s: %w\nOutput: %s", dbName, err, string(output))
 	}
-	
+
 	return nil
 }
-

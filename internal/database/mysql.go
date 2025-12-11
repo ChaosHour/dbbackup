@@ -387,7 +387,7 @@ func (m *MySQL) buildDSN() string {
 			"/tmp/mysql.sock",
 			"/var/lib/mysql/mysql.sock",
 		}
-		
+
 		// Use the first available socket path, fallback to TCP if none found
 		socketFound := false
 		for _, socketPath := range socketPaths {
@@ -397,7 +397,7 @@ func (m *MySQL) buildDSN() string {
 				break
 			}
 		}
-		
+
 		// If no socket found, use TCP localhost
 		if !socketFound {
 			dsn += "tcp(localhost:" + strconv.Itoa(m.cfg.Port) + ")"

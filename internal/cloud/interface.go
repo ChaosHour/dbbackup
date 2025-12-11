@@ -11,22 +11,22 @@ import (
 type Backend interface {
 	// Upload uploads a file to cloud storage
 	Upload(ctx context.Context, localPath, remotePath string, progress ProgressCallback) error
-	
+
 	// Download downloads a file from cloud storage
 	Download(ctx context.Context, remotePath, localPath string, progress ProgressCallback) error
-	
+
 	// List lists all backup files in cloud storage
 	List(ctx context.Context, prefix string) ([]BackupInfo, error)
-	
+
 	// Delete deletes a file from cloud storage
 	Delete(ctx context.Context, remotePath string) error
-	
+
 	// Exists checks if a file exists in cloud storage
 	Exists(ctx context.Context, remotePath string) (bool, error)
-	
+
 	// GetSize returns the size of a remote file
 	GetSize(ctx context.Context, remotePath string) (int64, error)
-	
+
 	// Name returns the backend name (e.g., "s3", "azure", "gcs")
 	Name() string
 }
@@ -137,10 +137,10 @@ func (c *Config) Validate() error {
 
 // ProgressReader wraps an io.Reader to track progress
 type ProgressReader struct {
-	reader    io.Reader
-	total     int64
-	read      int64
-	callback  ProgressCallback
+	reader     io.Reader
+	total      int64
+	read       int64
+	callback   ProgressCallback
 	lastReport time.Time
 }
 
@@ -157,7 +157,7 @@ func NewProgressReader(r io.Reader, total int64, callback ProgressCallback) *Pro
 func (pr *ProgressReader) Read(p []byte) (int, error) {
 	n, err := pr.reader.Read(p)
 	pr.read += int64(n)
-	
+
 	// Report progress every 100ms or when complete
 	now := time.Now()
 	if now.Sub(pr.lastReport) > 100*time.Millisecond || err == io.EOF {
@@ -166,6 +166,6 @@ func (pr *ProgressReader) Read(p []byte) (int, error) {
 		}
 		pr.lastReport = now
 	}
-	
+
 	return n, err
 }

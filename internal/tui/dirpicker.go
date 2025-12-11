@@ -14,12 +14,12 @@ import (
 
 // DirectoryPicker is a simple, fast directory and file picker
 type DirectoryPicker struct {
-	currentPath  string
-	items        []FileItem
-	cursor       int
-	callback     func(string)
-	allowFiles   bool // Allow file selection for restore operations
-	styles       DirectoryPickerStyles
+	currentPath string
+	items       []FileItem
+	cursor      int
+	callback    func(string)
+	allowFiles  bool // Allow file selection for restore operations
+	styles      DirectoryPickerStyles
 }
 
 type FileItem struct {
@@ -98,26 +98,26 @@ func (dp *DirectoryPicker) loadItems() {
 	// Collect directories and optionally files
 	var dirs []FileItem
 	var files []FileItem
-	
+
 	for _, entry := range entries {
 		if strings.HasPrefix(entry.Name(), ".") {
 			continue // Skip hidden files
 		}
-		
+
 		item := FileItem{
 			Name:  entry.Name(),
 			IsDir: entry.IsDir(),
 			Path:  filepath.Join(dp.currentPath, entry.Name()),
 		}
-		
+
 		if entry.IsDir() {
 			dirs = append(dirs, item)
 		} else if dp.allowFiles {
 			// Only include backup-related files
-			if strings.HasSuffix(entry.Name(), ".sql") || 
-			   strings.HasSuffix(entry.Name(), ".dump") ||
-			   strings.HasSuffix(entry.Name(), ".gz") ||
-			   strings.HasSuffix(entry.Name(), ".tar") {
+			if strings.HasSuffix(entry.Name(), ".sql") ||
+				strings.HasSuffix(entry.Name(), ".dump") ||
+				strings.HasSuffix(entry.Name(), ".gz") ||
+				strings.HasSuffix(entry.Name(), ".tar") {
 				files = append(files, item)
 			}
 		}

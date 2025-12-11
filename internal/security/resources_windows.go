@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package security
@@ -23,5 +24,3 @@ func (rc *ResourceChecker) checkPlatformLimits() (*ResourceLimits, error) {
 
 	return limits, nil
 }
-
-

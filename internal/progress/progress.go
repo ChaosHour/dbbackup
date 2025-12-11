@@ -43,11 +43,11 @@ func NewSpinner() *Spinner {
 func (s *Spinner) Start(message string) {
 	s.message = message
 	s.active = true
-	
+
 	go func() {
 		ticker := time.NewTicker(s.interval)
 		defer ticker.Stop()
-		
+
 		i := 0
 		lastMessage := ""
 		for {
@@ -57,12 +57,12 @@ func (s *Spinner) Start(message string) {
 			case <-ticker.C:
 				if s.active {
 					displayMsg := s.message
-					
+
 					// Add ETA info if estimator is available
 					if s.estimator != nil {
 						displayMsg = s.estimator.GetFullStatus(s.message)
 					}
-					
+
 					currentFrame := fmt.Sprintf("%s %s", s.frames[i%len(s.frames)], displayMsg)
 					if s.message != lastMessage {
 						// Print new line for new messages
@@ -130,13 +130,13 @@ func NewDots() *Dots {
 func (d *Dots) Start(message string) {
 	d.message = message
 	d.active = true
-	
+
 	fmt.Fprint(d.writer, message)
-	
+
 	go func() {
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
-		
+
 		count := 0
 		for {
 			select {
@@ -191,13 +191,13 @@ func (d *Dots) SetEstimator(estimator *ETAEstimator) {
 
 // ProgressBar creates a visual progress bar
 type ProgressBar struct {
-	writer   io.Writer
-	message  string
-	total    int
-	current  int
-	width    int
-	active   bool
-	stopCh   chan bool
+	writer  io.Writer
+	message string
+	total   int
+	current int
+	width   int
+	active  bool
+	stopCh  chan bool
 }
 
 // NewProgressBar creates a new progress bar
@@ -265,12 +265,12 @@ func (p *ProgressBar) render() {
 	if !p.active {
 		return
 	}
-	
+
 	percent := float64(p.current) / float64(p.total)
 	filled := int(percent * float64(p.width))
-	
+
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", p.width-filled)
-	
+
 	fmt.Fprintf(p.writer, "\n%s [%s] %d%%", p.message, bar, int(percent*100))
 }
 
@@ -432,7 +432,7 @@ func NewIndicator(interactive bool, indicatorType string) Indicator {
 	if !interactive {
 		return NewLineByLine() // Use line-by-line for non-interactive mode
 	}
-	
+
 	switch indicatorType {
 	case "spinner":
 		return NewSpinner()
@@ -457,9 +457,9 @@ func NewNullIndicator() *NullIndicator {
 	return &NullIndicator{}
 }
 
-func (n *NullIndicator) Start(message string)              {}
-func (n *NullIndicator) Update(message string)             {}
-func (n *NullIndicator) Complete(message string)           {}
-func (n *NullIndicator) Fail(message string)               {}
-func (n *NullIndicator) Stop()                             {}
+func (n *NullIndicator) Start(message string)                 {}
+func (n *NullIndicator) Update(message string)                {}
+func (n *NullIndicator) Complete(message string)              {}
+func (n *NullIndicator) Fail(message string)                  {}
+func (n *NullIndicator) Stop()                                {}
 func (n *NullIndicator) SetEstimator(estimator *ETAEstimator) {}

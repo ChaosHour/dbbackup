@@ -111,7 +111,7 @@ func (db *DirectoryBrowser) Render() string {
 	}
 
 	var lines []string
-	
+
 	// Header
 	lines = append(lines, fmt.Sprintf("    Current: %s", db.CurrentPath))
 	lines = append(lines, fmt.Sprintf("    Found %d directories (cursor: %d)", len(db.items), db.cursor))
@@ -121,7 +121,7 @@ func (db *DirectoryBrowser) Render() string {
 	maxItems := 5 // Show max 5 items to keep it compact
 	start := 0
 	end := len(db.items)
-	
+
 	if len(db.items) > maxItems {
 		// Center the cursor in the view
 		start = db.cursor - maxItems/2
@@ -144,14 +144,14 @@ func (db *DirectoryBrowser) Render() string {
 		if i == db.cursor {
 			prefix = "   >> "
 		}
-		
+
 		displayName := item
 		if item == ".." {
 			displayName = "../ (parent directory)"
 		} else if item != "[Error reading directory]" {
 			displayName = item + "/"
 		}
-		
+
 		lines = append(lines, prefix+displayName)
 	}
 

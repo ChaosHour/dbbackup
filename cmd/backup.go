@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"dbbackup/internal/cloud"
+
 	"github.com/spf13/cobra"
 )
 
@@ -42,11 +43,11 @@ var clusterCmd = &cobra.Command{
 
 // Global variables for backup flags (to avoid initialization cycle)
 var (
-	backupTypeFlag     string
-	baseBackupFlag     string
-	encryptBackupFlag  bool
-	encryptionKeyFile  string
-	encryptionKeyEnv   string
+	backupTypeFlag    string
+	baseBackupFlag    string
+	encryptBackupFlag bool
+	encryptionKeyFile string
+	encryptionKeyEnv  string
 )
 
 var singleCmd = &cobra.Command{
@@ -74,7 +75,7 @@ Examples:
 		} else {
 			return fmt.Errorf("database name required (provide as argument or set SINGLE_DB_NAME)")
 		}
-		
+
 		return runSingleBackup(cmd.Context(), dbName)
 	},
 }
@@ -100,7 +101,7 @@ Warning: Sample backups may break referential integrity due to sampling!`,
 		} else {
 			return fmt.Errorf("database name required (provide as argument or set SAMPLE_DB_NAME)")
 		}
-		
+
 		return runSampleBackup(cmd.Context(), dbName)
 	},
 }
@@ -110,18 +111,18 @@ func init() {
 	backupCmd.AddCommand(clusterCmd)
 	backupCmd.AddCommand(singleCmd)
 	backupCmd.AddCommand(sampleCmd)
-	
+
 	// Incremental backup flags (single backup only) - using global vars to avoid initialization cycle
 	singleCmd.Flags().StringVar(&backupTypeFlag, "backup-type", "full", "Backup type: full or incremental [incremental NOT IMPLEMENTED]")
 	singleCmd.Flags().StringVar(&baseBackupFlag, "base-backup", "", "Path to base backup (required for incremental)")
-	
+
 	// Encryption flags for all backup commands
 	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
 		cmd.Flags().BoolVar(&encryptBackupFlag, "encrypt", false, "Encrypt backup with AES-256-GCM")
 		cmd.Flags().StringVar(&encryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (32 bytes)")
 		cmd.Flags().StringVar(&encryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key/passphrase")
 	}
-	
+
 	// Cloud storage flags for all backup commands
 	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
 		cmd.Flags().String("cloud", "", "Cloud storage URI (e.g., s3://bucket/path) - takes precedence over individual flags")
@@ -131,7 +132,7 @@ func init() {
 		cmd.Flags().String("cloud-region", "us-east-1", "Cloud region")
 		cmd.Flags().String("cloud-endpoint", "", "Cloud endpoint (for MinIO/B2)")
 		cmd.Flags().String("cloud-prefix", "", "Cloud key prefix")
-		
+
 		// Add PreRunE to update config from flags
 		originalPreRun := cmd.PreRunE
 		cmd.PreRunE = func(c *cobra.Command, args []string) error {
@@ -141,7 +142,7 @@ func init() {
 					return err
 				}
 			}
-			
+
 			// Check if --cloud URI flag is provided (takes precedence)
 			if c.Flags().Changed("cloud") {
 				if err := parseCloudURIFlag(c); err != nil {
@@ -155,45 +156,45 @@ func init() {
 						cfg.CloudAutoUpload = true
 					}
 				}
-				
+
 				if c.Flags().Changed("cloud-provider") {
 					cfg.CloudProvider, _ = c.Flags().GetString("cloud-provider")
 				}
-				
+
 				if c.Flags().Changed("cloud-bucket") {
 					cfg.CloudBucket, _ = c.Flags().GetString("cloud-bucket")
 				}
-				
+
 				if c.Flags().Changed("cloud-region") {
 					cfg.CloudRegion, _ = c.Flags().GetString("cloud-region")
 				}
-				
+
 				if c.Flags().Changed("cloud-endpoint") {
 					cfg.CloudEndpoint, _ = c.Flags().GetString("cloud-endpoint")
 				}
-				
+
 				if c.Flags().Changed("cloud-prefix") {
 					cfg.CloudPrefix, _ = c.Flags().GetString("cloud-prefix")
 				}
 			}
-			
+
 			return nil
 		}
 	}
-	
+
 	// Sample backup flags - use local variables to avoid cfg access during init
 	var sampleStrategy string
 	var sampleValue int
 	var sampleRatio int
 	var samplePercent int
 	var sampleCount int
-	
+
 	sampleCmd.Flags().StringVar(&sampleStrategy, "sample-strategy", "ratio", "Sampling strategy (ratio|percent|count)")
 	sampleCmd.Flags().IntVar(&sampleValue, "sample-value", 10, "Sampling value")
 	sampleCmd.Flags().IntVar(&sampleRatio, "sample-ratio", 0, "Take every Nth record")
 	sampleCmd.Flags().IntVar(&samplePercent, "sample-percent", 0, "Take N% of records")
 	sampleCmd.Flags().IntVar(&sampleCount, "sample-count", 0, "Take first N records")
-	
+
 	// Set up pre-run hook to handle convenience flags and update cfg
 	sampleCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		// Update cfg with flag values
@@ -214,7 +215,7 @@ func init() {
 		}
 		return nil
 	}
-	
+
 	// Mark the strategy flags as mutually exclusive
 	sampleCmd.MarkFlagsMutuallyExclusive("sample-ratio", "sample-percent", "sample-count")
 }
@@ -225,32 +226,32 @@ func parseCloudURIFlag(cmd *cobra.Command) error {
 	if cloudURI == "" {
 		return nil
 	}
-	
+
 	// Parse cloud URI
 	uri, err := cloud.ParseCloudURI(cloudURI)
 	if err != nil {
 		return fmt.Errorf("invalid cloud URI: %w", err)
 	}
-	
+
 	// Enable cloud and auto-upload
 	cfg.CloudEnabled = true
 	cfg.CloudAutoUpload = true
-	
+
 	// Update config from URI
 	cfg.CloudProvider = uri.Provider
 	cfg.CloudBucket = uri.Bucket
-	
+
 	if uri.Region != "" {
 		cfg.CloudRegion = uri.Region
 	}
-	
+
 	if uri.Endpoint != "" {
 		cfg.CloudEndpoint = uri.Endpoint
 	}
-	
+
 	if uri.Path != "" {
 		cfg.CloudPrefix = uri.Dir()
 	}
-	
+
 	return nil
 }

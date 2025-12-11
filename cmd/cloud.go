@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dbbackup/internal/cloud"
+
 	"github.com/spf13/cobra"
 )
 
@@ -203,9 +204,9 @@ func runCloudUpload(cmd *cobra.Command, args []string) error {
 			}
 			percent := int(float64(transferred) / float64(total) * 100)
 			if percent != lastPercent && percent%10 == 0 {
-				fmt.Printf("   Progress: %d%% (%s / %s)\n", 
-					percent, 
-					cloud.FormatSize(transferred), 
+				fmt.Printf("   Progress: %d%% (%s / %s)\n",
+					percent,
+					cloud.FormatSize(transferred),
 					cloud.FormatSize(total))
 				lastPercent = percent
 			}
@@ -258,9 +259,9 @@ func runCloudDownload(cmd *cobra.Command, args []string) error {
 		}
 		percent := int(float64(transferred) / float64(total) * 100)
 		if percent != lastPercent && percent%10 == 0 {
-			fmt.Printf("   Progress: %d%% (%s / %s)\n", 
-				percent, 
-				cloud.FormatSize(transferred), 
+			fmt.Printf("   Progress: %d%% (%s / %s)\n",
+				percent,
+				cloud.FormatSize(transferred),
 				cloud.FormatSize(total))
 			lastPercent = percent
 		}
@@ -308,7 +309,7 @@ func runCloudList(cmd *cobra.Command, args []string) error {
 	var totalSize int64
 	for _, backup := range backups {
 		totalSize += backup.Size
-		
+
 		if cloudVerbose {
 			fmt.Printf("📦 %s\n", backup.Name)
 			fmt.Printf("   Size: %s\n", cloud.FormatSize(backup.Size))
@@ -320,8 +321,8 @@ func runCloudList(cmd *cobra.Command, args []string) error {
 		} else {
 			age := time.Since(backup.LastModified)
 			ageStr := formatAge(age)
-			fmt.Printf("%-50s %12s  %s\n", 
-				backup.Name, 
+			fmt.Printf("%-50s %12s  %s\n",
+				backup.Name,
 				cloud.FormatSize(backup.Size),
 				ageStr)
 		}

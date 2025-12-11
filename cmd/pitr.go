@@ -298,7 +298,7 @@ func runPITRStatus(cmd *cobra.Command, args []string) error {
 	fmt.Printf("WAL Level:       %s\n", config.WALLevel)
 	fmt.Printf("Archive Mode:    %s\n", config.ArchiveMode)
 	fmt.Printf("Archive Command: %s\n", config.ArchiveCommand)
-	
+
 	if config.MaxWALSenders > 0 {
 		fmt.Printf("Max WAL Senders: %d\n", config.MaxWALSenders)
 	}
@@ -386,7 +386,7 @@ func runWALList(cmd *cobra.Command, args []string) error {
 	for _, archive := range archives {
 		size := formatWALSize(archive.ArchivedSize)
 		timeStr := archive.ArchivedAt.Format("2006-01-02 15:04")
-		
+
 		flags := ""
 		if archive.Compressed {
 			flags += "C"

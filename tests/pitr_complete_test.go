@@ -250,7 +250,7 @@ func TestWALArchiving(t *testing.T) {
 	if err := os.MkdirAll(walDir, 0700); err != nil {
 		t.Fatalf("Failed to create WAL dir: %v", err)
 	}
-	
+
 	walFileName := "000000010000000000000001"
 	walFilePath := filepath.Join(walDir, walFileName)
 	walContent := []byte("mock WAL file content for testing")
@@ -657,9 +657,9 @@ func TestDataDirectoryValidation(t *testing.T) {
 
 // Helper function
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && 
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || 
-		len(s) > len(substr)+1 && containsMiddle(s, substr)))
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
+		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
+			len(s) > len(substr)+1 && containsMiddle(s, substr)))
 }
 
 func containsMiddle(s, substr string) bool {

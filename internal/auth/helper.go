@@ -16,13 +16,13 @@ import (
 type AuthMethod string
 
 const (
-	AuthPeer         AuthMethod = "peer"
-	AuthIdent        AuthMethod = "ident"
-	AuthMD5          AuthMethod = "md5"
-	AuthScramSHA256  AuthMethod = "scram-sha-256"
-	AuthPassword     AuthMethod = "password"
-	AuthTrust        AuthMethod = "trust"
-	AuthUnknown      AuthMethod = "unknown"
+	AuthPeer        AuthMethod = "peer"
+	AuthIdent       AuthMethod = "ident"
+	AuthMD5         AuthMethod = "md5"
+	AuthScramSHA256 AuthMethod = "scram-sha-256"
+	AuthPassword    AuthMethod = "password"
+	AuthTrust       AuthMethod = "trust"
+	AuthUnknown     AuthMethod = "unknown"
 )
 
 // DetectPostgreSQLAuthMethod attempts to detect the authentication method
@@ -108,7 +108,7 @@ func parseHbaContent(content string, user string) AuthMethod {
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		
+
 		// Skip comments and empty lines
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -198,29 +198,29 @@ func buildAuthMismatchMessage(osUser, dbUser string, method AuthMethod) string {
 
 	msg.WriteString("\n⚠️  Authentication Mismatch Detected\n")
 	msg.WriteString(strings.Repeat("=", 60) + "\n\n")
-	
+
 	msg.WriteString(fmt.Sprintf("   PostgreSQL is using '%s' authentication\n", method))
 	msg.WriteString(fmt.Sprintf("   OS user '%s' cannot authenticate as DB user '%s'\n\n", osUser, dbUser))
-	
+
 	msg.WriteString("💡 Solutions (choose one):\n\n")
-	
+
 	msg.WriteString(fmt.Sprintf("   1. Run as matching user:\n"))
 	msg.WriteString(fmt.Sprintf("      sudo -u %s %s\n\n", dbUser, getCommandLine()))
-	
+
 	msg.WriteString("   2. Configure ~/.pgpass file (recommended):\n")
 	msg.WriteString(fmt.Sprintf("      echo \"localhost:5432:*:%s:your_password\" > ~/.pgpass\n", dbUser))
 	msg.WriteString("      chmod 0600 ~/.pgpass\n\n")
-	
+
 	msg.WriteString("   3. Set PGPASSWORD environment variable:\n")
 	msg.WriteString(fmt.Sprintf("      export PGPASSWORD=your_password\n"))
 	msg.WriteString(fmt.Sprintf("      %s\n\n", getCommandLine()))
-	
+
 	msg.WriteString("   4. Provide password via flag:\n")
 	msg.WriteString(fmt.Sprintf("      %s --password your_password\n\n", getCommandLine()))
-	
+
 	msg.WriteString("📝 Note: For production use, ~/.pgpass or PGPASSWORD are recommended\n")
 	msg.WriteString("         to avoid exposing passwords in command history.\n\n")
-	
+
 	msg.WriteString(strings.Repeat("=", 60) + "\n")
 
 	return msg.String()
@@ -231,29 +231,29 @@ func getCommandLine() string {
 	if len(os.Args) == 0 {
 		return "./dbbackup"
 	}
-	
+
 	// Build command without password if present
 	var parts []string
 	skipNext := false
-	
+
 	for _, arg := range os.Args {
 		if skipNext {
 			skipNext = false
 			continue
 		}
-		
+
 		if arg == "--password" || arg == "-p" {
 			skipNext = true
 			continue
 		}
-		
+
 		if strings.HasPrefix(arg, "--password=") {
 			continue
 		}
-		
+
 		parts = append(parts, arg)
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
@@ -298,7 +298,7 @@ func parsePgpass(path string, cfg *config.Config) string {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		// Skip comments and empty lines
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

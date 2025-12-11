@@ -23,14 +23,14 @@ type PITRManager struct {
 
 // PITRConfig holds PITR settings
 type PITRConfig struct {
-	Enabled           bool
-	ArchiveMode       string // "on", "off", "always"
-	ArchiveCommand    string
-	ArchiveDir        string
-	WALLevel          string // "minimal", "replica", "logical"
-	MaxWALSenders     int
-	WALKeepSize       string // e.g., "1GB"
-	RestoreCommand    string
+	Enabled        bool
+	ArchiveMode    string // "on", "off", "always"
+	ArchiveCommand string
+	ArchiveDir     string
+	WALLevel       string // "minimal", "replica", "logical"
+	MaxWALSenders  int
+	WALKeepSize    string // e.g., "1GB"
+	RestoreCommand string
 }
 
 // RecoveryTarget specifies the point-in-time to recover to
@@ -87,11 +87,11 @@ func (pm *PITRManager) EnablePITR(ctx context.Context, archiveDir string) error 
 
 	// Settings to enable PITR
 	settings := map[string]string{
-		"wal_level":        "replica", // Required for PITR
-		"archive_mode":     "on",
-		"archive_command":  archiveCommand,
-		"max_wal_senders":  "3",
-		"wal_keep_size":    "1GB", // Keep at least 1GB of WAL
+		"wal_level":       "replica", // Required for PITR
+		"archive_mode":    "on",
+		"archive_command": archiveCommand,
+		"max_wal_senders": "3",
+		"wal_keep_size":   "1GB", // Keep at least 1GB of WAL
 	}
 
 	// Update postgresql.conf
@@ -156,7 +156,7 @@ func (pm *PITRManager) GetCurrentPITRConfig(ctx context.Context) (*PITRConfig, e
 
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		// Skip comments and empty lines
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -226,11 +226,11 @@ func (pm *PITRManager) createRecoverySignal(ctx context.Context, dataDir string,
 
 	// Recovery settings go in postgresql.auto.conf (PostgreSQL 12+)
 	autoConfPath := filepath.Join(dataDir, "postgresql.auto.conf")
-	
+
 	// Build recovery settings
 	var settings []string
 	settings = append(settings, fmt.Sprintf("restore_command = 'cp %s/%%f %%p'", walArchiveDir))
-	
+
 	if target.TargetTime != nil {
 		settings = append(settings, fmt.Sprintf("recovery_target_time = '%s'", target.TargetTime.Format("2006-01-02 15:04:05")))
 	} else if target.TargetXID != "" {
@@ -270,11 +270,11 @@ func (pm *PITRManager) createRecoverySignal(ctx context.Context, dataDir string,
 // createLegacyRecoveryConf creates recovery.conf for PostgreSQL < 12
 func (pm *PITRManager) createLegacyRecoveryConf(dataDir string, target RecoveryTarget, walArchiveDir string) error {
 	recoveryConfPath := filepath.Join(dataDir, "recovery.conf")
-	
+
 	var content strings.Builder
 	content.WriteString("# Recovery Configuration (created by dbbackup)\n")
 	content.WriteString(fmt.Sprintf("restore_command = 'cp %s/%%f %%p'\n", walArchiveDir))
-	
+
 	if target.TargetTime != nil {
 		content.WriteString(fmt.Sprintf("recovery_target_time = '%s'\n", target.TargetTime.Format("2006-01-02 15:04:05")))
 	}

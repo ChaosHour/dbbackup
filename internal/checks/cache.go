@@ -23,7 +23,7 @@ func NewDiskSpaceCache(ttl time.Duration) *DiskSpaceCache {
 	if ttl <= 0 {
 		ttl = 30 * time.Second // Default 30 second cache
 	}
-	
+
 	return &DiskSpaceCache{
 		cache:    make(map[string]*cacheEntry),
 		cacheTTL: ttl,
@@ -40,17 +40,17 @@ func (c *DiskSpaceCache) Get(path string) *DiskSpaceCheck {
 		}
 	}
 	c.mu.RUnlock()
-	
+
 	// Cache miss or expired - perform new check
 	check := CheckDiskSpace(path)
-	
+
 	c.mu.Lock()
 	c.cache[path] = &cacheEntry{
 		check:     check,
 		timestamp: time.Now(),
 	}
 	c.mu.Unlock()
-	
+
 	return check
 }
 
@@ -65,7 +65,7 @@ func (c *DiskSpaceCache) Clear() {
 func (c *DiskSpaceCache) Cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	now := time.Now()
 	for path, entry := range c.cache {
 		if now.Sub(entry.timestamp) >= c.cacheTTL {

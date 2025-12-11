@@ -37,14 +37,14 @@ func NewHistoryView(cfg *config.Config, log logger.Logger, parent tea.Model) His
 	if lastIndex < 0 {
 		lastIndex = 0
 	}
-	
+
 	// Calculate initial viewport to show the last item
 	maxVisible := 15
 	viewOffset := lastIndex - maxVisible + 1
 	if viewOffset < 0 {
 		viewOffset = 0
 	}
-	
+
 	return HistoryViewModel{
 		config:     cfg,
 		logger:     log,
@@ -112,7 +112,7 @@ func (m HistoryViewModel) Init() tea.Cmd {
 
 func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	maxVisible := 15 // Show max 15 items at once
-	
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -136,7 +136,7 @@ func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.viewOffset = m.cursor - maxVisible + 1
 				}
 			}
-			
+
 		case "pgup":
 			// Page up - jump by maxVisible items
 			m.cursor -= maxVisible
@@ -147,7 +147,7 @@ func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor < m.viewOffset {
 				m.viewOffset = m.cursor
 			}
-			
+
 		case "pgdown":
 			// Page down - jump by maxVisible items
 			m.cursor += maxVisible
@@ -158,12 +158,12 @@ func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.cursor >= m.viewOffset+maxVisible {
 				m.viewOffset = m.cursor - maxVisible + 1
 			}
-			
+
 		case "home", "g":
 			// Jump to first item
 			m.cursor = 0
 			m.viewOffset = 0
-			
+
 		case "end", "G":
 			// Jump to last item
 			m.cursor = len(m.history) - 1
@@ -187,15 +187,15 @@ func (m HistoryViewModel) View() string {
 		s.WriteString("📭 No backup history found\n\n")
 	} else {
 		maxVisible := 15 // Show max 15 items at once
-		
+
 		// Calculate visible range
 		start := m.viewOffset
 		end := start + maxVisible
 		if end > len(m.history) {
 			end = len(m.history)
 		}
-		
-		s.WriteString(fmt.Sprintf("Found %d backup operations (Viewing %d/%d):\n\n", 
+
+		s.WriteString(fmt.Sprintf("Found %d backup operations (Viewing %d/%d):\n\n",
 			len(m.history), m.cursor+1, len(m.history)))
 
 		// Show scroll indicators
@@ -219,12 +219,12 @@ func (m HistoryViewModel) View() string {
 				s.WriteString(fmt.Sprintf("  %s\n", line))
 			}
 		}
-		
+
 		// Show scroll indicator if more entries below
 		if end < len(m.history) {
 			s.WriteString(fmt.Sprintf("  ▼ %d more entries below...\n", len(m.history)-end))
 		}
-		
+
 		s.WriteString("\n")
 	}
 

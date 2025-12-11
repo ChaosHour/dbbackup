@@ -39,7 +39,7 @@ func NewMetricsCollector(log logger.Logger) *MetricsCollector {
 func (mc *MetricsCollector) RecordOperation(operation, database string, start time.Time, sizeBytes int64, success bool, errorCount int) {
 	duration := time.Since(start)
 	throughput := calculateThroughput(sizeBytes, duration)
-	
+
 	metric := OperationMetrics{
 		Operation:      operation,
 		Database:       database,
@@ -50,11 +50,11 @@ func (mc *MetricsCollector) RecordOperation(operation, database string, start ti
 		ErrorCount:     errorCount,
 		Success:        success,
 	}
-	
+
 	mc.mu.Lock()
 	mc.metrics = append(mc.metrics, metric)
 	mc.mu.Unlock()
-	
+
 	// Log structured metrics
 	if mc.logger != nil {
 		fields := map[string]interface{}{
@@ -67,7 +67,7 @@ func (mc *MetricsCollector) RecordOperation(operation, database string, start ti
 			"error_count":     errorCount,
 			"success":         success,
 		}
-		
+
 		if success {
 			mc.logger.WithFields(fields).Info("Operation completed successfully")
 		} else {
@@ -80,7 +80,7 @@ func (mc *MetricsCollector) RecordOperation(operation, database string, start ti
 func (mc *MetricsCollector) RecordCompressionRatio(operation, database string, ratio float64) {
 	mc.mu.Lock()
 	defer mc.mu.Unlock()
-	
+
 	// Find and update the most recent matching operation
 	for i := len(mc.metrics) - 1; i >= 0; i-- {
 		if mc.metrics[i].Operation == operation && mc.metrics[i].Database == database {
@@ -94,7 +94,7 @@ func (mc *MetricsCollector) RecordCompressionRatio(operation, database string, r
 func (mc *MetricsCollector) GetMetrics() []OperationMetrics {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()
-	
+
 	result := make([]OperationMetrics, len(mc.metrics))
 	copy(result, mc.metrics)
 	return result
@@ -104,15 +104,15 @@ func (mc *MetricsCollector) GetMetrics() []OperationMetrics {
 func (mc *MetricsCollector) GetAverages() map[string]interface{} {
 	mc.mu.RLock()
 	defer mc.mu.RUnlock()
-	
+
 	if len(mc.metrics) == 0 {
 		return map[string]interface{}{}
 	}
-	
+
 	var totalDuration time.Duration
 	var totalSize, totalThroughput float64
 	var successCount, errorCount int
-	
+
 	for _, m := range mc.metrics {
 		totalDuration += m.Duration
 		totalSize += float64(m.SizeBytes)
@@ -122,15 +122,15 @@ func (mc *MetricsCollector) GetAverages() map[string]interface{} {
 		}
 		errorCount += m.ErrorCount
 	}
-	
+
 	count := len(mc.metrics)
 	return map[string]interface{}{
-		"total_operations":      count,
-		"success_rate":          float64(successCount) / float64(count) * 100,
-		"avg_duration_ms":       totalDuration.Milliseconds() / int64(count),
-		"avg_size_mb":           totalSize / float64(count) / 1024 / 1024,
-		"avg_throughput_mbps":   totalThroughput / float64(count),
-		"total_errors":          errorCount,
+		"total_operations":    count,
+		"success_rate":        float64(successCount) / float64(count) * 100,
+		"avg_duration_ms":     totalDuration.Milliseconds() / int64(count),
+		"avg_size_mb":         totalSize / float64(count) / 1024 / 1024,
+		"avg_throughput_mbps": totalThroughput / float64(count),
+		"total_errors":        errorCount,
 	}
 }
 

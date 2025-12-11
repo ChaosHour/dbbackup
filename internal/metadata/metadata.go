@@ -29,11 +29,11 @@ type BackupMetadata struct {
 	BaseBackup      string            `json:"base_backup,omitempty"`
 	Duration        float64           `json:"duration_seconds"`
 	ExtraInfo       map[string]string `json:"extra_info,omitempty"`
-	
+
 	// Encryption fields (v2.3+)
 	Encrypted           bool   `json:"encrypted"`                      // Whether backup is encrypted
 	EncryptionAlgorithm string `json:"encryption_algorithm,omitempty"` // e.g., "aes-256-gcm"
-	
+
 	// Incremental backup fields (v2.2+)
 	Incremental *IncrementalMetadata `json:"incremental,omitempty"` // Only present for incremental backups
 }
@@ -50,16 +50,16 @@ type IncrementalMetadata struct {
 
 // ClusterMetadata contains metadata for cluster backups
 type ClusterMetadata struct {
-	Version      string             `json:"version"`
-	Timestamp    time.Time          `json:"timestamp"`
-	ClusterName  string             `json:"cluster_name"`
-	DatabaseType string             `json:"database_type"`
-	Host         string             `json:"host"`
-	Port         int                `json:"port"`
-	Databases    []BackupMetadata   `json:"databases"`
-	TotalSize    int64              `json:"total_size_bytes"`
-	Duration     float64            `json:"duration_seconds"`
-	ExtraInfo    map[string]string  `json:"extra_info,omitempty"`
+	Version      string            `json:"version"`
+	Timestamp    time.Time         `json:"timestamp"`
+	ClusterName  string            `json:"cluster_name"`
+	DatabaseType string            `json:"database_type"`
+	Host         string            `json:"host"`
+	Port         int               `json:"port"`
+	Databases    []BackupMetadata  `json:"databases"`
+	TotalSize    int64             `json:"total_size_bytes"`
+	Duration     float64           `json:"duration_seconds"`
+	ExtraInfo    map[string]string `json:"extra_info,omitempty"`
 }
 
 // CalculateSHA256 computes the SHA-256 checksum of a file
@@ -81,7 +81,7 @@ func CalculateSHA256(filePath string) (string, error) {
 // Save writes metadata to a .meta.json file
 func (m *BackupMetadata) Save() error {
 	metaPath := m.BackupFile + ".meta.json"
-	
+
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
@@ -97,7 +97,7 @@ func (m *BackupMetadata) Save() error {
 // Load reads metadata from a .meta.json file
 func Load(backupFile string) (*BackupMetadata, error) {
 	metaPath := backupFile + ".meta.json"
-	
+
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read metadata file: %w", err)
@@ -114,7 +114,7 @@ func Load(backupFile string) (*BackupMetadata, error) {
 // SaveCluster writes cluster metadata to a .meta.json file
 func (m *ClusterMetadata) Save(targetFile string) error {
 	metaPath := targetFile + ".meta.json"
-	
+
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal cluster metadata: %w", err)
@@ -130,7 +130,7 @@ func (m *ClusterMetadata) Save(targetFile string) error {
 // LoadCluster reads cluster metadata from a .meta.json file
 func LoadCluster(targetFile string) (*ClusterMetadata, error) {
 	metaPath := targetFile + ".meta.json"
-	
+
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read cluster metadata file: %w", err)
@@ -156,13 +156,13 @@ func ListBackups(dir string) ([]*BackupMetadata, error) {
 	for _, metaFile := range matches {
 		// Extract backup file path (remove .meta.json suffix)
 		backupFile := metaFile[:len(metaFile)-len(".meta.json")]
-		
+
 		meta, err := Load(backupFile)
 		if err != nil {
 			// Skip invalid metadata files
 			continue
 		}
-		
+
 		backups = append(backups, meta)
 	}
 

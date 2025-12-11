@@ -18,30 +18,30 @@ var cpuCmd = &cobra.Command{
 
 func runCPUInfo(ctx context.Context) error {
 	log.Info("Detecting CPU information...")
-	
+
 	// Optimize CPU settings if auto-detect is enabled
 	if cfg.AutoDetectCores {
 		if err := cfg.OptimizeForCPU(); err != nil {
 			log.Warn("CPU optimization failed", "error", err)
 		}
 	}
-	
+
 	// Get CPU information
 	cpuInfo, err := cfg.GetCPUInfo()
 	if err != nil {
 		return fmt.Errorf("failed to detect CPU: %w", err)
 	}
-	
+
 	fmt.Println("=== CPU Information ===")
 	fmt.Print(cpuInfo.FormatCPUInfo())
-	
+
 	fmt.Println("\n=== Current Configuration ===")
 	fmt.Printf("Auto-detect cores: %t\n", cfg.AutoDetectCores)
 	fmt.Printf("CPU workload type: %s\n", cfg.CPUWorkloadType)
 	fmt.Printf("Parallel jobs (restore): %d\n", cfg.Jobs)
 	fmt.Printf("Dump jobs (backup): %d\n", cfg.DumpJobs)
 	fmt.Printf("Maximum cores limit: %d\n", cfg.MaxCores)
-	
+
 	// Show optimization recommendations
 	fmt.Println("\n=== Optimization Recommendations ===")
 	if cpuInfo.PhysicalCores > 1 {
@@ -58,7 +58,7 @@ func runCPUInfo(ctx context.Context) error {
 			fmt.Printf("Recommended jobs (CPU intensive): %d\n", optimal)
 		}
 	}
-	
+
 	// Show current vs optimal
 	if cfg.AutoDetectCores {
 		fmt.Println("\n✅ CPU optimization is enabled")
@@ -67,7 +67,7 @@ func runCPUInfo(ctx context.Context) error {
 		fmt.Println("\n⚠️  CPU optimization is disabled")
 		fmt.Println("Consider enabling --auto-detect-cores for better performance")
 	}
-	
+
 	return nil
 }
 

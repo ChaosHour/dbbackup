@@ -16,7 +16,7 @@ type Logger interface {
 	Info(msg string, keysAndValues ...interface{})
 	Warn(msg string, keysAndValues ...interface{})
 	Error(msg string, keysAndValues ...interface{})
-	
+
 	// Structured logging methods
 	WithFields(fields map[string]interface{}) Logger
 	WithField(key string, value interface{}) Logger
@@ -113,7 +113,7 @@ func (l *logger) Error(msg string, args ...any) {
 }
 
 func (l *logger) Time(msg string, args ...any) {
-	// Time logs are always at info level with special formatting  
+	// Time logs are always at info level with special formatting
 	l.logWithFields(logrus.InfoLevel, "[TIME] "+msg, args...)
 }
 
@@ -225,7 +225,7 @@ type CleanFormatter struct{}
 // Format implements logrus.Formatter interface
 func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	timestamp := entry.Time.Format("2006-01-02T15:04:05")
-	
+
 	// Color codes for different log levels
 	var levelColor, levelText string
 	switch entry.Level {
@@ -246,24 +246,24 @@ func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 		levelText = "INFO "
 	}
 	resetColor := "\033[0m"
-	
+
 	// Build the message with perfectly aligned columns
 	var output strings.Builder
-	
+
 	// Column 1: Level (with color, fixed width 5 chars)
 	output.WriteString(levelColor)
 	output.WriteString(levelText)
 	output.WriteString(resetColor)
 	output.WriteString(" ")
-	
+
 	// Column 2: Timestamp (fixed format)
 	output.WriteString("[")
 	output.WriteString(timestamp)
 	output.WriteString("] ")
-	
+
 	// Column 3: Message
 	output.WriteString(entry.Message)
-	
+
 	// Append important fields in a clean format (skip internal/redundant fields)
 	if len(entry.Data) > 0 {
 		// Only show truly important fields, skip verbose ones
@@ -272,7 +272,7 @@ func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 			if k == "elapsed" || k == "operation_id" || k == "step" || k == "timestamp" || k == "message" {
 				continue
 			}
-			
+
 			// Format duration nicely at the end
 			if k == "duration" {
 				if str, ok := v.(string); ok {
@@ -280,14 +280,14 @@ func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 				}
 				continue
 			}
-			
+
 			// Only show critical fields (driver, errors, etc)
 			if k == "driver" || k == "max_conns" || k == "error" || k == "database" {
 				output.WriteString(fmt.Sprintf(" %s=%v", k, v))
 			}
 		}
 	}
-	
+
 	output.WriteString("\n")
 	return []byte(output.String()), nil
 }

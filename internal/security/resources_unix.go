@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package security
@@ -19,7 +20,7 @@ func (rc *ResourceChecker) checkPlatformLimits() (*ResourceLimits, error) {
 	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err == nil {
 		limits.MaxOpenFiles = uint64(rLimit.Cur)
 		rc.log.Debug("Resource limit: max open files", "limit", rLimit.Cur, "max", rLimit.Max)
-		
+
 		if rLimit.Cur < 1024 {
 			rc.log.Warn("⚠️  Low file descriptor limit detected",
 				"current", rLimit.Cur,

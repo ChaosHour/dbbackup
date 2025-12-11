@@ -67,7 +67,7 @@ func TestIncrementalBackupRestore(t *testing.T) {
 	// Step 2: Create base (full) backup
 	t.Log("Step 2: Creating base backup...")
 	baseBackupPath := filepath.Join(backupDir, "testdb_base.tar.gz")
-	
+
 	// Manually create base backup for testing
 	baseConfig := &IncrementalBackupConfig{
 		DataDirectory:    dataDir,
@@ -192,7 +192,7 @@ func TestIncrementalBackupRestore(t *testing.T) {
 
 	var incrementalBackupPath string
 	for _, entry := range entries {
-		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".gz" && 
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".gz" &&
 			entry.Name() != filepath.Base(baseBackupPath) {
 			incrementalBackupPath = filepath.Join(backupDir, entry.Name())
 			break
@@ -209,7 +209,7 @@ func TestIncrementalBackupRestore(t *testing.T) {
 	incrStat, _ := os.Stat(incrementalBackupPath)
 	t.Logf("Base backup size: %d bytes", baseStat.Size())
 	t.Logf("Incremental backup size: %d bytes", incrStat.Size())
-	
+
 	// Note: For tiny test files, incremental might be larger due to tar.gz overhead
 	// In real-world scenarios with larger files, incremental would be much smaller
 	t.Logf("Incremental contains %d changed files out of %d total",
@@ -273,7 +273,7 @@ func TestIncrementalBackupErrors(t *testing.T) {
 		// Create a dummy base backup
 		baseBackupPath := filepath.Join(tempDir, "base.tar.gz")
 		os.WriteFile(baseBackupPath, []byte("dummy"), 0644)
-		
+
 		// Create metadata with current timestamp
 		baseMetadata := createTestMetadata("testdb", baseBackupPath, 100, "dummychecksum", "full", nil)
 		saveTestMetadata(baseBackupPath, baseMetadata)
@@ -333,7 +333,7 @@ func saveTestMetadata(backupPath string, metadata map[string]interface{}) error 
 		metadata["timestamp"],
 		metadata["backup_type"],
 	)
-	
+
 	_, err = file.WriteString(content)
 	return err
 }

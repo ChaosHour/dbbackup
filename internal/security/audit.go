@@ -9,18 +9,18 @@ import (
 
 // AuditEvent represents an auditable event
 type AuditEvent struct {
-	Timestamp  time.Time
-	User       string
-	Action     string
-	Resource   string
-	Result     string
-	Details    map[string]interface{}
+	Timestamp time.Time
+	User      string
+	Action    string
+	Resource  string
+	Result    string
+	Details   map[string]interface{}
 }
 
 // AuditLogger provides audit logging functionality
 type AuditLogger struct {
-	log      logger.Logger
-	enabled  bool
+	log     logger.Logger
+	enabled bool
 }
 
 // NewAuditLogger creates a new audit logger

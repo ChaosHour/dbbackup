@@ -11,6 +11,7 @@ import (
 	"dbbackup/internal/cloud"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/retention"
+
 	"github.com/spf13/cobra"
 )
 
@@ -41,9 +42,9 @@ Examples:
 }
 
 var (
-	retentionDays int
-	minBackups    int
-	dryRun        bool
+	retentionDays  int
+	minBackups     int
+	dryRun         bool
 	cleanupPattern string
 )
 
@@ -57,7 +58,7 @@ func init() {
 
 func runCleanup(cmd *cobra.Command, args []string) error {
 	backupPath := args[0]
-	
+
 	// Check if this is a cloud URI
 	if isCloudURIPath(backupPath) {
 		return runCloudCleanup(cmd.Context(), backupPath)
@@ -108,7 +109,7 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 	fmt.Printf("📊 Results:\n")
 	fmt.Printf("   Total backups: %d\n", result.TotalBackups)
 	fmt.Printf("   Eligible for deletion: %d\n", result.EligibleForDeletion)
-	
+
 	if len(result.Deleted) > 0 {
 		fmt.Printf("\n")
 		if dryRun {
@@ -142,7 +143,7 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println(strings.Repeat("─", 50))
-	
+
 	if dryRun {
 		fmt.Println("✅ Dry run completed (no files were deleted)")
 	} else if len(result.Deleted) > 0 {
@@ -174,7 +175,7 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 	if err != nil {
 		return fmt.Errorf("invalid cloud URI: %w", err)
 	}
-	
+
 	fmt.Printf("☁️  Cloud Cleanup Policy:\n")
 	fmt.Printf("   URI: %s\n", uri)
 	fmt.Printf("   Provider: %s\n", cloudURI.Provider)
@@ -188,27 +189,27 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 		fmt.Printf("   Mode: DRY RUN (no files will be deleted)\n")
 	}
 	fmt.Println()
-	
+
 	// Create cloud backend
 	cfg := cloudURI.ToConfig()
 	backend, err := cloud.NewBackend(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to create cloud backend: %w", err)
 	}
-	
+
 	// List all backups
 	backups, err := backend.List(ctx, cloudURI.Path)
 	if err != nil {
 		return fmt.Errorf("failed to list cloud backups: %w", err)
 	}
-	
+
 	if len(backups) == 0 {
 		fmt.Println("No backups found in cloud storage")
 		return nil
 	}
-	
+
 	fmt.Printf("Found %d backup(s) in cloud storage\n\n", len(backups))
-	
+
 	// Filter backups based on pattern if specified
 	var filteredBackups []cloud.BackupInfo
 	if cleanupPattern != "" {
@@ -222,17 +223,17 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 	} else {
 		filteredBackups = backups
 	}
-	
+
 	// Sort by modification time (oldest first)
 	// Already sorted by backend.List
-	
+
 	// Calculate retention date
 	cutoffDate := time.Now().AddDate(0, 0, -retentionDays)
-	
+
 	// Determine which backups to delete
 	var toDelete []cloud.BackupInfo
 	var toKeep []cloud.BackupInfo
-	
+
 	for _, backup := range filteredBackups {
 		if backup.LastModified.Before(cutoffDate) {
 			toDelete = append(toDelete, backup)
@@ -240,7 +241,7 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 			toKeep = append(toKeep, backup)
 		}
 	}
-	
+
 	// Ensure we keep minimum backups
 	totalBackups := len(filteredBackups)
 	if totalBackups-len(toDelete) < minBackups {
@@ -249,39 +250,39 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 		if keepCount > len(toDelete) {
 			keepCount = len(toDelete)
 		}
-		
+
 		// Move oldest from toDelete to toKeep
 		for i := len(toDelete) - 1; i >= len(toDelete)-keepCount && i >= 0; i-- {
 			toKeep = append(toKeep, toDelete[i])
 			toDelete = toDelete[:i]
 		}
 	}
-	
+
 	// Display results
 	fmt.Printf("📊 Results:\n")
 	fmt.Printf("   Total backups: %d\n", totalBackups)
 	fmt.Printf("   Eligible for deletion: %d\n", len(toDelete))
 	fmt.Printf("   Will keep: %d\n", len(toKeep))
 	fmt.Println()
-	
+
 	if len(toDelete) > 0 {
 		if dryRun {
 			fmt.Printf("🔍 Would delete %d backup(s):\n", len(toDelete))
 		} else {
 			fmt.Printf("🗑️  Deleting %d backup(s):\n", len(toDelete))
 		}
-		
+
 		var totalSize int64
 		var deletedCount int
-		
+
 		for _, backup := range toDelete {
-			fmt.Printf("   - %s (%s, %s old)\n", 
-				backup.Name, 
+			fmt.Printf("   - %s (%s, %s old)\n",
+				backup.Name,
 				cloud.FormatSize(backup.Size),
 				formatBackupAge(backup.LastModified))
-			
+
 			totalSize += backup.Size
-			
+
 			if !dryRun {
 				if err := backend.Delete(ctx, backup.Key); err != nil {
 					fmt.Printf("     ❌ Error: %v\n", err)
@@ -292,18 +293,18 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 				}
 			}
 		}
-		
-		fmt.Printf("\n💾 Space %s: %s\n", 
+
+		fmt.Printf("\n💾 Space %s: %s\n",
 			map[bool]string{true: "would be freed", false: "freed"}[dryRun],
 			cloud.FormatSize(totalSize))
-			
+
 		if !dryRun && deletedCount > 0 {
 			fmt.Printf("✅ Successfully deleted %d backup(s)\n", deletedCount)
 		}
 	} else {
 		fmt.Println("No backups eligible for deletion")
 	}
-	
+
 	return nil
 }
 
@@ -311,7 +312,7 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 func formatBackupAge(t time.Time) string {
 	d := time.Since(t)
 	days := int(d.Hours() / 24)
-	
+
 	if days == 0 {
 		return "today"
 	} else if days == 1 {

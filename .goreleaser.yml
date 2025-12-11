@@ -1,0 +1,160 @@
+# GoReleaser Configuration for dbbackup
+# https://goreleaser.com/customization/
+# Run: goreleaser release --clean
+
+version: 2
+
+project_name: dbbackup
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: dbbackup
+    main: ./
+    binary: dbbackup
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+    flags:
+      - -trimpath
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README*
+      - LICENSE*
+      - CHANGELOG*
+      - docs/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: '🚀 Features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: '🐛 Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: '📚 Documentation'
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: '🧪 Tests'
+      regexp: '^.*?test(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: '🔧 Maintenance'
+      order: 999
+
+sboms:
+  - artifacts: archive
+    documents:
+      - "{{ .ProjectName }}_{{ .Version }}_sbom.spdx.json"
+
+signs:
+  - cmd: cosign
+    env:
+      - COSIGN_EXPERIMENTAL=1
+    certificate: '${artifact}.pem'
+    args:
+      - sign-blob
+      - '--output-certificate=${certificate}'
+      - '--output-signature=${signature}'
+      - '${artifact}'
+      - '--yes'
+    artifacts: checksum
+    output: true
+
+# Gitea Release
+release:
+  gitea:
+    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+    name: dbbackup
+  # Use Gitea API URL
+  # This is auto-detected from GITEA_TOKEN environment
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## dbbackup {{ .Tag }}
+    
+    Released on {{ .Date }}
+  footer: |
+    ---
+    
+    **Full Changelog**: {{ .PreviousTag }}...{{ .Tag }}
+    
+    ### Installation
+    
+    ```bash
+    # Linux (amd64)
+    curl -LO https://git.uuxo.net/{{ .Env.GITHUB_REPOSITORY_OWNER }}/dbbackup/releases/download/{{ .Tag }}/dbbackup_{{ .Version }}_linux_amd64.tar.gz
+    tar xzf dbbackup_{{ .Version }}_linux_amd64.tar.gz
+    chmod +x dbbackup
+    sudo mv dbbackup /usr/local/bin/
+    
+    # macOS (Apple Silicon)
+    curl -LO https://git.uuxo.net/{{ .Env.GITHUB_REPOSITORY_OWNER }}/dbbackup/releases/download/{{ .Tag }}/dbbackup_{{ .Version }}_darwin_arm64.tar.gz
+    tar xzf dbbackup_{{ .Version }}_darwin_arm64.tar.gz
+    chmod +x dbbackup
+    sudo mv dbbackup /usr/local/bin/
+    ```
+  extra_files:
+    - glob: ./sbom/*.json
+
+# Optional: Upload to Gitea Package Registry
+# gitea_urls:
+#   api: https://git.uuxo.net/api/v1
+#   upload: https://git.uuxo.net/api/packages/{{ .Env.GITHUB_REPOSITORY_OWNER }}/generic/{{ .ProjectName }}/{{ .Version }}
+
+# Announce release (optional)
+announce:
+  skip: true

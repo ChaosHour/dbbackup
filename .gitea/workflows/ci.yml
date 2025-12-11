@@ -1,0 +1,284 @@
+# CI/CD Pipeline for dbbackup
+# Triggers: push, pull_request, tags
+
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+
+env:
+  GO_VERSION: '1.23'
+  GOLANGCI_LINT_VERSION: 'v1.62.2'
+
+jobs:
+  # =============================================================================
+  # Test Job - Runs tests with race detection and coverage
+  # =============================================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.23-bookworm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            /go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests with race detection
+        run: |
+          go test -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Generate coverage report
+        run: |
+          go tool cover -func=coverage.out
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
+          retention-days: 30
+
+      - name: Generate coverage badge
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: ${COVERAGE}%"
+          
+          # Determine badge color
+          if [ "$(echo "$COVERAGE >= 80" | bc)" -eq 1 ]; then
+            COLOR="brightgreen"
+          elif [ "$(echo "$COVERAGE >= 60" | bc)" -eq 1 ]; then
+            COLOR="green"
+          elif [ "$(echo "$COVERAGE >= 40" | bc)" -eq 1 ]; then
+            COLOR="yellow"
+          else
+            COLOR="red"
+          fi
+          
+          # Create badge JSON (can be served via shields.io endpoint)
+          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COVERAGE}%\",\"color\":\"${COLOR}\"}" > coverage-badge.json
+
+      - name: Upload coverage badge
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-badge
+          path: coverage-badge.json
+          retention-days: 90
+
+  # =============================================================================
+  # Lint Job - Static code analysis with golangci-lint
+  # =============================================================================
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.23-bookworm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            /go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin ${{ env.GOLANGCI_LINT_VERSION }}
+
+      - name: Run golangci-lint
+        run: |
+          golangci-lint run --timeout=5m --out-format=colored-line-number ./...
+
+  # =============================================================================
+  # Build Job - Verify build for all platforms
+  # =============================================================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    container:
+      image: golang:1.23-bookworm
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            /go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          BINARY_NAME=dbbackup
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          
+          go build -ldflags="-s -w -X main.version=${{ github.ref_name }} -X main.commit=${{ github.sha }}" \
+            -o dist/${BINARY_NAME}-${{ matrix.goos }}-${{ matrix.goarch }} \
+            ./...
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+          retention-days: 7
+
+  # =============================================================================
+  # SBOM Job - Generate Software Bill of Materials
+  # =============================================================================
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    needs: [test]
+    container:
+      image: golang:1.23-bookworm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Generate SBOM (SPDX)
+        run: |
+          syft . -o spdx-json=sbom-spdx.json
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          syft . -o cyclonedx-json=sbom-cyclonedx.json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: |
+            sbom-spdx.json
+            sbom-cyclonedx.json
+          retention-days: 90
+
+  # =============================================================================
+  # Release Job - Create release with goreleaser (only on tags)
+  # =============================================================================
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [test, lint, build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    container:
+      image: golang:1.23-bookworm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install goreleaser
+        run: |
+          apt-get update && apt-get install -y git
+          curl -sSfL https://github.com/goreleaser/goreleaser/releases/download/v2.4.8/goreleaser_Linux_x86_64.tar.gz | tar xz -C /usr/local/bin goreleaser
+
+      - name: Install Syft for SBOM
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom
+          path: ./sbom/
+
+      - name: Run goreleaser
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          goreleaser release --clean
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+          retention-days: 90
+
+  # =============================================================================
+  # Docker Job - Build and push Docker image (optional, on tags)
+  # =============================================================================
+  docker:
+    name: Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        run: |
+          docker buildx create --use --name multiarch
+
+      - name: Login to Gitea Registry
+        run: |
+          echo "${{ secrets.GITEA_TOKEN }}" | docker login git.uuxo.net -u ${{ github.repository_owner }} --password-stdin
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "version_short=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --tag git.uuxo.net/${{ github.repository }}:${{ steps.version.outputs.version }} \
+            --tag git.uuxo.net/${{ github.repository }}:latest \
+            --push \
+            .

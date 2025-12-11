@@ -14,6 +14,16 @@ func (l *NullLogger) Error(msg string, args ...any) {}
 func (l *NullLogger) Debug(msg string, args ...any) {}
 func (l *NullLogger) Time(msg string, args ...any)  {}
 
+// WithField returns the same NullLogger (no-op for null logger)
+func (l *NullLogger) WithField(key string, value interface{}) Logger {
+	return l
+}
+
+// WithFields returns the same NullLogger (no-op for null logger)
+func (l *NullLogger) WithFields(fields map[string]interface{}) Logger {
+	return l
+}
+
 func (l *NullLogger) StartOperation(name string) OperationLogger {
 	return &nullOperation{}
 }

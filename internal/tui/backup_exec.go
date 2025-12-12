@@ -199,6 +199,10 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = fmt.Sprintf("❌ Backup failed: %v", m.err)
 		}
+		// Auto-forward in debug/auto-confirm mode
+		if m.config.TUIAutoConfirm {
+			return m.parent, tea.Quit
+		}
 		return m, nil
 
 	case tea.KeyMsg:

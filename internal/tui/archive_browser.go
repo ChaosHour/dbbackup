@@ -164,6 +164,10 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.archives) == 0 {
 			m.message = "No backup archives found"
 		}
+		// Auto-forward in auto-confirm mode
+		if m.config.TUIAutoConfirm {
+			return m.parent, tea.Quit
+		}
 		return m, nil
 
 	case tea.KeyMsg:

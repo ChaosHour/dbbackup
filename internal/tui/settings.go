@@ -390,12 +390,24 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 
 // Init initializes the settings model
 func (m SettingsModel) Init() tea.Cmd {
+	// Auto-forward in auto-confirm mode
+	if m.config.TUIAutoConfirm {
+		return func() tea.Msg {
+			return settingsAutoQuitMsg{}
+		}
+	}
 	return nil
 }
+
+// settingsAutoQuitMsg triggers automatic quit in settings
+type settingsAutoQuitMsg struct{}
 
 // Update handles messages
 func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case settingsAutoQuitMsg:
+		return m.parent, tea.Quit
+
 	case tea.KeyMsg:
 		// Handle directory browsing mode
 		if m.browsingDir && m.dirBrowser != nil {

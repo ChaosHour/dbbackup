@@ -61,6 +61,10 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Get free space (simplified - just show message)
 		m.message = fmt.Sprintf("Loaded %d archive(s)", len(m.archives))
+		// Auto-forward in auto-confirm mode
+		if m.config.TUIAutoConfirm {
+			return m.parent, tea.Quit
+		}
 		return m, nil
 
 	case tea.KeyMsg:

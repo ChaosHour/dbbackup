@@ -37,11 +37,20 @@ func NewStatusView(cfg *config.Config, log logger.Logger, parent tea.Model) Stat
 }
 
 func (m StatusViewModel) Init() tea.Cmd {
+	// Auto-forward in auto-confirm mode - skip status check
+	if m.config.TUIAutoConfirm {
+		return func() tea.Msg {
+			return statusAutoQuitMsg{}
+		}
+	}
 	return tea.Batch(
 		fetchStatus(m.config, m.logger),
 		tickCmd(),
 	)
 }
+
+// statusAutoQuitMsg triggers automatic quit
+type statusAutoQuitMsg struct{}
 
 type tickMsg time.Time
 
@@ -109,6 +118,9 @@ func fetchStatus(cfg *config.Config, log logger.Logger) tea.Cmd {
 
 func (m StatusViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case statusAutoQuitMsg:
+		return m.parent, tea.Quit
+
 	case tickMsg:
 		if m.loading {
 			return m, tickCmd()
@@ -126,6 +138,10 @@ func (m StatusViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dbVersion = msg.dbVersion
 		}
 		m.connected = msg.connected
+		// Auto-forward in auto-confirm mode after status loads
+		if m.config.TUIAutoConfirm {
+			return m.parent, tea.Quit
+		}
 		return m, nil
 
 	case tea.KeyMsg:

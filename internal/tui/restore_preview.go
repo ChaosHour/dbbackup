@@ -212,6 +212,10 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.canProceed = msg.canProceed
 		m.existingDBCount = msg.existingDBCount
 		m.existingDBs = msg.existingDBs
+		// Auto-forward in auto-confirm mode
+		if m.config.TUIAutoConfirm {
+			return m.parent, tea.Quit
+		}
 		return m, nil
 
 	case tea.KeyMsg:

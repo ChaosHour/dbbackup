@@ -254,6 +254,10 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Failed"
 			m.phase = "Error"
 		}
+		// Auto-forward in auto-confirm mode when done
+		if m.config.TUIAutoConfirm && m.done {
+			return m.parent, tea.Quit
+		}
 		return m, nil
 
 	case tea.KeyMsg:

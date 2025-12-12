@@ -30,6 +30,11 @@ func (m OperationsViewModel) Init() tea.Cmd {
 }
 
 func (m OperationsViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Auto-forward in auto-confirm mode
+	if m.config.TUIAutoConfirm {
+		return m.parent, tea.Quit
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {

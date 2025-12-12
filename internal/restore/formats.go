@@ -2,6 +2,7 @@ package restore
 
 import (
 	"compress/gzip"
+	"encoding/json"
 	"io"
 	"os"
 	"strings"
@@ -20,6 +21,25 @@ const (
 	FormatClusterTarGz     ArchiveFormat = "Cluster Archive (.tar.gz)"
 	FormatUnknown          ArchiveFormat = "Unknown"
 )
+
+// backupMetadata represents the structure of .meta.json files
+type backupMetadata struct {
+	DatabaseType string `json:"database_type"`
+}
+
+// readMetadataDBType reads the database_type from the .meta.json file if it exists
+func readMetadataDBType(archivePath string) string {
+	metaPath := archivePath + ".meta.json"
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		return ""
+	}
+	var meta backupMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return ""
+	}
+	return strings.ToLower(meta.DatabaseType)
+}
 
 // DetectArchiveFormat detects the format of a backup archive from its filename and content
 func DetectArchiveFormat(filename string) ArchiveFormat {
@@ -54,7 +74,14 @@ func DetectArchiveFormat(filename string) ArchiveFormat {
 
 	// Check for compressed SQL formats
 	if strings.HasSuffix(lower, ".sql.gz") {
-		// Determine if MySQL or PostgreSQL based on naming convention
+		// First, try to determine from metadata file
+		if dbType := readMetadataDBType(filename); dbType != "" {
+			if dbType == "mysql" || dbType == "mariadb" {
+				return FormatMySQLSQLGz
+			}
+			return FormatPostgreSQLSQLGz
+		}
+		// Fallback: determine if MySQL or PostgreSQL based on naming convention
 		if strings.Contains(lower, "mysql") || strings.Contains(lower, "mariadb") {
 			return FormatMySQLSQLGz
 		}
@@ -63,7 +90,14 @@ func DetectArchiveFormat(filename string) ArchiveFormat {
 
 	// Check for uncompressed SQL formats
 	if strings.HasSuffix(lower, ".sql") {
-		// Determine if MySQL or PostgreSQL based on naming convention
+		// First, try to determine from metadata file
+		if dbType := readMetadataDBType(filename); dbType != "" {
+			if dbType == "mysql" || dbType == "mariadb" {
+				return FormatMySQLSQLGz
+			}
+			return FormatPostgreSQLSQL
+		}
+		// Fallback: determine if MySQL or PostgreSQL based on naming convention
 		if strings.Contains(lower, "mysql") || strings.Contains(lower, "mariadb") {
 			return FormatMySQLSQL
 		}

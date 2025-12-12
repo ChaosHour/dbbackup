@@ -85,18 +85,25 @@ func (m DatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.databases = msg.databases
 
-			// Auto-select database if specified
-			if m.config.TUIAutoDatabase != "" {
+			// Auto-select database if specified, or first database if auto-confirm is enabled
+			autoSelectDB := m.config.TUIAutoDatabase
+			if autoSelectDB == "" && m.config.TUIAutoConfirm && len(m.databases) > 0 {
+				// Auto-confirm mode: select first database automatically
+				autoSelectDB = m.databases[0]
+				m.logger.Info("Auto-confirm mode: selecting first database", "database", autoSelectDB)
+			}
+
+			if autoSelectDB != "" {
 				for i, db := range m.databases {
-					if db == m.config.TUIAutoDatabase {
+					if db == autoSelectDB {
 						m.cursor = i
 						m.selected = db
 						m.logger.Info("Auto-selected database", "database", db)
 
 						// If sample backup, ask for ratio (or auto-use default)
 						if m.backupType == "sample" {
-							if m.config.TUIDryRun {
-								// In dry-run, use default ratio
+							if m.config.TUIDryRun || m.config.TUIAutoConfirm {
+								// In dry-run or auto-confirm, use default ratio
 								executor := NewBackupExecution(m.config, m.logger, m.parent, m.ctx, m.backupType, m.selected, 10)
 								return executor, executor.Init()
 							}
@@ -119,6 +126,10 @@ func (m DatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Auto-forward ESC/quit in auto-confirm mode
+		if m.config.TUIAutoConfirm {
+			return m.parent, tea.Quit
+		}
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m.parent, nil

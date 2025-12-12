@@ -113,6 +113,11 @@ func (m HistoryViewModel) Init() tea.Cmd {
 func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	maxVisible := 15 // Show max 15 items at once
 
+	// Auto-forward in auto-confirm mode
+	if m.config.TUIAutoConfirm {
+		return m.parent, tea.Quit
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {

@@ -39,11 +39,30 @@ func NewInputModel(cfg *config.Config, log logger.Logger, parent tea.Model, titl
 }
 
 func (m InputModel) Init() tea.Cmd {
+	// Auto-confirm: use default value and proceed
+	if m.config.TUIAutoConfirm && m.value != "" {
+		return func() tea.Msg {
+			return inputAutoConfirmMsg{}
+		}
+	}
 	return nil
 }
 
+// inputAutoConfirmMsg triggers automatic input confirmation
+type inputAutoConfirmMsg struct{}
+
 func (m InputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case inputAutoConfirmMsg:
+		// Use default value and proceed
+		if selector, ok := m.parent.(DatabaseSelectorModel); ok {
+			ratio, _ := strconv.Atoi(m.value)
+			executor := NewBackupExecution(selector.config, selector.logger, selector.parent, selector.ctx,
+				selector.backupType, selector.selected, ratio)
+			return executor, executor.Init()
+		}
+		return m.parent, tea.Quit
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":

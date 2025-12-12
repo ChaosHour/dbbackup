@@ -971,6 +971,40 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 
 // ensureDatabaseExists checks if a database exists and creates it if not
 func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error {
+	// Route to appropriate implementation based on database type
+	if e.cfg.DatabaseType == "mysql" || e.cfg.DatabaseType == "mariadb" {
+		return e.ensureMySQLDatabaseExists(ctx, dbName)
+	}
+	return e.ensurePostgresDatabaseExists(ctx, dbName)
+}
+
+// ensureMySQLDatabaseExists checks if a MySQL database exists and creates it if not
+func (e *Engine) ensureMySQLDatabaseExists(ctx context.Context, dbName string) error {
+	// Build mysql command
+	args := []string{
+		"-h", e.cfg.Host,
+		"-P", fmt.Sprintf("%d", e.cfg.Port),
+		"-u", e.cfg.User,
+		"-e", fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`", dbName),
+	}
+
+	if e.cfg.Password != "" {
+		args = append(args, fmt.Sprintf("-p%s", e.cfg.Password))
+	}
+
+	cmd := exec.CommandContext(ctx, "mysql", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		e.log.Warn("MySQL database creation failed", "name", dbName, "error", err, "output", string(output))
+		return fmt.Errorf("failed to create database '%s': %w (output: %s)", dbName, err, strings.TrimSpace(string(output)))
+	}
+
+	e.log.Info("Successfully ensured MySQL database exists", "name", dbName)
+	return nil
+}
+
+// ensurePostgresDatabaseExists checks if a PostgreSQL database exists and creates it if not
+func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string) error {
 	// Skip creation for postgres and template databases - they should already exist
 	if dbName == "postgres" || dbName == "template0" || dbName == "template1" {
 		e.log.Info("Skipping create for system database (assume exists)", "name", dbName)

@@ -49,12 +49,36 @@ func NewConfirmationModelWithAction(cfg *config.Config, log logger.Logger, paren
 }
 
 func (m ConfirmationModel) Init() tea.Cmd {
+	// Auto-confirm in debug/auto-confirm mode
+	if m.config.TUIAutoConfirm {
+		if m.onConfirm != nil {
+			return func() tea.Msg {
+				return autoConfirmMsg{}
+			}
+		}
+	}
 	return nil
 }
 
+// autoConfirmMsg triggers automatic confirmation
+type autoConfirmMsg struct{}
+
 func (m ConfirmationModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case autoConfirmMsg:
+		// Auto-confirm triggered
+		m.confirmed = true
+		if m.onConfirm != nil {
+			return m.onConfirm()
+		}
+		executor := NewBackupExecution(m.config, m.logger, m.parent, m.ctx, "cluster", "", 0)
+		return executor, executor.Init()
+
 	case tea.KeyMsg:
+		// Auto-forward ESC/quit in auto-confirm mode
+		if m.config.TUIAutoConfirm {
+			return m.parent, tea.Quit
+		}
 		switch msg.String() {
 		case "ctrl+c", "q", "esc", "n":
 			return m.parent, nil

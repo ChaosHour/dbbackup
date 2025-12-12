@@ -15,7 +15,7 @@ echo "🔧 Using Go version: $GO_VERSION"
 
 # Configuration
 APP_NAME="dbbackup"
-VERSION="3.0.0"
+VERSION="3.1.0"
 BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BIN_DIR="bin"
@@ -82,8 +82,9 @@ for platform_config in "${PLATFORMS[@]}"; do
     
     echo -e "${YELLOW}[$current/$total_platforms]${NC} Building for ${BOLD}$description${NC} (${platform})"
     
-    # Set environment and build
-    if env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags "$LDFLAGS" -o "${BIN_DIR}/${binary_name}" . 2>/dev/null; then
+    # Set environment and build (using export for better compatibility)
+    export GOOS GOARCH
+    if go build -ldflags "$LDFLAGS" -o "${BIN_DIR}/${binary_name}" . 2>/dev/null; then
         # Get file size
         if [[ "$OSTYPE" == "darwin"* ]]; then
             size=$(stat -f%z "${BIN_DIR}/${binary_name}" 2>/dev/null || echo "0")

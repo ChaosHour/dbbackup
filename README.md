@@ -4,20 +4,23 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/)
-[![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://git.uuxo.net/PlusOne/dbbackup)
-[![Release](https://img.shields.io/badge/Release-v3.1.0-blue)](https://git.uuxo.net/PlusOne/dbbackup/releases)
+[![Tests](https://img.shields.io/badge/Tests-Passing-success)](https://git.uuxo.net/UUXO/dbbackup)
+[![Release](https://img.shields.io/badge/Release-v3.1.0-blue)](https://git.uuxo.net/UUXO/dbbackup/releases)
 
 Professional database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
-**🎯 Production-Ready** | **🔒 Encrypted Backups** | **☁️ Cloud Storage** | **🔄 Point-in-Time Recovery**
+**Production-Ready** | **Encrypted Backups** | **Cloud Storage** | **Point-in-Time Recovery**
+
+**Repository:** https://git.uuxo.net/UUXO/dbbackup  
+**Mirror:** https://github.com/PlusOne/dbbackup
 
 ## Key Features
 
 - Multi-database support: PostgreSQL, MySQL, MariaDB
 - Backup modes: Single database, cluster, sample data
-- **🔐 AES-256-GCM encryption** for secure backups (v3.0)
-- **📦 Incremental backups** for PostgreSQL and MySQL (v3.0)
-- **Cloud storage integration: S3, MinIO, B2, Azure Blob, Google Cloud Storage**
+- AES-256-GCM encryption for secure backups (v3.0)
+- Incremental backups for PostgreSQL and MySQL (v3.0)
+- Cloud storage integration: S3, MinIO, B2, Azure Blob, Google Cloud Storage
 - Restore operations with safety checks and validation
 - Automatic CPU detection and parallel processing
 - Streaming compression for large databases
@@ -30,7 +33,7 @@ Professional database backup and restore utility for PostgreSQL, MySQL, and Mari
 
 **Pull from registry:**
 ```bash
-docker pull git.uuxo.net/PlusOne/dbbackup:latest
+docker pull git.uuxo.net/UUXO/dbbackup:latest
 ```
 
 **Quick start:**
@@ -41,12 +44,12 @@ docker run --rm \
   -e PGHOST=your-host \
   -e PGUSER=postgres \
   -e PGPASSWORD=secret \
-  git.uuxo.net/PlusOne/dbbackup:latest backup single mydb
+  git.uuxo.net/UUXO/dbbackup:latest backup single mydb
 
 # Interactive mode
 docker run --rm -it \
   -v $(pwd)/backups:/backups \
-  git.uuxo.net/PlusOne/dbbackup:latest interactive
+  git.uuxo.net/UUXO/dbbackup:latest interactive
 ```
 
 See [DOCKER.md](DOCKER.md) for complete Docker documentation.
@@ -55,40 +58,40 @@ See [DOCKER.md](DOCKER.md) for complete Docker documentation.
 
 **Linux x86_64:**
 ```bash
-wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.1.0/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
 
 **Linux ARM64:**
 ```bash
-wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-linux-arm64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.1.0/dbbackup-linux-arm64
 chmod +x dbbackup-linux-arm64
 sudo mv dbbackup-linux-arm64 /usr/local/bin/dbbackup
 ```
 
 **macOS Intel:**
 ```bash
-wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-darwin-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.1.0/dbbackup-darwin-amd64
 chmod +x dbbackup-darwin-amd64
 sudo mv dbbackup-darwin-amd64 /usr/local/bin/dbbackup
 ```
 
 **macOS Apple Silicon:**
 ```bash
-wget https://git.uuxo.net/PlusOne/dbbackup/releases/download/v3.1.0/dbbackup-darwin-arm64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.1.0/dbbackup-darwin-arm64
 chmod +x dbbackup-darwin-arm64
 sudo mv dbbackup-darwin-arm64 /usr/local/bin/dbbackup
 ```
 
-**Other platforms:** FreeBSD, OpenBSD, NetBSD binaries available in [releases](https://git.uuxo.net/PlusOne/dbbackup/releases).
+**Other platforms:** FreeBSD, OpenBSD, NetBSD binaries available in [releases](https://git.uuxo.net/UUXO/dbbackup/releases).
 
 ### Build from Source
 
 Requires Go 1.19 or later:
 
 ```bash
-git clone https://git.uuxo.net/uuxo/dbbackup.git
+git clone https://git.uuxo.net/UUXO/dbbackup.git
 cd dbbackup
 go build
 ```
@@ -113,7 +116,7 @@ Menu-driven interface for all operations. Press arrow keys to navigate, Enter to
 
 **Main Menu:**
 ```
-🗄️  Database Backup Tool - Interactive Menu
+Database Backup Tool - Interactive Menu
 
 Target Engine: PostgreSQL  |  MySQL  |  MariaDB
 Switch with ←/→ or t • Cluster backup requires PostgreSQL
@@ -139,25 +142,25 @@ Press ↑/↓ to navigate • Enter to select • q to quit
 
 **Backup Execution:**
 ```
-🔄 Backup Execution
+Backup Execution
 
   Type:      Single Database
   Database:  production_db
   Duration:  2m 35s
 
-  ⠹ Backing up database 'production_db'...
+  Backing up database 'production_db'...
 
-⌨️  Press Ctrl+C to cancel
+  Press Ctrl+C to cancel
 ```
 
 **Backup Completed:**
 ```
-🔄 Backup Execution
+Backup Execution
 
   Type:      Cluster Backup
   Duration:  8m 12s
 
-  ✅ Backup completed successfully!
+  Backup completed successfully!
 
   Backup created: cluster_20251128_092928.tar.gz
   Size: 22.5 GB (compressed)
@@ -165,20 +168,20 @@ Press ↑/↓ to navigate • Enter to select • q to quit
   Databases: 7
   Checksum: SHA-256 verified
 
-  ⌨️  Press Enter or ESC to return to menu
+  Press Enter or ESC to return to menu
 ```
 
 **Restore Preview:**
 ```
-🔍 Cluster Restore Preview
+Cluster Restore Preview
 
-📦 Archive Information
+Archive Information
   File: cluster_20251128_092928.tar.gz
   Format: PostgreSQL Cluster (tar.gz)
   Size: 22.5 GB
   Created: 2025-11-28 09:29:28
 
-🎯 Cluster Restore Options
+Cluster Restore Options
   Host: localhost:5432
   Existing Databases: 5 found
     - myapp_production
@@ -186,40 +189,40 @@ Press ↑/↓ to navigate • Enter to select • q to quit
     - users_db
     - inventory_db
     - reports_db
-  Clean All First: ✓ true (press 'c' to toggle)
+  Clean All First: true (press 'c' to toggle)
 
-🛡️  Safety Checks
-  ✓ Archive integrity ... passed
-  ✓ Disk space ... 140 GB available
-  ✓ Required tools ... pg_restore, psql found
-  ✓ Target database ... accessible
+Safety Checks
+  [OK] Archive integrity ... passed
+  [OK] Disk space ... 140 GB available
+  [OK] Required tools ... pg_restore, psql found
+  [OK] Target database ... accessible
 
-🔥 WARNING: Cluster cleanup enabled
+WARNING: Cluster cleanup enabled
    7 existing database(s) will be DROPPED before restore!
    This ensures a clean disaster recovery scenario
 
-✅ Ready to restore
-⌨️  c: Toggle cleanup | Enter: Proceed | Esc: Cancel
+Ready to restore
+  c: Toggle cleanup | Enter: Proceed | Esc: Cancel
 ```
 
 **Restore Progress:**
 ```
-🔄 Restoring Cluster
+Restoring Cluster
 
 Phase: Restoring databases
-Status: ⠹ Restoring database: myapp_production (18 GB)
+Status: Restoring database: myapp_production (18 GB)
 
 Elapsed: 3m 42s
 
-⌨️  Press Ctrl+C to cancel
+  Press Ctrl+C to cancel
 ```
 
 **Configuration Settings:**
 ```
-⚙️  Configuration Settings
+Configuration Settings
 
 > Database Type: postgres (PostgreSQL)
-    Target database engine (press Enter to cycle: PostgreSQL → MySQL → MariaDB)
+    Target database engine (press Enter to cycle: PostgreSQL -> MySQL -> MariaDB)
   CPU Workload Type: balanced
   Backup Directory: /root/db_backups
   Compression Level: 6
@@ -232,7 +235,7 @@ Elapsed: 3m 42s
   SSL Mode: prefer
   Auto Detect CPU Cores: true
 
-📋 Current Configuration:
+Current Configuration:
   Target DB: PostgreSQL (postgres)
   Database: root@localhost:5432
   Backup Dir: /root/db_backups
@@ -244,10 +247,10 @@ Elapsed: 3m 42s
 
 **Database Status & Health Check:**
 ```
-📊 Database Status & Health Check
+Database Status & Health Check
 
 Connection Status:
-  ✓ Connected
+  Connected
 
 Database Type: PostgreSQL (postgres)
 Host: localhost:5432
@@ -257,28 +260,28 @@ Version: PostgreSQL 17.2
 
 Databases Found: 5
 
-✓ All systems operational
+All systems operational
 
-⌨️  Press any key to return to menu
+  Press any key to return to menu
 ```
 
 **Backup Archive Manager (List & Manage):**
 ```
-🗄️  Backup Archive Manager
+Backup Archive Manager
 
 Total Archives: 15  |  Total Size: 156.8 GB
 
 FILENAME                            FORMAT                    SIZE         MODIFIED
-───────────────────────────────────────────────────────────────────────────────────────────────
-> ✓ cluster_20250115_093000.tar.gz   PostgreSQL Cluster        18.5 GB      2025-01-15 09:30
-  ✓ myapp_prod_20250114.dump.gz      PostgreSQL Custom         12.3 GB      2025-01-14 14:22
-  ✓ analytics_20250114.sql.gz        PostgreSQL SQL            2.1 GB       2025-01-14 14:20
-  ✓ cluster_20250113.tar.gz          PostgreSQL Cluster        18.2 GB      2025-01-13 09:15
-  ⚠ users_db_20241220.dump.gz        PostgreSQL Custom         850 MB       2024-12-20 10:30
-  ✓ inventory_20250112.sql           PostgreSQL SQL            456 MB       2025-01-12 16:42
-  ✓ reports_20250111.dump            PostgreSQL Custom         128 MB       2025-01-11 08:15
+---------------------------------------------------------------------------------------
+> [OK] cluster_20250115_093000.tar.gz   PostgreSQL Cluster     18.5 GB      2025-01-15 09:30
+  [OK] myapp_prod_20250114.dump.gz      PostgreSQL Custom      12.3 GB      2025-01-14 14:22
+  [OK] analytics_20250114.sql.gz        PostgreSQL SQL         2.1 GB       2025-01-14 14:20
+  [OK] cluster_20250113.tar.gz          PostgreSQL Cluster     18.2 GB      2025-01-13 09:15
+  [!!] users_db_20241220.dump.gz        PostgreSQL Custom      850 MB       2024-12-20 10:30
+  [OK] inventory_20250112.sql           PostgreSQL SQL         456 MB       2025-01-12 16:42
+  [OK] reports_20250111.dump            PostgreSQL Custom      128 MB       2025-01-11 08:15
 
-⌨️  ↑/↓: Navigate | r: Restore | v: Verify | i: Info | d: Delete | R: Refresh | Esc: Back
+  Up/Down: Navigate | r: Restore | v: Verify | i: Info | d: Delete | R: Refresh | Esc: Back
 ```
 
 #### Interactive Features
@@ -475,7 +478,7 @@ Create reduced-size backup for testing/development:
 
 **Warning:** Sample backups may break referential integrity.
 
-#### 🔐 Encrypted Backups (v3.0)
+#### Encrypted Backups (v3.0)
 
 Encrypt backups with AES-256-GCM for secure storage:
 
@@ -526,7 +529,7 @@ echo "my-secure-passphrase" > passphrase.txt
 
 Encryption is automatically detected - no need to specify `--encrypted` flag on restore.
 
-#### 📦 Incremental Backups (v3.0)
+#### Incremental Backups (v3.0)
 
 Create space-efficient incremental backups (PostgreSQL & MySQL):
 
@@ -686,16 +689,16 @@ Verify backup files using SHA-256 checksums and metadata validation:
 ```
 Verifying 3 backup file(s)...
 
-📁 mydb_20251125.dump
-   ✅ VALID
+mydb_20251125.dump
+   VALID
    Size: 2.5 GiB
    SHA-256: 7e166d4cb7276e1310d76922f45eda0333a6aeac...
    Database: mydb (postgresql)
    Created: 2025-11-25T19:00:00Z
 
-──────────────────────────────────────────────────
+--------------------------------------------------
 Total: 3 backups
-✅ Valid: 3
+Valid: 3
 ```
 
 #### Cleanup Old Backups
@@ -738,25 +741,25 @@ The cleanup command uses a safe retention policy:
 
 **Output:**
 ```
-🗑️  Cleanup Policy:
+Cleanup Policy:
    Directory: /backups
    Retention: 30 days
    Min backups: 5
 
-📊 Results:
+Results:
    Total backups: 12
    Eligible for deletion: 7
 
-✅ Deleted 7 backup(s):
+Deleted 7 backup(s):
    - old_db_20251001.dump
    - old_db_20251002.dump
    ...
 
-📦 Kept 5 backup(s)
+Kept 5 backup(s)
 
-💾 Space freed: 15.2 GiB
-──────────────────────────────────────────────────
-✅ Cleanup completed successfully
+Space freed: 15.2 GiB
+--------------------------------------------------
+Cleanup completed successfully
 ```
 
 **Options:**
@@ -1167,13 +1170,13 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 ```
 
 **Features:**
-- ✅ Streaming uploads (memory efficient)
-- ✅ Multipart upload for large files (>100MB)
-- ✅ Progress tracking
-- ✅ Automatic metadata sync (.sha256, .info files)
-- ✅ Restore directly from cloud URIs
-- ✅ Cloud backup verification
-- ✅ TUI integration for all cloud providers
+- Streaming uploads (memory efficient)
+- Multipart upload for large files (>100MB)
+- Progress tracking
+- Automatic metadata sync (.sha256, .info files)
+- Restore directly from cloud URIs
+- Cloud backup verification
+- TUI integration for all cloud providers
 
 See [CLOUD.md](CLOUD.md) for detailed setup guides, testing with Docker, and advanced configuration.
 
@@ -1493,17 +1496,6 @@ dbbackup/
 └── build_all.sh                 # Multi-platform build
 ```
 
-## Support
-
-- Repository: https://git.uuxo.net/uuxo/dbbackup
-- Issues: Use repository issue tracker
-
-## License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-Copyright 2025 dbbackup Project
-
 ## Recent Improvements
 
 - **Production-Ready**: 100% test coverage, zero critical issues, fully validated
@@ -1522,26 +1514,20 @@ dbbackup is production-ready for backup and disaster recovery operations on Post
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions. Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Ways to contribute:**
-- 🐛 Report bugs and issues
-- 💡 Suggest new features
-- 📝 Improve documentation
-- 🔧 Submit pull requests
-- ⭐ Star the project!
+- Report bugs and issues
+- Suggest new features
+- Improve documentation
+- Submit pull requests
 
 ## Support
 
-**Issues & Bug Reports:** https://git.uuxo.net/PlusOne/dbbackup/issues
-
-**Security Issues:** See [SECURITY.md](SECURITY.md) for responsible disclosure
-
-**Documentation:**
-- [README.md](README.md) - Main documentation
-- [PITR.md](PITR.md) - Point-in-Time Recovery guide
-- [DOCKER.md](DOCKER.md) - Docker usage
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
+- Repository: https://git.uuxo.net/UUXO/dbbackup
+- Mirror: https://github.com/PlusOne/dbbackup
+- Issues: https://git.uuxo.net/UUXO/dbbackup/issues
+- Security: See [SECURITY.md](SECURITY.md) for responsible disclosure
 
 ## License
 

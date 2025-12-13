@@ -1,5 +1,9 @@
 # Multi-stage build for minimal image size
-FROM golang:1.24-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
+
+# Build arguments for cross-compilation
+ARG TARGETOS
+ARG TARGETARCH
 
 # Install build dependencies
 RUN apk add --no-cache git make
@@ -13,21 +17,21 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o dbbackup .
+# Build binary with cross-compilation support
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -a -installsuffix cgo -ldflags="-w -s" -o dbbackup .
 
 # Final stage - minimal runtime image
+# Using pinned version 3.19 which has better QEMU compatibility
 FROM alpine:3.19
 
 # Install database client tools
-RUN apk add --no-cache \
-    postgresql-client \
-    mysql-client \
-    mariadb-client \
-    pigz \
-    pv \
-    ca-certificates \
-    tzdata
+# Split into separate commands for better QEMU compatibility
+RUN apk add --no-cache postgresql-client
+RUN apk add --no-cache mysql-client
+RUN apk add --no-cache mariadb-client
+RUN apk add --no-cache pigz pv
+RUN apk add --no-cache ca-certificates tzdata
 
 # Create non-root user
 RUN addgroup -g 1000 dbbackup && \

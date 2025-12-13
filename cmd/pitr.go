@@ -2,10 +2,15 @@ package cmd
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"dbbackup/internal/pitr"
 	"dbbackup/internal/wal"
 )
 
@@ -32,6 +37,14 @@ var (
 	pitrTargetImmediate bool
 	pitrRecoveryAction  string
 	pitrWALSource       string
+
+	// MySQL PITR flags
+	mysqlBinlogDir        string
+	mysqlArchiveDir       string
+	mysqlArchiveInterval  string
+	mysqlRequireRowFormat bool
+	mysqlRequireGTID      bool
+	mysqlWatchMode        bool
 )
 
 // pitrCmd represents the pitr command group
@@ -183,20 +196,179 @@ Example:
 	RunE: runWALTimeline,
 }
 
+// ============================================================================
+// MySQL/MariaDB Binlog Commands
+// ============================================================================
+
+// binlogCmd represents the binlog command group (MySQL equivalent of WAL)
+var binlogCmd = &cobra.Command{
+	Use:   "binlog",
+	Short: "Binary log operations for MySQL/MariaDB",
+	Long: `Manage MySQL/MariaDB binary log files for Point-in-Time Recovery.
+
+Binary logs contain all changes made to the database and are essential
+for Point-in-Time Recovery (PITR) with MySQL and MariaDB.
+
+Commands:
+  list     - List available binlog files
+  archive  - Archive binlog files
+  watch    - Watch for new binlog files and archive them
+  validate - Validate binlog chain integrity
+  position - Show current binlog position
+`,
+}
+
+// binlogListCmd lists binary log files
+var binlogListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List binary log files",
+	Long: `List all available binary log files from the MySQL data directory
+and/or the archive directory.
+
+Shows: filename, size, timestamps, server_id, and format for each binlog.
+
+Examples:
+  dbbackup binlog list --binlog-dir /var/lib/mysql
+  dbbackup binlog list --archive-dir /backups/binlog_archive
+`,
+	RunE: runBinlogList,
+}
+
+// binlogArchiveCmd archives binary log files
+var binlogArchiveCmd = &cobra.Command{
+	Use:   "archive",
+	Short: "Archive binary log files",
+	Long: `Archive MySQL binary log files to a backup location.
+
+This command copies completed binlog files (not the currently active one)
+to the archive directory, optionally with compression and encryption.
+
+Examples:
+  dbbackup binlog archive --binlog-dir /var/lib/mysql --archive-dir /backups/binlog
+  dbbackup binlog archive --compress --archive-dir /backups/binlog
+`,
+	RunE: runBinlogArchive,
+}
+
+// binlogWatchCmd watches for new binlogs and archives them
+var binlogWatchCmd = &cobra.Command{
+	Use:   "watch",
+	Short: "Watch for new binlog files and archive them automatically",
+	Long: `Continuously monitor the binlog directory for new files and
+archive them automatically when they are closed.
+
+This runs as a background process and provides continuous binlog archiving
+for PITR capability.
+
+Example:
+  dbbackup binlog watch --binlog-dir /var/lib/mysql --archive-dir /backups/binlog --interval 30s
+`,
+	RunE: runBinlogWatch,
+}
+
+// binlogValidateCmd validates binlog chain
+var binlogValidateCmd = &cobra.Command{
+	Use:   "validate",
+	Short: "Validate binlog chain integrity",
+	Long: `Check the binary log chain for gaps or inconsistencies.
+
+Validates:
+- Sequential numbering of binlog files
+- No missing files in the chain
+- Server ID consistency
+- GTID continuity (if enabled)
+
+Example:
+  dbbackup binlog validate --binlog-dir /var/lib/mysql
+  dbbackup binlog validate --archive-dir /backups/binlog
+`,
+	RunE: runBinlogValidate,
+}
+
+// binlogPositionCmd shows current binlog position
+var binlogPositionCmd = &cobra.Command{
+	Use:   "position",
+	Short: "Show current binary log position",
+	Long: `Display the current MySQL binary log position.
+
+This connects to MySQL and runs SHOW MASTER STATUS to get:
+- Current binlog filename
+- Current byte position
+- Executed GTID set (if GTID mode is enabled)
+
+Example:
+  dbbackup binlog position
+`,
+	RunE: runBinlogPosition,
+}
+
+// mysqlPitrStatusCmd shows MySQL-specific PITR status
+var mysqlPitrStatusCmd = &cobra.Command{
+	Use:   "mysql-status",
+	Short: "Show MySQL/MariaDB PITR status",
+	Long: `Display MySQL/MariaDB-specific PITR configuration and status.
+
+Shows:
+- Binary log configuration (log_bin, binlog_format)
+- GTID mode status
+- Archive directory and statistics
+- Current binlog position
+- Recovery windows available
+
+Example:
+  dbbackup pitr mysql-status
+`,
+	RunE: runMySQLPITRStatus,
+}
+
+// mysqlPitrEnableCmd enables MySQL PITR
+var mysqlPitrEnableCmd = &cobra.Command{
+	Use:   "mysql-enable",
+	Short: "Enable PITR for MySQL/MariaDB",
+	Long: `Configure MySQL/MariaDB for Point-in-Time Recovery.
+
+This validates MySQL settings and sets up binlog archiving:
+- Checks binary logging is enabled (log_bin=ON)
+- Validates binlog_format (ROW recommended)
+- Creates archive directory
+- Saves PITR configuration
+
+Prerequisites in my.cnf:
+  [mysqld]
+  log_bin = mysql-bin
+  binlog_format = ROW
+  server_id = 1
+
+Example:
+  dbbackup pitr mysql-enable --archive-dir /backups/binlog_archive
+`,
+	RunE: runMySQLPITREnable,
+}
+
 func init() {
 	rootCmd.AddCommand(pitrCmd)
 	rootCmd.AddCommand(walCmd)
+	rootCmd.AddCommand(binlogCmd)
 
 	// PITR subcommands
 	pitrCmd.AddCommand(pitrEnableCmd)
 	pitrCmd.AddCommand(pitrDisableCmd)
 	pitrCmd.AddCommand(pitrStatusCmd)
+	pitrCmd.AddCommand(mysqlPitrStatusCmd)
+	pitrCmd.AddCommand(mysqlPitrEnableCmd)
 
-	// WAL subcommands
+	// WAL subcommands (PostgreSQL)
 	walCmd.AddCommand(walArchiveCmd)
 	walCmd.AddCommand(walListCmd)
 	walCmd.AddCommand(walCleanupCmd)
 	walCmd.AddCommand(walTimelineCmd)
+
+	// Binlog subcommands (MySQL/MariaDB)
+	binlogCmd.AddCommand(binlogListCmd)
+	binlogCmd.AddCommand(binlogArchiveCmd)
+	binlogCmd.AddCommand(binlogWatchCmd)
+	binlogCmd.AddCommand(binlogValidateCmd)
+	binlogCmd.AddCommand(binlogPositionCmd)
 
 	// PITR enable flags
 	pitrEnableCmd.Flags().StringVar(&pitrArchiveDir, "archive-dir", "/var/backups/wal_archive", "Directory to store WAL archives")
@@ -219,6 +391,33 @@ func init() {
 
 	// WAL timeline flags
 	walTimelineCmd.Flags().StringVar(&walArchiveDir, "archive-dir", "/var/backups/wal_archive", "WAL archive directory")
+
+	// MySQL binlog flags
+	binlogListCmd.Flags().StringVar(&mysqlBinlogDir, "binlog-dir", "/var/lib/mysql", "MySQL binary log directory")
+	binlogListCmd.Flags().StringVar(&mysqlArchiveDir, "archive-dir", "", "Binlog archive directory")
+
+	binlogArchiveCmd.Flags().StringVar(&mysqlBinlogDir, "binlog-dir", "/var/lib/mysql", "MySQL binary log directory")
+	binlogArchiveCmd.Flags().StringVar(&mysqlArchiveDir, "archive-dir", "/var/backups/binlog_archive", "Binlog archive directory")
+	binlogArchiveCmd.Flags().BoolVar(&walCompress, "compress", false, "Compress binlog files")
+	binlogArchiveCmd.Flags().BoolVar(&walEncrypt, "encrypt", false, "Encrypt binlog files")
+	binlogArchiveCmd.Flags().StringVar(&walEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file")
+	binlogArchiveCmd.MarkFlagRequired("archive-dir")
+
+	binlogWatchCmd.Flags().StringVar(&mysqlBinlogDir, "binlog-dir", "/var/lib/mysql", "MySQL binary log directory")
+	binlogWatchCmd.Flags().StringVar(&mysqlArchiveDir, "archive-dir", "/var/backups/binlog_archive", "Binlog archive directory")
+	binlogWatchCmd.Flags().StringVar(&mysqlArchiveInterval, "interval", "30s", "Check interval for new binlogs")
+	binlogWatchCmd.Flags().BoolVar(&walCompress, "compress", false, "Compress binlog files")
+	binlogWatchCmd.MarkFlagRequired("archive-dir")
+
+	binlogValidateCmd.Flags().StringVar(&mysqlBinlogDir, "binlog-dir", "/var/lib/mysql", "MySQL binary log directory")
+	binlogValidateCmd.Flags().StringVar(&mysqlArchiveDir, "archive-dir", "", "Binlog archive directory")
+
+	// MySQL PITR enable flags
+	mysqlPitrEnableCmd.Flags().StringVar(&mysqlArchiveDir, "archive-dir", "/var/backups/binlog_archive", "Binlog archive directory")
+	mysqlPitrEnableCmd.Flags().IntVar(&walRetentionDays, "retention-days", 7, "Days to keep archived binlogs")
+	mysqlPitrEnableCmd.Flags().BoolVar(&mysqlRequireRowFormat, "require-row-format", true, "Require ROW binlog format")
+	mysqlPitrEnableCmd.Flags().BoolVar(&mysqlRequireGTID, "require-gtid", false, "Require GTID mode enabled")
+	mysqlPitrEnableCmd.MarkFlagRequired("archive-dir")
 }
 
 // Command implementations
@@ -511,4 +710,615 @@ func formatWALSize(bytes int64) string {
 		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
 	}
 	return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
+}
+
+// ============================================================================
+// MySQL/MariaDB Binlog Command Implementations
+// ============================================================================
+
+func runBinlogList(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	if !cfg.IsMySQL() {
+		return fmt.Errorf("binlog commands are only supported for MySQL/MariaDB (detected: %s)", cfg.DisplayDatabaseType())
+	}
+
+	binlogDir := mysqlBinlogDir
+	if binlogDir == "" && mysqlArchiveDir != "" {
+		binlogDir = mysqlArchiveDir
+	}
+
+	if binlogDir == "" {
+		return fmt.Errorf("please specify --binlog-dir or --archive-dir")
+	}
+
+	bmConfig := pitr.BinlogManagerConfig{
+		BinlogDir:  binlogDir,
+		ArchiveDir: mysqlArchiveDir,
+	}
+
+	bm, err := pitr.NewBinlogManager(bmConfig)
+	if err != nil {
+		return fmt.Errorf("initializing binlog manager: %w", err)
+	}
+
+	// List binlogs from source directory
+	binlogs, err := bm.DiscoverBinlogs(ctx)
+	if err != nil {
+		return fmt.Errorf("discovering binlogs: %w", err)
+	}
+
+	// Also list archived binlogs if archive dir is specified
+	var archived []pitr.BinlogArchiveInfo
+	if mysqlArchiveDir != "" {
+		archived, _ = bm.ListArchivedBinlogs(ctx)
+	}
+
+	if len(binlogs) == 0 && len(archived) == 0 {
+		fmt.Println("No binary log files found")
+		return nil
+	}
+
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  Binary Log Files (%s)\n", bm.ServerType())
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	if len(binlogs) > 0 {
+		fmt.Println("Source Directory:")
+		fmt.Printf("%-24s  %10s  %-19s  %-19s  %s\n", "Filename", "Size", "Start Time", "End Time", "Format")
+		fmt.Println("────────────────────────────────────────────────────────────────────────────────")
+
+		var totalSize int64
+		for _, b := range binlogs {
+			size := formatWALSize(b.Size)
+			totalSize += b.Size
+
+			startTime := "unknown"
+			endTime := "unknown"
+			if !b.StartTime.IsZero() {
+				startTime = b.StartTime.Format("2006-01-02 15:04:05")
+			}
+			if !b.EndTime.IsZero() {
+				endTime = b.EndTime.Format("2006-01-02 15:04:05")
+			}
+
+			format := b.Format
+			if format == "" {
+				format = "-"
+			}
+
+			fmt.Printf("%-24s  %10s  %-19s  %-19s  %s\n", b.Name, size, startTime, endTime, format)
+		}
+		fmt.Printf("\nTotal: %d files, %s\n", len(binlogs), formatWALSize(totalSize))
+	}
+
+	if len(archived) > 0 {
+		fmt.Println()
+		fmt.Println("Archived Binlogs:")
+		fmt.Printf("%-24s  %10s  %-19s  %s\n", "Original", "Size", "Archived At", "Flags")
+		fmt.Println("────────────────────────────────────────────────────────────────────────────────")
+
+		var totalSize int64
+		for _, a := range archived {
+			size := formatWALSize(a.Size)
+			totalSize += a.Size
+
+			archivedTime := a.ArchivedAt.Format("2006-01-02 15:04:05")
+
+			flags := ""
+			if a.Compressed {
+				flags += "C"
+			}
+			if a.Encrypted {
+				flags += "E"
+			}
+			if flags != "" {
+				flags = "[" + flags + "]"
+			}
+
+			fmt.Printf("%-24s  %10s  %-19s  %s\n", a.OriginalFile, size, archivedTime, flags)
+		}
+		fmt.Printf("\nTotal archived: %d files, %s\n", len(archived), formatWALSize(totalSize))
+	}
+
+	return nil
+}
+
+func runBinlogArchive(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	if !cfg.IsMySQL() {
+		return fmt.Errorf("binlog commands are only supported for MySQL/MariaDB")
+	}
+
+	if mysqlBinlogDir == "" {
+		return fmt.Errorf("--binlog-dir is required")
+	}
+
+	// Load encryption key if needed
+	var encryptionKey []byte
+	if walEncrypt {
+		key, err := loadEncryptionKey(walEncryptionKeyFile, walEncryptionKeyEnv)
+		if err != nil {
+			return fmt.Errorf("failed to load encryption key: %w", err)
+		}
+		encryptionKey = key
+	}
+
+	bmConfig := pitr.BinlogManagerConfig{
+		BinlogDir:     mysqlBinlogDir,
+		ArchiveDir:    mysqlArchiveDir,
+		Compression:   walCompress,
+		Encryption:    walEncrypt,
+		EncryptionKey: encryptionKey,
+	}
+
+	bm, err := pitr.NewBinlogManager(bmConfig)
+	if err != nil {
+		return fmt.Errorf("initializing binlog manager: %w", err)
+	}
+
+	// Discover binlogs
+	binlogs, err := bm.DiscoverBinlogs(ctx)
+	if err != nil {
+		return fmt.Errorf("discovering binlogs: %w", err)
+	}
+
+	// Get already archived
+	archived, _ := bm.ListArchivedBinlogs(ctx)
+	archivedSet := make(map[string]struct{})
+	for _, a := range archived {
+		archivedSet[a.OriginalFile] = struct{}{}
+	}
+
+	// Need to connect to MySQL to get current position
+	// For now, skip the active binlog by looking at which one was modified most recently
+	var latestModTime int64
+	var latestBinlog string
+	for _, b := range binlogs {
+		if b.ModTime.Unix() > latestModTime {
+			latestModTime = b.ModTime.Unix()
+			latestBinlog = b.Name
+		}
+	}
+
+	var newArchives []pitr.BinlogArchiveInfo
+	for i := range binlogs {
+		b := &binlogs[i]
+
+		// Skip if already archived
+		if _, exists := archivedSet[b.Name]; exists {
+			log.Info("Skipping already archived", "binlog", b.Name)
+			continue
+		}
+
+		// Skip the most recently modified (likely active)
+		if b.Name == latestBinlog {
+			log.Info("Skipping active binlog", "binlog", b.Name)
+			continue
+		}
+
+		log.Info("Archiving binlog", "binlog", b.Name, "size", formatWALSize(b.Size))
+		archiveInfo, err := bm.ArchiveBinlog(ctx, b)
+		if err != nil {
+			log.Error("Failed to archive binlog", "binlog", b.Name, "error", err)
+			continue
+		}
+		newArchives = append(newArchives, *archiveInfo)
+	}
+
+	// Update metadata
+	if len(newArchives) > 0 {
+		allArchived, _ := bm.ListArchivedBinlogs(ctx)
+		bm.SaveArchiveMetadata(allArchived)
+	}
+
+	log.Info("✅ Binlog archiving completed", "archived", len(newArchives))
+	return nil
+}
+
+func runBinlogWatch(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	if !cfg.IsMySQL() {
+		return fmt.Errorf("binlog commands are only supported for MySQL/MariaDB")
+	}
+
+	interval, err := time.ParseDuration(mysqlArchiveInterval)
+	if err != nil {
+		return fmt.Errorf("invalid interval: %w", err)
+	}
+
+	bmConfig := pitr.BinlogManagerConfig{
+		BinlogDir:   mysqlBinlogDir,
+		ArchiveDir:  mysqlArchiveDir,
+		Compression: walCompress,
+	}
+
+	bm, err := pitr.NewBinlogManager(bmConfig)
+	if err != nil {
+		return fmt.Errorf("initializing binlog manager: %w", err)
+	}
+
+	log.Info("Starting binlog watcher",
+		"binlog_dir", mysqlBinlogDir,
+		"archive_dir", mysqlArchiveDir,
+		"interval", interval)
+
+	// Watch for new binlogs
+	err = bm.WatchBinlogs(ctx, interval, func(b *pitr.BinlogFile) {
+		log.Info("New binlog detected, archiving", "binlog", b.Name)
+		archiveInfo, err := bm.ArchiveBinlog(ctx, b)
+		if err != nil {
+			log.Error("Failed to archive binlog", "binlog", b.Name, "error", err)
+			return
+		}
+		log.Info("Binlog archived successfully",
+			"binlog", b.Name,
+			"archive", archiveInfo.ArchivePath,
+			"size", formatWALSize(archiveInfo.Size))
+
+		// Update metadata
+		allArchived, _ := bm.ListArchivedBinlogs(ctx)
+		bm.SaveArchiveMetadata(allArchived)
+	})
+
+	if err != nil && err != context.Canceled {
+		return err
+	}
+
+	return nil
+}
+
+func runBinlogValidate(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	if !cfg.IsMySQL() {
+		return fmt.Errorf("binlog commands are only supported for MySQL/MariaDB")
+	}
+
+	binlogDir := mysqlBinlogDir
+	if binlogDir == "" {
+		binlogDir = mysqlArchiveDir
+	}
+
+	if binlogDir == "" {
+		return fmt.Errorf("please specify --binlog-dir or --archive-dir")
+	}
+
+	bmConfig := pitr.BinlogManagerConfig{
+		BinlogDir:  binlogDir,
+		ArchiveDir: mysqlArchiveDir,
+	}
+
+	bm, err := pitr.NewBinlogManager(bmConfig)
+	if err != nil {
+		return fmt.Errorf("initializing binlog manager: %w", err)
+	}
+
+	// Discover binlogs
+	binlogs, err := bm.DiscoverBinlogs(ctx)
+	if err != nil {
+		return fmt.Errorf("discovering binlogs: %w", err)
+	}
+
+	if len(binlogs) == 0 {
+		fmt.Println("No binlog files found to validate")
+		return nil
+	}
+
+	// Validate chain
+	validation, err := bm.ValidateBinlogChain(ctx, binlogs)
+	if err != nil {
+		return fmt.Errorf("validating binlog chain: %w", err)
+	}
+
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("  Binlog Chain Validation")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	if validation.Valid {
+		fmt.Println("Status:     ✅ VALID - Binlog chain is complete")
+	} else {
+		fmt.Println("Status:     ❌ INVALID - Binlog chain has gaps")
+	}
+
+	fmt.Printf("Files:      %d binlog files\n", validation.LogCount)
+	fmt.Printf("Total Size: %s\n", formatWALSize(validation.TotalSize))
+
+	if validation.StartPos != nil {
+		fmt.Printf("Start:      %s\n", validation.StartPos.String())
+	}
+	if validation.EndPos != nil {
+		fmt.Printf("End:        %s\n", validation.EndPos.String())
+	}
+
+	if len(validation.Gaps) > 0 {
+		fmt.Println()
+		fmt.Println("Gaps Found:")
+		for _, gap := range validation.Gaps {
+			fmt.Printf("  • After %s, before %s: %s\n", gap.After, gap.Before, gap.Reason)
+		}
+	}
+
+	if len(validation.Warnings) > 0 {
+		fmt.Println()
+		fmt.Println("Warnings:")
+		for _, w := range validation.Warnings {
+			fmt.Printf("  ⚠ %s\n", w)
+		}
+	}
+
+	if len(validation.Errors) > 0 {
+		fmt.Println()
+		fmt.Println("Errors:")
+		for _, e := range validation.Errors {
+			fmt.Printf("  ✗ %s\n", e)
+		}
+	}
+
+	if !validation.Valid {
+		os.Exit(1)
+	}
+
+	return nil
+}
+
+func runBinlogPosition(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	if !cfg.IsMySQL() {
+		return fmt.Errorf("binlog commands are only supported for MySQL/MariaDB")
+	}
+
+	// Connect to MySQL
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
+		cfg.User, cfg.Password, cfg.Host, cfg.Port)
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return fmt.Errorf("connecting to MySQL: %w", err)
+	}
+	defer db.Close()
+
+	if err := db.PingContext(ctx); err != nil {
+		return fmt.Errorf("pinging MySQL: %w", err)
+	}
+
+	// Get binlog position using raw query
+	rows, err := db.QueryContext(ctx, "SHOW MASTER STATUS")
+	if err != nil {
+		return fmt.Errorf("getting master status: %w", err)
+	}
+	defer rows.Close()
+
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("  Current Binary Log Position")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	if rows.Next() {
+		var file string
+		var position uint64
+		var binlogDoDB, binlogIgnoreDB, executedGtidSet sql.NullString
+
+		cols, _ := rows.Columns()
+		switch len(cols) {
+		case 5:
+			err = rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB, &executedGtidSet)
+		case 4:
+			err = rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB)
+		default:
+			err = rows.Scan(&file, &position)
+		}
+
+		if err != nil {
+			return fmt.Errorf("scanning master status: %w", err)
+		}
+
+		fmt.Printf("File:     %s\n", file)
+		fmt.Printf("Position: %d\n", position)
+		if executedGtidSet.Valid && executedGtidSet.String != "" {
+			fmt.Printf("GTID Set: %s\n", executedGtidSet.String)
+		}
+
+		// Compact format for use in restore commands
+		fmt.Println()
+		fmt.Printf("Position String: %s:%d\n", file, position)
+	} else {
+		fmt.Println("Binary logging appears to be disabled.")
+		fmt.Println("Enable binary logging by adding to my.cnf:")
+		fmt.Println("  [mysqld]")
+		fmt.Println("  log_bin = mysql-bin")
+		fmt.Println("  server_id = 1")
+	}
+
+	return nil
+}
+
+func runMySQLPITRStatus(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	if !cfg.IsMySQL() {
+		return fmt.Errorf("this command is only for MySQL/MariaDB (use 'pitr status' for PostgreSQL)")
+	}
+
+	// Connect to MySQL
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
+		cfg.User, cfg.Password, cfg.Host, cfg.Port)
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return fmt.Errorf("connecting to MySQL: %w", err)
+	}
+	defer db.Close()
+
+	if err := db.PingContext(ctx); err != nil {
+		return fmt.Errorf("pinging MySQL: %w", err)
+	}
+
+	pitrConfig := pitr.MySQLPITRConfig{
+		Host:       cfg.Host,
+		Port:       cfg.Port,
+		User:       cfg.User,
+		Password:   cfg.Password,
+		BinlogDir:  mysqlBinlogDir,
+		ArchiveDir: mysqlArchiveDir,
+	}
+
+	mysqlPitr, err := pitr.NewMySQLPITR(db, pitrConfig)
+	if err != nil {
+		return fmt.Errorf("initializing MySQL PITR: %w", err)
+	}
+
+	status, err := mysqlPitr.Status(ctx)
+	if err != nil {
+		return fmt.Errorf("getting PITR status: %w", err)
+	}
+
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("  MySQL/MariaDB PITR Status (%s)\n", status.DatabaseType)
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	if status.Enabled {
+		fmt.Println("PITR Status:     ✅ ENABLED")
+	} else {
+		fmt.Println("PITR Status:     ❌ NOT CONFIGURED")
+	}
+
+	// Get binary logging status
+	var logBin string
+	db.QueryRowContext(ctx, "SELECT @@log_bin").Scan(&logBin)
+	if logBin == "1" || logBin == "ON" {
+		fmt.Println("Binary Logging:  ✅ ENABLED")
+	} else {
+		fmt.Println("Binary Logging:  ❌ DISABLED")
+	}
+
+	fmt.Printf("Binlog Format:   %s\n", status.LogLevel)
+
+	// Check GTID mode
+	var gtidMode string
+	if status.DatabaseType == pitr.DatabaseMariaDB {
+		db.QueryRowContext(ctx, "SELECT @@gtid_current_pos").Scan(&gtidMode)
+		if gtidMode != "" {
+			fmt.Println("GTID Mode:       ✅ ENABLED")
+		} else {
+			fmt.Println("GTID Mode:       ❌ DISABLED")
+		}
+	} else {
+		db.QueryRowContext(ctx, "SELECT @@gtid_mode").Scan(&gtidMode)
+		if gtidMode == "ON" {
+			fmt.Println("GTID Mode:       ✅ ENABLED")
+		} else {
+			fmt.Printf("GTID Mode:       %s\n", gtidMode)
+		}
+	}
+
+	if status.Position != nil {
+		fmt.Printf("Current Position: %s\n", status.Position.String())
+	}
+
+	if status.ArchiveDir != "" {
+		fmt.Println()
+		fmt.Println("Archive Statistics:")
+		fmt.Printf("  Directory:    %s\n", status.ArchiveDir)
+		fmt.Printf("  File Count:   %d\n", status.ArchiveCount)
+		fmt.Printf("  Total Size:   %s\n", formatWALSize(status.ArchiveSize))
+		if !status.LastArchived.IsZero() {
+			fmt.Printf("  Last Archive: %s\n", status.LastArchived.Format("2006-01-02 15:04:05"))
+		}
+	}
+
+	// Show requirements
+	fmt.Println()
+	fmt.Println("PITR Requirements:")
+	if logBin == "1" || logBin == "ON" {
+		fmt.Println("  ✅ Binary logging enabled")
+	} else {
+		fmt.Println("  ❌ Binary logging must be enabled (log_bin = mysql-bin)")
+	}
+	if status.LogLevel == "ROW" {
+		fmt.Println("  ✅ Row-based logging (recommended)")
+	} else {
+		fmt.Printf("  ⚠  binlog_format = %s (ROW recommended for PITR)\n", status.LogLevel)
+	}
+
+	return nil
+}
+
+func runMySQLPITREnable(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	if !cfg.IsMySQL() {
+		return fmt.Errorf("this command is only for MySQL/MariaDB (use 'pitr enable' for PostgreSQL)")
+	}
+
+	// Connect to MySQL
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
+		cfg.User, cfg.Password, cfg.Host, cfg.Port)
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return fmt.Errorf("connecting to MySQL: %w", err)
+	}
+	defer db.Close()
+
+	if err := db.PingContext(ctx); err != nil {
+		return fmt.Errorf("pinging MySQL: %w", err)
+	}
+
+	pitrConfig := pitr.MySQLPITRConfig{
+		Host:             cfg.Host,
+		Port:             cfg.Port,
+		User:             cfg.User,
+		Password:         cfg.Password,
+		BinlogDir:        mysqlBinlogDir,
+		ArchiveDir:       mysqlArchiveDir,
+		RequireRowFormat: mysqlRequireRowFormat,
+		RequireGTID:      mysqlRequireGTID,
+	}
+
+	mysqlPitr, err := pitr.NewMySQLPITR(db, pitrConfig)
+	if err != nil {
+		return fmt.Errorf("initializing MySQL PITR: %w", err)
+	}
+
+	enableConfig := pitr.PITREnableConfig{
+		ArchiveDir:    mysqlArchiveDir,
+		RetentionDays: walRetentionDays,
+		Compression:   walCompress,
+	}
+
+	log.Info("Enabling MySQL PITR", "archive_dir", mysqlArchiveDir)
+
+	if err := mysqlPitr.Enable(ctx, enableConfig); err != nil {
+		return fmt.Errorf("enabling PITR: %w", err)
+	}
+
+	log.Info("✅ MySQL PITR enabled successfully!")
+	log.Info("")
+	log.Info("Next steps:")
+	log.Info("1. Start binlog archiving: dbbackup binlog watch --archive-dir " + mysqlArchiveDir)
+	log.Info("2. Create a base backup: dbbackup backup single <database>")
+	log.Info("3. Binlogs will be archived to: " + mysqlArchiveDir)
+	log.Info("")
+	log.Info("To restore to a point in time, use:")
+	log.Info("  dbbackup restore pitr <backup> --target-time '2024-01-15 14:30:00'")
+
+	return nil
+}
+
+// getMySQLBinlogDir attempts to determine the binlog directory from MySQL
+func getMySQLBinlogDir(ctx context.Context, db *sql.DB) (string, error) {
+	var logBinBasename string
+	err := db.QueryRowContext(ctx, "SELECT @@log_bin_basename").Scan(&logBinBasename)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Dir(logBinBasename), nil
 }

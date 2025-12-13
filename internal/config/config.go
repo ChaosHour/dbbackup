@@ -91,6 +91,13 @@ type Config struct {
 	WALCompression bool   // Compress WAL files
 	WALEncryption  bool   // Encrypt WAL files
 
+	// MySQL PITR options
+	BinlogDir             string // MySQL binary log directory
+	BinlogArchiveDir      string // Directory to archive binlogs
+	BinlogArchiveInterval string // Interval for binlog archiving (e.g., "30s")
+	RequireRowFormat      bool   // Require ROW format for binlog
+	RequireGTID           bool   // Require GTID mode enabled
+
 	// TUI automation options (for testing)
 	TUIAutoSelect   int    // Auto-select menu option (-1 = disabled)
 	TUIAutoDatabase string // Pre-fill database name

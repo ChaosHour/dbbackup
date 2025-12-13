@@ -11,41 +11,66 @@ import (
 type EventType string
 
 const (
-	EventBackupStarted   EventType = "backup_started"
-	EventBackupCompleted EventType = "backup_completed"
-	EventBackupFailed    EventType = "backup_failed"
-	EventRestoreStarted  EventType = "restore_started"
-	EventRestoreCompleted EventType = "restore_completed"
-	EventRestoreFailed   EventType = "restore_failed"
-	EventCleanupCompleted EventType = "cleanup_completed"
-	EventVerifyCompleted EventType = "verify_completed"
-	EventVerifyFailed    EventType = "verify_failed"
-	EventPITRRecovery    EventType = "pitr_recovery"
+	EventBackupStarted      EventType = "backup_started"
+	EventBackupCompleted    EventType = "backup_completed"
+	EventBackupFailed       EventType = "backup_failed"
+	EventRestoreStarted     EventType = "restore_started"
+	EventRestoreCompleted   EventType = "restore_completed"
+	EventRestoreFailed      EventType = "restore_failed"
+	EventCleanupCompleted   EventType = "cleanup_completed"
+	EventVerifyCompleted    EventType = "verify_completed"
+	EventVerifyFailed       EventType = "verify_failed"
+	EventPITRRecovery       EventType = "pitr_recovery"
+	EventVerificationPassed EventType = "verification_passed"
+	EventVerificationFailed EventType = "verification_failed"
+	EventDRDrillPassed      EventType = "dr_drill_passed"
+	EventDRDrillFailed      EventType = "dr_drill_failed"
+	EventGapDetected        EventType = "gap_detected"
+	EventRPOViolation       EventType = "rpo_violation"
 )
 
 // Severity represents the severity level of a notification
 type Severity string
 
 const (
-	SeverityInfo    Severity = "info"
-	SeverityWarning Severity = "warning"
-	SeverityError   Severity = "error"
+	SeverityInfo     Severity = "info"
+	SeveritySuccess  Severity = "success"
+	SeverityWarning  Severity = "warning"
+	SeverityError    Severity = "error"
 	SeverityCritical Severity = "critical"
 )
 
+// severityOrder returns numeric order for severity comparison
+func severityOrder(s Severity) int {
+	switch s {
+	case SeverityInfo:
+		return 0
+	case SeveritySuccess:
+		return 1
+	case SeverityWarning:
+		return 2
+	case SeverityError:
+		return 3
+	case SeverityCritical:
+		return 4
+	default:
+		return 0
+	}
+}
+
 // Event represents a notification event
 type Event struct {
-	Type        EventType         `json:"type"`
-	Severity    Severity          `json:"severity"`
-	Timestamp   time.Time         `json:"timestamp"`
-	Database    string            `json:"database,omitempty"`
-	Message     string            `json:"message"`
-	Details     map[string]string `json:"details,omitempty"`
-	Error       string            `json:"error,omitempty"`
-	Duration    time.Duration     `json:"duration,omitempty"`
-	BackupFile  string            `json:"backup_file,omitempty"`
-	BackupSize  int64             `json:"backup_size,omitempty"`
-	Hostname    string            `json:"hostname,omitempty"`
+	Type       EventType         `json:"type"`
+	Severity   Severity          `json:"severity"`
+	Timestamp  time.Time         `json:"timestamp"`
+	Database   string            `json:"database,omitempty"`
+	Message    string            `json:"message"`
+	Details    map[string]string `json:"details,omitempty"`
+	Error      string            `json:"error,omitempty"`
+	Duration   time.Duration     `json:"duration,omitempty"`
+	BackupFile string            `json:"backup_file,omitempty"`
+	BackupSize int64             `json:"backup_size,omitempty"`
+	Hostname   string            `json:"hostname,omitempty"`
 }
 
 // NewEvent creates a new notification event
@@ -132,27 +157,27 @@ type Config struct {
 	WebhookSecret  string // For signing payloads
 
 	// General settings
-	OnSuccess    bool // Send notifications on successful operations
-	OnFailure    bool // Send notifications on failed operations
-	OnWarning    bool // Send notifications on warnings
-	MinSeverity  Severity
-	Retries      int           // Number of retry attempts
-	RetryDelay   time.Duration // Delay between retries
+	OnSuccess   bool // Send notifications on successful operations
+	OnFailure   bool // Send notifications on failed operations
+	OnWarning   bool // Send notifications on warnings
+	MinSeverity Severity
+	Retries     int           // Number of retry attempts
+	RetryDelay  time.Duration // Delay between retries
 }
 
 // DefaultConfig returns a configuration with sensible defaults
 func DefaultConfig() Config {
 	return Config{
-		SMTPPort:     587,
-		SMTPTLS:      false,
-		SMTPStartTLS: true,
+		SMTPPort:      587,
+		SMTPTLS:       false,
+		SMTPStartTLS:  true,
 		WebhookMethod: "POST",
-		OnSuccess:    true,
-		OnFailure:    true,
-		OnWarning:    true,
-		MinSeverity:  SeverityInfo,
-		Retries:      3,
-		RetryDelay:   5 * time.Second,
+		OnSuccess:     true,
+		OnFailure:     true,
+		OnWarning:     true,
+		MinSeverity:   SeverityInfo,
+		Retries:       3,
+		RetryDelay:    5 * time.Second,
 	}
 }
 

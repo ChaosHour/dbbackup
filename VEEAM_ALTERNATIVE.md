@@ -129,6 +129,6 @@ Every dollar you spend on backup licensing is a dollar not spent on:
 
 ---
 
-*MIT Licensed. Free forever. No sales calls required.*
+*Apache 2.0 Licensed. Free forever. No sales calls required.*
 
 [GitHub](https://github.com/UUXO/dbbackup) | [Documentation](https://github.com/UUXO/dbbackup#readme) | [Release Notes](RELEASE_NOTES_v3.2.md)

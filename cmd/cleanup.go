@@ -25,6 +25,13 @@ The retention policy ensures:
 2. At least --min-backups most recent backups are always kept
 3. Both conditions must be met for deletion
 
+GFS (Grandfather-Father-Son) Mode:
+When --gfs flag is enabled, a tiered retention policy is applied:
+- Yearly: Keep one backup per year on the first eligible day
+- Monthly: Keep one backup per month on the specified day
+- Weekly: Keep one backup per week on the specified weekday
+- Daily: Keep most recent daily backups
+
 Examples:
   # Clean up backups older than 30 days (keep at least 5)
   dbbackup cleanup /backups --retention-days 30 --min-backups 5
@@ -34,6 +41,12 @@ Examples:
 
   # Clean up specific database backups only
   dbbackup cleanup /backups --pattern "mydb_*.dump"
+
+  # GFS retention: 7 daily, 4 weekly, 12 monthly, 3 yearly
+  dbbackup cleanup /backups --gfs --gfs-daily 7 --gfs-weekly 4 --gfs-monthly 12 --gfs-yearly 3
+
+  # GFS with custom weekly day (Saturday) and monthly day (15th)
+  dbbackup cleanup /backups --gfs --gfs-weekly-day Saturday --gfs-monthly-day 15
 
   # Aggressive cleanup (keep only 3 most recent)
   dbbackup cleanup /backups --retention-days 1 --min-backups 3`,
@@ -46,6 +59,15 @@ var (
 	minBackups     int
 	dryRun         bool
 	cleanupPattern string
+
+	// GFS retention policy flags
+	gfsEnabled    bool
+	gfsDaily      int
+	gfsWeekly     int
+	gfsMonthly    int
+	gfsYearly     int
+	gfsWeeklyDay  string
+	gfsMonthlyDay int
 )
 
 func init() {
@@ -54,6 +76,15 @@ func init() {
 	cleanupCmd.Flags().IntVar(&minBackups, "min-backups", 5, "Always keep at least this many backups")
 	cleanupCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be deleted without actually deleting")
 	cleanupCmd.Flags().StringVar(&cleanupPattern, "pattern", "", "Only clean up backups matching this pattern (e.g., 'mydb_*.dump')")
+
+	// GFS retention policy flags
+	cleanupCmd.Flags().BoolVar(&gfsEnabled, "gfs", false, "Enable GFS (Grandfather-Father-Son) retention policy")
+	cleanupCmd.Flags().IntVar(&gfsDaily, "gfs-daily", 7, "Number of daily backups to keep (GFS mode)")
+	cleanupCmd.Flags().IntVar(&gfsWeekly, "gfs-weekly", 4, "Number of weekly backups to keep (GFS mode)")
+	cleanupCmd.Flags().IntVar(&gfsMonthly, "gfs-monthly", 12, "Number of monthly backups to keep (GFS mode)")
+	cleanupCmd.Flags().IntVar(&gfsYearly, "gfs-yearly", 3, "Number of yearly backups to keep (GFS mode)")
+	cleanupCmd.Flags().StringVar(&gfsWeeklyDay, "gfs-weekly-day", "Sunday", "Day of week for weekly backups (e.g., 'Sunday')")
+	cleanupCmd.Flags().IntVar(&gfsMonthlyDay, "gfs-monthly-day", 1, "Day of month for monthly backups (1-28)")
 }
 
 func runCleanup(cmd *cobra.Command, args []string) error {
@@ -70,6 +101,11 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 	// Validate directory exists
 	if !dirExists(backupDir) {
 		return fmt.Errorf("backup directory does not exist: %s", backupDir)
+	}
+
+	// Check if GFS mode is enabled
+	if gfsEnabled {
+		return runGFSCleanup(backupDir)
 	}
 
 	// Create retention policy
@@ -332,4 +368,113 @@ func formatBackupAge(t time.Time) string {
 		}
 		return fmt.Sprintf("%d years", years)
 	}
+}
+
+// runGFSCleanup applies GFS (Grandfather-Father-Son) retention policy
+func runGFSCleanup(backupDir string) error {
+	// Create GFS policy
+	policy := retention.GFSPolicy{
+		Enabled:    true,
+		Daily:      gfsDaily,
+		Weekly:     gfsWeekly,
+		Monthly:    gfsMonthly,
+		Yearly:     gfsYearly,
+		WeeklyDay:  retention.ParseWeekday(gfsWeeklyDay),
+		MonthlyDay: gfsMonthlyDay,
+		DryRun:     dryRun,
+	}
+
+	fmt.Printf("📅 GFS Retention Policy:\n")
+	fmt.Printf("   Directory: %s\n", backupDir)
+	fmt.Printf("   Daily:     %d backups\n", policy.Daily)
+	fmt.Printf("   Weekly:    %d backups (on %s)\n", policy.Weekly, gfsWeeklyDay)
+	fmt.Printf("   Monthly:   %d backups (day %d)\n", policy.Monthly, policy.MonthlyDay)
+	fmt.Printf("   Yearly:    %d backups\n", policy.Yearly)
+	if cleanupPattern != "" {
+		fmt.Printf("   Pattern:   %s\n", cleanupPattern)
+	}
+	if dryRun {
+		fmt.Printf("   Mode:      DRY RUN (no files will be deleted)\n")
+	}
+	fmt.Println()
+
+	// Apply GFS policy
+	result, err := retention.ApplyGFSPolicy(backupDir, policy)
+	if err != nil {
+		return fmt.Errorf("GFS cleanup failed: %w", err)
+	}
+
+	// Display tier breakdown
+	fmt.Printf("📊 Backup Classification:\n")
+	fmt.Printf("   Yearly:  %d\n", result.YearlyKept)
+	fmt.Printf("   Monthly: %d\n", result.MonthlyKept)
+	fmt.Printf("   Weekly:  %d\n", result.WeeklyKept)
+	fmt.Printf("   Daily:   %d\n", result.DailyKept)
+	fmt.Printf("   Total kept: %d\n", result.TotalKept)
+	fmt.Println()
+
+	// Display deletions
+	if len(result.Deleted) > 0 {
+		if dryRun {
+			fmt.Printf("🔍 Would delete %d backup(s):\n", len(result.Deleted))
+		} else {
+			fmt.Printf("✅ Deleted %d backup(s):\n", len(result.Deleted))
+		}
+		for _, file := range result.Deleted {
+			fmt.Printf("   - %s\n", filepath.Base(file))
+		}
+	}
+
+	// Display kept backups (limited display)
+	if len(result.Kept) > 0 && len(result.Kept) <= 15 {
+		fmt.Printf("\n📦 Kept %d backup(s):\n", len(result.Kept))
+		for _, file := range result.Kept {
+			// Show tier classification
+			info, _ := os.Stat(file)
+			if info != nil {
+				tiers := retention.ClassifyBackup(info.ModTime(), policy)
+				tierStr := formatTiers(tiers)
+				fmt.Printf("   - %s [%s]\n", filepath.Base(file), tierStr)
+			} else {
+				fmt.Printf("   - %s\n", filepath.Base(file))
+			}
+		}
+	} else if len(result.Kept) > 15 {
+		fmt.Printf("\n📦 Kept %d backup(s)\n", len(result.Kept))
+	}
+
+	if !dryRun && result.SpaceFreed > 0 {
+		fmt.Printf("\n💾 Space freed: %s\n", metadata.FormatSize(result.SpaceFreed))
+	}
+
+	if len(result.Errors) > 0 {
+		fmt.Printf("\n⚠️  Errors:\n")
+		for _, err := range result.Errors {
+			fmt.Printf("   - %v\n", err)
+		}
+	}
+
+	fmt.Println(strings.Repeat("─", 50))
+
+	if dryRun {
+		fmt.Println("✅ GFS dry run completed (no files were deleted)")
+	} else if len(result.Deleted) > 0 {
+		fmt.Println("✅ GFS cleanup completed successfully")
+	} else {
+		fmt.Println("ℹ️  No backups eligible for deletion under GFS policy")
+	}
+
+	return nil
+}
+
+// formatTiers formats a list of tiers as a comma-separated string
+func formatTiers(tiers []retention.Tier) string {
+	if len(tiers) == 0 {
+		return "none"
+	}
+	parts := make([]string, len(tiers))
+	for i, t := range tiers {
+		parts[i] = t.String()
+	}
+	return strings.Join(parts, ",")
 }

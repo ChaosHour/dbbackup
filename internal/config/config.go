@@ -76,6 +76,15 @@ type Config struct {
 	AllowRoot      bool // Allow running as root/Administrator
 	CheckResources bool // Check resource limits before operations
 
+	// GFS (Grandfather-Father-Son) retention options
+	GFSEnabled    bool   // Enable GFS retention policy
+	GFSDaily      int    // Number of daily backups to keep
+	GFSWeekly     int    // Number of weekly backups to keep
+	GFSMonthly    int    // Number of monthly backups to keep
+	GFSYearly     int    // Number of yearly backups to keep
+	GFSWeeklyDay  string // Day for weekly backup (e.g., "Sunday")
+	GFSMonthlyDay int    // Day of month for monthly backup (1-28)
+
 	// PITR (Point-in-Time Recovery) options
 	PITREnabled    bool   // Enable WAL archiving for PITR
 	WALArchiveDir  string // Directory to store WAL archives
@@ -102,6 +111,22 @@ type Config struct {
 	CloudSecretKey  string // Secret key / Account key (Azure)
 	CloudPrefix     string // Key/object prefix
 	CloudAutoUpload bool   // Automatically upload after backup
+
+	// Notification options
+	NotifyEnabled       bool     // Enable notifications
+	NotifyOnSuccess     bool     // Send notifications on successful operations
+	NotifyOnFailure     bool     // Send notifications on failed operations
+	NotifySMTPHost      string   // SMTP server host
+	NotifySMTPPort      int      // SMTP server port
+	NotifySMTPUser      string   // SMTP username
+	NotifySMTPPassword  string   // SMTP password
+	NotifySMTPFrom      string   // From address for emails
+	NotifySMTPTo        []string // To addresses for emails
+	NotifySMTPTLS       bool     // Use direct TLS (port 465)
+	NotifySMTPStartTLS  bool     // Use STARTTLS (port 587)
+	NotifyWebhookURL    string   // Webhook URL
+	NotifyWebhookMethod string   // Webhook HTTP method (POST/GET)
+	NotifyWebhookSecret string   // Webhook signing secret
 }
 
 // New creates a new configuration with default values

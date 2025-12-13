@@ -48,6 +48,7 @@ var (
 	encryptBackupFlag bool
 	encryptionKeyFile string
 	encryptionKeyEnv  string
+	backupDryRun      bool
 )
 
 var singleCmd = &cobra.Command{
@@ -121,6 +122,11 @@ func init() {
 		cmd.Flags().BoolVar(&encryptBackupFlag, "encrypt", false, "Encrypt backup with AES-256-GCM")
 		cmd.Flags().StringVar(&encryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (32 bytes)")
 		cmd.Flags().StringVar(&encryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key/passphrase")
+	}
+
+	// Dry-run flag for all backup commands
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
+		cmd.Flags().BoolVarP(&backupDryRun, "dry-run", "n", false, "Validate configuration without executing backup")
 	}
 
 	// Cloud storage flags for all backup commands

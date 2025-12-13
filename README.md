@@ -12,10 +12,13 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 - Multi-database support: PostgreSQL, MySQL, MariaDB
 - Backup modes: Single database, cluster, sample data
+- **Dry-run mode**: Preflight checks before backup execution
 - AES-256-GCM encryption
 - Incremental backups
 - Cloud storage: S3, MinIO, B2, Azure Blob, Google Cloud Storage
 - Point-in-Time Recovery (PITR) for PostgreSQL
+- **GFS retention policies**: Grandfather-Father-Son backup rotation
+- **Notifications**: SMTP email and webhook alerts
 - Interactive terminal UI
 - Cross-platform binaries
 
@@ -229,6 +232,9 @@ dbbackup restore cluster cluster_backup.tar.gz --confirm
 
 # Cloud backup
 dbbackup backup single mydb --cloud s3://my-bucket/backups/
+
+# Dry-run mode (preflight checks without execution)
+dbbackup backup single mydb --dry-run
 ```
 
 ## Commands
@@ -266,6 +272,8 @@ dbbackup backup single mydb --cloud s3://my-bucket/backups/
 | `--jobs` | Parallel jobs | 8 |
 | `--cloud` | Cloud storage URI | - |
 | `--encrypt` | Enable encryption | false |
+| `--dry-run, -n` | Run preflight checks only | false |
+| `--notify` | Enable notifications | false |
 | `--debug` | Enable debug logging | false |
 
 ## Encryption
@@ -346,6 +354,130 @@ dbbackup cleanup /backups --retention-days 30 --min-backups 5
 # Preview deletions
 dbbackup cleanup /backups --retention-days 7 --dry-run
 ```
+
+### GFS Retention Policy
+
+Grandfather-Father-Son (GFS) retention provides tiered backup rotation:
+
+```bash
+# GFS retention: 7 daily, 4 weekly, 12 monthly, 3 yearly
+dbbackup cleanup /backups --gfs \
+  --gfs-daily 7 \
+  --gfs-weekly 4 \
+  --gfs-monthly 12 \
+  --gfs-yearly 3
+
+# Custom weekly day (Saturday) and monthly day (15th)
+dbbackup cleanup /backups --gfs \
+  --gfs-weekly-day Saturday \
+  --gfs-monthly-day 15
+
+# Preview GFS deletions
+dbbackup cleanup /backups --gfs --dry-run
+```
+
+**GFS Tiers:**
+- **Daily**: Most recent N daily backups
+- **Weekly**: Best backup from each week (configurable day)
+- **Monthly**: Best backup from each month (configurable day)
+- **Yearly**: Best backup from January each year
+
+## Dry-Run Mode
+
+Preflight checks validate backup readiness without execution:
+
+```bash
+# Run preflight checks only
+dbbackup backup single mydb --dry-run
+dbbackup backup cluster -n  # Short flag
+```
+
+**Checks performed:**
+- Database connectivity (connect + ping)
+- Required tools availability (pg_dump, mysqldump, etc.)
+- Storage target accessibility and permissions
+- Backup size estimation
+- Encryption configuration validation
+- Cloud storage credentials (if configured)
+
+**Example output:**
+```
+╔══════════════════════════════════════════════════════════════╗
+║             [DRY RUN] Preflight Check Results                ║
+╚══════════════════════════════════════════════════════════════╝
+
+  Database: PostgreSQL PostgreSQL 15.4
+  Target:   postgres@localhost:5432/mydb
+
+  Checks:
+  ─────────────────────────────────────────────────────────────
+  ✅ Database Connectivity: Connected successfully
+  ✅ Required Tools:        pg_dump 15.4 available
+  ✅ Storage Target:        /backups writable (45 GB free)
+  ✅ Size Estimation:       ~2.5 GB required
+  ─────────────────────────────────────────────────────────────
+
+  ✅ All checks passed
+
+  Ready to backup. Remove --dry-run to execute.
+```
+
+## Notifications
+
+Get alerted on backup events via email or webhooks.
+
+### SMTP Email
+
+```bash
+# Environment variables
+export NOTIFY_SMTP_HOST="smtp.example.com"
+export NOTIFY_SMTP_PORT="587"
+export NOTIFY_SMTP_USER="alerts@example.com"
+export NOTIFY_SMTP_PASSWORD="secret"
+export NOTIFY_SMTP_FROM="dbbackup@example.com"
+export NOTIFY_SMTP_TO="admin@example.com,dba@example.com"
+
+# Enable notifications
+dbbackup backup single mydb --notify
+```
+
+### Webhooks
+
+```bash
+# Generic webhook
+export NOTIFY_WEBHOOK_URL="https://api.example.com/webhooks/backup"
+export NOTIFY_WEBHOOK_SECRET="signing-secret"  # Optional HMAC signing
+
+# Slack webhook
+export NOTIFY_WEBHOOK_URL="https://hooks.slack.com/services/T00/B00/XXX"
+
+dbbackup backup single mydb --notify
+```
+
+**Webhook payload:**
+```json
+{
+  "version": "1.0",
+  "event": {
+    "type": "backup_completed",
+    "severity": "info",
+    "timestamp": "2025-01-15T10:30:00Z",
+    "database": "mydb",
+    "message": "Backup completed successfully",
+    "backup_file": "/backups/mydb_20250115.dump.gz",
+    "backup_size": 2684354560,
+    "hostname": "db-server-01"
+  },
+  "subject": "✅ [dbbackup] Backup Completed: mydb"
+}
+```
+
+**Supported events:**
+- `backup_started`, `backup_completed`, `backup_failed`
+- `restore_started`, `restore_completed`, `restore_failed`
+- `cleanup_completed`
+- `verify_completed`, `verify_failed`
+- `pitr_recovery`
 
 ## Configuration
 

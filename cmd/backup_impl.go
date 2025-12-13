@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dbbackup/internal/backup"
+	"dbbackup/internal/checks"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/security"
@@ -26,6 +27,11 @@ func runClusterBackup(ctx context.Context) error {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("configuration error: %w", err)
+	}
+
+	// Handle dry-run mode
+	if backupDryRun {
+		return runBackupPreflight(ctx, "")
 	}
 
 	// Check privileges
@@ -124,6 +130,16 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Update config from environment
 	cfg.UpdateFromEnvironment()
 
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("configuration error: %w", err)
+	}
+
+	// Handle dry-run mode
+	if backupDryRun {
+		return runBackupPreflight(ctx, databaseName)
+	}
+
 	// Get backup type and base backup from command line flags (set via global vars in PreRunE)
 	// These are populated by cobra flag binding in cmd/backup.go
 	backupType := "full" // Default to full backup if not specified
@@ -146,11 +162,6 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		if _, err := os.Stat(baseBackup); os.IsNotExist(err) {
 			return fmt.Errorf("base backup file not found at %s. Ensure path is correct and file exists", baseBackup)
 		}
-	}
-
-	// Validate configuration
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("configuration error: %w", err)
 	}
 
 	// Check privileges
@@ -304,6 +315,11 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("configuration error: %w", err)
+	}
+
+	// Handle dry-run mode
+	if backupDryRun {
+		return runBackupPreflight(ctx, databaseName)
 	}
 
 	// Check privileges
@@ -535,4 +551,26 @@ func findLatestClusterBackup(backupDir string) (string, error) {
 	}
 
 	return latestPath, nil
+}
+
+// runBackupPreflight runs preflight checks without executing backup
+func runBackupPreflight(ctx context.Context, databaseName string) error {
+	checker := checks.NewPreflightChecker(cfg, log)
+	defer checker.Close()
+
+	result, err := checker.RunAllChecks(ctx, databaseName)
+	if err != nil {
+		return fmt.Errorf("preflight check error: %w", err)
+	}
+
+	// Format and print report
+	report := checks.FormatPreflightReport(result, databaseName, true)
+	fmt.Print(report)
+
+	// Return appropriate exit code
+	if !result.AllPassed {
+		return fmt.Errorf("preflight checks failed")
+	}
+
+	return nil
 }

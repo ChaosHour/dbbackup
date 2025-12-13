@@ -155,12 +155,12 @@ type HTMLFormatter struct{}
 // Format writes the report as HTML
 func (f *HTMLFormatter) Format(report *Report, w io.Writer) error {
 	tmpl := template.Must(template.New("report").Funcs(template.FuncMap{
-		"statusIcon":   StatusIcon,
-		"statusClass":  statusClass,
-		"severityIcon": SeverityIcon,
+		"statusIcon":    StatusIcon,
+		"statusClass":   statusClass,
+		"severityIcon":  SeverityIcon,
 		"severityClass": severityClass,
-		"formatTime":   func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
-		"formatDate":   func(t time.Time) string { return t.Format("2006-01-02") },
+		"formatTime":    func(t time.Time) string { return t.Format("2006-01-02 15:04:05") },
+		"formatDate":    func(t time.Time) string { return t.Format("2006-01-02") },
 	}).Parse(htmlTemplate))
 
 	return tmpl.Execute(w, report)
@@ -500,7 +500,7 @@ func (f *ConsoleFormatter) Format(report *Report, w io.Writer) error {
 	fmt.Fprintf(w, "%s\n\n", strings.Repeat("=", 60))
 
 	fmt.Fprintf(w, "  Generated: %s\n", report.GeneratedAt.Format("2006-01-02 15:04:05"))
-	fmt.Fprintf(w, "  Period: %s to %s\n", 
+	fmt.Fprintf(w, "  Period: %s to %s\n",
 		report.PeriodStart.Format("2006-01-02"),
 		report.PeriodEnd.Format("2006-01-02"))
 	fmt.Fprintf(w, "  Status: %s %s\n", StatusIcon(report.Status), report.Status)

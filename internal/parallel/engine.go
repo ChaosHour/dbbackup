@@ -34,20 +34,20 @@ func (t *Table) FullName() string {
 
 // Config configures parallel backup
 type Config struct {
-	MaxWorkers       int           `json:"max_workers"`
-	MaxConcurrency   int           `json:"max_concurrency"` // Max concurrent dumps
-	ChunkSize        int64         `json:"chunk_size"`      // Rows per chunk for large tables
-	LargeTableThreshold int64      `json:"large_table_threshold"` // Bytes to consider a table "large"
-	OutputDir        string        `json:"output_dir"`
-	Compression      string        `json:"compression"` // gzip, lz4, zstd, none
-	TempDir          string        `json:"temp_dir"`
-	Timeout          time.Duration `json:"timeout"`
-	IncludeSchemas   []string      `json:"include_schemas,omitempty"`
-	ExcludeSchemas   []string      `json:"exclude_schemas,omitempty"`
-	IncludeTables    []string      `json:"include_tables,omitempty"`
-	ExcludeTables    []string      `json:"exclude_tables,omitempty"`
-	EstimateSizes    bool          `json:"estimate_sizes"`
-	OrderBySize      bool          `json:"order_by_size"` // Start with largest tables first
+	MaxWorkers          int           `json:"max_workers"`
+	MaxConcurrency      int           `json:"max_concurrency"`       // Max concurrent dumps
+	ChunkSize           int64         `json:"chunk_size"`            // Rows per chunk for large tables
+	LargeTableThreshold int64         `json:"large_table_threshold"` // Bytes to consider a table "large"
+	OutputDir           string        `json:"output_dir"`
+	Compression         string        `json:"compression"` // gzip, lz4, zstd, none
+	TempDir             string        `json:"temp_dir"`
+	Timeout             time.Duration `json:"timeout"`
+	IncludeSchemas      []string      `json:"include_schemas,omitempty"`
+	ExcludeSchemas      []string      `json:"exclude_schemas,omitempty"`
+	IncludeTables       []string      `json:"include_tables,omitempty"`
+	ExcludeTables       []string      `json:"exclude_tables,omitempty"`
+	EstimateSizes       bool          `json:"estimate_sizes"`
+	OrderBySize         bool          `json:"order_by_size"` // Start with largest tables first
 }
 
 // DefaultConfig returns sensible defaults
@@ -77,24 +77,24 @@ type TableResult struct {
 
 // Result contains the overall parallel backup result
 type Result struct {
-	Tables       []*TableResult  `json:"tables"`
-	TotalTables  int             `json:"total_tables"`
+	Tables        []*TableResult `json:"tables"`
+	TotalTables   int            `json:"total_tables"`
 	SuccessTables int            `json:"success_tables"`
-	FailedTables int             `json:"failed_tables"`
-	TotalBytes   int64           `json:"total_bytes"`
-	TotalRows    int64           `json:"total_rows"`
-	Duration     time.Duration   `json:"duration"`
-	Workers      int             `json:"workers"`
-	OutputDir    string          `json:"output_dir"`
+	FailedTables  int            `json:"failed_tables"`
+	TotalBytes    int64          `json:"total_bytes"`
+	TotalRows     int64          `json:"total_rows"`
+	Duration      time.Duration  `json:"duration"`
+	Workers       int            `json:"workers"`
+	OutputDir     string         `json:"output_dir"`
 }
 
 // Progress tracks backup progress
 type Progress struct {
-	TotalTables    int32 `json:"total_tables"`
-	CompletedTables int32 `json:"completed_tables"`
-	CurrentTable   string `json:"current_table"`
-	BytesWritten   int64 `json:"bytes_written"`
-	RowsWritten    int64 `json:"rows_written"`
+	TotalTables     int32  `json:"total_tables"`
+	CompletedTables int32  `json:"completed_tables"`
+	CurrentTable    string `json:"current_table"`
+	BytesWritten    int64  `json:"bytes_written"`
+	RowsWritten     int64  `json:"rows_written"`
 }
 
 // ProgressCallback is called with progress updates
@@ -438,7 +438,7 @@ func (e *Engine) dumpPostgresTable(ctx context.Context, table *Table, w io.Write
 
 	// Use COPY TO STDOUT for efficiency
 	copyQuery := fmt.Sprintf("COPY %s TO STDOUT WITH (FORMAT csv, HEADER true)", table.FullName())
-	
+
 	rows, err := e.db.QueryContext(ctx, copyQuery)
 	if err != nil {
 		// Fallback to regular SELECT

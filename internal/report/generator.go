@@ -157,12 +157,12 @@ func (g *Generator) collectEvidence() ([]Evidence, error) {
 			Source:      "catalog",
 			CollectedAt: time.Now(),
 			Data: map[string]interface{}{
-				"total_backups":    stats.TotalBackups,
-				"oldest_backup":    stats.OldestBackup,
-				"newest_backup":    stats.NewestBackup,
-				"average_size":     stats.AvgSize,
-				"total_size":       stats.TotalSize,
-				"databases":        len(stats.ByDatabase),
+				"total_backups": stats.TotalBackups,
+				"oldest_backup": stats.OldestBackup,
+				"newest_backup": stats.NewestBackup,
+				"average_size":  stats.AvgSize,
+				"total_size":    stats.TotalSize,
+				"databases":     len(stats.ByDatabase),
 			},
 		})
 	}
@@ -376,34 +376,34 @@ func (g *Generator) createFinding(ctrl *Control, report *Report) *Finding {
 	}
 
 	return &Finding{
-		ID:          fmt.Sprintf("FND-%s-%d", ctrl.ID, time.Now().UnixNano()),
-		ControlID:   ctrl.ID,
-		Type:        findingType,
-		Severity:    severity,
-		Title:       fmt.Sprintf("%s: %s", ctrl.Reference, ctrl.Name),
-		Description: ctrl.Notes,
-		Impact:      fmt.Sprintf("Non-compliance with %s requirements", report.Type),
+		ID:             fmt.Sprintf("FND-%s-%d", ctrl.ID, time.Now().UnixNano()),
+		ControlID:      ctrl.ID,
+		Type:           findingType,
+		Severity:       severity,
+		Title:          fmt.Sprintf("%s: %s", ctrl.Reference, ctrl.Name),
+		Description:    ctrl.Notes,
+		Impact:         fmt.Sprintf("Non-compliance with %s requirements", report.Type),
 		Recommendation: g.getRecommendation(ctrl.ID),
-		Status:      FindingOpen,
-		DetectedAt:  time.Now(),
-		Evidence:    ctrl.Evidence,
+		Status:         FindingOpen,
+		DetectedAt:     time.Now(),
+		Evidence:       ctrl.Evidence,
 	}
 }
 
 // getRecommendation returns remediation recommendation for a control
 func (g *Generator) getRecommendation(controlID string) string {
 	recommendations := map[string]string{
-		"CC6.1":      "Enable encryption for all backups using AES-256",
-		"CC6.7":      "Ensure all backup transfers use TLS",
-		"A1.1":       "Establish and document backup schedule",
-		"A1.2":       "Schedule and perform regular DR drill tests",
-		"A1.3":       "Document and test recovery procedures",
-		"A1.4":       "Develop and test disaster recovery plan",
-		"PI1.1":      "Enable checksum verification for all backups",
-		"C1.2":       "Implement and document retention policies",
+		"CC6.1":       "Enable encryption for all backups using AES-256",
+		"CC6.7":       "Ensure all backup transfers use TLS",
+		"A1.1":        "Establish and document backup schedule",
+		"A1.2":        "Schedule and perform regular DR drill tests",
+		"A1.3":        "Document and test recovery procedures",
+		"A1.4":        "Develop and test disaster recovery plan",
+		"PI1.1":       "Enable checksum verification for all backups",
+		"C1.2":        "Implement and document retention policies",
 		"164.312a2iv": "Enable HIPAA-compliant encryption (AES-256)",
 		"164.308a7iD": "Test backup recoverability quarterly",
-		"PCI-3.4":    "Encrypt all backups containing cardholder data",
+		"PCI-3.4":     "Encrypt all backups containing cardholder data",
 	}
 
 	if rec, ok := recommendations[controlID]; ok {

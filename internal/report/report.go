@@ -23,30 +23,30 @@ const (
 type ComplianceStatus string
 
 const (
-	StatusCompliant    ComplianceStatus = "compliant"
-	StatusNonCompliant ComplianceStatus = "non_compliant"
-	StatusPartial      ComplianceStatus = "partial"
+	StatusCompliant     ComplianceStatus = "compliant"
+	StatusNonCompliant  ComplianceStatus = "non_compliant"
+	StatusPartial       ComplianceStatus = "partial"
 	StatusNotApplicable ComplianceStatus = "not_applicable"
-	StatusUnknown      ComplianceStatus = "unknown"
+	StatusUnknown       ComplianceStatus = "unknown"
 )
 
 // Report represents a compliance report
 type Report struct {
-	ID           string               `json:"id"`
-	Type         ReportType           `json:"type"`
-	Title        string               `json:"title"`
-	Description  string               `json:"description"`
-	GeneratedAt  time.Time            `json:"generated_at"`
-	GeneratedBy  string               `json:"generated_by"`
-	PeriodStart  time.Time            `json:"period_start"`
-	PeriodEnd    time.Time            `json:"period_end"`
-	Status       ComplianceStatus     `json:"overall_status"`
-	Score        float64              `json:"score"` // 0-100
-	Categories   []Category           `json:"categories"`
-	Summary      Summary              `json:"summary"`
-	Findings     []Finding            `json:"findings"`
-	Evidence     []Evidence           `json:"evidence"`
-	Metadata     map[string]string    `json:"metadata,omitempty"`
+	ID          string            `json:"id"`
+	Type        ReportType        `json:"type"`
+	Title       string            `json:"title"`
+	Description string            `json:"description"`
+	GeneratedAt time.Time         `json:"generated_at"`
+	GeneratedBy string            `json:"generated_by"`
+	PeriodStart time.Time         `json:"period_start"`
+	PeriodEnd   time.Time         `json:"period_end"`
+	Status      ComplianceStatus  `json:"overall_status"`
+	Score       float64           `json:"score"` // 0-100
+	Categories  []Category        `json:"categories"`
+	Summary     Summary           `json:"summary"`
+	Findings    []Finding         `json:"findings"`
+	Evidence    []Evidence        `json:"evidence"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
 // Category represents a compliance category
@@ -62,40 +62,40 @@ type Category struct {
 
 // Control represents a compliance control
 type Control struct {
-	ID           string           `json:"id"`
-	Reference    string           `json:"reference"` // e.g., "SOC2 CC6.1"
-	Name         string           `json:"name"`
-	Description  string           `json:"description"`
-	Status       ComplianceStatus `json:"status"`
-	Evidence     []string         `json:"evidence_ids,omitempty"`
-	Findings     []string         `json:"finding_ids,omitempty"`
-	LastChecked  time.Time        `json:"last_checked"`
-	Notes        string           `json:"notes,omitempty"`
+	ID          string           `json:"id"`
+	Reference   string           `json:"reference"` // e.g., "SOC2 CC6.1"
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Status      ComplianceStatus `json:"status"`
+	Evidence    []string         `json:"evidence_ids,omitempty"`
+	Findings    []string         `json:"finding_ids,omitempty"`
+	LastChecked time.Time        `json:"last_checked"`
+	Notes       string           `json:"notes,omitempty"`
 }
 
 // Finding represents a compliance finding
 type Finding struct {
-	ID           string           `json:"id"`
-	ControlID    string           `json:"control_id"`
-	Type         FindingType      `json:"type"`
-	Severity     FindingSeverity  `json:"severity"`
-	Title        string           `json:"title"`
-	Description  string           `json:"description"`
-	Impact       string           `json:"impact"`
-	Recommendation string         `json:"recommendation"`
-	Status       FindingStatus    `json:"status"`
-	DetectedAt   time.Time        `json:"detected_at"`
-	ResolvedAt   *time.Time       `json:"resolved_at,omitempty"`
-	Evidence     []string         `json:"evidence_ids,omitempty"`
+	ID             string          `json:"id"`
+	ControlID      string          `json:"control_id"`
+	Type           FindingType     `json:"type"`
+	Severity       FindingSeverity `json:"severity"`
+	Title          string          `json:"title"`
+	Description    string          `json:"description"`
+	Impact         string          `json:"impact"`
+	Recommendation string          `json:"recommendation"`
+	Status         FindingStatus   `json:"status"`
+	DetectedAt     time.Time       `json:"detected_at"`
+	ResolvedAt     *time.Time      `json:"resolved_at,omitempty"`
+	Evidence       []string        `json:"evidence_ids,omitempty"`
 }
 
 // FindingType represents the type of finding
 type FindingType string
 
 const (
-	FindingGap         FindingType = "gap"
-	FindingViolation   FindingType = "violation"
-	FindingObservation FindingType = "observation"
+	FindingGap            FindingType = "gap"
+	FindingViolation      FindingType = "violation"
+	FindingObservation    FindingType = "observation"
 	FindingRecommendation FindingType = "recommendation"
 )
 
@@ -133,57 +133,57 @@ type Evidence struct {
 type EvidenceType string
 
 const (
-	EvidenceBackupLog      EvidenceType = "backup_log"
-	EvidenceRestoreLog     EvidenceType = "restore_log"
-	EvidenceDrillResult    EvidenceType = "drill_result"
+	EvidenceBackupLog       EvidenceType = "backup_log"
+	EvidenceRestoreLog      EvidenceType = "restore_log"
+	EvidenceDrillResult     EvidenceType = "drill_result"
 	EvidenceEncryptionProof EvidenceType = "encryption_proof"
-	EvidenceRetentionProof EvidenceType = "retention_proof"
-	EvidenceAccessLog      EvidenceType = "access_log"
-	EvidenceAuditLog       EvidenceType = "audit_log"
-	EvidenceConfiguration  EvidenceType = "configuration"
-	EvidenceScreenshot     EvidenceType = "screenshot"
-	EvidenceOther          EvidenceType = "other"
+	EvidenceRetentionProof  EvidenceType = "retention_proof"
+	EvidenceAccessLog       EvidenceType = "access_log"
+	EvidenceAuditLog        EvidenceType = "audit_log"
+	EvidenceConfiguration   EvidenceType = "configuration"
+	EvidenceScreenshot      EvidenceType = "screenshot"
+	EvidenceOther           EvidenceType = "other"
 )
 
 // Summary provides a high-level overview
 type Summary struct {
-	TotalControls      int     `json:"total_controls"`
-	CompliantControls  int     `json:"compliant_controls"`
-	NonCompliantControls int   `json:"non_compliant_controls"`
-	PartialControls    int     `json:"partial_controls"`
-	NotApplicable      int     `json:"not_applicable"`
-	OpenFindings       int     `json:"open_findings"`
-	CriticalFindings   int     `json:"critical_findings"`
-	HighFindings       int     `json:"high_findings"`
-	MediumFindings     int     `json:"medium_findings"`
-	LowFindings        int     `json:"low_findings"`
-	ComplianceRate     float64 `json:"compliance_rate"`
-	RiskScore          float64 `json:"risk_score"`
+	TotalControls        int     `json:"total_controls"`
+	CompliantControls    int     `json:"compliant_controls"`
+	NonCompliantControls int     `json:"non_compliant_controls"`
+	PartialControls      int     `json:"partial_controls"`
+	NotApplicable        int     `json:"not_applicable"`
+	OpenFindings         int     `json:"open_findings"`
+	CriticalFindings     int     `json:"critical_findings"`
+	HighFindings         int     `json:"high_findings"`
+	MediumFindings       int     `json:"medium_findings"`
+	LowFindings          int     `json:"low_findings"`
+	ComplianceRate       float64 `json:"compliance_rate"`
+	RiskScore            float64 `json:"risk_score"`
 }
 
 // ReportConfig configures report generation
 type ReportConfig struct {
-	Type           ReportType          `json:"type"`
-	Title          string              `json:"title"`
-	Description    string              `json:"description"`
-	PeriodStart    time.Time           `json:"period_start"`
-	PeriodEnd      time.Time           `json:"period_end"`
-	IncludeDatabases []string          `json:"include_databases,omitempty"`
-	ExcludeDatabases []string          `json:"exclude_databases,omitempty"`
-	CatalogPath    string              `json:"catalog_path"`
-	OutputFormat   OutputFormat        `json:"output_format"`
-	OutputPath     string              `json:"output_path"`
-	IncludeEvidence bool               `json:"include_evidence"`
-	CustomControls []Control           `json:"custom_controls,omitempty"`
+	Type             ReportType   `json:"type"`
+	Title            string       `json:"title"`
+	Description      string       `json:"description"`
+	PeriodStart      time.Time    `json:"period_start"`
+	PeriodEnd        time.Time    `json:"period_end"`
+	IncludeDatabases []string     `json:"include_databases,omitempty"`
+	ExcludeDatabases []string     `json:"exclude_databases,omitempty"`
+	CatalogPath      string       `json:"catalog_path"`
+	OutputFormat     OutputFormat `json:"output_format"`
+	OutputPath       string       `json:"output_path"`
+	IncludeEvidence  bool         `json:"include_evidence"`
+	CustomControls   []Control    `json:"custom_controls,omitempty"`
 }
 
 // OutputFormat represents report output format
 type OutputFormat string
 
 const (
-	FormatJSON OutputFormat = "json"
-	FormatHTML OutputFormat = "html"
-	FormatPDF  OutputFormat = "pdf"
+	FormatJSON     OutputFormat = "json"
+	FormatHTML     OutputFormat = "html"
+	FormatPDF      OutputFormat = "pdf"
 	FormatMarkdown OutputFormat = "markdown"
 )
 

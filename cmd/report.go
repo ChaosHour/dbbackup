@@ -66,15 +66,15 @@ var reportControlsCmd = &cobra.Command{
 }
 
 var (
-	reportType       string
-	reportDays       int
-	reportStartDate  string
-	reportEndDate    string
-	reportFormat     string
-	reportOutput     string
-	reportCatalog    string
-	reportTitle      string
-	includeEvidence  bool
+	reportType      string
+	reportDays      int
+	reportStartDate string
+	reportEndDate   string
+	reportFormat    string
+	reportOutput    string
+	reportCatalog   string
+	reportTitle     string
+	includeEvidence bool
 )
 
 func init() {

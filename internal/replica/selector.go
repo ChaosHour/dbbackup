@@ -13,51 +13,51 @@ import (
 type Role string
 
 const (
-	RolePrimary   Role = "primary"
-	RoleReplica   Role = "replica"
+	RolePrimary    Role = "primary"
+	RoleReplica    Role = "replica"
 	RoleStandalone Role = "standalone"
-	RoleUnknown   Role = "unknown"
+	RoleUnknown    Role = "unknown"
 )
 
 // Status represents the health status of a replica
 type Status string
 
 const (
-	StatusHealthy   Status = "healthy"
-	StatusLagging   Status = "lagging"
+	StatusHealthy      Status = "healthy"
+	StatusLagging      Status = "lagging"
 	StatusDisconnected Status = "disconnected"
-	StatusUnknown   Status = "unknown"
+	StatusUnknown      Status = "unknown"
 )
 
 // Node represents a database node in a replication topology
 type Node struct {
-	Host          string        `json:"host"`
-	Port          int           `json:"port"`
-	Role          Role          `json:"role"`
-	Status        Status        `json:"status"`
-	ReplicationLag time.Duration `json:"replication_lag"`
-	IsAvailable   bool          `json:"is_available"`
-	LastChecked   time.Time     `json:"last_checked"`
-	Priority      int           `json:"priority"` // Lower = higher priority
-	Weight        int           `json:"weight"`   // For load balancing
-	Metadata      map[string]string `json:"metadata,omitempty"`
+	Host           string            `json:"host"`
+	Port           int               `json:"port"`
+	Role           Role              `json:"role"`
+	Status         Status            `json:"status"`
+	ReplicationLag time.Duration     `json:"replication_lag"`
+	IsAvailable    bool              `json:"is_available"`
+	LastChecked    time.Time         `json:"last_checked"`
+	Priority       int               `json:"priority"` // Lower = higher priority
+	Weight         int               `json:"weight"`   // For load balancing
+	Metadata       map[string]string `json:"metadata,omitempty"`
 }
 
 // Topology represents the replication topology
 type Topology struct {
-	Primary   *Node   `json:"primary,omitempty"`
-	Replicas  []*Node `json:"replicas"`
+	Primary   *Node     `json:"primary,omitempty"`
+	Replicas  []*Node   `json:"replicas"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
 // Config configures replica-aware backup behavior
 type Config struct {
-	PreferReplica    bool          `json:"prefer_replica"`
+	PreferReplica     bool          `json:"prefer_replica"`
 	MaxReplicationLag time.Duration `json:"max_replication_lag"`
 	FallbackToPrimary bool          `json:"fallback_to_primary"`
-	RequireHealthy   bool          `json:"require_healthy"`
+	RequireHealthy    bool          `json:"require_healthy"`
 	SelectionStrategy Strategy      `json:"selection_strategy"`
-	Nodes            []NodeConfig  `json:"nodes"`
+	Nodes             []NodeConfig  `json:"nodes"`
 }
 
 // NodeConfig configures a known node
@@ -72,11 +72,11 @@ type NodeConfig struct {
 type Strategy string
 
 const (
-	StrategyPreferReplica Strategy = "prefer_replica"  // Always prefer replica
-	StrategyLowestLag     Strategy = "lowest_lag"      // Choose node with lowest lag
-	StrategyRoundRobin    Strategy = "round_robin"     // Rotate between replicas
-	StrategyPriority      Strategy = "priority"        // Use configured priorities
-	StrategyWeighted      Strategy = "weighted"        // Weighted random selection
+	StrategyPreferReplica Strategy = "prefer_replica" // Always prefer replica
+	StrategyLowestLag     Strategy = "lowest_lag"     // Choose node with lowest lag
+	StrategyRoundRobin    Strategy = "round_robin"    // Rotate between replicas
+	StrategyPriority      Strategy = "priority"       // Use configured priorities
+	StrategyWeighted      Strategy = "weighted"       // Weighted random selection
 )
 
 // DefaultConfig returns default replica configuration
@@ -92,7 +92,7 @@ func DefaultConfig() Config {
 
 // Selector selects the best node for backup
 type Selector struct {
-	config      Config
+	config       Config
 	lastSelected int // For round-robin
 }
 
@@ -164,13 +164,13 @@ func (s *Selector) applyStrategy(candidates []*Node) (*Node, error) {
 	switch s.config.SelectionStrategy {
 	case StrategyLowestLag:
 		return s.selectLowestLag(candidates), nil
-		
+
 	case StrategyPriority:
 		return s.selectByPriority(candidates), nil
-		
+
 	case StrategyRoundRobin:
 		return s.selectRoundRobin(candidates), nil
-		
+
 	default:
 		// Default to lowest lag
 		return s.selectLowestLag(candidates), nil

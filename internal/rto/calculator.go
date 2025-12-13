@@ -22,74 +22,74 @@ type Config struct {
 	TargetRPO time.Duration `json:"target_rpo"` // Target Recovery Point Objective
 
 	// Assumptions for calculation
-	NetworkSpeedMbps     float64 `json:"network_speed_mbps"`      // Network speed for cloud restores
-	DiskReadSpeedMBps    float64 `json:"disk_read_speed_mbps"`    // Disk read speed
-	DiskWriteSpeedMBps   float64 `json:"disk_write_speed_mbps"`   // Disk write speed
+	NetworkSpeedMbps       float64 `json:"network_speed_mbps"`    // Network speed for cloud restores
+	DiskReadSpeedMBps      float64 `json:"disk_read_speed_mbps"`  // Disk read speed
+	DiskWriteSpeedMBps     float64 `json:"disk_write_speed_mbps"` // Disk write speed
 	CloudDownloadSpeedMbps float64 `json:"cloud_download_speed_mbps"`
 
 	// Time estimates for various operations
-	StartupTimeMinutes    int `json:"startup_time_minutes"`     // DB startup time
-	ValidationTimeMinutes int `json:"validation_time_minutes"`  // Post-restore validation
-	SwitchoverTimeMinutes int `json:"switchover_time_minutes"`  // Application switchover time
+	StartupTimeMinutes    int `json:"startup_time_minutes"`    // DB startup time
+	ValidationTimeMinutes int `json:"validation_time_minutes"` // Post-restore validation
+	SwitchoverTimeMinutes int `json:"switchover_time_minutes"` // Application switchover time
 }
 
 // DefaultConfig returns sensible defaults
 func DefaultConfig() Config {
 	return Config{
-		TargetRTO:            4 * time.Hour,
-		TargetRPO:            1 * time.Hour,
-		NetworkSpeedMbps:     100,
-		DiskReadSpeedMBps:    100,
-		DiskWriteSpeedMBps:   50,
+		TargetRTO:              4 * time.Hour,
+		TargetRPO:              1 * time.Hour,
+		NetworkSpeedMbps:       100,
+		DiskReadSpeedMBps:      100,
+		DiskWriteSpeedMBps:     50,
 		CloudDownloadSpeedMbps: 100,
-		StartupTimeMinutes:    2,
-		ValidationTimeMinutes: 5,
-		SwitchoverTimeMinutes: 5,
+		StartupTimeMinutes:     2,
+		ValidationTimeMinutes:  5,
+		SwitchoverTimeMinutes:  5,
 	}
 }
 
 // Analysis contains RTO/RPO analysis results
 type Analysis struct {
-	Database    string          `json:"database"`
-	Timestamp   time.Time       `json:"timestamp"`
-	
+	Database  string    `json:"database"`
+	Timestamp time.Time `json:"timestamp"`
+
 	// Current state
-	CurrentRPO  time.Duration   `json:"current_rpo"`
-	CurrentRTO  time.Duration   `json:"current_rto"`
-	
+	CurrentRPO time.Duration `json:"current_rpo"`
+	CurrentRTO time.Duration `json:"current_rto"`
+
 	// Target state
-	TargetRPO   time.Duration   `json:"target_rpo"`
-	TargetRTO   time.Duration   `json:"target_rto"`
-	
+	TargetRPO time.Duration `json:"target_rpo"`
+	TargetRTO time.Duration `json:"target_rto"`
+
 	// Compliance
-	RPOCompliant bool           `json:"rpo_compliant"`
-	RTOCompliant bool           `json:"rto_compliant"`
-	
+	RPOCompliant bool `json:"rpo_compliant"`
+	RTOCompliant bool `json:"rto_compliant"`
+
 	// Details
-	LastBackup     *time.Time   `json:"last_backup,omitempty"`
-	NextScheduled  *time.Time   `json:"next_scheduled,omitempty"`
+	LastBackup     *time.Time    `json:"last_backup,omitempty"`
+	NextScheduled  *time.Time    `json:"next_scheduled,omitempty"`
 	BackupInterval time.Duration `json:"backup_interval"`
-	
+
 	// RTO breakdown
-	RTOBreakdown   RTOBreakdown  `json:"rto_breakdown"`
-	
+	RTOBreakdown RTOBreakdown `json:"rto_breakdown"`
+
 	// Recommendations
 	Recommendations []Recommendation `json:"recommendations,omitempty"`
-	
+
 	// Historical
-	History         []HistoricalPoint `json:"history,omitempty"`
+	History []HistoricalPoint `json:"history,omitempty"`
 }
 
 // RTOBreakdown shows components of RTO calculation
 type RTOBreakdown struct {
-	DetectionTime   time.Duration `json:"detection_time"`
-	DecisionTime    time.Duration `json:"decision_time"`
-	DownloadTime    time.Duration `json:"download_time"`
-	RestoreTime     time.Duration `json:"restore_time"`
-	StartupTime     time.Duration `json:"startup_time"`
-	ValidationTime  time.Duration `json:"validation_time"`
-	SwitchoverTime  time.Duration `json:"switchover_time"`
-	TotalTime       time.Duration `json:"total_time"`
+	DetectionTime  time.Duration `json:"detection_time"`
+	DecisionTime   time.Duration `json:"decision_time"`
+	DownloadTime   time.Duration `json:"download_time"`
+	RestoreTime    time.Duration `json:"restore_time"`
+	StartupTime    time.Duration `json:"startup_time"`
+	ValidationTime time.Duration `json:"validation_time"`
+	SwitchoverTime time.Duration `json:"switchover_time"`
+	TotalTime      time.Duration `json:"total_time"`
 }
 
 // Recommendation suggests improvements
@@ -106,13 +106,13 @@ type Recommendation struct {
 type RecommendationType string
 
 const (
-	RecommendBackupFrequency RecommendationType = "backup_frequency"
+	RecommendBackupFrequency   RecommendationType = "backup_frequency"
 	RecommendIncrementalBackup RecommendationType = "incremental_backup"
-	RecommendCompression     RecommendationType = "compression"
-	RecommendLocalCache      RecommendationType = "local_cache"
-	RecommendParallelRestore RecommendationType = "parallel_restore"
-	RecommendWALArchiving    RecommendationType = "wal_archiving"
-	RecommendReplication     RecommendationType = "replication"
+	RecommendCompression       RecommendationType = "compression"
+	RecommendLocalCache        RecommendationType = "local_cache"
+	RecommendParallelRestore   RecommendationType = "parallel_restore"
+	RecommendWALArchiving      RecommendationType = "wal_archiving"
+	RecommendReplication       RecommendationType = "replication"
 )
 
 // Priority levels
@@ -229,16 +229,16 @@ func (c *Calculator) calculateRTOBreakdown(entry *catalog.Entry) RTOBreakdown {
 	breakdown := RTOBreakdown{
 		// Detection time - assume monitoring catches issues quickly
 		DetectionTime: 5 * time.Minute,
-		
+
 		// Decision time - human decision making
 		DecisionTime: 10 * time.Minute,
-		
+
 		// Startup time
 		StartupTime: time.Duration(c.config.StartupTimeMinutes) * time.Minute,
-		
+
 		// Validation time
 		ValidationTime: time.Duration(c.config.ValidationTimeMinutes) * time.Minute,
-		
+
 		// Switchover time
 		SwitchoverTime: time.Duration(c.config.SwitchoverTimeMinutes) * time.Minute,
 	}
@@ -255,17 +255,17 @@ func (c *Calculator) calculateRTOBreakdown(entry *catalog.Entry) RTOBreakdown {
 	// Estimate based on disk write speed
 	bytesPerSecond := c.config.DiskWriteSpeedMBps * 1000000 // MB/s to bytes/sec
 	restoreSeconds := float64(entry.SizeBytes) / bytesPerSecond
-	
+
 	// Add overhead for decompression if compressed
 	if entry.Compression != "" && entry.Compression != "none" {
 		restoreSeconds *= 1.3 // 30% overhead for decompression
 	}
-	
+
 	// Add overhead for decryption if encrypted
 	if entry.Encrypted {
 		restoreSeconds *= 1.1 // 10% overhead for decryption
 	}
-	
+
 	breakdown.RestoreTime = time.Duration(restoreSeconds * float64(time.Second))
 
 	// Calculate total
@@ -303,9 +303,9 @@ func (c *Calculator) generateRecommendations(analysis *Analysis, entries []*cata
 	if !analysis.RPOCompliant {
 		gap := analysis.CurrentRPO - c.config.TargetRPO
 		recommendations = append(recommendations, Recommendation{
-			Type:        RecommendBackupFrequency,
-			Priority:    PriorityCritical,
-			Title:       "RPO Target Not Met",
+			Type:     RecommendBackupFrequency,
+			Priority: PriorityCritical,
+			Title:    "RPO Target Not Met",
 			Description: fmt.Sprintf("Current RPO (%s) exceeds target (%s) by %s",
 				formatDuration(analysis.CurrentRPO),
 				formatDuration(c.config.TargetRPO),
@@ -318,9 +318,9 @@ func (c *Calculator) generateRecommendations(analysis *Analysis, entries []*cata
 	// RTO violations
 	if !analysis.RTOCompliant {
 		recommendations = append(recommendations, Recommendation{
-			Type:        RecommendParallelRestore,
-			Priority:    PriorityHigh,
-			Title:       "RTO Target Not Met",
+			Type:     RecommendParallelRestore,
+			Priority: PriorityHigh,
+			Title:    "RTO Target Not Met",
 			Description: fmt.Sprintf("Estimated recovery time (%s) exceeds target (%s)",
 				formatDuration(analysis.CurrentRTO),
 				formatDuration(c.config.TargetRTO)),
@@ -332,9 +332,9 @@ func (c *Calculator) generateRecommendations(analysis *Analysis, entries []*cata
 	// Large download time
 	if analysis.RTOBreakdown.DownloadTime > 30*time.Minute {
 		recommendations = append(recommendations, Recommendation{
-			Type:        RecommendLocalCache,
-			Priority:    PriorityMedium,
-			Title:       "Consider Local Backup Cache",
+			Type:     RecommendLocalCache,
+			Priority: PriorityMedium,
+			Title:    "Consider Local Backup Cache",
 			Description: fmt.Sprintf("Cloud download takes %s, local cache would reduce this",
 				formatDuration(analysis.RTOBreakdown.DownloadTime)),
 			Impact: "Faster recovery from local storage",
@@ -408,28 +408,28 @@ func (c *Calculator) calculateHistory(entries []*catalog.Entry) []HistoricalPoin
 
 // Summary provides aggregate RTO/RPO status
 type Summary struct {
-	TotalDatabases    int           `json:"total_databases"`
-	RPOCompliant      int           `json:"rpo_compliant"`
-	RTOCompliant      int           `json:"rto_compliant"`
-	FullyCompliant    int           `json:"fully_compliant"`
-	CriticalIssues    int           `json:"critical_issues"`
-	WorstRPO          time.Duration `json:"worst_rpo"`
-	WorstRTO          time.Duration `json:"worst_rto"`
-	WorstRPODatabase  string        `json:"worst_rpo_database"`
-	WorstRTODatabase  string        `json:"worst_rto_database"`
-	AverageRPO        time.Duration `json:"average_rpo"`
-	AverageRTO        time.Duration `json:"average_rto"`
+	TotalDatabases   int           `json:"total_databases"`
+	RPOCompliant     int           `json:"rpo_compliant"`
+	RTOCompliant     int           `json:"rto_compliant"`
+	FullyCompliant   int           `json:"fully_compliant"`
+	CriticalIssues   int           `json:"critical_issues"`
+	WorstRPO         time.Duration `json:"worst_rpo"`
+	WorstRTO         time.Duration `json:"worst_rto"`
+	WorstRPODatabase string        `json:"worst_rpo_database"`
+	WorstRTODatabase string        `json:"worst_rto_database"`
+	AverageRPO       time.Duration `json:"average_rpo"`
+	AverageRTO       time.Duration `json:"average_rto"`
 }
 
 // Summarize creates a summary from analyses
 func Summarize(analyses []*Analysis) *Summary {
 	summary := &Summary{}
-	
+
 	var totalRPO, totalRTO time.Duration
 
 	for _, a := range analyses {
 		summary.TotalDatabases++
-		
+
 		if a.RPOCompliant {
 			summary.RPOCompliant++
 		}

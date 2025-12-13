@@ -110,12 +110,12 @@ func (b *BtrfsBackend) CreateSnapshot(ctx context.Context, opts SnapshotOptions)
 	}
 
 	return &Snapshot{
-		ID:        fullPath,
-		Backend:   "btrfs",
-		Source:    b.config.Subvolume,
-		Name:      snapName,
+		ID:         fullPath,
+		Backend:    "btrfs",
+		Source:     b.config.Subvolume,
+		Name:       snapName,
 		MountPoint: fullPath, // Btrfs snapshots are immediately accessible
-		CreatedAt: time.Now(),
+		CreatedAt:  time.Now(),
 		Metadata: map[string]string{
 			"subvolume":     b.config.Subvolume,
 			"snapshot_path": snapPath,
@@ -279,12 +279,12 @@ func (b *BtrfsBackend) ListSnapshots(ctx context.Context) ([]*Snapshot, error) {
 		}
 
 		snapshots = append(snapshots, &Snapshot{
-			ID:        fullPath,
-			Backend:   "btrfs",
-			Name:      name,
-			Source:    b.config.Subvolume,
+			ID:         fullPath,
+			Backend:    "btrfs",
+			Name:       name,
+			Source:     b.config.Subvolume,
 			MountPoint: fullPath,
-			CreatedAt: createdAt,
+			CreatedAt:  createdAt,
 			Metadata: map[string]string{
 				"subvolume": b.config.Subvolume,
 			},
@@ -322,12 +322,12 @@ func (b *BtrfsBackend) listSnapshotsFromDir(ctx context.Context, snapPath string
 		}
 
 		snapshots = append(snapshots, &Snapshot{
-			ID:        fullPath,
-			Backend:   "btrfs",
-			Name:      entry.Name(),
-			Source:    b.config.Subvolume,
+			ID:         fullPath,
+			Backend:    "btrfs",
+			Name:       entry.Name(),
+			Source:     b.config.Subvolume,
 			MountPoint: fullPath,
-			CreatedAt: createdAt,
+			CreatedAt:  createdAt,
 			Metadata: map[string]string{
 				"subvolume": b.config.Subvolume,
 			},

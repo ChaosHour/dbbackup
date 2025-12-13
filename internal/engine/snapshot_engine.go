@@ -378,10 +378,10 @@ func (e *SnapshotEngine) streamSnapshot(ctx context.Context, sourcePath, destFil
 			// Report progress
 			if progressFunc != nil && totalFiles > 0 {
 				progressFunc(&Progress{
-					Stage:      "STREAMING",
-					Percent:    30 + float64(fileCount)/float64(totalFiles)*60,
-					BytesDone:  countWriter.count,
-					Message:    fmt.Sprintf("Processed %d/%d files (%s)", fileCount, totalFiles, formatBytes(countWriter.count)),
+					Stage:     "STREAMING",
+					Percent:   30 + float64(fileCount)/float64(totalFiles)*60,
+					BytesDone: countWriter.count,
+					Message:   fmt.Sprintf("Processed %d/%d files (%s)", fileCount, totalFiles, formatBytes(countWriter.count)),
 				})
 			}
 		}

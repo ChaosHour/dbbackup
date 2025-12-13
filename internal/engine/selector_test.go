@@ -12,7 +12,7 @@ func TestSelectorConfig(t *testing.T) {
 		User:            "root",
 		DataDir:         "/var/lib/mysql",
 		CloneMinVersion: "8.0.17",
-		CloneMinSize:    1024 * 1024 * 1024, // 1GB
+		CloneMinSize:    1024 * 1024 * 1024,      // 1GB
 		SnapshotMinSize: 10 * 1024 * 1024 * 1024, // 10GB
 		PreferClone:     true,
 		AllowMysqldump:  true,
@@ -111,9 +111,9 @@ func TestSelectionReason(t *testing.T) {
 func TestEngineScoring(t *testing.T) {
 	// Test that scores are calculated correctly
 	tests := []struct {
-		name           string
-		info           DatabaseInfo
-		expectedBest   string
+		name         string
+		info         DatabaseInfo
+		expectedBest string
 	}{
 		{
 			name: "large DB with clone plugin",

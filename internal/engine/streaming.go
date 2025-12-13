@@ -13,10 +13,10 @@ import (
 
 // StreamingBackupEngine wraps a backup engine with streaming capability
 type StreamingBackupEngine struct {
-	engine    BackupEngine
-	cloudCfg  parallel.Config
-	log       logger.Logger
-	
+	engine   BackupEngine
+	cloudCfg parallel.Config
+	log      logger.Logger
+
 	mu        sync.Mutex
 	streamer  *parallel.CloudStreamer
 	pipe      *io.PipeWriter
@@ -28,19 +28,19 @@ type StreamingBackupEngine struct {
 // StreamingConfig holds streaming configuration
 type StreamingConfig struct {
 	// Cloud configuration
-	Bucket    string
-	Key       string
-	Region    string
-	Endpoint  string
-	
+	Bucket   string
+	Key      string
+	Region   string
+	Endpoint string
+
 	// Performance
 	PartSize    int64
 	WorkerCount int
-	
+
 	// Security
-	Encryption   string
-	KMSKeyID     string
-	
+	Encryption string
+	KMSKeyID   string
+
 	// Progress callback
 	OnProgress func(progress parallel.Progress)
 }
@@ -56,7 +56,7 @@ func NewStreamingBackupEngine(engine BackupEngine, cfg StreamingConfig, log logg
 	cloudCfg.Key = cfg.Key
 	cloudCfg.Region = cfg.Region
 	cloudCfg.Endpoint = cfg.Endpoint
-	
+
 	if cfg.PartSize > 0 {
 		cloudCfg.PartSize = cfg.PartSize
 	}
@@ -199,23 +199,23 @@ type DirectBackupConfig struct {
 	// Database
 	DBType string
 	DSN    string
-	
+
 	// Cloud
-	CloudURI    string  // s3://bucket/path or gs://bucket/path
-	Region      string
-	Endpoint    string
-	
+	CloudURI string // s3://bucket/path or gs://bucket/path
+	Region   string
+	Endpoint string
+
 	// Engine selection
-	PreferredEngine string  // clone, snapshot, dump
-	
+	PreferredEngine string // clone, snapshot, dump
+
 	// Performance
 	PartSize    int64
 	WorkerCount int
-	
+
 	// Options
-	Compression    bool
-	Encryption     string
-	EncryptionKey  string
+	Compression   bool
+	Encryption    string
+	EncryptionKey string
 }
 
 // Backup performs a direct backup to cloud

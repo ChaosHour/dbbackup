@@ -77,18 +77,18 @@ func TestEvent(t *testing.T) {
 
 func TestConfig(t *testing.T) {
 	cfg := Config{
-		Host:           "localhost",
-		Port:           3306,
-		User:           "repl",
-		Password:       "secret",
-		ServerID:       99999,
-		Flavor:         "mysql",
-		BatchMaxEvents: 1000,
-		BatchMaxBytes:  10 * 1024 * 1024,
-		BatchMaxWait:   time.Second,
+		Host:              "localhost",
+		Port:              3306,
+		User:              "repl",
+		Password:          "secret",
+		ServerID:          99999,
+		Flavor:            "mysql",
+		BatchMaxEvents:    1000,
+		BatchMaxBytes:     10 * 1024 * 1024,
+		BatchMaxWait:      time.Second,
 		CheckpointEnabled: true,
 		CheckpointFile:    "/var/lib/dbbackup/checkpoint",
-		UseGTID:        true,
+		UseGTID:           true,
 	}
 
 	if cfg.Host != "localhost" {

@@ -106,11 +106,11 @@ type Filter struct {
 
 // StreamerState holds the current state of the streamer
 type StreamerState struct {
-	Position     Position  `json:"position"`
-	EventCount   uint64    `json:"event_count"`
-	ByteCount    uint64    `json:"byte_count"`
-	LastUpdate   time.Time `json:"last_update"`
-	StartTime    time.Time `json:"start_time"`
+	Position     Position       `json:"position"`
+	EventCount   uint64         `json:"event_count"`
+	ByteCount    uint64         `json:"byte_count"`
+	LastUpdate   time.Time      `json:"last_update"`
+	StartTime    time.Time      `json:"start_time"`
 	TargetStatus []TargetStatus `json:"targets"`
 }
 
@@ -125,17 +125,17 @@ type TargetStatus struct {
 
 // Event represents a parsed binlog event
 type Event struct {
-	Type      string                 `json:"type"` // "write", "update", "delete", "query", "gtid", etc.
-	Timestamp time.Time              `json:"timestamp"`
-	Database  string                 `json:"database,omitempty"`
-	Table     string                 `json:"table,omitempty"`
-	Position  Position               `json:"position"`
-	GTID      string                 `json:"gtid,omitempty"`
-	Query     string                 `json:"query,omitempty"` // For query events
-	Rows      []map[string]any       `json:"rows,omitempty"`  // For row events
-	OldRows   []map[string]any       `json:"old_rows,omitempty"` // For update events
-	RawData   []byte                 `json:"-"` // Raw binlog data for replay
-	Extra     map[string]any         `json:"extra,omitempty"`
+	Type      string           `json:"type"` // "write", "update", "delete", "query", "gtid", etc.
+	Timestamp time.Time        `json:"timestamp"`
+	Database  string           `json:"database,omitempty"`
+	Table     string           `json:"table,omitempty"`
+	Position  Position         `json:"position"`
+	GTID      string           `json:"gtid,omitempty"`
+	Query     string           `json:"query,omitempty"`    // For query events
+	Rows      []map[string]any `json:"rows,omitempty"`     // For row events
+	OldRows   []map[string]any `json:"old_rows,omitempty"` // For update events
+	RawData   []byte           `json:"-"`                  // Raw binlog data for replay
+	Extra     map[string]any   `json:"extra,omitempty"`
 }
 
 // Target interface for binlog output destinations

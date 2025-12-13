@@ -22,17 +22,17 @@ type S3Target struct {
 	region   string
 	partSize int64
 
-	mu          sync.Mutex
-	buffer      *bytes.Buffer
-	bufferSize  int
-	currentKey  string
-	uploadID    string
-	parts       []types.CompletedPart
-	partNumber  int32
-	fileNum     int
-	healthy     bool
-	lastErr     error
-	lastWrite   time.Time
+	mu         sync.Mutex
+	buffer     *bytes.Buffer
+	bufferSize int
+	currentKey string
+	uploadID   string
+	parts      []types.CompletedPart
+	partNumber int32
+	fileNum    int
+	healthy    bool
+	lastErr    error
+	lastWrite  time.Time
 }
 
 // NewS3Target creates a new S3 target
@@ -204,8 +204,8 @@ func (s *S3Target) Healthy() bool {
 // S3StreamingTarget supports larger files with resumable uploads
 type S3StreamingTarget struct {
 	*S3Target
-	rotateSize   int64
-	currentSize  int64
+	rotateSize  int64
+	currentSize int64
 }
 
 // NewS3StreamingTarget creates an S3 target with file rotation

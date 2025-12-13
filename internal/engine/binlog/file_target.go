@@ -16,12 +16,12 @@ type FileTarget struct {
 	basePath   string
 	rotateSize int64
 
-	mu       sync.Mutex
-	current  *os.File
-	written  int64
-	fileNum  int
-	healthy  bool
-	lastErr  error
+	mu      sync.Mutex
+	current *os.File
+	written int64
+	fileNum int
+	healthy bool
+	lastErr error
 }
 
 // NewFileTarget creates a new file target
@@ -165,13 +165,13 @@ type CompressedFileTarget struct {
 	basePath   string
 	rotateSize int64
 
-	mu        sync.Mutex
-	file      *os.File
-	gzWriter  *gzip.Writer
-	written   int64
-	fileNum   int
-	healthy   bool
-	lastErr   error
+	mu       sync.Mutex
+	file     *os.File
+	gzWriter *gzip.Writer
+	written  int64
+	fileNum  int
+	healthy  bool
+	lastErr  error
 }
 
 // NewCompressedFileTarget creates a gzip-compressed file target

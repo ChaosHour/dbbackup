@@ -136,12 +136,11 @@ func (l *LVMBackend) MountSnapshot(ctx context.Context, snap *Snapshot, mountPoi
 	// Mount (read-only, nouuid for XFS)
 	args := []string{"-o", "ro,nouuid", snapDevice, mountPoint}
 	cmd := exec.CommandContext(ctx, "mount", args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
+	if _, err := cmd.CombinedOutput(); err != nil {
 		// Try without nouuid (for non-XFS)
 		args = []string{"-o", "ro", snapDevice, mountPoint}
 		cmd = exec.CommandContext(ctx, "mount", args...)
-		output, err = cmd.CombinedOutput()
+		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("mount failed: %s: %w", string(output), err)
 		}

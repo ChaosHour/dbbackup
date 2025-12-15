@@ -339,7 +339,7 @@ func (e *CloneEngine) Backup(ctx context.Context, opts *BackupOptions) (*BackupR
 
 	// Save metadata
 	meta := &metadata.BackupMetadata{
-		Version:      "3.1.0",
+		Version:      "3.2.0",
 		Timestamp:    startTime,
 		Database:     opts.Database,
 		DatabaseType: "mysql",

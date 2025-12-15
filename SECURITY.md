@@ -85,7 +85,7 @@ We release security updates for the following versions:
 - ❌ Never store unencrypted backups on public storage
 
 **Docker Usage:**
-- ✅ Use specific version tags (`:v3.1.0` not `:latest`)
+- ✅ Use specific version tags (`:v3.2.0` not `:latest`)
 - ✅ Run as non-root user (default in our image)
 - ✅ Mount volumes read-only when possible
 - ✅ Use Docker secrets for credentials

@@ -110,9 +110,11 @@ dbbackup pitr mysql-enable --archive-dir /backups/binlog_archive
 ### 3. Create a Base Backup
 
 ```bash
-# Create a PITR-capable backup
-dbbackup backup single mydb --pitr
+# Create a backup - binlog position is automatically recorded
+dbbackup backup single mydb
 ```
+
+> **Note:** All backups automatically capture the current binlog position when PITR is enabled at the MySQL level. This position is stored in the backup metadata and used as the starting point for binlog replay during recovery.
 
 ### 4. Start Binlog Archiving
 

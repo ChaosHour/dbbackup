@@ -287,7 +287,6 @@ dbbackup backup single mydb --dry-run
 | `--cloud` | Cloud storage URI | - |
 | `--encrypt` | Enable encryption | false |
 | `--dry-run, -n` | Run preflight checks only | false |
-| `--notify` | Enable notifications | false |
 | `--debug` | Enable debug logging | false |
 
 ## Encryption
@@ -438,7 +437,7 @@ dbbackup backup cluster -n  # Short flag
 
 ## Notifications
 
-Get alerted on backup events via email or webhooks.
+Get alerted on backup events via email or webhooks. Configure via environment variables.
 
 ### SMTP Email
 
@@ -451,8 +450,8 @@ export NOTIFY_SMTP_PASSWORD="secret"
 export NOTIFY_SMTP_FROM="dbbackup@example.com"
 export NOTIFY_SMTP_TO="admin@example.com,dba@example.com"
 
-# Enable notifications
-dbbackup backup single mydb --notify
+# Run backup (notifications triggered when SMTP is configured)
+dbbackup backup single mydb
 ```
 
 ### Webhooks
@@ -465,7 +464,8 @@ export NOTIFY_WEBHOOK_SECRET="signing-secret"  # Optional HMAC signing
 # Slack webhook
 export NOTIFY_WEBHOOK_URL="https://hooks.slack.com/services/T00/B00/XXX"
 
-dbbackup backup single mydb --notify
+# Run backup (notifications triggered when webhook is configured)
+dbbackup backup single mydb
 ```
 
 **Webhook payload:**

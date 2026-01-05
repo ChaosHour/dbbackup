@@ -227,6 +227,14 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					formatSize(selected.Size),
 					selected.Modified.Format("2006-01-02 15:04:05"))
 			}
+
+		case "d":
+			// Run diagnosis on selected archive
+			if len(m.archives) > 0 && m.cursor < len(m.archives) {
+				selected := m.archives[m.cursor]
+				diagnoseView := NewDiagnoseView(m.config, m.logger, m, m.ctx, selected)
+				return diagnoseView, diagnoseView.Init()
+			}
 		}
 	}
 
@@ -335,7 +343,7 @@ func (m ArchiveBrowserModel) View() string {
 	s.WriteString(infoStyle.Render(fmt.Sprintf("Total: %d archive(s) | Selected: %d/%d",
 		len(m.archives), m.cursor+1, len(m.archives))))
 	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("⌨️  ↑/↓: Navigate | Enter: Select | f: Filter | i: Info | Esc: Back"))
+	s.WriteString(infoStyle.Render("⌨️  ↑/↓: Navigate | Enter: Select | d: Diagnose | f: Filter | i: Info | Esc: Back"))
 
 	return s.String()
 }

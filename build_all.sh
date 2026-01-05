@@ -15,7 +15,7 @@ echo "🔧 Using Go version: $GO_VERSION"
 
 # Configuration
 APP_NAME="dbbackup"
-VERSION="3.2.0"
+VERSION="3.40.0"
 BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S_UTC')
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BIN_DIR="bin"

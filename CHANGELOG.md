@@ -5,6 +5,55 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.40.0] - 2026-01-05 "The Diagnostician"
+
+### Added - 🔍 Restore Diagnostics & Error Reporting
+
+**Backup Diagnosis Command:**
+- `restore diagnose <archive>` - Deep analysis of backup files before restore
+- Detects truncated dumps, corrupted archives, incomplete COPY blocks
+- PGDMP signature validation for PostgreSQL custom format
+- Gzip integrity verification with decompression test
+- `pg_restore --list` validation for custom format archives
+- `--deep` flag for exhaustive line-by-line analysis
+- `--json` flag for machine-readable output
+- Cluster archive diagnosis scans all contained dumps
+
+**Detailed Error Reporting:**
+- Comprehensive error collector captures stderr during restore
+- Ring buffer prevents OOM on high-error restores (2M+ errors)
+- Error classification with actionable hints and recommendations
+- `--save-debug-log <path>` saves JSON report on failure
+- Reports include: exit codes, last errors, line context, tool versions
+- Automatic recommendations based on error patterns
+
+**TUI Restore Enhancements:**
+- **Dump validity** safety check runs automatically before restore
+- Detects truncated/corrupted backups in restore preview
+- Press **`d`** to toggle debug log saving in Advanced Options
+- Debug logs saved to `/tmp/dbbackup-restore-debug-*.json` on failure
+- Press **`d`** in archive browser to run diagnosis on any backup
+
+**New Commands:**
+- `restore diagnose` - Analyze backup file integrity and structure
+
+**New Flags:**
+- `--save-debug-log <path>` - Save detailed JSON error report on failure
+- `--diagnose` - Run deep diagnosis before cluster restore
+- `--deep` - Enable exhaustive diagnosis (line-by-line analysis)
+- `--json` - Output diagnosis in JSON format
+- `--keep-temp` - Keep temporary files after diagnosis
+- `--verbose` - Show detailed diagnosis progress
+
+### Technical Details
+- 1,200+ lines of new diagnostic code
+- Error classification system with 15+ error patterns
+- Ring buffer stderr capture (1MB max, 10K lines)
+- Zero memory growth on high-error restores
+- Full TUI integration for diagnostics
+
+---
+
 ## [3.2.0] - 2025-12-13 "The Margin Eraser"
 
 ### Added - 🚀 Physical Backup Revolution

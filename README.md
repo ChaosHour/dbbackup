@@ -54,7 +54,7 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.2.0/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.40.0/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
@@ -161,11 +161,15 @@ Cluster Restore Options
 
 Safety Checks
   [OK] Archive integrity verified
+  [OK] Dump validity verified
   [OK] Disk space: 140 GB available
   [OK] Required tools found
   [OK] Target database accessible
 
-c: Toggle cleanup | Enter: Proceed | Esc: Cancel
+Advanced Options
+  ✗ Debug Log: false (press 'd' to toggle)
+
+c: Toggle cleanup | d: Debug log | Enter: Proceed | Esc: Cancel
 ```
 
 **Backup Manager:**
@@ -180,7 +184,7 @@ FILENAME                              FORMAT                SIZE        MODIFIED
   [OK] myapp_prod_20250114.dump.gz    PostgreSQL Custom     12.3 GB     2025-01-14
   [!!] users_db_20241220.dump.gz      PostgreSQL Custom     850 MB      2024-12-20
 
-r: Restore | v: Verify | i: Info | d: Delete | R: Refresh | Esc: Back
+r: Restore | v: Verify | i: Info | d: Diagnose | D: Delete | R: Refresh | Esc: Back
 ```
 
 **Configuration Settings:**
@@ -240,6 +244,12 @@ dbbackup restore single backup.dump --target myapp_db --create --confirm
 # Restore cluster
 dbbackup restore cluster cluster_backup.tar.gz --confirm
 
+# Restore with debug logging (saves detailed error report on failure)
+dbbackup restore cluster backup.tar.gz --save-debug-log /tmp/restore-debug.json --confirm
+
+# Diagnose backup before restore
+dbbackup restore diagnose backup.dump.gz --deep
+
 # Cloud backup
 dbbackup backup single mydb --cloud s3://my-bucket/backups/
 
@@ -257,6 +267,7 @@ dbbackup backup single mydb --dry-run
 | `restore single` | Restore single database |
 | `restore cluster` | Restore full cluster |
 | `restore pitr` | Point-in-Time Recovery |
+| `restore diagnose` | Diagnose backup file integrity |
 | `verify-backup` | Verify backup integrity |
 | `cleanup` | Remove old backups |
 | `status` | Check connection status |
@@ -288,6 +299,7 @@ dbbackup backup single mydb --dry-run
 | `--encrypt` | Enable encryption | false |
 | `--dry-run, -n` | Run preflight checks only | false |
 | `--debug` | Enable debug logging | false |
+| `--save-debug-log` | Save error report to file on failure | - |
 
 ## Encryption
 
@@ -434,6 +446,61 @@ dbbackup backup cluster -n  # Short flag
 
   Ready to backup. Remove --dry-run to execute.
 ```
+
+## Backup Diagnosis
+
+Diagnose backup files before restore to detect corruption or truncation:
+
+```bash
+# Diagnose a backup file
+dbbackup restore diagnose backup.dump.gz
+
+# Deep analysis (line-by-line COPY block verification)
+dbbackup restore diagnose backup.dump.gz --deep
+
+# JSON output for automation
+dbbackup restore diagnose backup.dump.gz --json
+
+# Diagnose cluster archive (checks all contained dumps)
+dbbackup restore diagnose cluster_backup.tar.gz --deep
+```
+
+**Checks performed:**
+- PGDMP signature validation (PostgreSQL custom format)
+- Gzip integrity verification
+- COPY block termination (detects truncated dumps)
+- `pg_restore --list` validation
+- Archive structure analysis
+
+**Example output:**
+```
+🔍 Backup Diagnosis Report
+══════════════════════════════════════════════════════════════
+
+📁 File: mydb_20260105.dump.gz
+   Format: PostgreSQL Custom (gzip)
+   Size: 2.5 GB
+
+🔬 Analysis Results:
+   ✅ Gzip integrity: Valid
+   ✅ PGDMP signature: Valid
+   ✅ pg_restore --list: Success (245 objects)
+   ❌ COPY block check: TRUNCATED
+
+⚠️  Issues Found:
+   - COPY block for table 'orders' not terminated
+   - Dump appears truncated at line 1,234,567
+
+💡 Recommendations:
+   - Re-run the backup for this database
+   - Check disk space on backup server
+   - Verify network stability during backup
+```
+
+**In Interactive Mode:**
+- Press `d` in archive browser to diagnose any backup
+- Automatic dump validity check in restore preview
+- Toggle debug logging with `d` in restore options
 
 ## Notifications
 

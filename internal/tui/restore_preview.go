@@ -59,6 +59,7 @@ type RestorePreviewModel struct {
 	checking          bool
 	canProceed        bool
 	message           string
+	saveDebugLog      bool   // Save detailed error report on failure
 }
 
 // NewRestorePreview creates a new restore preview
@@ -82,6 +83,7 @@ func NewRestorePreview(cfg *config.Config, log logger.Logger, parent tea.Model, 
 		checking:        true,
 		safetyChecks: []SafetyCheck{
 			{Name: "Archive integrity", Status: "pending", Critical: true},
+			{Name: "Dump validity", Status: "pending", Critical: true},
 			{Name: "Disk space", Status: "pending", Critical: true},
 			{Name: "Required tools", Status: "pending", Critical: true},
 			{Name: "Target database", Status: "pending", Critical: false},
@@ -102,7 +104,7 @@ type safetyCheckCompleteMsg struct {
 
 func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		safety := restore.NewSafety(cfg, log)
@@ -121,7 +123,33 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		}
 		checks = append(checks, check)
 
-		// 2. Disk space
+		// 2. Dump validity (deep diagnosis)
+		check = SafetyCheck{Name: "Dump validity", Status: "checking", Critical: true}
+		diagnoser := restore.NewDiagnoser(log, false)
+		diagResult, diagErr := diagnoser.DiagnoseFile(archive.Path)
+		if diagErr != nil {
+			check.Status = "warning"
+			check.Message = fmt.Sprintf("Cannot diagnose: %v", diagErr)
+		} else if !diagResult.IsValid {
+			check.Status = "failed"
+			check.Critical = true
+			if diagResult.IsTruncated {
+				check.Message = "Dump is TRUNCATED - restore will fail"
+			} else if diagResult.IsCorrupted {
+				check.Message = "Dump is CORRUPTED - restore will fail"
+			} else if len(diagResult.Errors) > 0 {
+				check.Message = diagResult.Errors[0]
+			} else {
+				check.Message = "Dump has validation errors"
+			}
+			canProceed = false
+		} else {
+			check.Status = "passed"
+			check.Message = "Dump structure verified"
+		}
+		checks = append(checks, check)
+
+		// 3. Disk space
 		check = SafetyCheck{Name: "Disk space", Status: "checking", Critical: true}
 		multiplier := 3.0
 		if archive.Format.IsClusterBackup() {
@@ -137,7 +165,7 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		}
 		checks = append(checks, check)
 
-		// 3. Required tools
+		// 4. Required tools
 		check = SafetyCheck{Name: "Required tools", Status: "checking", Critical: true}
 		dbType := "postgres"
 		if archive.Format.IsMySQL() {
@@ -153,7 +181,7 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		}
 		checks = append(checks, check)
 
-		// 4. Target database check (skip for cluster restores)
+		// 5. Target database check (skip for cluster restores)
 		existingDBCount := 0
 		existingDBs := []string{}
 
@@ -243,6 +271,15 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.message = fmt.Sprintf("Create if missing: %v", m.createIfMissing)
 			}
 
+		case "d":
+			// Toggle debug log saving
+			m.saveDebugLog = !m.saveDebugLog
+			if m.saveDebugLog {
+				m.message = infoStyle.Render("📋 Debug log: enabled (will save detailed report on failure)")
+			} else {
+				m.message = "Debug log: disabled"
+			}
+
 		case "enter", " ":
 			if m.checking {
 				m.message = "Please wait for safety checks to complete..."
@@ -255,7 +292,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Proceed to restore execution
-			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.ctx, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs)
+			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.ctx, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs, m.saveDebugLog)
 			return exec, exec.Init()
 		}
 	}
@@ -390,6 +427,23 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString("\n\n")
 	}
 
+	// Advanced Options
+	s.WriteString(archiveHeaderStyle.Render("⚙️  Advanced Options"))
+	s.WriteString("\n")
+	debugIcon := "✗"
+	debugStyle := infoStyle
+	if m.saveDebugLog {
+		debugIcon = "✓"
+		debugStyle = checkPassedStyle
+	}
+	s.WriteString(debugStyle.Render(fmt.Sprintf("  %s Debug Log: %v (press 'd' to toggle)", debugIcon, m.saveDebugLog)))
+	s.WriteString("\n")
+	if m.saveDebugLog {
+		s.WriteString(infoStyle.Render("    Saves detailed error report to /tmp on failure"))
+		s.WriteString("\n")
+	}
+	s.WriteString("\n")
+
 	// Message
 	if m.message != "" {
 		s.WriteString(m.message)
@@ -403,15 +457,15 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(successStyle.Render("✅ Ready to restore"))
 		s.WriteString("\n")
 		if m.mode == "restore-single" {
-			s.WriteString(infoStyle.Render("⌨️  t: Toggle clean-first | c: Toggle create | Enter: Proceed | Esc: Cancel"))
+			s.WriteString(infoStyle.Render("⌨️  t: Clean-first | c: Create | d: Debug log | Enter: Proceed | Esc: Cancel"))
 		} else if m.mode == "restore-cluster" {
 			if m.existingDBCount > 0 {
-				s.WriteString(infoStyle.Render("⌨️  c: Toggle cleanup | Enter: Proceed | Esc: Cancel"))
+				s.WriteString(infoStyle.Render("⌨️  c: Cleanup | d: Debug log | Enter: Proceed | Esc: Cancel"))
 			} else {
-				s.WriteString(infoStyle.Render("⌨️  Enter: Proceed | Esc: Cancel"))
+				s.WriteString(infoStyle.Render("⌨️  d: Debug log | Enter: Proceed | Esc: Cancel"))
 			}
 		} else {
-			s.WriteString(infoStyle.Render("⌨️  Enter: Proceed | Esc: Cancel"))
+			s.WriteString(infoStyle.Render("⌨️  d: Debug log | Enter: Proceed | Esc: Cancel"))
 		}
 	} else {
 		s.WriteString(errorStyle.Render("❌ Cannot proceed - please fix errors above"))

@@ -27,6 +27,8 @@ type Engine struct {
 	progress         progress.Indicator
 	detailedReporter *progress.DetailedReporter
 	dryRun           bool
+	debugLogPath     string         // Path to save debug log on error
+	errorCollector   *ErrorCollector // Collects detailed error info
 }
 
 // New creates a new restore engine
@@ -75,6 +77,11 @@ func NewWithProgress(cfg *config.Config, log logger.Logger, db database.Database
 		detailedReporter: detailedReporter,
 		dryRun:           dryRun,
 	}
+}
+
+// SetDebugLogPath enables saving detailed error reports on failure
+func (e *Engine) SetDebugLogPath(path string) {
+	e.debugLogPath = path
 }
 
 // loggerAdapter adapts our logger to the progress.Logger interface
@@ -306,6 +313,11 @@ func (e *Engine) restoreMySQLSQL(ctx context.Context, archivePath, targetDB stri
 
 // executeRestoreCommand executes a restore command
 func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) error {
+	return e.executeRestoreCommandWithContext(ctx, cmdArgs, "", "", FormatUnknown)
+}
+
+// executeRestoreCommandWithContext executes a restore command with error collection context
+func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs []string, archivePath, targetDB string, format ArchiveFormat) error {
 	e.log.Info("Executing restore command", "command", strings.Join(cmdArgs, " "))
 
 	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
@@ -315,6 +327,12 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 		fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password),
 		fmt.Sprintf("MYSQL_PWD=%s", e.cfg.Password),
 	)
+
+	// Create error collector if debug log path is set
+	var collector *ErrorCollector
+	if e.debugLogPath != "" {
+		collector = NewErrorCollector(e.cfg, e.log, archivePath, targetDB, format, true)
+	}
 
 	// Stream stderr to avoid memory issues with large output
 	// Don't use CombinedOutput() as it loads everything into memory
@@ -336,6 +354,12 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 		n, err := stderr.Read(buf)
 		if n > 0 {
 			chunk := string(buf[:n])
+			
+			// Feed to error collector if enabled
+			if collector != nil {
+				collector.CaptureStderr(chunk)
+			}
+			
 			// Only capture REAL errors, not verbose output
 			if strings.Contains(chunk, "ERROR:") || strings.Contains(chunk, "FATAL:") || strings.Contains(chunk, "error:") {
 				lastError = strings.TrimSpace(chunk)
@@ -352,6 +376,12 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 	}
 
 	if err := cmd.Wait(); err != nil {
+		// Get exit code
+		exitCode := 1
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		}
+		
 		// PostgreSQL pg_restore returns exit code 1 even for ignorable errors
 		// Check if errors are ignorable (already exists, duplicate, etc.)
 		if lastError != "" && e.isIgnorableError(lastError) {
@@ -360,8 +390,12 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 		}
 
 		// Classify error and provide helpful hints
+		var classification *checks.ErrorClassification
+		var errType, errHint string
 		if lastError != "" {
-			classification := checks.ClassifyError(lastError)
+			classification = checks.ClassifyError(lastError)
+			errType = classification.Type
+			errHint = classification.Hint
 			e.log.Error("Restore command failed",
 				"error", err,
 				"last_stderr", lastError,
@@ -369,11 +403,37 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 				"error_type", classification.Type,
 				"hint", classification.Hint,
 				"action", classification.Action)
-			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s",
-				err, lastError, errorCount, classification.Hint)
+		} else {
+			e.log.Error("Restore command failed", "error", err, "error_count", errorCount)
 		}
 
-		e.log.Error("Restore command failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
+		// Generate and save error report if collector is enabled
+		if collector != nil {
+			collector.SetExitCode(exitCode)
+			report := collector.GenerateReport(
+				lastError,
+				errType,
+				errHint,
+			)
+			
+			// Print report to console
+			collector.PrintReport(report)
+			
+			// Save to file
+			if e.debugLogPath != "" {
+				if saveErr := collector.SaveReport(report, e.debugLogPath); saveErr != nil {
+					e.log.Warn("Failed to save debug log", "error", saveErr)
+				} else {
+					e.log.Info("Debug log saved", "path", e.debugLogPath)
+					fmt.Printf("\n📋 Detailed error report saved to: %s\n", e.debugLogPath)
+				}
+			}
+		}
+
+		if lastError != "" {
+			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s",
+				err, lastError, errorCount, errHint)
+		}
 		return fmt.Errorf("restore failed: %w", err)
 	}
 

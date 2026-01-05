@@ -33,6 +33,13 @@ var (
 	restoreNoProgress   bool
 	restoreWorkdir      string
 	restoreCleanCluster bool
+	restoreDiagnose     bool   // Run diagnosis before restore
+	restoreSaveDebugLog string // Path to save debug log on failure
+
+	// Diagnose flags
+	diagnoseJSON       bool
+	diagnoseDeep       bool
+	diagnoseKeepTemp   bool
 
 	// Encryption flags
 	restoreEncryptionKeyFile string
@@ -214,12 +221,53 @@ Examples:
 	RunE: runRestorePITR,
 }
 
+// restoreDiagnoseCmd diagnoses backup files before restore
+var restoreDiagnoseCmd = &cobra.Command{
+	Use:   "diagnose [archive-file]",
+	Short: "Diagnose backup file integrity and format",
+	Long: `Perform deep analysis of backup files to detect issues before restore.
+
+This command validates backup archives and provides detailed diagnostics
+including truncation detection, format verification, and COPY block integrity.
+
+Use this when:
+  - Restore fails with syntax errors
+  - You suspect backup corruption or truncation
+  - You want to verify backup integrity before restore
+  - Restore reports millions of errors
+
+Checks performed:
+  - File format detection (custom dump vs SQL)
+  - PGDMP signature verification
+  - Gzip integrity validation
+  - COPY block termination check
+  - pg_restore --list verification
+  - Cluster archive structure validation
+
+Examples:
+  # Diagnose a single dump file
+  dbbackup restore diagnose mydb.dump.gz
+
+  # Diagnose with verbose output
+  dbbackup restore diagnose mydb.sql.gz --verbose
+
+  # Diagnose cluster archive and all contained dumps
+  dbbackup restore diagnose cluster_backup.tar.gz --deep
+
+  # Output as JSON for scripting
+  dbbackup restore diagnose mydb.dump --json
+`,
+	Args: cobra.ExactArgs(1),
+	RunE: runRestoreDiagnose,
+}
+
 func init() {
 	rootCmd.AddCommand(restoreCmd)
 	restoreCmd.AddCommand(restoreSingleCmd)
 	restoreCmd.AddCommand(restoreClusterCmd)
 	restoreCmd.AddCommand(restoreListCmd)
 	restoreCmd.AddCommand(restorePITRCmd)
+	restoreCmd.AddCommand(restoreDiagnoseCmd)
 
 	// Single restore flags
 	restoreSingleCmd.Flags().BoolVar(&restoreConfirm, "confirm", false, "Confirm and execute restore (required)")
@@ -232,6 +280,8 @@ func init() {
 	restoreSingleCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
+	restoreSingleCmd.Flags().BoolVar(&restoreDiagnose, "diagnose", false, "Run deep diagnosis before restore to detect corruption/truncation")
+	restoreSingleCmd.Flags().StringVar(&restoreSaveDebugLog, "save-debug-log", "", "Save detailed error report to file on failure (e.g., /tmp/restore-debug.json)")
 
 	// Cluster restore flags
 	restoreClusterCmd.Flags().BoolVar(&restoreConfirm, "confirm", false, "Confirm and execute restore (required)")
@@ -244,6 +294,8 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
+	restoreClusterCmd.Flags().BoolVar(&restoreDiagnose, "diagnose", false, "Run deep diagnosis on all dumps before restore")
+	restoreClusterCmd.Flags().StringVar(&restoreSaveDebugLog, "save-debug-log", "", "Save detailed error report to file on failure (e.g., /tmp/restore-debug.json)")
 
 	// PITR restore flags
 	restorePITRCmd.Flags().StringVar(&pitrBaseBackup, "base-backup", "", "Path to base backup file (.tar.gz) (required)")
@@ -264,6 +316,117 @@ func init() {
 	restorePITRCmd.MarkFlagRequired("base-backup")
 	restorePITRCmd.MarkFlagRequired("wal-archive")
 	restorePITRCmd.MarkFlagRequired("target-dir")
+
+	// Diagnose flags
+	restoreDiagnoseCmd.Flags().BoolVar(&diagnoseJSON, "json", false, "Output diagnosis as JSON")
+	restoreDiagnoseCmd.Flags().BoolVar(&diagnoseDeep, "deep", false, "For cluster archives, extract and diagnose all contained dumps")
+	restoreDiagnoseCmd.Flags().BoolVar(&diagnoseKeepTemp, "keep-temp", false, "Keep temporary extraction directory (for debugging)")
+	restoreDiagnoseCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed analysis progress")
+}
+
+// runRestoreDiagnose diagnoses backup files
+func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
+	archivePath := args[0]
+
+	// Convert to absolute path
+	if !filepath.IsAbs(archivePath) {
+		absPath, err := filepath.Abs(archivePath)
+		if err != nil {
+			return fmt.Errorf("invalid archive path: %w", err)
+		}
+		archivePath = absPath
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(archivePath); err != nil {
+		return fmt.Errorf("archive not found: %s", archivePath)
+	}
+
+	log.Info("🔍 Diagnosing backup file", "path", archivePath)
+
+	diagnoser := restore.NewDiagnoser(log, restoreVerbose)
+
+	// Check if it's a cluster archive that needs deep analysis
+	format := restore.DetectArchiveFormat(archivePath)
+
+	if format.IsClusterBackup() && diagnoseDeep {
+		// Create temp directory for extraction
+		tempDir, err := os.MkdirTemp("", "dbbackup-diagnose-*")
+		if err != nil {
+			return fmt.Errorf("failed to create temp directory: %w", err)
+		}
+
+		if !diagnoseKeepTemp {
+			defer os.RemoveAll(tempDir)
+		} else {
+			log.Info("Temp directory preserved", "path", tempDir)
+		}
+
+		log.Info("Extracting cluster archive for deep analysis...")
+
+		// Extract and diagnose all dumps
+		results, err := diagnoser.DiagnoseClusterDumps(archivePath, tempDir)
+		if err != nil {
+			return fmt.Errorf("cluster diagnosis failed: %w", err)
+		}
+
+		// Output results
+		var hasErrors bool
+		for _, result := range results {
+			if diagnoseJSON {
+				diagnoser.PrintDiagnosisJSON(result)
+			} else {
+				diagnoser.PrintDiagnosis(result)
+			}
+			if !result.IsValid {
+				hasErrors = true
+			}
+		}
+
+		// Summary
+		if !diagnoseJSON {
+			fmt.Println("\n" + strings.Repeat("=", 70))
+			fmt.Printf("📊 CLUSTER SUMMARY: %d databases analyzed\n", len(results))
+
+			validCount := 0
+			for _, r := range results {
+				if r.IsValid {
+					validCount++
+				}
+			}
+
+			if validCount == len(results) {
+				fmt.Println("✅ All dumps are valid")
+			} else {
+				fmt.Printf("❌ %d/%d dumps have issues\n", len(results)-validCount, len(results))
+			}
+			fmt.Println(strings.Repeat("=", 70))
+		}
+
+		if hasErrors {
+			return fmt.Errorf("one or more dumps have validation errors")
+		}
+		return nil
+	}
+
+	// Single file diagnosis
+	result, err := diagnoser.DiagnoseFile(archivePath)
+	if err != nil {
+		return fmt.Errorf("diagnosis failed: %w", err)
+	}
+
+	if diagnoseJSON {
+		diagnoser.PrintDiagnosisJSON(result)
+	} else {
+		diagnoser.PrintDiagnosis(result)
+	}
+
+	if !result.IsValid {
+		return fmt.Errorf("backup file has validation errors")
+	}
+
+	log.Info("✅ Backup file appears valid")
+	return nil
 }
 
 // runRestoreSingle restores a single database
@@ -401,6 +564,12 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 
 	// Create restore engine
 	engine := restore.New(cfg, log, db)
+	
+	// Enable debug logging if requested
+	if restoreSaveDebugLog != "" {
+		engine.SetDebugLogPath(restoreSaveDebugLog)
+		log.Info("Debug logging enabled", "output", restoreSaveDebugLog)
+	}
 
 	// Setup signal handling
 	ctx, cancel := context.WithCancel(context.Background())
@@ -415,6 +584,37 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 		log.Warn("Restore interrupted by user")
 		cancel()
 	}()
+
+	// Run pre-restore diagnosis if requested
+	if restoreDiagnose {
+		log.Info("🔍 Running pre-restore diagnosis...")
+		
+		diagnoser := restore.NewDiagnoser(log, restoreVerbose)
+		result, err := diagnoser.DiagnoseFile(archivePath)
+		if err != nil {
+			return fmt.Errorf("diagnosis failed: %w", err)
+		}
+		
+		diagnoser.PrintDiagnosis(result)
+		
+		if !result.IsValid {
+			log.Error("❌ Pre-restore diagnosis found issues")
+			if result.IsTruncated {
+				log.Error("   The backup file appears to be TRUNCATED")
+			}
+			if result.IsCorrupted {
+				log.Error("   The backup file appears to be CORRUPTED")
+			}
+			fmt.Println("\nUse --force to attempt restore anyway.")
+			
+			if !restoreForce {
+				return fmt.Errorf("aborting restore due to backup file issues")
+			}
+			log.Warn("Continuing despite diagnosis errors (--force enabled)")
+		} else {
+			log.Info("✅ Backup file passed diagnosis")
+		}
+	}
 
 	// Execute restore
 	log.Info("Starting restore...", "database", targetDB)
@@ -584,6 +784,12 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 
 	// Create restore engine
 	engine := restore.New(cfg, log, db)
+	
+	// Enable debug logging if requested
+	if restoreSaveDebugLog != "" {
+		engine.SetDebugLogPath(restoreSaveDebugLog)
+		log.Info("Debug logging enabled", "output", restoreSaveDebugLog)
+	}
 
 	// Setup signal handling
 	ctx, cancel := context.WithCancel(context.Background())
@@ -618,6 +824,52 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 			}
 		}
 		log.Info("Database cleanup completed")
+	}
+
+	// Run pre-restore diagnosis if requested
+	if restoreDiagnose {
+		log.Info("🔍 Running pre-restore diagnosis...")
+		
+		// Create temp directory for extraction
+		diagTempDir, err := os.MkdirTemp("", "dbbackup-diagnose-*")
+		if err != nil {
+			return fmt.Errorf("failed to create temp directory for diagnosis: %w", err)
+		}
+		defer os.RemoveAll(diagTempDir)
+		
+		diagnoser := restore.NewDiagnoser(log, restoreVerbose)
+		results, err := diagnoser.DiagnoseClusterDumps(archivePath, diagTempDir)
+		if err != nil {
+			return fmt.Errorf("diagnosis failed: %w", err)
+		}
+		
+		// Check for any invalid dumps
+		var invalidDumps []string
+		for _, result := range results {
+			if !result.IsValid {
+				invalidDumps = append(invalidDumps, result.FileName)
+				diagnoser.PrintDiagnosis(result)
+			}
+		}
+		
+		if len(invalidDumps) > 0 {
+			log.Error("❌ Pre-restore diagnosis found issues",
+				"invalid_dumps", len(invalidDumps),
+				"total_dumps", len(results))
+			fmt.Println("\n⚠️  The following dumps have issues and will likely fail during restore:")
+			for _, name := range invalidDumps {
+				fmt.Printf("    - %s\n", name)
+			}
+			fmt.Println("\nRun 'dbbackup restore diagnose <archive> --deep' for full details.")
+			fmt.Println("Use --force to attempt restore anyway.")
+			
+			if !restoreForce {
+				return fmt.Errorf("aborting restore due to %d invalid dump(s)", len(invalidDumps))
+			}
+			log.Warn("Continuing despite diagnosis errors (--force enabled)")
+		} else {
+			log.Info("✅ All dumps passed diagnosis", "count", len(results))
+		}
 	}
 
 	// Execute cluster restore

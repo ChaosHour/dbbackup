@@ -31,6 +31,7 @@ type RestoreExecutionModel struct {
 	restoreType       string
 	cleanClusterFirst bool     // Drop all user databases before cluster restore
 	existingDBs       []string // List of databases to drop
+	saveDebugLog      bool     // Save detailed error report on failure
 
 	// Progress tracking
 	status        string
@@ -49,7 +50,7 @@ type RestoreExecutionModel struct {
 }
 
 // NewRestoreExecution creates a new restore execution model
-func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) RestoreExecutionModel {
+func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool) RestoreExecutionModel {
 	return RestoreExecutionModel{
 		config:            cfg,
 		logger:            log,
@@ -62,6 +63,7 @@ func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model
 		restoreType:       restoreType,
 		cleanClusterFirst: cleanClusterFirst,
 		existingDBs:       existingDBs,
+		saveDebugLog:      saveDebugLog,
 		status:            "Initializing...",
 		phase:             "Starting",
 		startTime:         time.Now(),
@@ -73,7 +75,7 @@ func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model
 
 func (m RestoreExecutionModel) Init() tea.Cmd {
 	return tea.Batch(
-		executeRestoreWithTUIProgress(m.ctx, m.config, m.logger, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.restoreType, m.cleanClusterFirst, m.existingDBs),
+		executeRestoreWithTUIProgress(m.ctx, m.config, m.logger, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.restoreType, m.cleanClusterFirst, m.existingDBs, m.saveDebugLog),
 		restoreTickCmd(),
 	)
 }
@@ -99,7 +101,7 @@ type restoreCompleteMsg struct {
 	elapsed time.Duration
 }
 
-func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string) tea.Cmd {
+func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool) tea.Cmd {
 	return func() tea.Msg {
 		// Use configurable cluster timeout (minutes) from config; default set in config.New()
 		// Use parent context to inherit cancellation from TUI
@@ -145,6 +147,14 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 		// STEP 2: Create restore engine with silent progress (no stdout interference with TUI)
 		engine := restore.NewSilent(cfg, log, dbClient)
+
+		// Enable debug logging if requested
+		if saveDebugLog {
+			// Generate debug log path based on archive name and timestamp
+			debugLogPath := fmt.Sprintf("/tmp/dbbackup-restore-debug-%s.json", time.Now().Format("20060102-150405"))
+			engine.SetDebugLogPath(debugLogPath)
+			log.Info("Debug logging enabled", "path", debugLogPath)
+		}
 
 		// Set up progress callback (but it won't work in goroutine - progress is already sent via logs)
 		// The TUI will just use spinner animation to show activity

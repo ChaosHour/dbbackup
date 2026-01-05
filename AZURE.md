@@ -28,21 +28,16 @@ This guide covers using **Azure Blob Storage** with `dbbackup` for secure, scala
 
 ```bash
 # Backup PostgreSQL to Azure
-dbbackup backup postgres \
-  --host localhost \
-  --database mydb \
-  --output backup.sql \
-  --cloud "azure://mycontainer/backups/db.sql?account=myaccount&key=ACCOUNT_KEY"
+dbbackup backup single mydb \
+  --cloud "azure://mycontainer/backups/?account=myaccount&key=ACCOUNT_KEY"
 ```
 
 ### 3. Restore from Azure
 
 ```bash
-# Restore from Azure backup
-dbbackup restore postgres \
-  --source "azure://mycontainer/backups/db.sql?account=myaccount&key=ACCOUNT_KEY" \
-  --host localhost \
-  --database mydb_restored
+# Download backup from Azure and restore
+dbbackup cloud download "azure://mycontainer/backups/mydb.dump.gz?account=myaccount&key=ACCOUNT_KEY" ./mydb.dump.gz
+dbbackup restore single ./mydb.dump.gz --target mydb_restored --confirm
 ```
 
 ## URI Syntax
@@ -99,7 +94,7 @@ export AZURE_STORAGE_ACCOUNT="myaccount"
 export AZURE_STORAGE_KEY="YOUR_ACCOUNT_KEY"
 
 # Use simplified URI (credentials from environment)
-dbbackup backup postgres --cloud "azure://container/path/backup.sql"
+dbbackup backup single mydb --cloud "azure://container/path/"
 ```
 
 ### Method 3: Connection String
@@ -109,7 +104,7 @@ Use Azure connection string:
 ```bash
 export AZURE_STORAGE_CONNECTION_STRING="DefaultEndpointsProtocol=https;AccountName=myaccount;AccountKey=YOUR_KEY;EndpointSuffix=core.windows.net"
 
-dbbackup backup postgres --cloud "azure://container/path/backup.sql"
+dbbackup backup single mydb --cloud "azure://container/path/"
 ```
 
 ### Getting Your Account Key
@@ -196,11 +191,8 @@ Configure automatic tier transitions:
 
 ```bash
 # PostgreSQL backup with automatic Azure upload
-dbbackup backup postgres \
-  --host localhost \
-  --database production_db \
-  --output /backups/db.sql \
-  --cloud "azure://prod-backups/postgres/$(date +%Y%m%d_%H%M%S).sql?account=myaccount&key=KEY" \
+dbbackup backup single production_db \
+  --cloud "azure://prod-backups/postgres/?account=myaccount&key=KEY" \
   --compression 6
 ```
 
@@ -208,10 +200,7 @@ dbbackup backup postgres \
 
 ```bash
 # Backup entire PostgreSQL cluster to Azure
-dbbackup backup postgres \
-  --host localhost \
-  --all-databases \
-  --output-dir /backups \
+dbbackup backup cluster \
   --cloud "azure://prod-backups/postgres/cluster/?account=myaccount&key=KEY"
 ```
 
@@ -257,13 +246,9 @@ dbbackup cleanup "azure://prod-backups/postgres/?account=myaccount&key=KEY" --ke
 #!/bin/bash
 # Azure backup script (run via cron)
 
-DATE=$(date +%Y%m%d_%H%M%S)
-AZURE_URI="azure://prod-backups/postgres/${DATE}.sql?account=myaccount&key=${AZURE_STORAGE_KEY}"
+AZURE_URI="azure://prod-backups/postgres/?account=myaccount&key=${AZURE_STORAGE_KEY}"
 
-dbbackup backup postgres \
-  --host localhost \
-  --database production_db \
-  --output /tmp/backup.sql \
+dbbackup backup single production_db \
   --cloud "${AZURE_URI}" \
   --compression 9
 
@@ -289,35 +274,25 @@ For large files (>256MB), dbbackup automatically uses Azure Block Blob staging:
 
 ```bash
 # Large database backup (automatically uses block blob)
-dbbackup backup postgres \
-  --host localhost \
-  --database huge_db \
-  --output /backups/huge.sql \
-  --cloud "azure://backups/huge.sql?account=myaccount&key=KEY"
+dbbackup backup single huge_db \
+  --cloud "azure://backups/?account=myaccount&key=KEY"
 ```
 
 ### Progress Tracking
 
 ```bash
 # Backup with progress display
-dbbackup backup postgres \
-  --host localhost \
-  --database mydb \
-  --output backup.sql \
-  --cloud "azure://backups/backup.sql?account=myaccount&key=KEY" \
-  --progress
+dbbackup backup single mydb \
+  --cloud "azure://backups/?account=myaccount&key=KEY"
 ```
 
 ### Concurrent Operations
 
 ```bash
-# Backup multiple databases in parallel
-dbbackup backup postgres \
-  --host localhost \
-  --all-databases \
-  --output-dir /backups \
+# Backup cluster with parallel jobs
+dbbackup backup cluster \
   --cloud "azure://backups/cluster/?account=myaccount&key=KEY" \
-  --parallelism 4
+  --jobs 4
 ```
 
 ### Custom Metadata
@@ -365,11 +340,8 @@ Endpoint: http://localhost:10000/devstoreaccount1
 
 ```bash
 # Backup to Azurite
-dbbackup backup postgres \
-  --host localhost \
-  --database testdb \
-  --output test.sql \
-  --cloud "azure://test-backups/test.sql?endpoint=http://localhost:10000&account=devstoreaccount1&key=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
+dbbackup backup single testdb \
+  --cloud "azure://test-backups/?endpoint=http://localhost:10000&account=devstoreaccount1&key=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=="
 ```
 
 ### Run Integration Tests
@@ -492,8 +464,8 @@ Tests include:
 Enable debug mode:
 
 ```bash
-dbbackup backup postgres \
-  --cloud "azure://container/backup.sql?account=myaccount&key=KEY" \
+dbbackup backup single mydb \
+  --cloud "azure://container/?account=myaccount&key=KEY" \
   --debug
 ```
 

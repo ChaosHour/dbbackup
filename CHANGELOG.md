@@ -163,7 +163,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Documentation
 - Added comprehensive PITR.md guide (complete PITR documentation)
 - Updated README.md with PITR section (200+ lines)
-- Added RELEASE_NOTES_v3.1.md (full feature list)
 - Updated CHANGELOG.md with v3.1.0 details
 - Added NOTICE file for Apache License attribution
 - Created comprehensive test suite (tests/pitr_complete_test.go - 700+ lines)

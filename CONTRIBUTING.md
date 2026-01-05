@@ -274,12 +274,11 @@ Fixes #56
 
 1. Update version in `main.go`
 2. Update `CHANGELOG.md`
-3. Create release notes (`RELEASE_NOTES_vX.Y.Z.md`)
-4. Commit: `git commit -m "Release vX.Y.Z"`
-5. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
-6. Push: `git push origin main vX.Y.Z`
-7. Build binaries: `./build_all.sh`
-8. Create GitHub Release with binaries
+3. Commit: `git commit -m "Release vX.Y.Z"`
+4. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
+5. Push: `git push origin main vX.Y.Z`
+6. Build binaries: `./build_all.sh`
+7. Create GitHub Release with binaries
 
 ## Questions?
 

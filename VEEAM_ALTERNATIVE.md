@@ -43,7 +43,7 @@ What are you actually getting?
 ```bash
 # Physical backup at InnoDB page level
 # No XtraBackup. No external tools. Pure Go.
-dbbackup backup --engine=clone --output=s3://bucket/backup
+dbbackup backup single mydb --db-type mysql --cloud s3://bucket/backups/
 ```
 
 ### Filesystem Snapshots
@@ -78,10 +78,10 @@ dbbackup backup --engine=streaming --parallel-workers=8
 **Day 1**: Run dbbackup alongside existing solution
 ```bash
 # Test backup
-dbbackup backup --database=mydb --output=s3://test-bucket/
+dbbackup backup single mydb --cloud s3://test-bucket/
 
 # Verify integrity
-dbbackup verify s3://test-bucket/backup.sql.gz.enc
+dbbackup verify s3://test-bucket/mydb_20260115.dump.gz
 ```
 
 **Week 1**: Compare backup times, storage costs, recovery speed
@@ -112,10 +112,9 @@ curl -LO https://github.com/UUXO/dbbackup/releases/latest/download/dbbackup_linu
 chmod +x dbbackup_linux_amd64
 
 # Your first backup
-./dbbackup_linux_amd64 backup \
-  --database=production \
-  --engine=auto \
-  --output=s3://my-backups/$(date +%Y%m%d)/
+./dbbackup_linux_amd64 backup single production \
+  --db-type mysql \
+  --cloud s3://my-backups/
 ```
 
 ## The Bottom Line
@@ -131,4 +130,4 @@ Every dollar you spend on backup licensing is a dollar not spent on:
 
 *Apache 2.0 Licensed. Free forever. No sales calls required.*
 
-[GitHub](https://github.com/UUXO/dbbackup) | [Documentation](https://github.com/UUXO/dbbackup#readme) | [Release Notes](RELEASE_NOTES_v3.2.md)
+[GitHub](https://github.com/UUXO/dbbackup) | [Documentation](https://github.com/UUXO/dbbackup#readme) | [Changelog](CHANGELOG.md)

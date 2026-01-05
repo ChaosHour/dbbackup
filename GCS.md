@@ -28,21 +28,16 @@ This guide covers using **Google Cloud Storage (GCS)** with `dbbackup` for secur
 
 ```bash
 # Backup PostgreSQL to GCS (using ADC)
-dbbackup backup postgres \
-  --host localhost \
-  --database mydb \
-  --output backup.sql \
-  --cloud "gs://mybucket/backups/db.sql"
+dbbackup backup single mydb \
+  --cloud "gs://mybucket/backups/"
 ```
 
 ### 3. Restore from GCS
 
 ```bash
-# Restore from GCS backup
-dbbackup restore postgres \
-  --source "gs://mybucket/backups/db.sql" \
-  --host localhost \
-  --database mydb_restored
+# Download backup from GCS and restore
+dbbackup cloud download "gs://mybucket/backups/mydb.dump.gz" ./mydb.dump.gz
+dbbackup restore single ./mydb.dump.gz --target mydb_restored --confirm
 ```
 
 ## URI Syntax
@@ -107,7 +102,7 @@ gcloud auth application-default login
 gcloud auth activate-service-account --key-file=/path/to/key.json
 
 # Use simplified URI (credentials from environment)
-dbbackup backup postgres --cloud "gs://mybucket/backups/backup.sql"
+dbbackup backup single mydb --cloud "gs://mybucket/backups/"
 ```
 
 ### Method 2: Service Account JSON
@@ -121,14 +116,14 @@ Download service account key from GCP Console:
 
 **Use in URI:**
 ```bash
-dbbackup backup postgres \
-  --cloud "gs://mybucket/backup.sql?credentials=/path/to/service-account.json"
+dbbackup backup single mydb \
+  --cloud "gs://mybucket/?credentials=/path/to/service-account.json"
 ```
 
 **Or via environment:**
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
-dbbackup backup postgres --cloud "gs://mybucket/backup.sql"
+dbbackup backup single mydb --cloud "gs://mybucket/"
 ```
 
 ### Method 3: Workload Identity (GKE)
@@ -147,7 +142,7 @@ metadata:
 Then use ADC in your pod:
 
 ```bash
-dbbackup backup postgres --cloud "gs://mybucket/backup.sql"
+dbbackup backup single mydb --cloud "gs://mybucket/"
 ```
 
 ### Required IAM Permissions
@@ -250,11 +245,8 @@ gsutil mb -l eu gs://mybucket/
 
 ```bash
 # PostgreSQL backup with automatic GCS upload
-dbbackup backup postgres \
-  --host localhost \
-  --database production_db \
-  --output /backups/db.sql \
-  --cloud "gs://prod-backups/postgres/$(date +%Y%m%d_%H%M%S).sql" \
+dbbackup backup single production_db \
+  --cloud "gs://prod-backups/postgres/" \
   --compression 6
 ```
 
@@ -262,10 +254,7 @@ dbbackup backup postgres \
 
 ```bash
 # Backup entire PostgreSQL cluster to GCS
-dbbackup backup postgres \
-  --host localhost \
-  --all-databases \
-  --output-dir /backups \
+dbbackup backup cluster \
   --cloud "gs://prod-backups/postgres/cluster/"
 ```
 
@@ -314,13 +303,9 @@ dbbackup cleanup "gs://prod-backups/postgres/" --keep 7
 #!/bin/bash
 # GCS backup script (run via cron)
 
-DATE=$(date +%Y%m%d_%H%M%S)
-GCS_URI="gs://prod-backups/postgres/${DATE}.sql"
+GCS_URI="gs://prod-backups/postgres/"
 
-dbbackup backup postgres \
-  --host localhost \
-  --database production_db \
-  --output /tmp/backup.sql \
+dbbackup backup single production_db \
   --cloud "${GCS_URI}" \
   --compression 9
 
@@ -360,35 +345,25 @@ For large files, dbbackup automatically uses GCS chunked upload:
 
 ```bash
 # Large database backup (automatically uses chunked upload)
-dbbackup backup postgres \
-  --host localhost \
-  --database huge_db \
-  --output /backups/huge.sql \
-  --cloud "gs://backups/huge.sql"
+dbbackup backup single huge_db \
+  --cloud "gs://backups/"
 ```
 
 ### Progress Tracking
 
 ```bash
 # Backup with progress display
-dbbackup backup postgres \
-  --host localhost \
-  --database mydb \
-  --output backup.sql \
-  --cloud "gs://backups/backup.sql" \
-  --progress
+dbbackup backup single mydb \
+  --cloud "gs://backups/"
 ```
 
 ### Concurrent Operations
 
 ```bash
-# Backup multiple databases in parallel
-dbbackup backup postgres \
-  --host localhost \
-  --all-databases \
-  --output-dir /backups \
+# Backup cluster with parallel jobs
+dbbackup backup cluster \
   --cloud "gs://backups/cluster/" \
-  --parallelism 4
+  --jobs 4
 ```
 
 ### Custom Metadata
@@ -460,11 +435,8 @@ curl -X POST "http://localhost:4443/storage/v1/b?project=test-project" \
 
 ```bash
 # Backup to fake-gcs-server
-dbbackup backup postgres \
-  --host localhost \
-  --database testdb \
-  --output test.sql \
-  --cloud "gs://test-backups/test.sql?endpoint=http://localhost:4443/storage/v1"
+dbbackup backup single testdb \
+  --cloud "gs://test-backups/?endpoint=http://localhost:4443/storage/v1"
 ```
 
 ### Run Integration Tests
@@ -593,8 +565,8 @@ Tests include:
 Enable debug mode:
 
 ```bash
-dbbackup backup postgres \
-  --cloud "gs://bucket/backup.sql" \
+dbbackup backup single mydb \
+  --cloud "gs://bucket/" \
   --debug
 ```
 

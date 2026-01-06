@@ -60,6 +60,7 @@ type RestorePreviewModel struct {
 	canProceed        bool
 	message           string
 	saveDebugLog      bool   // Save detailed error report on failure
+	workDir           string // Custom work directory for extraction
 }
 
 // NewRestorePreview creates a new restore preview
@@ -81,6 +82,7 @@ func NewRestorePreview(cfg *config.Config, log logger.Logger, parent tea.Model, 
 		cleanFirst:      false,
 		createIfMissing: true,
 		checking:        true,
+		workDir:         cfg.WorkDir, // Use configured work directory
 		safetyChecks: []SafetyCheck{
 			{Name: "Archive integrity", Status: "pending", Critical: true},
 			{Name: "Dump validity", Status: "pending", Critical: true},
@@ -280,6 +282,18 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.message = "Debug log: disabled"
 			}
 
+		case "w":
+			// Toggle/set work directory
+			if m.workDir == "" {
+				// Set to backup directory as default alternative
+				m.workDir = m.config.BackupDir
+				m.message = infoStyle.Render(fmt.Sprintf("📁 Work directory set to: %s", m.workDir))
+			} else {
+				// Clear work directory (use system temp)
+				m.workDir = ""
+				m.message = "Work directory: using system temp"
+			}
+
 		case "enter", " ":
 			if m.checking {
 				m.message = "Please wait for safety checks to complete..."
@@ -292,7 +306,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Proceed to restore execution
-			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.ctx, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs, m.saveDebugLog)
+			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.ctx, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs, m.saveDebugLog, m.workDir)
 			return exec, exec.Init()
 		}
 	}
@@ -430,6 +444,24 @@ func (m RestorePreviewModel) View() string {
 	// Advanced Options
 	s.WriteString(archiveHeaderStyle.Render("⚙️  Advanced Options"))
 	s.WriteString("\n")
+	
+	// Work directory option
+	workDirIcon := "✗"
+	workDirStyle := infoStyle
+	workDirValue := "(system temp)"
+	if m.workDir != "" {
+		workDirIcon = "✓"
+		workDirStyle = checkPassedStyle
+		workDirValue = m.workDir
+	}
+	s.WriteString(workDirStyle.Render(fmt.Sprintf("  %s Work Dir: %s (press 'w' to toggle)", workDirIcon, workDirValue)))
+	s.WriteString("\n")
+	if m.workDir == "" {
+		s.WriteString(infoStyle.Render("    ⚠️  Large archives need more space than /tmp may have"))
+		s.WriteString("\n")
+	}
+	
+	// Debug log option
 	debugIcon := "✗"
 	debugStyle := infoStyle
 	if m.saveDebugLog {
@@ -457,15 +489,15 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(successStyle.Render("✅ Ready to restore"))
 		s.WriteString("\n")
 		if m.mode == "restore-single" {
-			s.WriteString(infoStyle.Render("⌨️  t: Clean-first | c: Create | d: Debug log | Enter: Proceed | Esc: Cancel"))
+			s.WriteString(infoStyle.Render("⌨️  t: Clean-first | c: Create | w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
 		} else if m.mode == "restore-cluster" {
 			if m.existingDBCount > 0 {
-				s.WriteString(infoStyle.Render("⌨️  c: Cleanup | d: Debug log | Enter: Proceed | Esc: Cancel"))
+				s.WriteString(infoStyle.Render("⌨️  c: Cleanup | w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
 			} else {
-				s.WriteString(infoStyle.Render("⌨️  d: Debug log | Enter: Proceed | Esc: Cancel"))
+				s.WriteString(infoStyle.Render("⌨️  w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
 			}
 		} else {
-			s.WriteString(infoStyle.Render("⌨️  d: Debug log | Enter: Proceed | Esc: Cancel"))
+			s.WriteString(infoStyle.Render("⌨️  w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
 		}
 	} else {
 		s.WriteString(errorStyle.Render("❌ Cannot proceed - please fix errors above"))

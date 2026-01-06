@@ -88,8 +88,8 @@ func runDiagnosis(cfg *config.Config, log logger.Logger, archive ArchiveInfo) te
 
 		// For cluster archives, we can do deep analysis
 		if archive.Format.IsClusterBackup() {
-			// Create temp directory
-			tempDir, err := createTempDir("dbbackup-diagnose-*")
+			// Create temp directory (use WorkDir if configured for large archives)
+			tempDir, err := createTempDirIn(cfg.WorkDir, "dbbackup-diagnose-*")
 			if err != nil {
 				return diagnoseCompleteMsg{err: fmt.Errorf("failed to create temp dir: %w", err)}
 			}
@@ -443,6 +443,17 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 // Helper functions for temp directory management
 func createTempDir(pattern string) (string, error) {
 	return os.MkdirTemp("", pattern)
+}
+
+func createTempDirIn(baseDir, pattern string) (string, error) {
+	if baseDir == "" {
+		return os.MkdirTemp("", pattern)
+	}
+	// Ensure base directory exists
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		return "", fmt.Errorf("cannot create work directory: %w", err)
+	}
+	return os.MkdirTemp(baseDir, pattern)
 }
 
 func removeTempDir(path string) error {

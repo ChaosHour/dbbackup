@@ -22,6 +22,7 @@ type LocalConfig struct {
 
 	// Backup settings
 	BackupDir   string
+	WorkDir     string // Working directory for large operations
 	Compression int
 	Jobs        int
 	DumpJobs    int
@@ -97,6 +98,8 @@ func LoadLocalConfig() (*LocalConfig, error) {
 			switch key {
 			case "backup_dir":
 				cfg.BackupDir = value
+			case "work_dir":
+				cfg.WorkDir = value
 			case "compression":
 				if c, err := strconv.Atoi(value); err == nil {
 					cfg.Compression = c
@@ -174,6 +177,9 @@ func SaveLocalConfig(cfg *LocalConfig) error {
 	if cfg.BackupDir != "" {
 		sb.WriteString(fmt.Sprintf("backup_dir = %s\n", cfg.BackupDir))
 	}
+	if cfg.WorkDir != "" {
+		sb.WriteString(fmt.Sprintf("work_dir = %s\n", cfg.WorkDir))
+	}
 	if cfg.Compression != 0 {
 		sb.WriteString(fmt.Sprintf("compression = %d\n", cfg.Compression))
 	}
@@ -244,6 +250,9 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.BackupDir != "" {
 		cfg.BackupDir = local.BackupDir
 	}
+	if local.WorkDir != "" {
+		cfg.WorkDir = local.WorkDir
+	}
 	if cfg.CompressionLevel == 6 && local.Compression != 0 {
 		cfg.CompressionLevel = local.Compression
 	}
@@ -280,6 +289,7 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		Database:      cfg.Database,
 		SSLMode:       cfg.SSLMode,
 		BackupDir:     cfg.BackupDir,
+		WorkDir:       cfg.WorkDir,
 		Compression:   cfg.CompressionLevel,
 		Jobs:          cfg.Jobs,
 		DumpJobs:      cfg.DumpJobs,

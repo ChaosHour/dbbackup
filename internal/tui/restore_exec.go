@@ -32,6 +32,7 @@ type RestoreExecutionModel struct {
 	cleanClusterFirst bool     // Drop all user databases before cluster restore
 	existingDBs       []string // List of databases to drop
 	saveDebugLog      bool     // Save detailed error report on failure
+	workDir           string   // Custom work directory for extraction
 
 	// Progress tracking
 	status        string
@@ -50,7 +51,7 @@ type RestoreExecutionModel struct {
 }
 
 // NewRestoreExecution creates a new restore execution model
-func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool) RestoreExecutionModel {
+func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool, workDir string) RestoreExecutionModel {
 	return RestoreExecutionModel{
 		config:            cfg,
 		logger:            log,
@@ -64,6 +65,7 @@ func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model
 		cleanClusterFirst: cleanClusterFirst,
 		existingDBs:       existingDBs,
 		saveDebugLog:      saveDebugLog,
+		workDir:           workDir,
 		status:            "Initializing...",
 		phase:             "Starting",
 		startTime:         time.Now(),

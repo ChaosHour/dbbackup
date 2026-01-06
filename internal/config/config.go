@@ -64,6 +64,9 @@ type Config struct {
 	// Cluster parallelism
 	ClusterParallelism int // Number of concurrent databases during cluster operations (0 = sequential)
 
+	// Working directory for large operations (extraction, diagnosis)
+	WorkDir string // Alternative temp directory for large operations (default: system temp)
+
 	// Swap file management (for large backups)
 	SwapFilePath   string // Path to temporary swap file
 	SwapFileSizeGB int    // Size in GB (0 = disabled)

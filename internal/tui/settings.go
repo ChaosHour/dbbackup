@@ -116,6 +116,26 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Directory where backup files will be stored",
 		},
 		{
+			Key:         "work_dir",
+			DisplayName: "Work Directory",
+			Value: func(c *config.Config) string {
+				if c.WorkDir == "" {
+					return "(system temp)"
+				}
+				return c.WorkDir
+			},
+			Update: func(c *config.Config, v string) error {
+				if v == "" || v == "(system temp)" {
+					c.WorkDir = ""
+					return nil
+				}
+				c.WorkDir = filepath.Clean(v)
+				return nil
+			},
+			Type:        "path",
+			Description: "Working directory for large operations (extraction, diagnosis). Use when /tmp is too small.",
+		},
+		{
 			Key:         "compression_level",
 			DisplayName: "Compression Level",
 			Value:       func(c *config.Config) string { return fmt.Sprintf("%d", c.CompressionLevel) },

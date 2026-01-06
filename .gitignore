@@ -9,10 +9,11 @@ logs/
 *.trace
 *.err
 
-# Ignore built binaries in root (keep bin/ directory for releases)
+# Ignore built binaries (built fresh via build_all.sh on release)
 /dbbackup
 /dbbackup_*
 !dbbackup.png
+bin/
 
 # Ignore development artifacts
 *.swp

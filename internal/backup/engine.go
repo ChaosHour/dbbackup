@@ -502,7 +502,23 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 
 			cmd := e.db.BuildBackupCommand(name, dumpFile, options)
 
-			dbCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
+			// Calculate timeout based on database size:
+			// - Minimum 2 hours for small databases
+			// - Add 1 hour per 20GB for large databases
+			// - This allows ~69GB database to take up to 5+ hours
+			timeout := 2 * time.Hour
+			if size, err := e.db.GetDatabaseSize(ctx, name); err == nil {
+				sizeGB := size / (1024 * 1024 * 1024)
+				if sizeGB > 20 {
+					extraHours := (sizeGB / 20) + 1
+					timeout = time.Duration(2+extraHours) * time.Hour
+					mu.Lock()
+					e.printf("       Extended timeout: %v (for %dGB database)\n", timeout, sizeGB)
+					mu.Unlock()
+				}
+			}
+
+			dbCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 			err := e.executeCommand(dbCtx, cmd, dumpFile)
 			cancel()
@@ -1356,16 +1372,21 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	}
 
 	// Wait for pg_dump to complete
-	if err := dumpCmd.Wait(); err != nil {
-		return fmt.Errorf("pg_dump failed: %w", err)
-	}
+	dumpErr := dumpCmd.Wait()
 
-	// Close stdout pipe to signal compressor we're done
+	// Close stdout pipe to signal compressor we're done - MUST happen after Wait()
+	// but before we check for errors, so compressor gets EOF
 	dumpStdout.Close()
 
 	// Wait for compression to complete
-	if err := compressCmd.Wait(); err != nil {
-		return fmt.Errorf("compression failed: %w", err)
+	compressErr := compressCmd.Wait()
+
+	// Check errors in order
+	if dumpErr != nil {
+		return fmt.Errorf("pg_dump failed: %w", dumpErr)
+	}
+	if compressErr != nil {
+		return fmt.Errorf("compression failed: %w", compressErr)
 	}
 
 	e.log.Debug("Streaming compression completed", "output", compressedFile)

@@ -89,10 +89,12 @@ func runDiagnosis(cfg *config.Config, log logger.Logger, archive ArchiveInfo) te
 		// For cluster archives, we can do deep analysis
 		if archive.Format.IsClusterBackup() {
 			// Create temp directory (use WorkDir if configured for large archives)
+			log.Info("Creating temp directory for diagnosis", "workDir", cfg.WorkDir)
 			tempDir, err := createTempDirIn(cfg.WorkDir, "dbbackup-diagnose-*")
 			if err != nil {
-				return diagnoseCompleteMsg{err: fmt.Errorf("failed to create temp dir: %w", err)}
+				return diagnoseCompleteMsg{err: fmt.Errorf("failed to create temp dir (workDir=%s): %w", cfg.WorkDir, err)}
 			}
+			log.Info("Using temp directory", "path", tempDir)
 			defer removeTempDir(tempDir)
 
 			// Diagnose all dumps in the cluster

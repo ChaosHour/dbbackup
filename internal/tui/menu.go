@@ -92,6 +92,7 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
 			"────────────────────────────────",
 			"Restore Single Database",
 			"Restore Cluster Backup",
+			"Diagnose Backup File",
 			"List & Manage Backups",
 			"────────────────────────────────",
 			"View Active Operations",
@@ -163,19 +164,21 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleRestoreSingle()
 			case 5: // Restore Cluster Backup
 				return m.handleRestoreCluster()
-			case 6: // List & Manage Backups
+			case 6: // Diagnose Backup File
+				return m.handleDiagnoseBackup()
+			case 7: // List & Manage Backups
 				return m.handleBackupManager()
-			case 8: // View Active Operations
+			case 9: // View Active Operations
 				return m.handleViewOperations()
-			case 9: // Show Operation History
+			case 10: // Show Operation History
 				return m.handleOperationHistory()
-			case 10: // Database Status
+			case 11: // Database Status
 				return m.handleStatus()
-			case 11: // Settings
+			case 12: // Settings
 				return m.handleSettings()
-			case 12: // Clear History
+			case 13: // Clear History
 				m.message = "🗑️ History cleared"
-			case 13: // Quit
+			case 14: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -244,21 +247,23 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleRestoreSingle()
 			case 5: // Restore Cluster Backup
 				return m.handleRestoreCluster()
-			case 6: // List & Manage Backups
+			case 6: // Diagnose Backup File
+				return m.handleDiagnoseBackup()
+			case 7: // List & Manage Backups
 				return m.handleBackupManager()
-			case 7: // Separator
+			case 8: // Separator
 				// Do nothing
-			case 8: // View Active Operations
+			case 9: // View Active Operations
 				return m.handleViewOperations()
-			case 9: // Show Operation History
+			case 10: // Show Operation History
 				return m.handleOperationHistory()
-			case 10: // Database Status
+			case 11: // Database Status
 				return m.handleStatus()
-			case 11: // Settings
+			case 12: // Settings
 				return m.handleSettings()
-			case 12: // Clear History
+			case 13: // Clear History
 				m.message = "🗑️ History cleared"
-			case 13: // Quit
+			case 14: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -405,6 +410,12 @@ func (m *MenuModel) handleRestoreCluster() (tea.Model, tea.Cmd) {
 func (m *MenuModel) handleBackupManager() (tea.Model, tea.Cmd) {
 	manager := NewBackupManager(m.config, m.logger, m, m.ctx)
 	return manager, manager.Init()
+}
+
+// handleDiagnoseBackup opens archive browser for diagnosis
+func (m *MenuModel) handleDiagnoseBackup() (tea.Model, tea.Cmd) {
+	browser := NewArchiveBrowser(m.config, m.logger, m, m.ctx, "diagnose")
+	return browser, browser.Init()
 }
 
 func (m *MenuModel) applyDatabaseSelection() {

@@ -201,6 +201,12 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.archives) > 0 && m.cursor < len(m.archives) {
 				selected := m.archives[m.cursor]
 
+				// Handle diagnose mode - go directly to diagnosis view
+				if m.mode == "diagnose" {
+					diagnoseView := NewDiagnoseView(m.config, m.logger, m.parent, m.ctx, selected)
+					return diagnoseView, diagnoseView.Init()
+				}
+
 				// Validate selection based on mode
 				if m.mode == "restore-cluster" && !selected.Format.IsClusterBackup() {
 					m.message = errorStyle.Render("❌ Please select a cluster backup (.tar.gz)")
@@ -250,6 +256,8 @@ func (m ArchiveBrowserModel) View() string {
 		title = "📦 Select Archive to Restore (Single Database)"
 	} else if m.mode == "restore-cluster" {
 		title = "📦 Select Archive to Restore (Cluster)"
+	} else if m.mode == "diagnose" {
+		title = "🔍 Select Archive to Diagnose"
 	}
 
 	s.WriteString(titleStyle.Render(title))

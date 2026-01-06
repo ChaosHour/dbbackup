@@ -543,10 +543,113 @@ func (d *Diagnoser) verifyWithPgRestore(filePath string, result *DiagnoseResult)
 
 // DiagnoseClusterDumps extracts and diagnoses all dumps in a cluster archive
 func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*DiagnoseResult, error) {
-	// Extract to temp directory
+	// First, try to list archive contents without extracting (fast check)
+	listCmd := exec.Command("tar", "-tzf", archivePath)
+	listOutput, listErr := listCmd.CombinedOutput()
+	if listErr != nil {
+		// Archive listing failed - likely corrupted
+		errResult := &DiagnoseResult{
+			FilePath:       archivePath,
+			FileName:       filepath.Base(archivePath),
+			Format:         FormatClusterTarGz,
+			DetectedFormat: "Cluster Archive (tar.gz)",
+			IsValid:        false,
+			IsCorrupted:    true,
+			Details:        &DiagnoseDetails{},
+		}
+		
+		errOutput := string(listOutput)
+		if strings.Contains(errOutput, "unexpected end of file") || 
+			strings.Contains(errOutput, "Unexpected EOF") ||
+			strings.Contains(errOutput, "truncated") {
+			errResult.IsTruncated = true
+			errResult.Errors = append(errResult.Errors,
+				"Archive appears to be TRUNCATED - incomplete download or backup",
+				fmt.Sprintf("tar error: %s", truncateString(errOutput, 300)),
+				"Possible causes: disk full during backup, interrupted transfer, network timeout",
+				"Solution: Re-create the backup from source database")
+		} else {
+			errResult.Errors = append(errResult.Errors,
+				fmt.Sprintf("Cannot list archive contents: %v", listErr),
+				fmt.Sprintf("tar error: %s", truncateString(errOutput, 300)),
+				"Run manually: tar -tzf "+archivePath+" 2>&1 | tail -50")
+		}
+		
+		return []*DiagnoseResult{errResult}, nil
+	}
+
+	// Archive is listable - now check disk space before extraction
+	files := strings.Split(strings.TrimSpace(string(listOutput)), "\n")
+	
+	// Check if we have enough disk space (estimate 4x archive size needed)
+	archiveInfo, _ := os.Stat(archivePath)
+	requiredSpace := archiveInfo.Size() * 4
+	
+	// Check temp directory space - try to extract metadata first
+	if stat, err := os.Stat(tempDir); err == nil && stat.IsDir() {
+		// Try extraction of a small test file first
+		testCmd := exec.Command("tar", "-xzf", archivePath, "-C", tempDir, "--wildcards", "*.json", "--wildcards", "globals.sql")
+		testCmd.Run() // Ignore error - just try to extract metadata
+	}
+	
+	d.log.Info("Archive listing successful", "files", len(files))
+	
+	// Try full extraction
 	cmd := exec.Command("tar", "-xzf", archivePath, "-C", tempDir)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to extract archive: %w", err)
+		// Extraction failed
+		errResult := &DiagnoseResult{
+			FilePath:       archivePath,
+			FileName:       filepath.Base(archivePath),
+			Format:         FormatClusterTarGz,
+			DetectedFormat: "Cluster Archive (tar.gz)",
+			IsValid:        false,
+			Details:        &DiagnoseDetails{},
+		}
+		
+		errOutput := stderr.String()
+		if strings.Contains(errOutput, "No space left") || 
+			strings.Contains(errOutput, "cannot write") ||
+			strings.Contains(errOutput, "Disk quota exceeded") {
+			errResult.Errors = append(errResult.Errors,
+				"INSUFFICIENT DISK SPACE to extract archive for diagnosis",
+				fmt.Sprintf("Archive size: %s (needs ~%s for extraction)", 
+					formatBytes(archiveInfo.Size()), formatBytes(requiredSpace)),
+				"Use CLI diagnosis instead: dbbackup restore diagnose "+archivePath,
+				"Or use --workdir flag to specify a location with more space")
+		} else if strings.Contains(errOutput, "unexpected end of file") ||
+			strings.Contains(errOutput, "Unexpected EOF") {
+			errResult.IsTruncated = true
+			errResult.IsCorrupted = true
+			errResult.Errors = append(errResult.Errors,
+				"Archive is TRUNCATED - extraction failed mid-way",
+				fmt.Sprintf("Error: %s", truncateString(errOutput, 200)),
+				"The backup file is incomplete and cannot be restored",
+				"Solution: Re-create the backup from source database")
+		} else {
+			errResult.IsCorrupted = true
+			errResult.Errors = append(errResult.Errors,
+				fmt.Sprintf("Extraction failed: %v", err),
+				fmt.Sprintf("tar error: %s", truncateString(errOutput, 300)))
+		}
+		
+		// Still report what files we found in the listing
+		var dumpFiles []string
+		for _, f := range files {
+			if strings.HasSuffix(f, ".dump") || strings.HasSuffix(f, ".sql.gz") {
+				dumpFiles = append(dumpFiles, filepath.Base(f))
+			}
+		}
+		if len(dumpFiles) > 0 {
+			errResult.Details.TableList = dumpFiles
+			errResult.Details.TableCount = len(dumpFiles)
+			errResult.Warnings = append(errResult.Warnings,
+				fmt.Sprintf("Archive contains %d database dumps (listing only)", len(dumpFiles)))
+		}
+		
+		return []*DiagnoseResult{errResult}, nil
 	}
 
 	// Find dump files

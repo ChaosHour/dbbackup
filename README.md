@@ -94,6 +94,7 @@ Database: postgres@localhost:5432 (PostgreSQL)
   ────────────────────────────────
   Restore Single Database
   Restore Cluster Backup
+  Diagnose Backup File
   List & Manage Backups
   ────────────────────────────────
   View Active Operations
@@ -194,6 +195,7 @@ Configuration Settings
 > Database Type: postgres
   CPU Workload Type: balanced
   Backup Directory: /root/db_backups
+  Work Directory: /tmp
   Compression Level: 6
   Parallel Jobs: 16
   Dump Jobs: 8

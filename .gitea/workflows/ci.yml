@@ -16,7 +16,13 @@ jobs:
       image: golang:1.24-bookworm
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        run: |
+          apt-get update && apt-get install -y -qq git ca-certificates
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout FETCH_HEAD
 
       - name: Download dependencies
         run: go mod download
@@ -38,7 +44,13 @@ jobs:
       image: golang:1.24-bookworm
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        run: |
+          apt-get update && apt-get install -y -qq git ca-certificates
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout FETCH_HEAD
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
@@ -61,7 +73,13 @@ jobs:
         goarch: [amd64, arm64]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        run: |
+          apt-get update && apt-get install -y -qq git ca-certificates
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout FETCH_HEAD
 
       - name: Build binary
         env:
@@ -81,7 +99,13 @@ jobs:
       image: golang:1.24-bookworm
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        run: |
+          apt-get update && apt-get install -y -qq git ca-certificates curl
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout FETCH_HEAD
 
       - name: Install Syft
         run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
@@ -101,14 +125,18 @@ jobs:
     steps:
       - name: Install tools
         run: |
-          apt-get update && apt-get install -y git ca-certificates
+          apt-get update && apt-get install -y git ca-certificates curl
           curl -sSfL https://github.com/goreleaser/goreleaser/releases/download/v2.4.8/goreleaser_Linux_x86_64.tar.gz | tar xz -C /usr/local/bin goreleaser
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch origin "${GITHUB_REF_NAME}"
+          git checkout FETCH_HEAD
+          git fetch --tags
 
       - name: Run goreleaser
         env:
@@ -128,11 +156,14 @@ jobs:
         image: docker:24-dind
         options: --privileged
     steps:
-      - name: Install dependencies
-        run: apk add --no-cache git curl
-
       - name: Checkout code
-        uses: actions/checkout@v4
+        run: |
+          apk add --no-cache git curl
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout FETCH_HEAD
 
       - name: Set up Docker Buildx
         run: |
@@ -147,19 +178,13 @@ jobs:
       - name: Build and push
         if: secrets.REGISTRY_USER != '' && secrets.REGISTRY_TOKEN != ''
         run: |
-          # Determine tags
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
             TAGS="-t git.uuxo.net/uuxo/dbbackup:${VERSION} -t git.uuxo.net/uuxo/dbbackup:latest"
           else
             TAGS="-t git.uuxo.net/uuxo/dbbackup:${GITHUB_SHA::8} -t git.uuxo.net/uuxo/dbbackup:main"
           fi
-          
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --push \
-            ${TAGS} \
-            .
+          docker buildx build --platform linux/amd64,linux/arm64 --push ${TAGS} .
 
   mirror:
     name: Mirror to GitHub
@@ -171,13 +196,15 @@ jobs:
       volumes:
         - /root/.ssh:/root/.ssh:ro
     steps:
-      - name: Install git
-        run: apt-get update && apt-get install -y --no-install-recommends git openssh-client ca-certificates && rm -rf /var/lib/apt/lists/*
-
       - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends git openssh-client ca-certificates
+          rm -rf /var/lib/apt/lists/*
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git fetch origin
+          git checkout -b main origin/main
 
       - name: Mirror to GitHub
         env:

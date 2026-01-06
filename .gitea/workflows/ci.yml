@@ -16,26 +16,24 @@ jobs:
       image: golang:1.24-bookworm
     steps:
       - name: Checkout code
+        env:
+          TOKEN: ${{ github.token }}
         run: |
           apt-get update && apt-get install -y -qq git ca-certificates
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git init
-          git remote add origin "https://${GITHUB_TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
+          git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
           git fetch --depth=1 origin "${GITHUB_SHA}"
           git checkout FETCH_HEAD
 
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests with race detection
-        env:
-          GOMAXPROCS: 8
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Run tests
+        run: go test -race -coverprofile=coverage.out ./...
 
-      - name: Generate coverage report
-        run: |
-          go tool cover -func=coverage.out
-          go tool cover -html=coverage.out -o coverage.html
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1
 
   lint:
     name: Lint
@@ -44,171 +42,55 @@ jobs:
       image: golang:1.24-bookworm
     steps:
       - name: Checkout code
+        env:
+          TOKEN: ${{ github.token }}
         run: |
           apt-get update && apt-get install -y -qq git ca-certificates
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git init
-          git remote add origin "https://${GITHUB_TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
+          git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
           git fetch --depth=1 origin "${GITHUB_SHA}"
           git checkout FETCH_HEAD
 
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
-
-      - name: Run golangci-lint
-        env:
-          GOMAXPROCS: 8
-        run: golangci-lint run --timeout=5m ./...
+      - name: Install and run golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
+          golangci-lint run --timeout=5m ./...
 
   build:
-    name: Build (${{ matrix.goos }}-${{ matrix.goarch }})
+    name: Build
     runs-on: ubuntu-latest
     needs: [test, lint]
     container:
       image: golang:1.24-bookworm
     strategy:
-      max-parallel: 8
       matrix:
-        goos: [linux, darwin]
-        goarch: [amd64, arm64]
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
     steps:
       - name: Checkout code
+        env:
+          TOKEN: ${{ github.token }}
         run: |
           apt-get update && apt-get install -y -qq git ca-certificates
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git init
-          git remote add origin "https://${GITHUB_TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
+          git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
           git fetch --depth=1 origin "${GITHUB_SHA}"
           git checkout FETCH_HEAD
 
-      - name: Build binary
+      - name: Build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
-          GOMAXPROCS: 8
+          CGO_ENABLED: "0"
         run: |
-          BINARY_NAME=dbbackup
-          go build -ldflags="-s -w" -o dist/${BINARY_NAME}-${{ matrix.goos }}-${{ matrix.goarch }} .
-
-  sbom:
-    name: Generate SBOM
-    runs-on: ubuntu-latest
-    needs: [test]
-    container:
-      image: golang:1.24-bookworm
-    steps:
-      - name: Checkout code
-        run: |
-          apt-get update && apt-get install -y -qq git ca-certificates curl
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git init
-          git remote add origin "https://${GITHUB_TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "${GITHUB_SHA}"
-          git checkout FETCH_HEAD
-
-      - name: Install Syft
-        run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-
-      - name: Generate SBOM
-        run: |
-          syft . -o spdx-json=sbom-spdx.json
-          syft . -o cyclonedx-json=sbom-cyclonedx.json
-
-  release:
-    name: Release
-    runs-on: ubuntu-latest
-    needs: [test, lint, build]
-    if: startsWith(github.ref, 'refs/tags/v')
-    container:
-      image: golang:1.24-bookworm
-    steps:
-      - name: Install tools
-        run: |
-          apt-get update && apt-get install -y git ca-certificates curl
-          curl -sSfL https://github.com/goreleaser/goreleaser/releases/download/v2.4.8/goreleaser_Linux_x86_64.tar.gz | tar xz -C /usr/local/bin goreleaser
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-
-      - name: Checkout code
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git init
-          git remote add origin "https://${GITHUB_TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
-          git fetch origin "${GITHUB_REF_NAME}"
-          git checkout FETCH_HEAD
-          git fetch --tags
-
-      - name: Run goreleaser
-        env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-        run: goreleaser release --clean
-
-  docker:
-    name: Build & Push Docker Image
-    runs-on: ubuntu-latest
-    needs: [test, lint]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/'))
-    container:
-      image: docker:24-cli
-      options: --privileged
-    services:
-      docker:
-        image: docker:24-dind
-        options: --privileged
-    steps:
-      - name: Checkout code
-        run: |
-          apk add --no-cache git curl
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git init
-          git remote add origin "https://${GITHUB_TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "${GITHUB_SHA}"
-          git checkout FETCH_HEAD
-
-      - name: Set up Docker Buildx
-        run: |
-          docker buildx create --use --name builder --driver docker-container
-          docker buildx inspect --bootstrap
-
-      - name: Login to Gitea Registry
-        if: secrets.REGISTRY_USER != '' && secrets.REGISTRY_TOKEN != ''
-        run: |
-          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login git.uuxo.net -u "${{ secrets.REGISTRY_USER }}" --password-stdin
-
-      - name: Build and push
-        if: secrets.REGISTRY_USER != '' && secrets.REGISTRY_TOKEN != ''
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/}
-            TAGS="-t git.uuxo.net/uuxo/dbbackup:${VERSION} -t git.uuxo.net/uuxo/dbbackup:latest"
-          else
-            TAGS="-t git.uuxo.net/uuxo/dbbackup:${GITHUB_SHA::8} -t git.uuxo.net/uuxo/dbbackup:main"
-          fi
-          docker buildx build --platform linux/amd64,linux/arm64 --push ${TAGS} .
-
-  mirror:
-    name: Mirror to GitHub
-    runs-on: ubuntu-latest
-    needs: [test, lint]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.MIRROR_ENABLED != 'false'
-    container:
-      image: debian:bookworm-slim
-      volumes:
-        - /root/.ssh:/root/.ssh:ro
-    steps:
-      - name: Checkout code
-        run: |
-          apt-get update && apt-get install -y --no-install-recommends git openssh-client ca-certificates
-          rm -rf /var/lib/apt/lists/*
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git init
-          git remote add origin "https://${GITHUB_TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
-          git fetch origin
-          git checkout -b main origin/main
-
-      - name: Mirror to GitHub
-        env:
-          GIT_SSH_COMMAND: "ssh -i /root/.ssh/id_ed25519 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
-        run: |
-          git remote add github git@github.com:PlusOne/dbbackup.git || true
-          git push --mirror github || git push --force --all github && git push --force --tags github
+          go build -ldflags="-s -w" -o dbbackup-${GOOS}-${GOARCH} .
+          ls -lh dbbackup-*

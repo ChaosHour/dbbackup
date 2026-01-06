@@ -8,9 +8,6 @@ on:
   pull_request:
     branches: [main, master]
 
-env:
-  GITEA_URL: https://git.uuxo.net
-
 jobs:
   test:
     name: Test
@@ -18,13 +15,8 @@ jobs:
     container:
       image: golang:1.24-bookworm
     steps:
-      - name: Install git
-        run: apt-get update && apt-get install -y git ca-certificates
-
       - name: Checkout code
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git clone --depth 1 --branch ${GITHUB_REF_NAME} ${{ env.GITEA_URL }}/${GITHUB_REPOSITORY}.git .
+        uses: actions/checkout@v4
 
       - name: Download dependencies
         run: go mod download
@@ -45,13 +37,8 @@ jobs:
     container:
       image: golang:1.24-bookworm
     steps:
-      - name: Install git
-        run: apt-get update && apt-get install -y git ca-certificates
-
       - name: Checkout code
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git clone --depth 1 --branch ${GITHUB_REF_NAME} ${{ env.GITEA_URL }}/${GITHUB_REPOSITORY}.git .
+        uses: actions/checkout@v4
 
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.62.2
@@ -73,13 +60,8 @@ jobs:
         goos: [linux, darwin]
         goarch: [amd64, arm64]
     steps:
-      - name: Install git
-        run: apt-get update && apt-get install -y git ca-certificates
-
       - name: Checkout code
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git clone --depth 1 --branch ${GITHUB_REF_NAME} ${{ env.GITEA_URL }}/${GITHUB_REPOSITORY}.git .
+        uses: actions/checkout@v4
 
       - name: Build binary
         env:
@@ -98,13 +80,8 @@ jobs:
     container:
       image: golang:1.24-bookworm
     steps:
-      - name: Install git
-        run: apt-get update && apt-get install -y git ca-certificates
-
       - name: Checkout code
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git clone --depth 1 --branch ${GITHUB_REF_NAME} ${{ env.GITEA_URL }}/${GITHUB_REPOSITORY}.git .
+        uses: actions/checkout@v4
 
       - name: Install Syft
         run: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
@@ -129,10 +106,9 @@ jobs:
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Checkout code
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git clone --branch ${GITHUB_REF_NAME} ${{ env.GITEA_URL }}/${GITHUB_REPOSITORY}.git .
-          git fetch --tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Run goreleaser
         env:
@@ -156,9 +132,7 @@ jobs:
         run: apk add --no-cache git curl
 
       - name: Checkout code
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git clone --depth 1 --branch ${GITHUB_REF_NAME} ${{ env.GITEA_URL }}/${GITHUB_REPOSITORY}.git .
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         run: |
@@ -166,12 +140,12 @@ jobs:
           docker buildx inspect --bootstrap
 
       - name: Login to Gitea Registry
-        if: ${{ secrets.REGISTRY_USER != '' && secrets.REGISTRY_TOKEN != '' }}
+        if: secrets.REGISTRY_USER != '' && secrets.REGISTRY_TOKEN != ''
         run: |
           echo "${{ secrets.REGISTRY_TOKEN }}" | docker login git.uuxo.net -u "${{ secrets.REGISTRY_USER }}" --password-stdin
 
       - name: Build and push
-        if: ${{ secrets.REGISTRY_USER != '' && secrets.REGISTRY_TOKEN != '' }}
+        if: secrets.REGISTRY_USER != '' && secrets.REGISTRY_TOKEN != ''
         run: |
           # Determine tags
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
@@ -186,7 +160,6 @@ jobs:
             --push \
             ${TAGS} \
             .
-# Test 1765481480
 
   mirror:
     name: Mirror to GitHub
@@ -201,12 +174,14 @@ jobs:
       - name: Install git
         run: apt-get update && apt-get install -y --no-install-recommends git openssh-client ca-certificates && rm -rf /var/lib/apt/lists/*
 
-      - name: Clone and mirror
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mirror to GitHub
         env:
           GIT_SSH_COMMAND: "ssh -i /root/.ssh/id_ed25519 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git clone --mirror ${{ env.GITEA_URL }}/${GITHUB_REPOSITORY}.git repo.git
-          cd repo.git
-          git remote add github git@github.com:PlusOne/dbbackup.git
+          git remote add github git@github.com:PlusOne/dbbackup.git || true
           git push --mirror github || git push --force --all github && git push --force --tags github

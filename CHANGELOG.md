@@ -5,6 +5,35 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.41.0] - 2026-01-07 "The Pre-Flight Check"
+
+### Added - 🛡️ Pre-Restore Validation
+
+**Automatic Dump Validation Before Restore:**
+- SQL dump files are now validated BEFORE attempting restore
+- Detects truncated COPY blocks that cause "syntax error" failures
+- Catches corrupted backups in seconds instead of wasting 49+ minutes
+- Cluster restore pre-validates ALL dumps upfront (fail-fast approach)
+
+**Improved Error Messages:**
+- Clear indication when dump file is truncated
+- Shows which table's COPY block was interrupted
+- Displays sample orphaned data for diagnosis
+- Provides actionable error messages with root cause
+
+### Fixed
+- Truncated `.sql.gz` dumps no longer waste hours on doomed restores
+- "syntax error at or near" errors now caught before restore begins
+- Cluster restores abort immediately if any dump is corrupted
+
+### Technical Details
+- Integrated `Diagnoser` into restore pipeline for pre-validation
+- Added `quickValidateSQLDump()` for fast integrity checks
+- Pre-validation runs on all `.sql.gz` files in cluster archives
+- Zero performance impact on valid backups (diagnosis is fast)
+
+---
+
 ## [3.40.0] - 2026-01-05 "The Diagnostician"
 
 ### Added - 🔍 Restore Diagnostics & Error Reporting

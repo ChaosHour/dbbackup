@@ -1,0 +1,11 @@
+[Unit]
+Description=Database Cluster Backup Timer
+Documentation=https://github.com/PlusOne/dbbackup
+
+[Timer]
+OnCalendar={{.Schedule}}
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,47 @@
+[Unit]
+Description=Database Backup for %i
+Documentation=https://github.com/PlusOne/dbbackup
+After=network-online.target postgresql.service mysql.service mariadb.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{.User}}
+Group={{.Group}}
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+RemoveIPC=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Directories
+ReadWritePaths={{.BackupDir}} /var/lib/dbbackup /var/log/dbbackup
+
+# Network access for cloud uploads
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# Environment
+EnvironmentFile=-/etc/dbbackup/env.d/%i.conf
+
+# Execution
+ExecStart={{.BinaryPath}} backup {{.BackupType}} %i --config {{.ConfigPath}}
+TimeoutStartSec={{.TimeoutSeconds}}
+
+# Post-backup metrics export
+ExecStopPost=-{{.BinaryPath}} metrics export --instance %i --output /var/lib/dbbackup/metrics/%i.prom
+
+# OOM protection for large backups
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target

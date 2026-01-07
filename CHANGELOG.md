@@ -5,6 +5,55 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.0] - 2026-01-07 "The Operator"
+
+### Added - 🐧 Systemd Integration & Prometheus Metrics
+
+**Embedded Systemd Installer:**
+- New `dbbackup install` command installs as systemd service/timer
+- Supports single-database (`--backup-type single`) and cluster (`--backup-type cluster`) modes
+- Automatic `dbbackup` user/group creation with proper permissions
+- Hardened service units with security features (NoNewPrivileges, ProtectSystem, CapabilityBoundingSet)
+- Templated timer units with configurable schedules (daily, weekly, or custom OnCalendar)
+- Built-in dry-run mode (`--dry-run`) to preview installation
+- `dbbackup install --status` shows current installation state
+- `dbbackup uninstall` cleanly removes all systemd units and optionally configuration
+
+**Prometheus Metrics Support:**
+- New `dbbackup metrics export` command writes textfile collector format
+- New `dbbackup metrics serve` command runs HTTP exporter on port 9399
+- Metrics: `dbbackup_last_success_timestamp`, `dbbackup_rpo_seconds`, `dbbackup_backup_total`, etc.
+- Integration with node_exporter textfile collector
+- Metrics automatically updated via ExecStopPost in service units
+- `--with-metrics` flag during install sets up exporter as systemd service
+
+**New Commands:**
+```bash
+# Install as systemd service
+sudo dbbackup install --backup-type cluster --schedule daily
+
+# Install with Prometheus metrics
+sudo dbbackup install --with-metrics --metrics-port 9399
+
+# Check installation status
+dbbackup install --status
+
+# Export metrics for node_exporter
+dbbackup metrics export --output /var/lib/dbbackup/metrics/dbbackup.prom
+
+# Run HTTP metrics server
+dbbackup metrics serve --port 9399
+```
+
+### Technical Details
+- Systemd templates embedded with `//go:embed` for self-contained binary
+- Templates use ReadWritePaths for security isolation
+- Service units include proper OOMScoreAdjust (-100) to protect backups
+- Metrics exporter caches with 30-second TTL for performance
+- Graceful shutdown on SIGTERM for metrics server
+
+---
+
 ## [3.41.0] - 2026-01-07 "The Pre-Flight Check"
 
 ### Added - 🛡️ Pre-Restore Validation

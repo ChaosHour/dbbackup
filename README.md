@@ -19,6 +19,8 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 - Point-in-Time Recovery (PITR) for PostgreSQL and MySQL/MariaDB
 - **GFS retention policies**: Grandfather-Father-Son backup rotation
 - **Notifications**: SMTP email and webhook alerts
+- **Systemd integration**: Install as service with scheduled timers
+- **Prometheus metrics**: Textfile collector and HTTP exporter
 - Interactive terminal UI
 - Cross-platform binaries
 
@@ -284,6 +286,10 @@ dbbackup backup single mydb --dry-run
 | `drill` | DR drill testing |
 | `report` | Compliance report generation |
 | `rto` | RTO/RPO analysis |
+| `install` | Install as systemd service |
+| `uninstall` | Remove systemd service |
+| `metrics export` | Export Prometheus metrics to textfile |
+| `metrics serve` | Run Prometheus HTTP exporter |
 
 ## Global Flags
 
@@ -672,6 +678,114 @@ dbbackup rto analyze mydb --target-rto 4h --target-rpo 1h
 - RTO breakdown by phase
 - Compliance status
 - Recommendations for improvement
+
+## Systemd Integration
+
+Install dbbackup as a systemd service for automated scheduled backups:
+
+```bash
+# Install as cluster backup service (daily at midnight)
+sudo dbbackup install --backup-type cluster --schedule daily
+
+# Install for specific instance with custom schedule
+sudo dbbackup install --instance production --schedule "*-*-* 02:00:00"
+
+# Install with Prometheus metrics exporter
+sudo dbbackup install --backup-type cluster --with-metrics --metrics-port 9399
+
+# Preview installation (dry-run)
+sudo dbbackup install --dry-run
+
+# Check installation status
+dbbackup install --status
+
+# Uninstall
+sudo dbbackup uninstall
+
+# Uninstall specific instance and remove config
+sudo dbbackup uninstall production --purge
+```
+
+**What gets installed:**
+- Systemd service unit (dbbackup@.service or dbbackup-cluster.service)
+- Systemd timer unit for scheduling
+- Dedicated `dbbackup` user and group
+- Directories: `/var/lib/dbbackup/`, `/etc/dbbackup/`
+- Optional: Prometheus metrics exporter service
+
+**Security features:**
+- NoNewPrivileges, ProtectSystem=strict
+- ReadWritePaths limited to backup directories
+- CapabilityBoundingSet restricted
+- OOMScoreAdjust=-100 to protect backups
+
+**Schedule format (OnCalendar):**
+- `daily` - Every day at midnight
+- `weekly` - Every Monday at midnight
+- `*-*-* 02:00:00` - Every day at 2am
+- `Mon *-*-* 03:00` - Every Monday at 3am
+
+## Prometheus Metrics
+
+Export backup metrics for monitoring with Prometheus:
+
+### Textfile Collector
+
+For integration with node_exporter:
+
+```bash
+# Export metrics to textfile
+dbbackup metrics export --output /var/lib/node_exporter/textfile_collector/dbbackup.prom
+
+# Export for specific instance
+dbbackup metrics export --instance production --output /var/lib/dbbackup/metrics/production.prom
+```
+
+Configure node_exporter:
+```bash
+node_exporter --collector.textfile.directory=/var/lib/node_exporter/textfile_collector/
+```
+
+### HTTP Exporter
+
+Run a dedicated metrics HTTP server:
+
+```bash
+# Start metrics server on default port 9399
+dbbackup metrics serve
+
+# Custom port
+dbbackup metrics serve --port 9100
+
+# Run as systemd service (installed via --with-metrics)
+sudo systemctl start dbbackup-exporter
+```
+
+**Endpoints:**
+- `/metrics` - Prometheus exposition format
+- `/health` - Health check (returns 200 OK)
+
+**Available metrics:**
+| Metric | Type | Description |
+|--------|------|-------------|
+| `dbbackup_last_success_timestamp` | gauge | Unix timestamp of last successful backup |
+| `dbbackup_last_backup_duration_seconds` | gauge | Duration of last backup |
+| `dbbackup_last_backup_size_bytes` | gauge | Size of last backup |
+| `dbbackup_backup_total` | counter | Total backups by status (success/failure) |
+| `dbbackup_rpo_seconds` | gauge | Seconds since last successful backup |
+| `dbbackup_backup_verified` | gauge | Whether last backup was verified (1/0) |
+| `dbbackup_scrape_timestamp` | gauge | When metrics were collected |
+
+**Labels:** `instance`, `database`, `engine`
+
+**Example Prometheus query:**
+```promql
+# Alert if RPO exceeds 24 hours
+dbbackup_rpo_seconds{instance="production"} > 86400
+
+# Backup success rate
+sum(rate(dbbackup_backup_total{status="success"}[24h])) / sum(rate(dbbackup_backup_total[24h]))
+```
 
 ## Configuration
 

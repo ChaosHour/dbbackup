@@ -203,9 +203,17 @@ func runMigrateCluster(cmd *cobra.Command, args []string) error {
 		migrateTargetUser = migrateSourceUser
 	}
 
+	// Create source config first to get WorkDir
+	sourceCfg := config.New()
+	sourceCfg.Host = migrateSourceHost
+	sourceCfg.Port = migrateSourcePort
+	sourceCfg.User = migrateSourceUser
+	sourceCfg.Password = migrateSourcePassword
+
 	workdir := migrateWorkdir
 	if workdir == "" {
-		workdir = filepath.Join(os.TempDir(), "dbbackup-migrate")
+		// Use WorkDir from config if available
+		workdir = filepath.Join(sourceCfg.GetEffectiveWorkDir(), "dbbackup-migrate")
 	}
 
 	// Create working directory
@@ -213,12 +221,7 @@ func runMigrateCluster(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create working directory: %w", err)
 	}
 
-	// Create source config
-	sourceCfg := config.New()
-	sourceCfg.Host = migrateSourceHost
-	sourceCfg.Port = migrateSourcePort
-	sourceCfg.User = migrateSourceUser
-	sourceCfg.Password = migrateSourcePassword
+	// Update source config with remaining settings
 	sourceCfg.SSLMode = migrateSourceSSLMode
 	sourceCfg.Database = "postgres" // Default connection database
 	sourceCfg.DatabaseType = cfg.DatabaseType
@@ -342,7 +345,8 @@ func runMigrateSingle(cmd *cobra.Command, args []string) error {
 
 	workdir := migrateWorkdir
 	if workdir == "" {
-		workdir = filepath.Join(os.TempDir(), "dbbackup-migrate")
+		tempCfg := config.New()
+		workdir = filepath.Join(tempCfg.GetEffectiveWorkDir(), "dbbackup-migrate")
 	}
 
 	// Create working directory

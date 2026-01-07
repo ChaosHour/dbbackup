@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -157,8 +158,9 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 		// Enable debug logging if requested
 		if saveDebugLog {
-			// Generate debug log path based on archive name and timestamp
-			debugLogPath := fmt.Sprintf("/tmp/dbbackup-restore-debug-%s.json", time.Now().Format("20060102-150405"))
+			// Generate debug log path using configured WorkDir
+			workDir := cfg.GetEffectiveWorkDir()
+			debugLogPath := filepath.Join(workDir, fmt.Sprintf("dbbackup-restore-debug-%s.json", time.Now().Format("20060102-150405")))
 			engine.SetDebugLogPath(debugLogPath)
 			log.Info("Debug logging enabled", "path", debugLogPath)
 		}

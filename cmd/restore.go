@@ -350,10 +350,11 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 	format := restore.DetectArchiveFormat(archivePath)
 
 	if format.IsClusterBackup() && diagnoseDeep {
-		// Create temp directory for extraction
-		tempDir, err := os.MkdirTemp("", "dbbackup-diagnose-*")
+		// Create temp directory for extraction in configured WorkDir
+		workDir := cfg.GetEffectiveWorkDir()
+		tempDir, err := os.MkdirTemp(workDir, "dbbackup-diagnose-*")
 		if err != nil {
-			return fmt.Errorf("failed to create temp directory: %w", err)
+			return fmt.Errorf("failed to create temp directory in %s: %w", workDir, err)
 		}
 
 		if !diagnoseKeepTemp {
@@ -830,10 +831,11 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 	if restoreDiagnose {
 		log.Info("🔍 Running pre-restore diagnosis...")
 		
-		// Create temp directory for extraction
-		diagTempDir, err := os.MkdirTemp("", "dbbackup-diagnose-*")
+		// Create temp directory for extraction in configured WorkDir
+		workDir := cfg.GetEffectiveWorkDir()
+		diagTempDir, err := os.MkdirTemp(workDir, "dbbackup-diagnose-*")
 		if err != nil {
-			return fmt.Errorf("failed to create temp directory for diagnosis: %w", err)
+			return fmt.Errorf("failed to create temp directory for diagnosis in %s: %w", workDir, err)
 		}
 		defer os.RemoveAll(diagTempDir)
 		

@@ -223,8 +223,11 @@ func New() *Config {
 		// Cluster parallelism (default: 2 concurrent operations for faster cluster backup/restore)
 		ClusterParallelism: getEnvInt("CLUSTER_PARALLELISM", 2),
 
+		// Working directory for large operations (default: system temp)
+		WorkDir: getEnvString("WORK_DIR", ""),
+
 		// Swap file management
-		SwapFilePath:   getEnvString("SWAP_FILE_PATH", "/tmp/dbbackup_swap"),
+		SwapFilePath:   "", // Will be set after WorkDir is initialized
 		SwapFileSizeGB: getEnvInt("SWAP_FILE_SIZE_GB", 0), // 0 = disabled by default
 		AutoSwap:       getEnvBool("AUTO_SWAP", false),
 
@@ -262,6 +265,13 @@ func New() *Config {
 		cfg.DatabaseType = "postgres"
 		cfg.Port = postgresDefaultPort
 		cfg.SSLMode = "prefer"
+	}
+
+	// Set SwapFilePath using WorkDir if not explicitly set via env var
+	if envSwap := os.Getenv("SWAP_FILE_PATH"); envSwap != "" {
+		cfg.SwapFilePath = envSwap
+	} else {
+		cfg.SwapFilePath = filepath.Join(cfg.GetEffectiveWorkDir(), "dbbackup_swap")
 	}
 
 	return cfg
@@ -499,6 +509,14 @@ func GetCurrentOSUser() string {
 	return getCurrentUser()
 }
 
+// GetEffectiveWorkDir returns the configured WorkDir or system temp as fallback
+func (c *Config) GetEffectiveWorkDir() string {
+	if c.WorkDir != "" {
+		return c.WorkDir
+	}
+	return os.TempDir()
+}
+
 func getDefaultBackupDir() string {
 	// Try to create a sensible default backup directory
 	homeDir, _ := os.UserHomeDir()
@@ -516,7 +534,7 @@ func getDefaultBackupDir() string {
 		return "/var/lib/pgsql/pg_backups"
 	}
 
-	return "/tmp/db_backups"
+	return filepath.Join(os.TempDir(), "db_backups")
 }
 
 // CPU-related helper functions

@@ -802,7 +802,7 @@ func (m SettingsModel) openDirectoryBrowser() (tea.Model, tea.Cmd) {
 	setting := m.settings[m.cursor]
 	currentValue := setting.Value(m.config)
 	if currentValue == "" {
-		currentValue = "/tmp"
+		currentValue = m.config.GetEffectiveWorkDir()
 	}
 
 	if m.dirBrowser == nil {

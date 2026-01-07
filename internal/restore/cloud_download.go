@@ -47,9 +47,10 @@ type DownloadResult struct {
 
 // Download downloads a backup from cloud storage
 func (d *CloudDownloader) Download(ctx context.Context, remotePath string, opts DownloadOptions) (*DownloadResult, error) {
-	// Determine temp directory
+	// Determine temp directory (use from opts, or from config's WorkDir, or fallback to system temp)
 	tempDir := opts.TempDir
 	if tempDir == "" {
+		// Try to get from config if available (passed via opts.TempDir)
 		tempDir = os.TempDir()
 	}
 

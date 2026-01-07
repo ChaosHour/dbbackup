@@ -628,11 +628,12 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 
 	e.progress.Start(fmt.Sprintf("Restoring cluster from %s", filepath.Base(archivePath)))
 
-	// Create temporary extraction directory
-	tempDir := filepath.Join(e.cfg.BackupDir, fmt.Sprintf(".restore_%d", time.Now().Unix()))
+	// Create temporary extraction directory in configured WorkDir
+	workDir := e.cfg.GetEffectiveWorkDir()
+	tempDir := filepath.Join(workDir, fmt.Sprintf(".restore_%d", time.Now().Unix()))
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		operation.Fail("Failed to create temporary directory")
-		return fmt.Errorf("failed to create temp directory: %w", err)
+		return fmt.Errorf("failed to create temp directory in %s: %w", workDir, err)
 	}
 	defer os.RemoveAll(tempDir)
 

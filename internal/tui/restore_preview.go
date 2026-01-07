@@ -471,7 +471,7 @@ func (m RestorePreviewModel) View() string {
 	s.WriteString(debugStyle.Render(fmt.Sprintf("  %s Debug Log: %v (press 'd' to toggle)", debugIcon, m.saveDebugLog)))
 	s.WriteString("\n")
 	if m.saveDebugLog {
-		s.WriteString(infoStyle.Render("    Saves detailed error report to /tmp on failure"))
+		s.WriteString(infoStyle.Render(fmt.Sprintf("    Saves detailed error report to %s on failure", m.config.GetEffectiveWorkDir())))
 		s.WriteString("\n")
 	}
 	s.WriteString("\n")

@@ -140,13 +140,17 @@ jobs:
           echo "Created release ID: $RELEASE_ID"
           
           # Upload each binary
+          echo "Files to upload:"
+          ls -la release/
+          
           for file in release/dbbackup-*; do
             FILENAME=$(basename "$file")
             echo "Uploading $FILENAME..."
-            curl -s -X POST \
+            UPLOAD_RESPONSE=$(curl -s -X POST \
               -H "Authorization: token ${GITEA_TOKEN}" \
               -F "attachment=@${file}" \
-              "https://git.uuxo.net/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${FILENAME}"
+              "https://git.uuxo.net/api/v1/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=${FILENAME}")
+            echo "Upload response: $UPLOAD_RESPONSE"
           done
           
           echo "Gitea release complete!"

@@ -112,28 +112,29 @@ jobs:
           TAG=${GITHUB_REF#refs/tags/}
           
           echo "Creating Gitea release for ${TAG}..."
+          echo "Debug: GITHUB_REPOSITORY=${GITHUB_REPOSITORY}"
+          echo "Debug: TAG=${TAG}"
           
-          # Use jq to build valid JSON with proper escaping
-          BODY="Download binaries for your platform: Linux (amd64, arm64), macOS (Intel, Apple Silicon), FreeBSD (amd64)"
+          # Simple body without special characters
+          BODY="Download binaries for your platform"
           
-          JSON_PAYLOAD=$(jq -n \
-            --arg tag "$TAG" \
-            --arg name "$TAG" \
-            --arg body "$BODY" \
-            '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')
-          
-          # Create release via API
-          RESPONSE=$(curl -s -X POST \
+          # Create release via API with simple inline JSON
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Authorization: token ${GITEA_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "$JSON_PAYLOAD" \
+            -d '{"tag_name":"'"${TAG}"'","name":"'"${TAG}"'","body":"'"${BODY}"'","draft":false,"prerelease":false}' \
             "https://git.uuxo.net/api/v1/repos/${GITHUB_REPOSITORY}/releases")
           
-          RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY_RESPONSE=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "HTTP Code: $HTTP_CODE"
+          echo "Response: $BODY_RESPONSE"
+          
+          RELEASE_ID=$(echo "$BODY_RESPONSE" | jq -r '.id')
           
           if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
-            echo "Failed to create release. Response:"
-            echo "$RESPONSE"
+            echo "Failed to create release"
             exit 1
           fi
           

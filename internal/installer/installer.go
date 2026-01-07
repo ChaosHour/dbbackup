@@ -273,8 +273,8 @@ func (i *Installer) Status(ctx context.Context, instance string) (*ServiceStatus
 
 // validatePrerequisites checks system requirements
 func (i *Installer) validatePrerequisites() error {
-	// Check root
-	if os.Getuid() != 0 {
+	// Check root (skip in dry-run mode)
+	if os.Getuid() != 0 && !i.dryRun {
 		return fmt.Errorf("installation requires root privileges (use sudo)")
 	}
 

@@ -252,6 +252,15 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 
 // restorePostgreSQLSQL restores from PostgreSQL SQL script
 func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB string, compressed bool) error {
+	// Pre-validate SQL dump to detect truncation BEFORE attempting restore
+	// This saves time by catching corrupted files early (vs 49min failures)
+	if err := e.quickValidateSQLDump(archivePath, compressed); err != nil {
+		e.log.Error("Pre-restore validation failed - dump file appears corrupted",
+			"file", archivePath,
+			"error", err)
+		return fmt.Errorf("dump validation failed: %w - the backup file may be truncated or corrupted", err)
+	}
+
 	// Use psql for SQL scripts
 	var cmd []string
 
@@ -681,6 +690,46 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		operation.Fail("Failed to read dumps directory")
 		return fmt.Errorf("failed to read dumps directory: %w", err)
 	}
+
+	// PRE-VALIDATE all SQL dumps BEFORE starting restore
+	// This catches truncated files early instead of failing after hours of work
+	e.log.Info("Pre-validating dump files before restore...")
+	e.progress.Update("Pre-validating dump files...")
+	var corruptedDumps []string
+	diagnoser := NewDiagnoser(e.log, false)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		dumpFile := filepath.Join(dumpsDir, entry.Name())
+		if strings.HasSuffix(dumpFile, ".sql.gz") {
+			result, err := diagnoser.DiagnoseFile(dumpFile)
+			if err != nil {
+				e.log.Warn("Could not validate dump file", "file", entry.Name(), "error", err)
+				continue
+			}
+			if result.IsTruncated || result.IsCorrupted || !result.IsValid {
+				dbName := strings.TrimSuffix(entry.Name(), ".sql.gz")
+				errDetail := "unknown issue"
+				if len(result.Errors) > 0 {
+					errDetail = result.Errors[0]
+				}
+				corruptedDumps = append(corruptedDumps, fmt.Sprintf("%s: %s", dbName, errDetail))
+				e.log.Error("CORRUPTED dump file detected",
+					"database", dbName,
+					"file", entry.Name(),
+					"truncated", result.IsTruncated,
+					"errors", result.Errors)
+			}
+		}
+	}
+	if len(corruptedDumps) > 0 {
+		operation.Fail("Corrupted dump files detected")
+		e.progress.Fail(fmt.Sprintf("Found %d corrupted dump files - restore aborted", len(corruptedDumps)))
+		return fmt.Errorf("pre-validation failed: %d corrupted dump files detected:\n  %s\n\nThe backup archive appears to be damaged. You need to restore from a different backup.",
+			len(corruptedDumps), strings.Join(corruptedDumps, "\n  "))
+	}
+	e.log.Info("All dump files passed validation")
 
 	var failedDBs []string
 	totalDBs := 0
@@ -1273,4 +1322,49 @@ func FormatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// quickValidateSQLDump performs a fast validation of SQL dump files
+// by checking for truncated COPY blocks. This catches corrupted dumps
+// BEFORE attempting a full restore (which could waste 49+ minutes).
+func (e *Engine) quickValidateSQLDump(archivePath string, compressed bool) error {
+	e.log.Debug("Pre-validating SQL dump file", "path", archivePath, "compressed", compressed)
+
+	diagnoser := NewDiagnoser(e.log, false) // non-verbose for speed
+	result, err := diagnoser.DiagnoseFile(archivePath)
+	if err != nil {
+		return fmt.Errorf("diagnosis error: %w", err)
+	}
+
+	// Check for critical issues that would cause restore failure
+	if result.IsTruncated {
+		errMsg := "SQL dump file is TRUNCATED"
+		if result.Details != nil && result.Details.UnterminatedCopy {
+			errMsg = fmt.Sprintf("%s - unterminated COPY block for table '%s' at line %d",
+				errMsg, result.Details.LastCopyTable, result.Details.LastCopyLineNumber)
+			if len(result.Details.SampleCopyData) > 0 {
+				errMsg = fmt.Sprintf("%s (sample orphaned data: %s)", errMsg, result.Details.SampleCopyData[0])
+			}
+		}
+		return fmt.Errorf("%s", errMsg)
+	}
+
+	if result.IsCorrupted {
+		return fmt.Errorf("SQL dump file is corrupted: %v", result.Errors)
+	}
+
+	if !result.IsValid {
+		if len(result.Errors) > 0 {
+			return fmt.Errorf("dump validation failed: %s", result.Errors[0])
+		}
+		return fmt.Errorf("dump file is invalid (unknown reason)")
+	}
+
+	// Log any warnings but don't fail
+	for _, warning := range result.Warnings {
+		e.log.Warn("Dump validation warning", "warning", warning)
+	}
+
+	e.log.Debug("SQL dump validation passed", "path", archivePath)
+	return nil
 }

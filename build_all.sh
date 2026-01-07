@@ -83,7 +83,8 @@ for platform_config in "${PLATFORMS[@]}"; do
     echo -e "${YELLOW}[$current/$total_platforms]${NC} Building for ${BOLD}$description${NC} (${platform})"
     
     # Set environment and build (using export for better compatibility)
-    export GOOS GOARCH
+    # CGO_ENABLED=0 creates static binaries without glibc dependency
+    export CGO_ENABLED=0 GOOS GOARCH
     if go build -ldflags "$LDFLAGS" -o "${BIN_DIR}/${binary_name}" . 2>/dev/null; then
         # Get file size
         if [[ "$OSTYPE" == "darwin"* ]]; then

@@ -113,22 +113,20 @@ jobs:
           
           echo "Creating Gitea release for ${TAG}..."
           
-          # Create JSON payload (avoid shell escaping issues)
-          cat > /tmp/release.json << EOF
-          {
-            "tag_name": "${TAG}",
-            "name": "${TAG}",
-            "body": "## Download\n\nSelect the binary for your platform.\n\n### Platforms\n- Linux (amd64, arm64)\n- macOS (Intel, Apple Silicon)\n- FreeBSD (amd64)",
-            "draft": false,
-            "prerelease": false
-          }
-          EOF
+          # Use jq to build valid JSON with proper escaping
+          BODY="Download binaries for your platform: Linux (amd64, arm64), macOS (Intel, Apple Silicon), FreeBSD (amd64)"
+          
+          JSON_PAYLOAD=$(jq -n \
+            --arg tag "$TAG" \
+            --arg name "$TAG" \
+            --arg body "$BODY" \
+            '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')
           
           # Create release via API
           RESPONSE=$(curl -s -X POST \
             -H "Authorization: token ${GITEA_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d @/tmp/release.json \
+            -d "$JSON_PAYLOAD" \
             "https://git.uuxo.net/api/v1/repos/${GITHUB_REPOSITORY}/releases")
           
           RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')

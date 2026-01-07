@@ -223,7 +223,7 @@ func (e *SnapshotEngine) Backup(ctx context.Context, opts *BackupOptions) (*Back
 
 	// Save metadata
 	meta := &metadata.BackupMetadata{
-		Version:      "3.40.0",
+		Version:      "3.42.0",
 		Timestamp:    startTime,
 		Database:     opts.Database,
 		DatabaseType: "mysql",

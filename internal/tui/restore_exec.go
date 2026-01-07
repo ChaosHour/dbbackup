@@ -24,6 +24,7 @@ type RestoreExecutionModel struct {
 	logger            logger.Logger
 	parent            tea.Model
 	ctx               context.Context
+	cancel            context.CancelFunc // Cancel function to stop the operation
 	archive           ArchiveInfo
 	targetDB          string
 	cleanFirst        bool
@@ -44,19 +45,23 @@ type RestoreExecutionModel struct {
 	spinnerFrames []string
 
 	// Results
-	done    bool
-	err     error
-	result  string
-	elapsed time.Duration
+	done       bool
+	cancelling bool // True when user has requested cancellation
+	err        error
+	result     string
+	elapsed    time.Duration
 }
 
 // NewRestoreExecution creates a new restore execution model
 func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool, workDir string) RestoreExecutionModel {
+	// Create a cancellable context derived from parent
+	childCtx, cancel := context.WithCancel(ctx)
 	return RestoreExecutionModel{
 		config:            cfg,
 		logger:            log,
 		parent:            parent,
-		ctx:               ctx,
+		ctx:               childCtx,
+		cancel:            cancel,
 		archive:           archive,
 		targetDB:          targetDB,
 		cleanFirst:        cleanFirst,
@@ -274,11 +279,32 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
-			// Always allow quitting
-			return m.parent, tea.Quit
-
-		case "enter", " ", "esc":
+		case "ctrl+c", "esc":
+			if !m.done && !m.cancelling {
+				// User requested cancellation - cancel the context
+				m.cancelling = true
+				m.status = "⏹️  Cancelling restore... (please wait)"
+				m.phase = "Cancelling"
+				if m.cancel != nil {
+					m.cancel()
+				}
+				return m, nil
+			} else if m.done {
+				return m.parent, nil
+			}
+		case "q":
+			if !m.done && !m.cancelling {
+				m.cancelling = true
+				m.status = "⏹️  Cancelling restore... (please wait)"
+				m.phase = "Cancelling"
+				if m.cancel != nil {
+					m.cancel()
+				}
+				return m, nil
+			} else if m.done {
+				return m.parent, tea.Quit
+			}
+		case "enter", " ":
 			if m.done {
 				return m.parent, nil
 			}

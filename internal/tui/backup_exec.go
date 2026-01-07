@@ -20,12 +20,14 @@ type BackupExecutionModel struct {
 	logger       logger.Logger
 	parent       tea.Model
 	ctx          context.Context
+	cancel       context.CancelFunc // Cancel function to stop the operation
 	backupType   string
 	databaseName string
 	ratio        int
 	status       string
 	progress     int
 	done         bool
+	cancelling   bool // True when user has requested cancellation
 	err          error
 	result       string
 	startTime    time.Time
@@ -34,11 +36,14 @@ type BackupExecutionModel struct {
 }
 
 func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, backupType, dbName string, ratio int) BackupExecutionModel {
+	// Create a cancellable context derived from parent
+	childCtx, cancel := context.WithCancel(ctx)
 	return BackupExecutionModel{
 		config:       cfg,
 		logger:       log,
 		parent:       parent,
-		ctx:          ctx,
+		ctx:          childCtx,
+		cancel:       cancel,
 		backupType:   backupType,
 		databaseName: dbName,
 		ratio:        ratio,
@@ -206,9 +211,21 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if m.done {
-			switch msg.String() {
-			case "enter", "esc", "q":
+		switch msg.String() {
+		case "ctrl+c", "esc":
+			if !m.done && !m.cancelling {
+				// User requested cancellation - cancel the context
+				m.cancelling = true
+				m.status = "⏹️  Cancelling backup... (please wait)"
+				if m.cancel != nil {
+					m.cancel()
+				}
+				return m, nil
+			} else if m.done {
+				return m.parent, nil
+			}
+		case "enter", "q":
+			if m.done {
 				return m.parent, nil
 			}
 		}
@@ -240,7 +257,12 @@ func (m BackupExecutionModel) View() string {
 
 	// Status with spinner
 	if !m.done {
-		s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
+		if m.cancelling {
+			s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
+		} else {
+			s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
+			s.WriteString("\n  ⌨️  Press Ctrl+C or ESC to cancel\n")
+		}
 	} else {
 		s.WriteString(fmt.Sprintf("  %s\n\n", m.status))
 

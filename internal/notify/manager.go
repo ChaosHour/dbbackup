@@ -69,6 +69,7 @@ func (m *Manager) NotifySync(ctx context.Context, event *Event) error {
 	m.mu.RUnlock()
 
 	var errors []error
+	var errMu sync.Mutex
 	var wg sync.WaitGroup
 
 	for _, n := range notifiers {
@@ -80,7 +81,9 @@ func (m *Manager) NotifySync(ctx context.Context, event *Event) error {
 		go func(notifier Notifier) {
 			defer wg.Done()
 			if err := notifier.Send(ctx, event); err != nil {
+				errMu.Lock()
 				errors = append(errors, fmt.Errorf("%s: %w", notifier.Name(), err))
+				errMu.Unlock()
 			}
 		}(n)
 	}

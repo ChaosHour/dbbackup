@@ -163,14 +163,47 @@ func (p *PostgreSQL) ListTables(ctx context.Context, database string) ([]string,
 	return tables, rows.Err()
 }
 
+// validateIdentifier checks if a database/table name is safe for use in SQL
+// Prevents SQL injection by only allowing alphanumeric names with underscores
+func validateIdentifier(name string) error {
+	if len(name) == 0 {
+		return fmt.Errorf("identifier cannot be empty")
+	}
+	if len(name) > 63 {
+		return fmt.Errorf("identifier too long (max 63 chars): %s", name)
+	}
+	// Only allow alphanumeric, underscores, and must start with letter or underscore
+	for i, c := range name {
+		if i == 0 && !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+			return fmt.Errorf("identifier must start with letter or underscore: %s", name)
+		}
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return fmt.Errorf("identifier contains invalid character %q: %s", c, name)
+		}
+	}
+	return nil
+}
+
+// quoteIdentifier safely quotes a PostgreSQL identifier
+func quoteIdentifier(name string) string {
+	// Double any existing double quotes and wrap in double quotes
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
 // CreateDatabase creates a new database
 func (p *PostgreSQL) CreateDatabase(ctx context.Context, name string) error {
 	if p.db == nil {
 		return fmt.Errorf("not connected to database")
 	}
 
+	// Validate identifier to prevent SQL injection
+	if err := validateIdentifier(name); err != nil {
+		return fmt.Errorf("invalid database name: %w", err)
+	}
+
 	// PostgreSQL doesn't support CREATE DATABASE in transactions or prepared statements
-	query := fmt.Sprintf("CREATE DATABASE %s", name)
+	// Use quoted identifier for safety
+	query := fmt.Sprintf("CREATE DATABASE %s", quoteIdentifier(name))
 	_, err := p.db.ExecContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("failed to create database %s: %w", name, err)
@@ -186,8 +219,14 @@ func (p *PostgreSQL) DropDatabase(ctx context.Context, name string) error {
 		return fmt.Errorf("not connected to database")
 	}
 
+	// Validate identifier to prevent SQL injection
+	if err := validateIdentifier(name); err != nil {
+		return fmt.Errorf("invalid database name: %w", err)
+	}
+
 	// Force drop connections and drop database
-	query := fmt.Sprintf("DROP DATABASE IF EXISTS %s", name)
+	// Use quoted identifier for safety
+	query := fmt.Sprintf("DROP DATABASE IF EXISTS %s", quoteIdentifier(name))
 	_, err := p.db.ExecContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("failed to drop database %s: %w", name, err)

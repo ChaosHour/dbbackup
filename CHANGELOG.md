@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provides actionable error messages with root cause
 
 ### Fixed
+- **P0: SQL Injection** - Added identifier validation for database names in CREATE/DROP DATABASE to prevent SQL injection attacks; uses safe quoting and regex validation (alphanumeric + underscore only)
+- **P0: Data Race** - Fixed concurrent goroutines appending to shared error slice in notification manager; now uses mutex synchronization
 - **P0: psql ON_ERROR_STOP** - Added `-v ON_ERROR_STOP=1` to psql commands to fail fast on first error instead of accumulating millions of errors
 - **P1: Pipe deadlock** - Fixed streaming compression deadlock when pg_dump blocks on full pipe buffer; now uses goroutine with proper context timeout handling
 - **P1: SIGPIPE handling** - Detect exit code 141 (broken pipe) and report compressor failure as root cause

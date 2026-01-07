@@ -1,6 +1,6 @@
-# v3.42.0 Release Notes
+# v3.42.1 Release Notes
 
-## What's New in v3.42.0
+## What's New in v3.42.1
 
 ### Deduplication - Resistance is Futile
 
@@ -53,7 +53,7 @@ dbbackup dedup gc                         # Garbage collect unreferenced chunks
 #### Quick Install (Recommended)
 ```bash
 # Download for your platform
-curl -LO https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.42.0/dbbackup-linux-amd64
+curl -LO https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.42.1/dbbackup-linux-amd64
 
 # Install with systemd service
 chmod +x dbbackup-linux-amd64
@@ -105,4 +105,4 @@ Available at `http://localhost:9399/metrics`:
 
 ---
 
-**Full Changelog**: https://git.uuxo.net/UUXO/dbbackup/compare/v3.41.1...v3.42.0
+**Full Changelog**: https://git.uuxo.net/UUXO/dbbackup/compare/v3.41.1...v3.42.1

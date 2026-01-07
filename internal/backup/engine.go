@@ -1368,25 +1368,53 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 
 	// Then start pg_dump
 	if err := dumpCmd.Start(); err != nil {
+		compressCmd.Process.Kill()
 		return fmt.Errorf("failed to start pg_dump: %w", err)
 	}
 
-	// Wait for pg_dump to complete
-	dumpErr := dumpCmd.Wait()
+	// Wait for pg_dump in a goroutine to handle context timeout properly
+	// This prevents deadlock if pipe buffer fills and pg_dump blocks
+	dumpDone := make(chan error, 1)
+	go func() {
+		dumpDone <- dumpCmd.Wait()
+	}()
 
-	// Close stdout pipe to signal compressor we're done - MUST happen after Wait()
-	// but before we check for errors, so compressor gets EOF
+	var dumpErr error
+	select {
+	case dumpErr = <-dumpDone:
+		// pg_dump completed (success or failure)
+	case <-ctx.Done():
+		// Context cancelled/timeout - kill pg_dump to unblock
+		e.log.Warn("Backup timeout - killing pg_dump process")
+		dumpCmd.Process.Kill()
+		<-dumpDone // Wait for goroutine to finish
+		dumpErr = ctx.Err()
+	}
+
+	// Close stdout pipe to signal compressor we're done
+	// This MUST happen after pg_dump exits to avoid broken pipe
 	dumpStdout.Close()
 
 	// Wait for compression to complete
 	compressErr := compressCmd.Wait()
 
-	// Check errors in order
+	// Check errors - compressor failure first (it's usually the root cause)
+	if compressErr != nil {
+		e.log.Error("Compressor failed", "error", compressErr)
+		return fmt.Errorf("compression failed (check disk space): %w", compressErr)
+	}
 	if dumpErr != nil {
+		// Check for SIGPIPE (exit code 141) - indicates compressor died first
+		if exitErr, ok := dumpErr.(*exec.ExitError); ok && exitErr.ExitCode() == 141 {
+			e.log.Error("pg_dump received SIGPIPE - compressor may have failed")
+			return fmt.Errorf("pg_dump broken pipe - check disk space and compressor")
+		}
 		return fmt.Errorf("pg_dump failed: %w", dumpErr)
 	}
-	if compressErr != nil {
-		return fmt.Errorf("compression failed: %w", compressErr)
+
+	// Sync file to disk to ensure durability (prevents truncation on power loss)
+	if err := outFile.Sync(); err != nil {
+		e.log.Warn("Failed to sync output file", "error", err)
 	}
 
 	e.log.Debug("Streaming compression completed", "output", compressedFile)

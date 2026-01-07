@@ -271,9 +271,10 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 	}
 
 	if compressed {
-		psqlCmd := fmt.Sprintf("psql -U %s -d %s", e.cfg.User, targetDB)
+		// Use ON_ERROR_STOP=1 to fail fast on first error (prevents millions of errors on truncated dumps)
+		psqlCmd := fmt.Sprintf("psql -U %s -d %s -v ON_ERROR_STOP=1", e.cfg.User, targetDB)
 		if hostArg != "" {
-			psqlCmd = fmt.Sprintf("psql %s -U %s -d %s", hostArg, e.cfg.User, targetDB)
+			psqlCmd = fmt.Sprintf("psql %s -U %s -d %s -v ON_ERROR_STOP=1", hostArg, e.cfg.User, targetDB)
 		}
 		// Set PGPASSWORD in the bash command for password-less auth
 		cmd = []string{
@@ -288,6 +289,7 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 				"-p", fmt.Sprintf("%d", e.cfg.Port),
 				"-U", e.cfg.User,
 				"-d", targetDB,
+				"-v", "ON_ERROR_STOP=1",
 				"-f", archivePath,
 			}
 		} else {
@@ -295,6 +297,7 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 				"psql",
 				"-U", e.cfg.User,
 				"-d", targetDB,
+				"-v", "ON_ERROR_STOP=1",
 				"-f", archivePath,
 			}
 		}
@@ -720,6 +723,29 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 					"file", entry.Name(),
 					"truncated", result.IsTruncated,
 					"errors", result.Errors)
+			}
+		} else if strings.HasSuffix(dumpFile, ".dump") {
+			// Validate custom format dumps using pg_restore --list
+			cmd := exec.Command("pg_restore", "--list", dumpFile)
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				dbName := strings.TrimSuffix(entry.Name(), ".dump")
+				errDetail := strings.TrimSpace(string(output))
+				if len(errDetail) > 100 {
+					errDetail = errDetail[:100] + "..."
+				}
+				// Check for truncation indicators
+				if strings.Contains(errDetail, "unexpected end") || strings.Contains(errDetail, "invalid") {
+					corruptedDumps = append(corruptedDumps, fmt.Sprintf("%s: %s", dbName, errDetail))
+					e.log.Error("CORRUPTED custom dump file detected",
+						"database", dbName,
+						"file", entry.Name(),
+						"error", errDetail)
+				} else {
+					e.log.Warn("pg_restore --list warning (may be recoverable)",
+						"file", entry.Name(),
+						"error", errDetail)
+				}
 			}
 		}
 	}

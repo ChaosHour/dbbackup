@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Detects truncated COPY blocks that cause "syntax error" failures
 - Catches corrupted backups in seconds instead of wasting 49+ minutes
 - Cluster restore pre-validates ALL dumps upfront (fail-fast approach)
+- Custom format `.dump` files now validated with `pg_restore --list`
 
 **Improved Error Messages:**
 - Clear indication when dump file is truncated
@@ -22,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Provides actionable error messages with root cause
 
 ### Fixed
+- **P0: psql ON_ERROR_STOP** - Added `-v ON_ERROR_STOP=1` to psql commands to fail fast on first error instead of accumulating millions of errors
+- **P1: Pipe deadlock** - Fixed streaming compression deadlock when pg_dump blocks on full pipe buffer; now uses goroutine with proper context timeout handling
+- **P1: SIGPIPE handling** - Detect exit code 141 (broken pipe) and report compressor failure as root cause
+- **P2: .dump validation** - Custom format dumps now validated with `pg_restore --list` before restore
+- **P2: fsync durability** - Added `outFile.Sync()` after streaming compression to prevent truncation on power loss
 - Truncated `.sql.gz` dumps no longer waste hours on doomed restores
 - "syntax error at or near" errors now caught before restore begins
 - Cluster restores abort immediately if any dump is corrupted
@@ -29,7 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Technical Details
 - Integrated `Diagnoser` into restore pipeline for pre-validation
 - Added `quickValidateSQLDump()` for fast integrity checks
-- Pre-validation runs on all `.sql.gz` files in cluster archives
+- Pre-validation runs on all `.sql.gz` and `.dump` files in cluster archives
+- Streaming compression uses channel-based wait with context cancellation
 - Zero performance impact on valid backups (diagnosis is fast)
 
 ---

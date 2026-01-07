@@ -4,6 +4,7 @@ package installer
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/user"
@@ -102,6 +103,11 @@ func (i *Installer) Install(ctx context.Context, opts InstallOptions) error {
 
 	// Create directories
 	if err := i.createDirectories(opts); err != nil {
+		return err
+	}
+
+	// Copy binary to /usr/local/bin (required for ProtectHome=yes)
+	if err := i.copyBinary(&opts); err != nil {
 		return err
 	}
 
@@ -425,6 +431,46 @@ func (i *Installer) createDirectories(opts InstallOptions) error {
 		}
 	}
 
+	return nil
+}
+
+// copyBinary copies the binary to /usr/local/bin for systemd access
+// This is required because ProtectHome=yes blocks access to home directories
+func (i *Installer) copyBinary(opts *InstallOptions) error {
+	const installPath = "/usr/local/bin/dbbackup"
+
+	// Check if binary is already in a system path
+	if opts.BinaryPath == installPath {
+		return nil
+	}
+
+	if i.dryRun {
+		i.log.Info("Would copy binary", "from", opts.BinaryPath, "to", installPath)
+		opts.BinaryPath = installPath
+		return nil
+	}
+
+	// Read source binary
+	src, err := os.Open(opts.BinaryPath)
+	if err != nil {
+		return fmt.Errorf("failed to open source binary: %w", err)
+	}
+	defer src.Close()
+
+	// Create destination
+	dst, err := os.OpenFile(installPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create %s: %w", installPath, err)
+	}
+	defer dst.Close()
+
+	// Copy
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("failed to copy binary: %w", err)
+	}
+
+	i.log.Info("Copied binary", "from", opts.BinaryPath, "to", installPath)
+	opts.BinaryPath = installPath
 	return nil
 }
 

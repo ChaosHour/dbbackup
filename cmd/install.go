@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -198,13 +199,14 @@ func runInstallStatus(ctx context.Context) error {
 
 	// Check for exporter
 	if _, err := os.Stat("/etc/systemd/system/dbbackup-exporter.service"); err == nil {
-		exporterStatus, err := inst.Status(ctx, "exporter")
 		fmt.Println()
 		fmt.Println("🔹 Metrics Exporter:")
-		if err == nil && exporterStatus != nil {
-			fmt.Printf("   Service:  %s\n", formatStatus(true, exporterStatus.Active))
+		// Check if exporter is active using systemctl
+		cmd := exec.CommandContext(ctx, "systemctl", "is-active", "dbbackup-exporter")
+		if err := cmd.Run(); err == nil {
+			fmt.Printf("   Service:  ✅ active\n")
 		} else {
-			fmt.Printf("   Service:  installed (status unknown)\n")
+			fmt.Printf("   Service:  ⚪ inactive\n")
 		}
 	}
 

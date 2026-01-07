@@ -21,14 +21,14 @@ RestrictRealtime=yes
 LockPersonality=yes
 RemoveIPC=yes
 
-# Read-only access to catalog and backups
-ReadOnlyPaths=/var/lib/dbbackup
+# Read-write access to catalog for metrics collection
+ReadWritePaths=/var/lib/dbbackup
 
 # Network for HTTP server
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 # Execution
-ExecStart={{.BinaryPath}} metrics serve --port {{.MetricsPort}} --config {{.ConfigPath}}
+ExecStart={{.BinaryPath}} metrics serve --port {{.MetricsPort}}
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5

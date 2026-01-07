@@ -13,6 +13,8 @@ logs/
 /dbbackup
 /dbbackup_*
 !dbbackup.png
+bin/dbbackup_*
+bin/*.exe
 
 # Ignore development artifacts
 *.swp

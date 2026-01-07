@@ -1,19 +1,59 @@
-# v3.41.0 Release Notes
+# v3.42.0 Release Notes
 
-## What's New in v3.41.0
+## What's New in v3.42.0
 
-### Features
+### Deduplication - Resistance is Futile
+
+Content-defined chunking deduplication for space-efficient backups. Like restic/borgbackup but with **native database dump support**.
+
+```bash
+# First backup: 5MB stored
+dbbackup dedup backup mydb.dump
+
+# Second backup (modified): only 1.6KB new data stored!
+# 100% deduplication ratio
+dbbackup dedup backup mydb_modified.dump
+```
+
+#### Features
+- **Gear Hash CDC** - Content-defined chunking with 92%+ overlap on shifted data
+- **SHA-256 Content-Addressed** - Chunks stored by hash, automatic deduplication
+- **AES-256-GCM Encryption** - Optional per-chunk encryption
+- **Gzip Compression** - Optional compression (enabled by default)
+- **SQLite Index** - Fast chunk lookups and statistics
+
+#### Commands
+```bash
+dbbackup dedup backup <file>              # Create deduplicated backup
+dbbackup dedup backup <file> --encrypt    # With AES-256-GCM encryption
+dbbackup dedup restore <id> <output>      # Restore from manifest
+dbbackup dedup list                       # List all backups
+dbbackup dedup stats                      # Show deduplication statistics
+dbbackup dedup delete <id>                # Delete a backup
+dbbackup dedup gc                         # Garbage collect unreferenced chunks
+```
+
+#### Storage Structure
+```
+<backup-dir>/dedup/
+  chunks/           # Content-addressed chunk files
+    ab/cdef1234...  # Sharded by first 2 chars of hash
+  manifests/        # JSON manifest per backup
+  chunks.db         # SQLite index
+```
+
+### Also Included (from v3.41.x)
 - **Systemd Integration** - One-command install with `dbbackup install`
-- **Prometheus Metrics** - HTTP exporter on port 9399 with `/metrics` and `/health` endpoints
+- **Prometheus Metrics** - HTTP exporter on port 9399
 - **Backup Catalog** - SQLite-based tracking of all backup operations
-- **Automated CI/CD** - Gitea Actions pipeline with automated releases
+- **Prometheus Alerting Rules** - Added to SYSTEMD.md documentation
 
 ### Installation
 
 #### Quick Install (Recommended)
 ```bash
 # Download for your platform
-curl -LO https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.41.0/dbbackup-linux-amd64
+curl -LO https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.42.0/dbbackup-linux-amd64
 
 # Install with systemd service
 chmod +x dbbackup-linux-amd64
@@ -60,10 +100,9 @@ Available at `http://localhost:9399/metrics`:
 - [CHANGELOG.md](CHANGELOG.md) - Version history
 
 ### Bug Fixes
-- Fixed exporter status detection in `install --status`
-- Improved error handling in restore operations
-- Better JSON escaping in CI release creation
+- Fixed SQLite time parsing in dedup stats
+- Fixed function name collision in cmd package
 
 ---
 
-**Full Changelog**: https://git.uuxo.net/UUXO/dbbackup/compare/v3.40.0...v3.41.0
+**Full Changelog**: https://git.uuxo.net/UUXO/dbbackup/compare/v3.41.1...v3.42.0

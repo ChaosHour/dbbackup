@@ -5,9 +5,55 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.42.0] - 2026-01-07 "The Operator"
+## [3.42.0] - 2026-01-07 "Resistance is Futile"
 
-### Added - 🐧 Systemd Integration & Prometheus Metrics
+### Added - Content-Defined Chunking Deduplication
+
+**Deduplication Engine:**
+- New `dbbackup dedup` command family for space-efficient backups
+- Gear hash content-defined chunking (CDC) with 92%+ overlap on shifted data
+- SHA-256 content-addressed storage - chunks stored by hash
+- AES-256-GCM per-chunk encryption (optional, via `--encrypt`)
+- Gzip compression enabled by default
+- SQLite index for fast chunk lookups
+- JSON manifests track chunks per backup with full verification
+
+**Dedup Commands:**
+```bash
+dbbackup dedup backup <file>              # Create deduplicated backup
+dbbackup dedup backup <file> --encrypt    # With encryption
+dbbackup dedup restore <id> <output>      # Restore from manifest
+dbbackup dedup list                       # List all backups
+dbbackup dedup stats                      # Show deduplication statistics
+dbbackup dedup delete <id>                # Delete a backup manifest
+dbbackup dedup gc                         # Garbage collect unreferenced chunks
+```
+
+**Storage Structure:**
+```
+<backup-dir>/dedup/
+  chunks/           # Content-addressed chunk files (sharded by hash prefix)
+  manifests/        # JSON manifest per backup
+  chunks.db         # SQLite index for fast lookups
+```
+
+**Test Results:**
+- First 5MB backup: 448 chunks, 5MB stored
+- Modified 5MB file: 448 chunks, only 1 NEW chunk (1.6KB), 100% dedup ratio
+- Restore with SHA-256 verification
+
+### Added - Documentation Updates
+- Prometheus alerting rules added to SYSTEMD.md
+- Catalog sync instructions for existing backups
+
+## [3.41.1] - 2026-01-07
+
+### Fixed
+- Enabled CGO for Linux builds (required for SQLite catalog)
+
+## [3.41.0] - 2026-01-07 "The Operator"
+
+### Added - Systemd Integration & Prometheus Metrics
 
 **Embedded Systemd Installer:**
 - New `dbbackup install` command installs as systemd service/timer

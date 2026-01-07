@@ -481,6 +481,93 @@ sudo ufw status
 sudo iptables -L -n | grep 9399
 ```
 
+## Prometheus Alerting Rules
+
+Add these alert rules to your Prometheus configuration for backup monitoring:
+
+```yaml
+# /etc/prometheus/rules/dbbackup.yml
+groups:
+  - name: dbbackup
+    rules:
+      # Alert if no successful backup in 24 hours
+      - alert: DBBackupMissing
+        expr: time() - dbbackup_last_success_timestamp > 86400
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No backup in 24 hours on {{ $labels.instance }}"
+          description: "Database {{ $labels.database }} has not had a successful backup in over 24 hours."
+
+      # Alert if backup verification failed
+      - alert: DBBackupVerificationFailed
+        expr: dbbackup_backup_verified == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backup verification failed on {{ $labels.instance }}"
+          description: "Last backup for {{ $labels.database }} failed verification check."
+
+      # Alert if RPO exceeded (48 hours)
+      - alert: DBBackupRPOExceeded
+        expr: dbbackup_rpo_seconds > 172800
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RPO exceeded on {{ $labels.instance }}"
+          description: "Recovery Point Objective exceeded 48 hours for {{ $labels.database }}."
+
+      # Alert if exporter is down
+      - alert: DBBackupExporterDown
+        expr: up{job="dbbackup"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DBBackup exporter down on {{ $labels.instance }}"
+          description: "Cannot scrape metrics from dbbackup-exporter."
+
+      # Alert if backup size dropped significantly (possible truncation)
+      - alert: DBBackupSizeAnomaly
+        expr: dbbackup_last_backup_size_bytes < (dbbackup_last_backup_size_bytes offset 1d) * 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup size anomaly on {{ $labels.instance }}"
+          description: "Backup size for {{ $labels.database }} dropped by more than 50%."
+```
+
+### Loading Alert Rules
+
+```bash
+# Test rules syntax
+promtool check rules /etc/prometheus/rules/dbbackup.yml
+
+# Reload Prometheus
+sudo systemctl reload prometheus
+# or via API:
+curl -X POST http://localhost:9090/-/reload
+```
+
+## Catalog Sync for Existing Backups
+
+If you have existing backups created before installing v3.41+, sync them to the catalog:
+
+```bash
+# Sync existing backups to catalog
+dbbackup catalog sync /path/to/backup/directory --allow-root
+
+# Verify catalog contents
+dbbackup catalog list --allow-root
+
+# Show statistics
+dbbackup catalog stats --allow-root
+```
+
 ## Uninstallation
 
 ### Using Installer

@@ -684,46 +684,34 @@ dbbackup rto analyze mydb --target-rto 4h --target-rpo 1h
 Install dbbackup as a systemd service for automated scheduled backups:
 
 ```bash
-# Install as cluster backup service (daily at midnight)
-sudo dbbackup install --backup-type cluster --schedule daily
-
-# Install for specific instance with custom schedule
-sudo dbbackup install --instance production --schedule "*-*-* 02:00:00"
-
 # Install with Prometheus metrics exporter
-sudo dbbackup install --backup-type cluster --with-metrics --metrics-port 9399
+sudo dbbackup install --backup-type cluster --with-metrics
 
-# Preview installation (dry-run)
-sudo dbbackup install --dry-run
+# Preview what would be installed
+dbbackup install --dry-run --backup-type cluster
 
 # Check installation status
 dbbackup install --status
 
 # Uninstall
-sudo dbbackup uninstall
+sudo dbbackup uninstall cluster --purge
+```
 
-# Uninstall specific instance and remove config
-sudo dbbackup uninstall production --purge
+**Schedule options:**
+```bash
+--schedule daily                    # Every day at midnight (default)
+--schedule weekly                   # Every Monday at midnight  
+--schedule "*-*-* 02:00:00"         # Every day at 2am
+--schedule "Mon *-*-* 03:00"        # Every Monday at 3am
 ```
 
 **What gets installed:**
-- Systemd service unit (dbbackup@.service or dbbackup-cluster.service)
-- Systemd timer unit for scheduling
-- Dedicated `dbbackup` user and group
+- Systemd service and timer units
+- Dedicated `dbbackup` user with security hardening
 - Directories: `/var/lib/dbbackup/`, `/etc/dbbackup/`
-- Optional: Prometheus metrics exporter service
+- Optional: Prometheus HTTP exporter on port 9399
 
-**Security features:**
-- NoNewPrivileges, ProtectSystem=strict
-- ReadWritePaths limited to backup directories
-- CapabilityBoundingSet restricted
-- OOMScoreAdjust=-100 to protect backups
-
-**Schedule format (OnCalendar):**
-- `daily` - Every day at midnight
-- `weekly` - Every Monday at midnight
-- `*-*-* 02:00:00` - Every day at 2am
-- `Mon *-*-* 03:00` - Every Monday at 3am
+📖 **Full documentation:** [SYSTEMD.md](SYSTEMD.md) - Manual setup, security hardening, multiple instances, troubleshooting
 
 ## Prometheus Metrics
 
@@ -870,6 +858,7 @@ Workload types:
 
 ## Documentation
 
+- [SYSTEMD.md](SYSTEMD.md) - Systemd installation & scheduling
 - [DOCKER.md](DOCKER.md) - Docker deployment
 - [CLOUD.md](CLOUD.md) - Cloud storage configuration
 - [PITR.md](PITR.md) - Point-in-Time Recovery

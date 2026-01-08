@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/restore"
 )
 
 // OperationState represents the current operation state
@@ -349,85 +349,70 @@ func (m BackupManagerModel) View() string {
 	return s.String()
 }
 
-// verifyArchiveCmd runs actual archive verification
+// verifyArchiveCmd runs the SAME verification as restore safety checks
+// This ensures consistency between backup manager verify and restore preview
 func verifyArchiveCmd(archive ArchiveInfo) tea.Cmd {
 	return func() tea.Msg {
-		// Determine verification method based on format
-		var valid bool
-		var details string
-		var err error
+		var issues []string
 
-		switch {
-		case strings.HasSuffix(archive.Path, ".tar.gz") || strings.HasSuffix(archive.Path, ".tgz"):
-			// Verify tar.gz archive
-			cmd := exec.Command("tar", "-tzf", archive.Path)
-			output, cmdErr := cmd.CombinedOutput()
-			if cmdErr != nil {
-				return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "Archive corrupt or incomplete"}
+		// 1. Run the same archive integrity check as restore
+		safety := restore.NewSafety(nil, nil) // Doesn't need config/log for validation
+		if err := safety.ValidateArchive(archive.Path); err != nil {
+			return verifyResultMsg{
+				archive: archive.Name,
+				valid:   false,
+				err:     nil,
+				details: fmt.Sprintf("Archive integrity: %v", err),
 			}
-			lines := strings.Split(string(output), "\n")
-			fileCount := 0
-			for _, l := range lines {
-				if l != "" {
-					fileCount++
-				}
-			}
-			valid = true
-			details = fmt.Sprintf("%d files in archive", fileCount)
-
-		case strings.HasSuffix(archive.Path, ".dump") || strings.HasSuffix(archive.Path, ".sql"):
-			// Verify PostgreSQL dump with pg_restore --list
-			cmd := exec.Command("pg_restore", "--list", archive.Path)
-			output, cmdErr := cmd.CombinedOutput()
-			if cmdErr != nil {
-				// Try as plain SQL
-				if strings.HasSuffix(archive.Path, ".sql") {
-					// Just check file is readable and has content
-					fi, statErr := os.Stat(archive.Path)
-					if statErr == nil && fi.Size() > 0 {
-						valid = true
-						details = "Plain SQL file readable"
-					} else {
-						return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "File empty or unreadable"}
-					}
-				} else {
-					return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "pg_restore cannot read dump"}
-				}
-			} else {
-				lines := strings.Split(string(output), "\n")
-				objectCount := 0
-				for _, l := range lines {
-					if l != "" && !strings.HasPrefix(l, ";") {
-						objectCount++
-					}
-				}
-				valid = true
-				details = fmt.Sprintf("%d objects in dump", objectCount)
-			}
-
-		case strings.HasSuffix(archive.Path, ".sql.gz"):
-			// Verify gzipped SQL
-			cmd := exec.Command("gzip", "-t", archive.Path)
-			if cmdErr := cmd.Run(); cmdErr != nil {
-				return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "Gzip archive corrupt"}
-			}
-			valid = true
-			details = "Gzip integrity OK"
-
-		default:
-			// Unknown format - just check file exists and has size
-			fi, statErr := os.Stat(archive.Path)
-			if statErr != nil {
-				return verifyResultMsg{archive: archive.Name, valid: false, err: statErr, details: "Cannot access file"}
-			}
-			if fi.Size() == 0 {
-				return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "File is empty"}
-			}
-			valid = true
-			details = "File exists and has content"
 		}
 
-		return verifyResultMsg{archive: archive.Name, valid: valid, err: err, details: details}
+		// 2. Run the same deep diagnosis as restore
+		diagnoser := restore.NewDiagnoser(nil, false)
+		diagResult, diagErr := diagnoser.DiagnoseFile(archive.Path)
+		if diagErr != nil {
+			return verifyResultMsg{
+				archive: archive.Name,
+				valid:   false,
+				err:     diagErr,
+				details: "Cannot diagnose archive",
+			}
+		}
+
+		if !diagResult.IsValid {
+			// Collect error details
+			if diagResult.IsTruncated {
+				issues = append(issues, "TRUNCATED")
+			}
+			if diagResult.IsCorrupted {
+				issues = append(issues, "CORRUPTED")
+			}
+			if len(diagResult.Errors) > 0 {
+				issues = append(issues, diagResult.Errors[0])
+			}
+			return verifyResultMsg{
+				archive: archive.Name,
+				valid:   false,
+				err:     nil,
+				details: strings.Join(issues, "; "),
+			}
+		}
+
+		// Build success details
+		details := "Verified"
+		if diagResult.Details != nil {
+			if diagResult.Details.TableCount > 0 {
+				details = fmt.Sprintf("%d databases in archive", diagResult.Details.TableCount)
+			} else if diagResult.Details.PgRestoreListable {
+				details = "pg_restore verified"
+			}
+		}
+
+		// Add any warnings
+		if len(diagResult.Warnings) > 0 {
+			details += fmt.Sprintf(" [%d warnings]", len(diagResult.Warnings))
+		}
+
+		return verifyResultMsg{archive: archive.Name, valid: true, err: nil, details: details}
 	}
 }
 

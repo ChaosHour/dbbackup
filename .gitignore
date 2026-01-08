@@ -34,3 +34,4 @@ coverage.html
 # Ignore temporary files
 tmp/
 temp/
+CRITICAL_BUGS_FIXED.md

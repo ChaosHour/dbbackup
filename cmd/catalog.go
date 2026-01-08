@@ -252,8 +252,8 @@ func runCatalogSync(cmd *cobra.Command, args []string) error {
 	}
 	defer cat.Close()
 
-	fmt.Printf("📁 Syncing backups from: %s\n", absDir)
-	fmt.Printf("📊 Catalog database: %s\n\n", catalogDBPath)
+	fmt.Printf("[DIR] Syncing backups from: %s\n", absDir)
+	fmt.Printf("[STATS] Catalog database: %s\n\n", catalogDBPath)
 
 	ctx := context.Background()
 	result, err := cat.SyncFromDirectory(ctx, absDir)
@@ -265,17 +265,17 @@ func runCatalogSync(cmd *cobra.Command, args []string) error {
 	cat.SetLastSync(ctx)
 
 	// Show results
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("=====================================================\n")
 	fmt.Printf("  Sync Results\n")
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
-	fmt.Printf("  ✅ Added:   %d\n", result.Added)
-	fmt.Printf("  🔄 Updated: %d\n", result.Updated)
-	fmt.Printf("  🗑️  Removed: %d\n", result.Removed)
+	fmt.Printf("=====================================================\n")
+	fmt.Printf("  [OK] Added:   %d\n", result.Added)
+	fmt.Printf("  [SYNC] Updated: %d\n", result.Updated)
+	fmt.Printf("  [DEL]  Removed: %d\n", result.Removed)
 	if result.Errors > 0 {
-		fmt.Printf("  ❌ Errors:  %d\n", result.Errors)
+		fmt.Printf("  [FAIL] Errors:  %d\n", result.Errors)
 	}
-	fmt.Printf("  ⏱️  Duration: %.2fs\n", result.Duration)
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("  [TIME]  Duration: %.2fs\n", result.Duration)
+	fmt.Printf("=====================================================\n")
 
 	// Show details if verbose
 	if catalogVerbose && len(result.Details) > 0 {
@@ -323,7 +323,7 @@ func runCatalogList(cmd *cobra.Command, args []string) error {
 	// Table format
 	fmt.Printf("%-30s %-12s %-10s %-20s %-10s %s\n",
 		"DATABASE", "TYPE", "SIZE", "CREATED", "STATUS", "PATH")
-	fmt.Println(strings.Repeat("─", 120))
+	fmt.Println(strings.Repeat("-", 120))
 
 	for _, entry := range entries {
 		dbName := truncateString(entry.Database, 28)
@@ -331,10 +331,10 @@ func runCatalogList(cmd *cobra.Command, args []string) error {
 
 		status := string(entry.Status)
 		if entry.VerifyValid != nil && *entry.VerifyValid {
-			status = "✓ verified"
+			status = "[OK] verified"
 		}
 		if entry.DrillSuccess != nil && *entry.DrillSuccess {
-			status = "✓ tested"
+			status = "[OK] tested"
 		}
 
 		fmt.Printf("%-30s %-12s %-10s %-20s %-10s %s\n",
@@ -377,20 +377,20 @@ func runCatalogStats(cmd *cobra.Command, args []string) error {
 	}
 
 	// Table format
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("=====================================================\n")
 	if catalogDatabase != "" {
 		fmt.Printf("  Catalog Statistics: %s\n", catalogDatabase)
 	} else {
 		fmt.Printf("  Catalog Statistics\n")
 	}
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	fmt.Printf("=====================================================\n\n")
 
-	fmt.Printf("📊 Total Backups:    %d\n", stats.TotalBackups)
-	fmt.Printf("💾 Total Size:       %s\n", stats.TotalSizeHuman)
-	fmt.Printf("📏 Average Size:     %s\n", catalog.FormatSize(stats.AvgSize))
-	fmt.Printf("⏱️  Average Duration: %.1fs\n", stats.AvgDuration)
-	fmt.Printf("✅ Verified:         %d\n", stats.VerifiedCount)
-	fmt.Printf("🧪 Drill Tested:     %d\n", stats.DrillTestedCount)
+	fmt.Printf("[STATS] Total Backups:    %d\n", stats.TotalBackups)
+	fmt.Printf("[SAVE] Total Size:       %s\n", stats.TotalSizeHuman)
+	fmt.Printf("[SIZE] Average Size:     %s\n", catalog.FormatSize(stats.AvgSize))
+	fmt.Printf("[TIME]  Average Duration: %.1fs\n", stats.AvgDuration)
+	fmt.Printf("[OK] Verified:         %d\n", stats.VerifiedCount)
+	fmt.Printf("[TEST] Drill Tested:     %d\n", stats.DrillTestedCount)
 
 	if stats.OldestBackup != nil {
 		fmt.Printf("📅 Oldest Backup:    %s\n", stats.OldestBackup.Format("2006-01-02 15:04"))
@@ -400,27 +400,27 @@ func runCatalogStats(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(stats.ByDatabase) > 0 && catalogDatabase == "" {
-		fmt.Printf("\n📁 By Database:\n")
+		fmt.Printf("\n[DIR] By Database:\n")
 		for db, count := range stats.ByDatabase {
 			fmt.Printf("   %-30s %d\n", db, count)
 		}
 	}
 
 	if len(stats.ByType) > 0 {
-		fmt.Printf("\n📦 By Type:\n")
+		fmt.Printf("\n[PKG] By Type:\n")
 		for t, count := range stats.ByType {
 			fmt.Printf("   %-15s %d\n", t, count)
 		}
 	}
 
 	if len(stats.ByStatus) > 0 {
-		fmt.Printf("\n📋 By Status:\n")
+		fmt.Printf("\n[LOG] By Status:\n")
 		for s, count := range stats.ByStatus {
 			fmt.Printf("   %-15s %d\n", s, count)
 		}
 	}
 
-	fmt.Printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("\n=====================================================\n")
 	return nil
 }
 
@@ -488,26 +488,26 @@ func runCatalogGaps(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(allGaps) == 0 {
-		fmt.Printf("✅ No backup gaps detected (expected interval: %s)\n", interval)
+		fmt.Printf("[OK] No backup gaps detected (expected interval: %s)\n", interval)
 		return nil
 	}
 
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("=====================================================\n")
 	fmt.Printf("  Backup Gaps Detected (expected interval: %s)\n", interval)
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	fmt.Printf("=====================================================\n\n")
 
 	totalGaps := 0
 	criticalGaps := 0
 
 	for database, gaps := range allGaps {
-		fmt.Printf("📁 %s (%d gaps)\n", database, len(gaps))
+		fmt.Printf("[DIR] %s (%d gaps)\n", database, len(gaps))
 
 		for _, gap := range gaps {
 			totalGaps++
-			icon := "ℹ️"
+			icon := "[INFO]"
 			switch gap.Severity {
 			case catalog.SeverityWarning:
-				icon = "⚠️"
+				icon = "[WARN]"
 			case catalog.SeverityCritical:
 				icon = "🚨"
 				criticalGaps++
@@ -523,7 +523,7 @@ func runCatalogGaps(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("=====================================================\n")
 	fmt.Printf("Total: %d gaps detected", totalGaps)
 	if criticalGaps > 0 {
 		fmt.Printf(" (%d critical)", criticalGaps)
@@ -598,20 +598,20 @@ func runCatalogSearch(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Found %d matching backups:\n\n", len(entries))
 
 	for _, entry := range entries {
-		fmt.Printf("📁 %s\n", entry.Database)
+		fmt.Printf("[DIR] %s\n", entry.Database)
 		fmt.Printf("   Path: %s\n", entry.BackupPath)
 		fmt.Printf("   Type: %s | Size: %s | Created: %s\n",
 			entry.DatabaseType,
 			catalog.FormatSize(entry.SizeBytes),
 			entry.CreatedAt.Format("2006-01-02 15:04:05"))
 		if entry.Encrypted {
-			fmt.Printf("   🔒 Encrypted\n")
+			fmt.Printf("   [LOCK] Encrypted\n")
 		}
 		if entry.VerifyValid != nil && *entry.VerifyValid {
-			fmt.Printf("   ✅ Verified: %s\n", entry.VerifiedAt.Format("2006-01-02 15:04"))
+			fmt.Printf("   [OK] Verified: %s\n", entry.VerifiedAt.Format("2006-01-02 15:04"))
 		}
 		if entry.DrillSuccess != nil && *entry.DrillSuccess {
-			fmt.Printf("   🧪 Drill Tested: %s\n", entry.DrillTestedAt.Format("2006-01-02 15:04"))
+			fmt.Printf("   [TEST] Drill Tested: %s\n", entry.DrillTestedAt.Format("2006-01-02 15:04"))
 		}
 		fmt.Println()
 	}
@@ -655,64 +655,64 @@ func runCatalogInfo(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("=====================================================\n")
 	fmt.Printf("  Backup Details\n")
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	fmt.Printf("=====================================================\n\n")
 
-	fmt.Printf("📁 Database:     %s\n", entry.Database)
+	fmt.Printf("[DIR] Database:     %s\n", entry.Database)
 	fmt.Printf("🔧 Type:         %s\n", entry.DatabaseType)
-	fmt.Printf("🖥️  Host:         %s:%d\n", entry.Host, entry.Port)
+	fmt.Printf("[HOST]  Host:         %s:%d\n", entry.Host, entry.Port)
 	fmt.Printf("📂 Path:         %s\n", entry.BackupPath)
-	fmt.Printf("📦 Backup Type:  %s\n", entry.BackupType)
-	fmt.Printf("💾 Size:         %s (%d bytes)\n", catalog.FormatSize(entry.SizeBytes), entry.SizeBytes)
-	fmt.Printf("🔐 SHA256:       %s\n", entry.SHA256)
+	fmt.Printf("[PKG] Backup Type:  %s\n", entry.BackupType)
+	fmt.Printf("[SAVE] Size:         %s (%d bytes)\n", catalog.FormatSize(entry.SizeBytes), entry.SizeBytes)
+	fmt.Printf("[HASH] SHA256:       %s\n", entry.SHA256)
 	fmt.Printf("📅 Created:      %s\n", entry.CreatedAt.Format("2006-01-02 15:04:05 MST"))
-	fmt.Printf("⏱️  Duration:     %.2fs\n", entry.Duration)
-	fmt.Printf("📋 Status:       %s\n", entry.Status)
+	fmt.Printf("[TIME]  Duration:     %.2fs\n", entry.Duration)
+	fmt.Printf("[LOG] Status:       %s\n", entry.Status)
 
 	if entry.Compression != "" {
-		fmt.Printf("📦 Compression:  %s\n", entry.Compression)
+		fmt.Printf("[PKG] Compression:  %s\n", entry.Compression)
 	}
 	if entry.Encrypted {
-		fmt.Printf("🔒 Encrypted:    yes\n")
+		fmt.Printf("[LOCK] Encrypted:    yes\n")
 	}
 	if entry.CloudLocation != "" {
-		fmt.Printf("☁️  Cloud:        %s\n", entry.CloudLocation)
+		fmt.Printf("[CLOUD]  Cloud:        %s\n", entry.CloudLocation)
 	}
 	if entry.RetentionPolicy != "" {
 		fmt.Printf("📆 Retention:    %s\n", entry.RetentionPolicy)
 	}
 
-	fmt.Printf("\n📊 Verification:\n")
+	fmt.Printf("\n[STATS] Verification:\n")
 	if entry.VerifiedAt != nil {
-		status := "❌ Failed"
+		status := "[FAIL] Failed"
 		if entry.VerifyValid != nil && *entry.VerifyValid {
-			status = "✅ Valid"
+			status = "[OK] Valid"
 		}
 		fmt.Printf("   Status: %s (checked %s)\n", status, entry.VerifiedAt.Format("2006-01-02 15:04"))
 	} else {
-		fmt.Printf("   Status: ⏳ Not verified\n")
+		fmt.Printf("   Status: [WAIT] Not verified\n")
 	}
 
-	fmt.Printf("\n🧪 DR Drill Test:\n")
+	fmt.Printf("\n[TEST] DR Drill Test:\n")
 	if entry.DrillTestedAt != nil {
-		status := "❌ Failed"
+		status := "[FAIL] Failed"
 		if entry.DrillSuccess != nil && *entry.DrillSuccess {
-			status = "✅ Passed"
+			status = "[OK] Passed"
 		}
 		fmt.Printf("   Status: %s (tested %s)\n", status, entry.DrillTestedAt.Format("2006-01-02 15:04"))
 	} else {
-		fmt.Printf("   Status: ⏳ Not tested\n")
+		fmt.Printf("   Status: [WAIT] Not tested\n")
 	}
 
 	if len(entry.Metadata) > 0 {
-		fmt.Printf("\n📝 Additional Metadata:\n")
+		fmt.Printf("\n[NOTE] Additional Metadata:\n")
 		for k, v := range entry.Metadata {
 			fmt.Printf("   %s: %s\n", k, v)
 		}
 	}
 
-	fmt.Printf("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("\n=====================================================\n")
 
 	return nil
 }

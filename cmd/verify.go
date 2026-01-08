@@ -96,17 +96,17 @@ func runVerifyBackup(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		fmt.Printf("📁 %s\n", filepath.Base(backupFile))
+		fmt.Printf("[FILE] %s\n", filepath.Base(backupFile))
 
 		if quickVerify {
 			// Quick check: size only
 			err := verification.QuickCheck(backupFile)
 			if err != nil {
-				fmt.Printf("   ❌ FAILED: %v\n\n", err)
+				fmt.Printf("   [FAIL] FAILED: %v\n\n", err)
 				failureCount++
 				continue
 			}
-			fmt.Printf("   ✅ VALID (quick check)\n\n")
+			fmt.Printf("   [OK] VALID (quick check)\n\n")
 			successCount++
 		} else {
 			// Full verification with SHA-256
@@ -116,7 +116,7 @@ func runVerifyBackup(cmd *cobra.Command, args []string) error {
 			}
 
 			if result.Valid {
-				fmt.Printf("   ✅ VALID\n")
+				fmt.Printf("   [OK] VALID\n")
 				if verboseVerify {
 					meta, _ := metadata.Load(backupFile)
 					fmt.Printf("   Size: %s\n", metadata.FormatSize(meta.SizeBytes))
@@ -127,7 +127,7 @@ func runVerifyBackup(cmd *cobra.Command, args []string) error {
 				fmt.Println()
 				successCount++
 			} else {
-				fmt.Printf("   ❌ FAILED: %v\n", result.Error)
+				fmt.Printf("   [FAIL] FAILED: %v\n", result.Error)
 				if verboseVerify {
 					if !result.FileExists {
 						fmt.Printf("   File does not exist\n")
@@ -147,11 +147,11 @@ func runVerifyBackup(cmd *cobra.Command, args []string) error {
 	}
 
 	// Summary
-	fmt.Println(strings.Repeat("─", 50))
+	fmt.Println(strings.Repeat("-", 50))
 	fmt.Printf("Total: %d backups\n", len(backupFiles))
-	fmt.Printf("✅ Valid: %d\n", successCount)
+	fmt.Printf("[OK] Valid: %d\n", successCount)
 	if failureCount > 0 {
-		fmt.Printf("❌ Failed: %d\n", failureCount)
+		fmt.Printf("[FAIL] Failed: %d\n", failureCount)
 		os.Exit(1)
 	}
 
@@ -195,16 +195,16 @@ func runVerifyCloudBackup(cmd *cobra.Command, args []string) error {
 
 	for _, uri := range args {
 		if !isCloudURI(uri) {
-			fmt.Printf("⚠️  Skipping non-cloud URI: %s\n", uri)
+			fmt.Printf("[WARN] Skipping non-cloud URI: %s\n", uri)
 			continue
 		}
 
-		fmt.Printf("☁️  %s\n", uri)
+		fmt.Printf("[CLOUD] %s\n", uri)
 
 		// Download and verify
 		result, err := verifyCloudBackup(cmd.Context(), uri, quickVerify, verboseVerify)
 		if err != nil {
-			fmt.Printf("   ❌ FAILED: %v\n\n", err)
+			fmt.Printf("   [FAIL] FAILED: %v\n\n", err)
 			failureCount++
 			continue
 		}
@@ -212,7 +212,7 @@ func runVerifyCloudBackup(cmd *cobra.Command, args []string) error {
 		// Cleanup temp file
 		defer result.Cleanup()
 
-		fmt.Printf("   ✅ VALID\n")
+		fmt.Printf("   [OK] VALID\n")
 		if verboseVerify && result.MetadataPath != "" {
 			meta, _ := metadata.Load(result.MetadataPath)
 			if meta != nil {
@@ -226,7 +226,7 @@ func runVerifyCloudBackup(cmd *cobra.Command, args []string) error {
 		successCount++
 	}
 
-	fmt.Printf("\n✅ Summary: %d valid, %d failed\n", successCount, failureCount)
+	fmt.Printf("\n[OK] Summary: %d valid, %d failed\n", successCount, failureCount)
 
 	if failureCount > 0 {
 		os.Exit(1)

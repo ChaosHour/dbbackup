@@ -11,9 +11,9 @@ func FormatPreflightReport(result *PreflightResult, dbName string, verbose bool)
 	var sb strings.Builder
 
 	sb.WriteString("\n")
-	sb.WriteString("╔══════════════════════════════════════════════════════════════╗\n")
-	sb.WriteString("║             [DRY RUN] Preflight Check Results                ║\n")
-	sb.WriteString("╚══════════════════════════════════════════════════════════════╝\n")
+	sb.WriteString("+==============================================================+\n")
+	sb.WriteString("|             [DRY RUN] Preflight Check Results                |\n")
+	sb.WriteString("+==============================================================+\n")
 	sb.WriteString("\n")
 
 	// Database info
@@ -29,7 +29,7 @@ func FormatPreflightReport(result *PreflightResult, dbName string, verbose bool)
 
 	// Check results
 	sb.WriteString("  Checks:\n")
-	sb.WriteString("  ─────────────────────────────────────────────────────────────\n")
+	sb.WriteString("  --------------------------------------------------------------\n")
 
 	for _, check := range result.Checks {
 		icon := check.Status.Icon()
@@ -40,26 +40,26 @@ func FormatPreflightReport(result *PreflightResult, dbName string, verbose bool)
 			color, icon, reset, check.Name+":", check.Message))
 
 		if verbose && check.Details != "" {
-			sb.WriteString(fmt.Sprintf("      └─ %s\n", check.Details))
+			sb.WriteString(fmt.Sprintf("      +- %s\n", check.Details))
 		}
 	}
 
-	sb.WriteString("  ─────────────────────────────────────────────────────────────\n")
+	sb.WriteString("  --------------------------------------------------------------\n")
 	sb.WriteString("\n")
 
 	// Summary
 	if result.AllPassed {
 		if result.HasWarnings {
-			sb.WriteString("  ⚠️  All checks passed with warnings\n")
+			sb.WriteString("  [!] All checks passed with warnings\n")
 			sb.WriteString("\n")
 			sb.WriteString("  Ready to backup. Remove --dry-run to execute.\n")
 		} else {
-			sb.WriteString("  ✅ All checks passed\n")
+			sb.WriteString("  [OK] All checks passed\n")
 			sb.WriteString("\n")
 			sb.WriteString("  Ready to backup. Remove --dry-run to execute.\n")
 		}
 	} else {
-		sb.WriteString(fmt.Sprintf("  ❌ %d check(s) failed\n", result.FailureCount))
+		sb.WriteString(fmt.Sprintf("  [FAIL] %d check(s) failed\n", result.FailureCount))
 		sb.WriteString("\n")
 		sb.WriteString("  Fix the issues above before running backup.\n")
 	}
@@ -96,7 +96,7 @@ func FormatPreflightReportPlain(result *PreflightResult, dbName string) string {
 		status := fmt.Sprintf("[%s]", check.Status.String())
 		sb.WriteString(fmt.Sprintf("  %-10s %-25s %s\n", status, check.Name+":", check.Message))
 		if check.Details != "" {
-			sb.WriteString(fmt.Sprintf("             └─ %s\n", check.Details))
+			sb.WriteString(fmt.Sprintf("             +- %s\n", check.Details))
 		}
 	}
 

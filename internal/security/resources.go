@@ -64,7 +64,7 @@ func (rc *ResourceChecker) ValidateResourcesForBackup(estimatedSize int64) error
 
 	if len(warnings) > 0 {
 		for _, warning := range warnings {
-			rc.log.Warn("⚠️  Resource constraint: " + warning)
+			rc.log.Warn("[WARN] Resource constraint: " + warning)
 		}
 		rc.log.Info("Continuing backup operation (warnings are informational)")
 	}

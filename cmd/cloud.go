@@ -189,12 +189,12 @@ func runCloudUpload(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Printf("☁️  Uploading %d file(s) to %s...\n\n", len(files), backend.Name())
+	fmt.Printf("[CLOUD] Uploading %d file(s) to %s...\n\n", len(files), backend.Name())
 
 	successCount := 0
 	for _, localPath := range files {
 		filename := filepath.Base(localPath)
-		fmt.Printf("📤 %s\n", filename)
+		fmt.Printf("[UPLOAD] %s\n", filename)
 
 		// Progress callback
 		var lastPercent int
@@ -214,21 +214,21 @@ func runCloudUpload(cmd *cobra.Command, args []string) error {
 
 		err := backend.Upload(ctx, localPath, filename, progress)
 		if err != nil {
-			fmt.Printf("   ❌ Failed: %v\n\n", err)
+			fmt.Printf("   [FAIL] Failed: %v\n\n", err)
 			continue
 		}
 
 		// Get file size
 		if info, err := os.Stat(localPath); err == nil {
-			fmt.Printf("   ✅ Uploaded (%s)\n\n", cloud.FormatSize(info.Size()))
+			fmt.Printf("   [OK] Uploaded (%s)\n\n", cloud.FormatSize(info.Size()))
 		} else {
-			fmt.Printf("   ✅ Uploaded\n\n")
+			fmt.Printf("   [OK] Uploaded\n\n")
 		}
 		successCount++
 	}
 
-	fmt.Println(strings.Repeat("─", 50))
-	fmt.Printf("✅ Successfully uploaded %d/%d file(s)\n", successCount, len(files))
+	fmt.Println(strings.Repeat("-", 50))
+	fmt.Printf("[OK] Successfully uploaded %d/%d file(s)\n", successCount, len(files))
 
 	return nil
 }
@@ -248,8 +248,8 @@ func runCloudDownload(cmd *cobra.Command, args []string) error {
 		localPath = filepath.Join(localPath, filepath.Base(remotePath))
 	}
 
-	fmt.Printf("☁️  Downloading from %s...\n\n", backend.Name())
-	fmt.Printf("📥 %s → %s\n", remotePath, localPath)
+	fmt.Printf("[CLOUD] Downloading from %s...\n\n", backend.Name())
+	fmt.Printf("[DOWNLOAD] %s -> %s\n", remotePath, localPath)
 
 	// Progress callback
 	var lastPercent int
@@ -274,9 +274,9 @@ func runCloudDownload(cmd *cobra.Command, args []string) error {
 
 	// Get file size
 	if info, err := os.Stat(localPath); err == nil {
-		fmt.Printf("   ✅ Downloaded (%s)\n", cloud.FormatSize(info.Size()))
+		fmt.Printf("   [OK] Downloaded (%s)\n", cloud.FormatSize(info.Size()))
 	} else {
-		fmt.Printf("   ✅ Downloaded\n")
+		fmt.Printf("   [OK] Downloaded\n")
 	}
 
 	return nil
@@ -294,7 +294,7 @@ func runCloudList(cmd *cobra.Command, args []string) error {
 		prefix = args[0]
 	}
 
-	fmt.Printf("☁️  Listing backups in %s/%s...\n\n", backend.Name(), cloudBucket)
+	fmt.Printf("[CLOUD] Listing backups in %s/%s...\n\n", backend.Name(), cloudBucket)
 
 	backups, err := backend.List(ctx, prefix)
 	if err != nil {
@@ -311,7 +311,7 @@ func runCloudList(cmd *cobra.Command, args []string) error {
 		totalSize += backup.Size
 
 		if cloudVerbose {
-			fmt.Printf("📦 %s\n", backup.Name)
+			fmt.Printf("[FILE] %s\n", backup.Name)
 			fmt.Printf("   Size: %s\n", cloud.FormatSize(backup.Size))
 			fmt.Printf("   Modified: %s\n", backup.LastModified.Format(time.RFC3339))
 			if backup.StorageClass != "" {
@@ -328,7 +328,7 @@ func runCloudList(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Println(strings.Repeat("─", 50))
+	fmt.Println(strings.Repeat("-", 50))
 	fmt.Printf("Total: %d backup(s), %s\n", len(backups), cloud.FormatSize(totalSize))
 
 	return nil
@@ -360,7 +360,7 @@ func runCloudDelete(cmd *cobra.Command, args []string) error {
 
 	// Confirmation prompt
 	if !cloudConfirm {
-		fmt.Printf("⚠️  Delete %s (%s) from cloud storage?\n", remotePath, cloud.FormatSize(size))
+		fmt.Printf("[WARN] Delete %s (%s) from cloud storage?\n", remotePath, cloud.FormatSize(size))
 		fmt.Print("Type 'yes' to confirm: ")
 		var response string
 		fmt.Scanln(&response)
@@ -370,14 +370,14 @@ func runCloudDelete(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Printf("🗑️  Deleting %s...\n", remotePath)
+	fmt.Printf("[DELETE] Deleting %s...\n", remotePath)
 
 	err = backend.Delete(ctx, remotePath)
 	if err != nil {
 		return fmt.Errorf("delete failed: %w", err)
 	}
 
-	fmt.Printf("✅ Deleted %s (%s)\n", remotePath, cloud.FormatSize(size))
+	fmt.Printf("[OK] Deleted %s (%s)\n", remotePath, cloud.FormatSize(size))
 
 	return nil
 }

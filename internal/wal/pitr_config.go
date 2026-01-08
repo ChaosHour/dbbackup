@@ -99,8 +99,8 @@ func (pm *PITRManager) EnablePITR(ctx context.Context, archiveDir string) error 
 		return fmt.Errorf("failed to update postgresql.conf: %w", err)
 	}
 
-	pm.log.Info("✅ PITR configuration updated successfully")
-	pm.log.Warn("⚠️  PostgreSQL restart required for changes to take effect")
+	pm.log.Info("[OK] PITR configuration updated successfully")
+	pm.log.Warn("[WARN]  PostgreSQL restart required for changes to take effect")
 	pm.log.Info("To restart PostgreSQL:")
 	pm.log.Info("  sudo systemctl restart postgresql")
 	pm.log.Info("  OR: sudo pg_ctlcluster <version> <cluster> restart")
@@ -132,8 +132,8 @@ func (pm *PITRManager) DisablePITR(ctx context.Context) error {
 		return fmt.Errorf("failed to update postgresql.conf: %w", err)
 	}
 
-	pm.log.Info("✅ PITR disabled successfully")
-	pm.log.Warn("⚠️  PostgreSQL restart required")
+	pm.log.Info("[OK] PITR disabled successfully")
+	pm.log.Warn("[WARN]  PostgreSQL restart required")
 
 	return nil
 }

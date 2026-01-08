@@ -129,7 +129,7 @@ func (m ConfirmationModel) View() string {
 		s.WriteString("  ")
 	}
 
-	s.WriteString("\n\n⌨️  ←/→: Select • Enter/y: Confirm • n/ESC: Cancel\n")
+	s.WriteString("\n\n[KEYS]  <-/->: Select | Enter/y: Confirm | n/ESC: Cancel\n")
 
 	return s.String()
 }

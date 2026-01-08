@@ -714,7 +714,7 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 // PrintDiagnosis outputs a human-readable diagnosis report
 func (d *Diagnoser) PrintDiagnosis(result *DiagnoseResult) {
 	fmt.Println("\n" + strings.Repeat("=", 70))
-	fmt.Printf("📋 DIAGNOSIS: %s\n", result.FileName)
+	fmt.Printf("[DIAG] DIAGNOSIS: %s\n", result.FileName)
 	fmt.Println(strings.Repeat("=", 70))
 
 	// Basic info
@@ -724,69 +724,69 @@ func (d *Diagnoser) PrintDiagnosis(result *DiagnoseResult) {
 
 	// Status
 	if result.IsValid {
-		fmt.Println("\n✅ STATUS: VALID")
+		fmt.Println("\n[OK] STATUS: VALID")
 	} else {
-		fmt.Println("\n❌ STATUS: INVALID")
+		fmt.Println("\n[FAIL] STATUS: INVALID")
 	}
 
 	if result.IsTruncated {
-		fmt.Println("⚠️  TRUNCATED: Yes - file appears incomplete")
+		fmt.Println("[WARN] TRUNCATED: Yes - file appears incomplete")
 	}
 	if result.IsCorrupted {
-		fmt.Println("⚠️  CORRUPTED: Yes - file structure is damaged")
+		fmt.Println("[WARN] CORRUPTED: Yes - file structure is damaged")
 	}
 
 	// Details
 	if result.Details != nil {
-		fmt.Println("\n📊 DETAILS:")
+		fmt.Println("\n[DETAILS]:")
 
 		if result.Details.HasPGDMPSignature {
-			fmt.Println("  ✓ Has PGDMP signature (PostgreSQL custom format)")
+			fmt.Println("  [+] Has PGDMP signature (PostgreSQL custom format)")
 		}
 		if result.Details.HasSQLHeader {
-			fmt.Println("  ✓ Has PostgreSQL SQL header")
+			fmt.Println("  [+] Has PostgreSQL SQL header")
 		}
 		if result.Details.GzipValid {
-			fmt.Println("  ✓ Gzip compression valid")
+			fmt.Println("  [+] Gzip compression valid")
 		}
 		if result.Details.PgRestoreListable {
-			fmt.Printf("  ✓ pg_restore can list contents (%d tables)\n", result.Details.TableCount)
+			fmt.Printf("  [+] pg_restore can list contents (%d tables)\n", result.Details.TableCount)
 		}
 		if result.Details.CopyBlockCount > 0 {
-			fmt.Printf("  • Contains %d COPY blocks\n", result.Details.CopyBlockCount)
+			fmt.Printf("  [-] Contains %d COPY blocks\n", result.Details.CopyBlockCount)
 		}
 		if result.Details.UnterminatedCopy {
-			fmt.Printf("  ✗ Unterminated COPY block: %s (line %d)\n",
+			fmt.Printf("  [-] Unterminated COPY block: %s (line %d)\n",
 				result.Details.LastCopyTable, result.Details.LastCopyLineNumber)
 		}
 		if result.Details.ProperlyTerminated {
-			fmt.Println("  ✓ All COPY blocks properly terminated")
+			fmt.Println("  [+] All COPY blocks properly terminated")
 		}
 		if result.Details.ExpandedSize > 0 {
-			fmt.Printf("  • Expanded size: %s (ratio: %.1fx)\n",
+			fmt.Printf("  [-] Expanded size: %s (ratio: %.1fx)\n",
 				formatBytes(result.Details.ExpandedSize), result.Details.CompressionRatio)
 		}
 	}
 
 	// Errors
 	if len(result.Errors) > 0 {
-		fmt.Println("\n❌ ERRORS:")
+		fmt.Println("\n[ERRORS]:")
 		for _, e := range result.Errors {
-			fmt.Printf("  • %s\n", e)
+			fmt.Printf("  - %s\n", e)
 		}
 	}
 
 	// Warnings
 	if len(result.Warnings) > 0 {
-		fmt.Println("\n⚠️  WARNINGS:")
+		fmt.Println("\n[WARNINGS]:")
 		for _, w := range result.Warnings {
-			fmt.Printf("  • %s\n", w)
+			fmt.Printf("  - %s\n", w)
 		}
 	}
 
 	// Recommendations
 	if !result.IsValid {
-		fmt.Println("\n💡 RECOMMENDATIONS:")
+		fmt.Println("\n[HINT] RECOMMENDATIONS:")
 		if result.IsTruncated {
 			fmt.Println("  1. Re-run the backup process for this database")
 			fmt.Println("  2. Check disk space on backup server during backup")

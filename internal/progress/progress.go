@@ -92,13 +92,13 @@ func (s *Spinner) Update(message string) {
 // Complete stops the spinner with a success message
 func (s *Spinner) Complete(message string) {
 	s.Stop()
-	fmt.Fprintf(s.writer, "\n✅ %s\n", message)
+	fmt.Fprintf(s.writer, "\n[OK] %s\n", message)
 }
 
 // Fail stops the spinner with a failure message
 func (s *Spinner) Fail(message string) {
 	s.Stop()
-	fmt.Fprintf(s.writer, "\n❌ %s\n", message)
+	fmt.Fprintf(s.writer, "\n[FAIL] %s\n", message)
 }
 
 // Stop stops the spinner
@@ -167,13 +167,13 @@ func (d *Dots) Update(message string) {
 // Complete stops the dots with a success message
 func (d *Dots) Complete(message string) {
 	d.Stop()
-	fmt.Fprintf(d.writer, " ✅ %s\n", message)
+	fmt.Fprintf(d.writer, " [OK] %s\n", message)
 }
 
 // Fail stops the dots with a failure message
 func (d *Dots) Fail(message string) {
 	d.Stop()
-	fmt.Fprintf(d.writer, " ❌ %s\n", message)
+	fmt.Fprintf(d.writer, " [FAIL] %s\n", message)
 }
 
 // Stop stops the dots indicator
@@ -239,14 +239,14 @@ func (p *ProgressBar) Complete(message string) {
 	p.current = p.total
 	p.message = message
 	p.render()
-	fmt.Fprintf(p.writer, " ✅ %s\n", message)
+	fmt.Fprintf(p.writer, " [OK] %s\n", message)
 	p.Stop()
 }
 
 // Fail stops the progress bar with failure
 func (p *ProgressBar) Fail(message string) {
 	p.render()
-	fmt.Fprintf(p.writer, " ❌ %s\n", message)
+	fmt.Fprintf(p.writer, " [FAIL] %s\n", message)
 	p.Stop()
 }
 
@@ -298,12 +298,12 @@ func (s *Static) Update(message string) {
 
 // Complete shows completion message
 func (s *Static) Complete(message string) {
-	fmt.Fprintf(s.writer, " ✅ %s\n", message)
+	fmt.Fprintf(s.writer, " [OK] %s\n", message)
 }
 
 // Fail shows failure message
 func (s *Static) Fail(message string) {
-	fmt.Fprintf(s.writer, " ❌ %s\n", message)
+	fmt.Fprintf(s.writer, " [FAIL] %s\n", message)
 }
 
 // Stop does nothing for static indicator
@@ -359,7 +359,7 @@ func (l *LineByLine) Start(message string) {
 	if l.estimator != nil {
 		displayMsg = l.estimator.GetFullStatus(message)
 	}
-	fmt.Fprintf(l.writer, "\n🔄 %s\n", displayMsg)
+	fmt.Fprintf(l.writer, "\n[SYNC] %s\n", displayMsg)
 }
 
 // Update shows an update message
@@ -380,12 +380,12 @@ func (l *LineByLine) SetEstimator(estimator *ETAEstimator) {
 
 // Complete shows completion message
 func (l *LineByLine) Complete(message string) {
-	fmt.Fprintf(l.writer, "✅ %s\n\n", message)
+	fmt.Fprintf(l.writer, "[OK] %s\n\n", message)
 }
 
 // Fail shows failure message
 func (l *LineByLine) Fail(message string) {
-	fmt.Fprintf(l.writer, "❌ %s\n\n", message)
+	fmt.Fprintf(l.writer, "[FAIL] %s\n\n", message)
 }
 
 // Stop does nothing for line-by-line (no cleanup needed)
@@ -396,7 +396,7 @@ func (l *LineByLine) Stop() {
 // Light indicator methods - minimal output
 func (l *Light) Start(message string) {
 	if !l.silent {
-		fmt.Fprintf(l.writer, "▶ %s\n", message)
+		fmt.Fprintf(l.writer, "> %s\n", message)
 	}
 }
 
@@ -408,13 +408,13 @@ func (l *Light) Update(message string) {
 
 func (l *Light) Complete(message string) {
 	if !l.silent {
-		fmt.Fprintf(l.writer, "✓ %s\n", message)
+		fmt.Fprintf(l.writer, "[OK] %s\n", message)
 	}
 }
 
 func (l *Light) Fail(message string) {
 	if !l.silent {
-		fmt.Fprintf(l.writer, "✗ %s\n", message)
+		fmt.Fprintf(l.writer, "[FAIL] %s\n", message)
 	}
 }
 

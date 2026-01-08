@@ -63,9 +63,9 @@ func runEngineList(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		status := "✓ Available"
+		status := "[Y] Available"
 		if !avail.Available {
-			status = "✗ Not available"
+			status = "[N] Not available"
 		}
 
 		fmt.Printf("\n%s (%s)\n", info.Name, info.Description)

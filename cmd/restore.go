@@ -342,7 +342,7 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("archive not found: %s", archivePath)
 	}
 
-	log.Info("🔍 Diagnosing backup file", "path", archivePath)
+	log.Info("[DIAG] Diagnosing backup file", "path", archivePath)
 
 	diagnoser := restore.NewDiagnoser(log, restoreVerbose)
 
@@ -387,7 +387,7 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 		// Summary
 		if !diagnoseJSON {
 			fmt.Println("\n" + strings.Repeat("=", 70))
-			fmt.Printf("📊 CLUSTER SUMMARY: %d databases analyzed\n", len(results))
+			fmt.Printf("[SUMMARY] CLUSTER SUMMARY: %d databases analyzed\n", len(results))
 
 			validCount := 0
 			for _, r := range results {
@@ -397,9 +397,9 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 			}
 
 			if validCount == len(results) {
-				fmt.Println("✅ All dumps are valid")
+				fmt.Println("[OK] All dumps are valid")
 			} else {
-				fmt.Printf("❌ %d/%d dumps have issues\n", len(results)-validCount, len(results))
+				fmt.Printf("[FAIL] %d/%d dumps have issues\n", len(results)-validCount, len(results))
 			}
 			fmt.Println(strings.Repeat("=", 70))
 		}
@@ -426,7 +426,7 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("backup file has validation errors")
 	}
 
-	log.Info("✅ Backup file appears valid")
+	log.Info("[OK] Backup file appears valid")
 	return nil
 }
 
@@ -545,7 +545,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	isDryRun := restoreDryRun || !restoreConfirm
 
 	if isDryRun {
-		fmt.Println("\n🔍 DRY-RUN MODE - No changes will be made")
+		fmt.Println("\n[DRY-RUN] DRY-RUN MODE - No changes will be made")
 		fmt.Printf("\nWould restore:\n")
 		fmt.Printf("  Archive: %s\n", archivePath)
 		fmt.Printf("  Format: %s\n", format.String())
@@ -588,7 +588,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 
 	// Run pre-restore diagnosis if requested
 	if restoreDiagnose {
-		log.Info("🔍 Running pre-restore diagnosis...")
+		log.Info("[DIAG] Running pre-restore diagnosis...")
 		
 		diagnoser := restore.NewDiagnoser(log, restoreVerbose)
 		result, err := diagnoser.DiagnoseFile(archivePath)
@@ -599,7 +599,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 		diagnoser.PrintDiagnosis(result)
 		
 		if !result.IsValid {
-			log.Error("❌ Pre-restore diagnosis found issues")
+			log.Error("[FAIL] Pre-restore diagnosis found issues")
 			if result.IsTruncated {
 				log.Error("   The backup file appears to be TRUNCATED")
 			}
@@ -613,7 +613,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 			}
 			log.Warn("Continuing despite diagnosis errors (--force enabled)")
 		} else {
-			log.Info("✅ Backup file passed diagnosis")
+			log.Info("[OK] Backup file passed diagnosis")
 		}
 	}
 
@@ -633,7 +633,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	// Audit log: restore success
 	auditLogger.LogRestoreComplete(user, targetDB, time.Since(startTime))
 
-	log.Info("✅ Restore completed successfully", "database", targetDB)
+	log.Info("[OK] Restore completed successfully", "database", targetDB)
 	return nil
 }
 
@@ -701,7 +701,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 				}
 			}
 
-			log.Warn("⚠️  Using alternative working directory for extraction")
+			log.Warn("[WARN] Using alternative working directory for extraction")
 			log.Warn("    This is recommended when system disk space is limited")
 			log.Warn("    Location: " + restoreWorkdir)
 		}
@@ -754,7 +754,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 	isDryRun := restoreDryRun || !restoreConfirm
 
 	if isDryRun {
-		fmt.Println("\n🔍 DRY-RUN MODE - No changes will be made")
+		fmt.Println("\n[DRY-RUN] DRY-RUN MODE - No changes will be made")
 		fmt.Printf("\nWould restore cluster:\n")
 		fmt.Printf("  Archive: %s\n", archivePath)
 		fmt.Printf("  Parallel Jobs: %d (0 = auto)\n", restoreJobs)
@@ -764,7 +764,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		if restoreCleanCluster {
 			fmt.Printf("  Clean Cluster: true (will drop %d existing database(s))\n", len(existingDBs))
 			if len(existingDBs) > 0 {
-				fmt.Printf("\n⚠️  Databases to be dropped:\n")
+				fmt.Printf("\n[WARN] Databases to be dropped:\n")
 				for _, dbName := range existingDBs {
 					fmt.Printf("    - %s\n", dbName)
 				}
@@ -776,7 +776,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 
 	// Warning for clean-cluster
 	if restoreCleanCluster && len(existingDBs) > 0 {
-		log.Warn("🔥 Clean cluster mode enabled")
+		log.Warn("[!!] Clean cluster mode enabled")
 		log.Warn(fmt.Sprintf("   %d existing database(s) will be DROPPED before restore!", len(existingDBs)))
 		for _, dbName := range existingDBs {
 			log.Warn("   - " + dbName)
@@ -829,7 +829,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 
 	// Run pre-restore diagnosis if requested
 	if restoreDiagnose {
-		log.Info("🔍 Running pre-restore diagnosis...")
+		log.Info("[DIAG] Running pre-restore diagnosis...")
 		
 		// Create temp directory for extraction in configured WorkDir
 		workDir := cfg.GetEffectiveWorkDir()
@@ -855,10 +855,10 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		}
 		
 		if len(invalidDumps) > 0 {
-			log.Error("❌ Pre-restore diagnosis found issues",
+			log.Error("[FAIL] Pre-restore diagnosis found issues",
 				"invalid_dumps", len(invalidDumps),
 				"total_dumps", len(results))
-			fmt.Println("\n⚠️  The following dumps have issues and will likely fail during restore:")
+			fmt.Println("\n[WARN] The following dumps have issues and will likely fail during restore:")
 			for _, name := range invalidDumps {
 				fmt.Printf("    - %s\n", name)
 			}
@@ -870,7 +870,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 			}
 			log.Warn("Continuing despite diagnosis errors (--force enabled)")
 		} else {
-			log.Info("✅ All dumps passed diagnosis", "count", len(results))
+			log.Info("[OK] All dumps passed diagnosis", "count", len(results))
 		}
 	}
 
@@ -890,7 +890,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 	// Audit log: restore success
 	auditLogger.LogRestoreComplete(user, "all_databases", time.Since(startTime))
 
-	log.Info("✅ Cluster restore completed successfully")
+	log.Info("[OK] Cluster restore completed successfully")
 	return nil
 }
 
@@ -939,7 +939,7 @@ func runRestoreList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print header
-	fmt.Printf("\n📦 Available backup archives in %s\n\n", backupDir)
+	fmt.Printf("\n[LIST] Available backup archives in %s\n\n", backupDir)
 	fmt.Printf("%-40s %-25s %-12s %-20s %s\n",
 		"FILENAME", "FORMAT", "SIZE", "MODIFIED", "DATABASE")
 	fmt.Println(strings.Repeat("-", 120))
@@ -1056,9 +1056,9 @@ func runRestorePITR(cmd *cobra.Command, args []string) error {
 	}
 
 	// Display recovery target info
-	log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Info("=====================================================")
 	log.Info("  Point-in-Time Recovery (PITR)")
-	log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	log.Info("=====================================================")
 	log.Info("")
 	log.Info(target.String())
 	log.Info("")
@@ -1082,6 +1082,6 @@ func runRestorePITR(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("PITR restore failed: %w", err)
 	}
 
-	log.Info("✅ PITR restore completed successfully")
+	log.Info("[OK] PITR restore completed successfully")
 	return nil
 }

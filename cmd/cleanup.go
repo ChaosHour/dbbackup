@@ -115,7 +115,7 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 		DryRun:        dryRun,
 	}
 
-	fmt.Printf("🗑️  Cleanup Policy:\n")
+	fmt.Printf("[CLEANUP] Cleanup Policy:\n")
 	fmt.Printf("   Directory: %s\n", backupDir)
 	fmt.Printf("   Retention: %d days\n", policy.RetentionDays)
 	fmt.Printf("   Min backups: %d\n", policy.MinBackups)
@@ -142,16 +142,16 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 	}
 
 	// Display results
-	fmt.Printf("📊 Results:\n")
+	fmt.Printf("[RESULTS] Results:\n")
 	fmt.Printf("   Total backups: %d\n", result.TotalBackups)
 	fmt.Printf("   Eligible for deletion: %d\n", result.EligibleForDeletion)
 
 	if len(result.Deleted) > 0 {
 		fmt.Printf("\n")
 		if dryRun {
-			fmt.Printf("🔍 Would delete %d backup(s):\n", len(result.Deleted))
+			fmt.Printf("[DRY-RUN] Would delete %d backup(s):\n", len(result.Deleted))
 		} else {
-			fmt.Printf("✅ Deleted %d backup(s):\n", len(result.Deleted))
+			fmt.Printf("[OK] Deleted %d backup(s):\n", len(result.Deleted))
 		}
 		for _, file := range result.Deleted {
 			fmt.Printf("   - %s\n", filepath.Base(file))
@@ -159,33 +159,33 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(result.Kept) > 0 && len(result.Kept) <= 10 {
-		fmt.Printf("\n📦 Kept %d backup(s):\n", len(result.Kept))
+		fmt.Printf("\n[KEPT] Kept %d backup(s):\n", len(result.Kept))
 		for _, file := range result.Kept {
 			fmt.Printf("   - %s\n", filepath.Base(file))
 		}
 	} else if len(result.Kept) > 10 {
-		fmt.Printf("\n📦 Kept %d backup(s)\n", len(result.Kept))
+		fmt.Printf("\n[KEPT] Kept %d backup(s)\n", len(result.Kept))
 	}
 
 	if !dryRun && result.SpaceFreed > 0 {
-		fmt.Printf("\n💾 Space freed: %s\n", metadata.FormatSize(result.SpaceFreed))
+		fmt.Printf("\n[FREED] Space freed: %s\n", metadata.FormatSize(result.SpaceFreed))
 	}
 
 	if len(result.Errors) > 0 {
-		fmt.Printf("\n⚠️  Errors:\n")
+		fmt.Printf("\n[WARN] Errors:\n")
 		for _, err := range result.Errors {
 			fmt.Printf("   - %v\n", err)
 		}
 	}
 
-	fmt.Println(strings.Repeat("─", 50))
+	fmt.Println(strings.Repeat("-", 50))
 
 	if dryRun {
-		fmt.Println("✅ Dry run completed (no files were deleted)")
+		fmt.Println("[OK] Dry run completed (no files were deleted)")
 	} else if len(result.Deleted) > 0 {
-		fmt.Println("✅ Cleanup completed successfully")
+		fmt.Println("[OK] Cleanup completed successfully")
 	} else {
-		fmt.Println("ℹ️  No backups eligible for deletion")
+		fmt.Println("[INFO] No backups eligible for deletion")
 	}
 
 	return nil
@@ -212,7 +212,7 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 		return fmt.Errorf("invalid cloud URI: %w", err)
 	}
 
-	fmt.Printf("☁️  Cloud Cleanup Policy:\n")
+	fmt.Printf("[CLOUD] Cloud Cleanup Policy:\n")
 	fmt.Printf("   URI: %s\n", uri)
 	fmt.Printf("   Provider: %s\n", cloudURI.Provider)
 	fmt.Printf("   Bucket: %s\n", cloudURI.Bucket)
@@ -295,7 +295,7 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 	}
 
 	// Display results
-	fmt.Printf("📊 Results:\n")
+	fmt.Printf("[RESULTS] Results:\n")
 	fmt.Printf("   Total backups: %d\n", totalBackups)
 	fmt.Printf("   Eligible for deletion: %d\n", len(toDelete))
 	fmt.Printf("   Will keep: %d\n", len(toKeep))
@@ -303,9 +303,9 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 
 	if len(toDelete) > 0 {
 		if dryRun {
-			fmt.Printf("🔍 Would delete %d backup(s):\n", len(toDelete))
+			fmt.Printf("[DRY-RUN] Would delete %d backup(s):\n", len(toDelete))
 		} else {
-			fmt.Printf("🗑️  Deleting %d backup(s):\n", len(toDelete))
+			fmt.Printf("[DELETE] Deleting %d backup(s):\n", len(toDelete))
 		}
 
 		var totalSize int64
@@ -321,7 +321,7 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 
 			if !dryRun {
 				if err := backend.Delete(ctx, backup.Key); err != nil {
-					fmt.Printf("     ❌ Error: %v\n", err)
+					fmt.Printf("     [FAIL] Error: %v\n", err)
 				} else {
 					deletedCount++
 					// Also try to delete metadata
@@ -330,12 +330,12 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 			}
 		}
 
-		fmt.Printf("\n💾 Space %s: %s\n",
+		fmt.Printf("\n[FREED] Space %s: %s\n",
 			map[bool]string{true: "would be freed", false: "freed"}[dryRun],
 			cloud.FormatSize(totalSize))
 
 		if !dryRun && deletedCount > 0 {
-			fmt.Printf("✅ Successfully deleted %d backup(s)\n", deletedCount)
+			fmt.Printf("[OK] Successfully deleted %d backup(s)\n", deletedCount)
 		}
 	} else {
 		fmt.Println("No backups eligible for deletion")
@@ -405,7 +405,7 @@ func runGFSCleanup(backupDir string) error {
 	}
 
 	// Display tier breakdown
-	fmt.Printf("📊 Backup Classification:\n")
+	fmt.Printf("[STATS] Backup Classification:\n")
 	fmt.Printf("   Yearly:  %d\n", result.YearlyKept)
 	fmt.Printf("   Monthly: %d\n", result.MonthlyKept)
 	fmt.Printf("   Weekly:  %d\n", result.WeeklyKept)
@@ -416,9 +416,9 @@ func runGFSCleanup(backupDir string) error {
 	// Display deletions
 	if len(result.Deleted) > 0 {
 		if dryRun {
-			fmt.Printf("🔍 Would delete %d backup(s):\n", len(result.Deleted))
+			fmt.Printf("[SEARCH] Would delete %d backup(s):\n", len(result.Deleted))
 		} else {
-			fmt.Printf("✅ Deleted %d backup(s):\n", len(result.Deleted))
+			fmt.Printf("[OK] Deleted %d backup(s):\n", len(result.Deleted))
 		}
 		for _, file := range result.Deleted {
 			fmt.Printf("   - %s\n", filepath.Base(file))
@@ -427,7 +427,7 @@ func runGFSCleanup(backupDir string) error {
 
 	// Display kept backups (limited display)
 	if len(result.Kept) > 0 && len(result.Kept) <= 15 {
-		fmt.Printf("\n📦 Kept %d backup(s):\n", len(result.Kept))
+		fmt.Printf("\n[PKG] Kept %d backup(s):\n", len(result.Kept))
 		for _, file := range result.Kept {
 			// Show tier classification
 			info, _ := os.Stat(file)
@@ -440,28 +440,28 @@ func runGFSCleanup(backupDir string) error {
 			}
 		}
 	} else if len(result.Kept) > 15 {
-		fmt.Printf("\n📦 Kept %d backup(s)\n", len(result.Kept))
+		fmt.Printf("\n[PKG] Kept %d backup(s)\n", len(result.Kept))
 	}
 
 	if !dryRun && result.SpaceFreed > 0 {
-		fmt.Printf("\n💾 Space freed: %s\n", metadata.FormatSize(result.SpaceFreed))
+		fmt.Printf("\n[SAVE] Space freed: %s\n", metadata.FormatSize(result.SpaceFreed))
 	}
 
 	if len(result.Errors) > 0 {
-		fmt.Printf("\n⚠️  Errors:\n")
+		fmt.Printf("\n[WARN]  Errors:\n")
 		for _, err := range result.Errors {
 			fmt.Printf("   - %v\n", err)
 		}
 	}
 
-	fmt.Println(strings.Repeat("─", 50))
+	fmt.Println(strings.Repeat("-", 50))
 
 	if dryRun {
-		fmt.Println("✅ GFS dry run completed (no files were deleted)")
+		fmt.Println("[OK] GFS dry run completed (no files were deleted)")
 	} else if len(result.Deleted) > 0 {
-		fmt.Println("✅ GFS cleanup completed successfully")
+		fmt.Println("[OK] GFS cleanup completed successfully")
 	} else {
-		fmt.Println("ℹ️  No backups eligible for deletion under GFS policy")
+		fmt.Println("[INFO]  No backups eligible for deletion under GFS policy")
 	}
 
 	return nil

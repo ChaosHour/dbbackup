@@ -22,7 +22,7 @@ func (rc *ResourceChecker) checkPlatformLimits() (*ResourceLimits, error) {
 		rc.log.Debug("Resource limit: max open files", "limit", rLimit.Cur, "max", rLimit.Max)
 
 		if rLimit.Cur < 1024 {
-			rc.log.Warn("⚠️  Low file descriptor limit detected",
+			rc.log.Warn("[WARN] Low file descriptor limit detected",
 				"current", rLimit.Cur,
 				"recommended", 4096,
 				"hint", "Increase with: ulimit -n 4096")

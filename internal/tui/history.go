@@ -104,7 +104,7 @@ func loadHistory(cfg *config.Config) []HistoryEntry {
 			Type:      backupType,
 			Database:  database,
 			Timestamp: info.ModTime(),
-			Status:    "✅ Completed",
+			Status:    "[OK] Completed",
 			Filename:  name,
 		})
 	}
@@ -191,11 +191,11 @@ func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m HistoryViewModel) View() string {
 	var s strings.Builder
 
-	header := titleStyle.Render("📜 Operation History")
+	header := titleStyle.Render("[HISTORY] Operation History")
 	s.WriteString(fmt.Sprintf("\n%s\n\n", header))
 
 	if len(m.history) == 0 {
-		s.WriteString("📭 No backup history found\n\n")
+		s.WriteString("[EMPTY] No backup history found\n\n")
 	} else {
 		maxVisible := 15 // Show max 15 items at once
 
@@ -211,7 +211,7 @@ func (m HistoryViewModel) View() string {
 
 		// Show scroll indicators
 		if start > 0 {
-			s.WriteString("  ▲ More entries above...\n")
+			s.WriteString("  [^] More entries above...\n")
 		}
 
 		// Display only visible entries
@@ -233,13 +233,13 @@ func (m HistoryViewModel) View() string {
 
 		// Show scroll indicator if more entries below
 		if end < len(m.history) {
-			s.WriteString(fmt.Sprintf("  ▼ %d more entries below...\n", len(m.history)-end))
+			s.WriteString(fmt.Sprintf("  [v] %d more entries below...\n", len(m.history)-end))
 		}
 
 		s.WriteString("\n")
 	}
 
-	s.WriteString("⌨️  ↑/↓: Navigate • PgUp/PgDn: Jump • Home/End: First/Last • ESC: Back • q: Quit\n")
+	s.WriteString("[KEYS] Up/Down: Navigate - PgUp/PgDn: Jump - Home/End: First/Last - ESC: Back - q: Quit\n")
 
 	return s.String()
 }

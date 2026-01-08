@@ -141,7 +141,7 @@ func testConnection(ctx context.Context) error {
 
 	// Display results
 	fmt.Println("Connection Test Results:")
-	fmt.Printf("  Status:        Connected ✅\n")
+	fmt.Printf("  Status:        Connected [OK]\n")
 	fmt.Printf("  Version:       %s\n", version)
 	fmt.Printf("  Databases:     %d found\n", len(databases))
 
@@ -167,7 +167,7 @@ func testConnection(ctx context.Context) error {
 	}
 
 	fmt.Println()
-	fmt.Println("✅ Status check completed successfully!")
+	fmt.Println("[OK] Status check completed successfully!")
 
 	return nil
 }

@@ -160,7 +160,7 @@ func (m DiagnoseViewModel) View() string {
 	var s strings.Builder
 
 	// Header
-	s.WriteString(titleStyle.Render("🔍 Backup Diagnosis"))
+	s.WriteString(titleStyle.Render("[SEARCH] Backup Diagnosis"))
 	s.WriteString("\n\n")
 
 	// Archive info
@@ -175,14 +175,14 @@ func (m DiagnoseViewModel) View() string {
 	s.WriteString("\n\n")
 
 	if m.running {
-		s.WriteString(infoStyle.Render("⏳ " + m.progress))
+		s.WriteString(infoStyle.Render("[WAIT] " + m.progress))
 		s.WriteString("\n\n")
 		s.WriteString(diagnoseInfoStyle.Render("This may take a while for large archives..."))
 		return s.String()
 	}
 
 	if m.err != nil {
-		s.WriteString(errorStyle.Render(fmt.Sprintf("❌ Diagnosis failed: %v", m.err)))
+		s.WriteString(errorStyle.Render(fmt.Sprintf("[FAIL] Diagnosis failed: %v", m.err)))
 		s.WriteString("\n\n")
 		s.WriteString(infoStyle.Render("Press Enter or Esc to go back"))
 		return s.String()
@@ -205,72 +205,72 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 	var s strings.Builder
 
 	// Status
-	s.WriteString(strings.Repeat("─", 60))
+	s.WriteString(strings.Repeat("-", 60))
 	s.WriteString("\n")
 
 	if result.IsValid {
-		s.WriteString(diagnosePassStyle.Render("✅ STATUS: VALID"))
+		s.WriteString(diagnosePassStyle.Render("[OK] STATUS: VALID"))
 	} else {
-		s.WriteString(diagnoseFailStyle.Render("❌ STATUS: INVALID"))
+		s.WriteString(diagnoseFailStyle.Render("[FAIL] STATUS: INVALID"))
 	}
 	s.WriteString("\n")
 
 	if result.IsTruncated {
-		s.WriteString(diagnoseFailStyle.Render("⚠️  TRUNCATED: File appears incomplete"))
+		s.WriteString(diagnoseFailStyle.Render("[WARN]  TRUNCATED: File appears incomplete"))
 		s.WriteString("\n")
 	}
 
 	if result.IsCorrupted {
-		s.WriteString(diagnoseFailStyle.Render("⚠️  CORRUPTED: File structure is damaged"))
+		s.WriteString(diagnoseFailStyle.Render("[WARN]  CORRUPTED: File structure is damaged"))
 		s.WriteString("\n")
 	}
 
-	s.WriteString(strings.Repeat("─", 60))
+	s.WriteString(strings.Repeat("-", 60))
 	s.WriteString("\n\n")
 
 	// Details
 	if result.Details != nil {
-		s.WriteString(diagnoseHeaderStyle.Render("📊 DETAILS:"))
+		s.WriteString(diagnoseHeaderStyle.Render("[STATS] DETAILS:"))
 		s.WriteString("\n")
 
 		if result.Details.HasPGDMPSignature {
-			s.WriteString(diagnosePassStyle.Render("  ✓ "))
+			s.WriteString(diagnosePassStyle.Render("  [+] "))
 			s.WriteString("Has PGDMP signature (custom format)\n")
 		}
 
 		if result.Details.HasSQLHeader {
-			s.WriteString(diagnosePassStyle.Render("  ✓ "))
+			s.WriteString(diagnosePassStyle.Render("  [+] "))
 			s.WriteString("Has PostgreSQL SQL header\n")
 		}
 
 		if result.Details.GzipValid {
-			s.WriteString(diagnosePassStyle.Render("  ✓ "))
+			s.WriteString(diagnosePassStyle.Render("  [+] "))
 			s.WriteString("Gzip compression valid\n")
 		}
 
 		if result.Details.PgRestoreListable {
-			s.WriteString(diagnosePassStyle.Render("  ✓ "))
+			s.WriteString(diagnosePassStyle.Render("  [+] "))
 			s.WriteString(fmt.Sprintf("pg_restore can list contents (%d tables)\n", result.Details.TableCount))
 		}
 
 		if result.Details.CopyBlockCount > 0 {
-			s.WriteString(diagnoseInfoStyle.Render("  • "))
+			s.WriteString(diagnoseInfoStyle.Render("  - "))
 			s.WriteString(fmt.Sprintf("Contains %d COPY blocks\n", result.Details.CopyBlockCount))
 		}
 
 		if result.Details.UnterminatedCopy {
-			s.WriteString(diagnoseFailStyle.Render("  ✗ "))
+			s.WriteString(diagnoseFailStyle.Render("  [-] "))
 			s.WriteString(fmt.Sprintf("Unterminated COPY block: %s (line %d)\n",
 				result.Details.LastCopyTable, result.Details.LastCopyLineNumber))
 		}
 
 		if result.Details.ProperlyTerminated {
-			s.WriteString(diagnosePassStyle.Render("  ✓ "))
+			s.WriteString(diagnosePassStyle.Render("  [+] "))
 			s.WriteString("All COPY blocks properly terminated\n")
 		}
 
 		if result.Details.ExpandedSize > 0 {
-			s.WriteString(diagnoseInfoStyle.Render("  • "))
+			s.WriteString(diagnoseInfoStyle.Render("  - "))
 			s.WriteString(fmt.Sprintf("Expanded size: %s (ratio: %.1fx)\n",
 				formatSize(result.Details.ExpandedSize), result.Details.CompressionRatio))
 		}
@@ -279,14 +279,14 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 	// Errors
 	if len(result.Errors) > 0 {
 		s.WriteString("\n")
-		s.WriteString(diagnoseFailStyle.Render("❌ ERRORS:"))
+		s.WriteString(diagnoseFailStyle.Render("[FAIL] ERRORS:"))
 		s.WriteString("\n")
 		for i, e := range result.Errors {
 			if i >= 5 {
 				s.WriteString(diagnoseInfoStyle.Render(fmt.Sprintf("  ... and %d more\n", len(result.Errors)-5)))
 				break
 			}
-			s.WriteString(diagnoseFailStyle.Render("  • "))
+			s.WriteString(diagnoseFailStyle.Render("  - "))
 			s.WriteString(truncate(e, 70))
 			s.WriteString("\n")
 		}
@@ -295,14 +295,14 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 	// Warnings
 	if len(result.Warnings) > 0 {
 		s.WriteString("\n")
-		s.WriteString(diagnoseWarnStyle.Render("⚠️  WARNINGS:"))
+		s.WriteString(diagnoseWarnStyle.Render("[WARN]  WARNINGS:"))
 		s.WriteString("\n")
 		for i, w := range result.Warnings {
 			if i >= 3 {
 				s.WriteString(diagnoseInfoStyle.Render(fmt.Sprintf("  ... and %d more\n", len(result.Warnings)-3)))
 				break
 			}
-			s.WriteString(diagnoseWarnStyle.Render("  • "))
+			s.WriteString(diagnoseWarnStyle.Render("  - "))
 			s.WriteString(truncate(w, 70))
 			s.WriteString("\n")
 		}
@@ -311,7 +311,7 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 	// Recommendations
 	if !result.IsValid {
 		s.WriteString("\n")
-		s.WriteString(diagnoseHeaderStyle.Render("💡 RECOMMENDATIONS:"))
+		s.WriteString(diagnoseHeaderStyle.Render("[HINT] RECOMMENDATIONS:"))
 		s.WriteString("\n")
 		if result.IsTruncated {
 			s.WriteString("  1. Re-run the backup process for this database\n")
@@ -341,17 +341,17 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 		}
 	}
 
-	s.WriteString(strings.Repeat("─", 60))
+	s.WriteString(strings.Repeat("-", 60))
 	s.WriteString("\n")
-	s.WriteString(diagnoseHeaderStyle.Render(fmt.Sprintf("📊 CLUSTER SUMMARY: %d databases\n", len(m.results))))
-	s.WriteString(strings.Repeat("─", 60))
+	s.WriteString(diagnoseHeaderStyle.Render(fmt.Sprintf("[STATS] CLUSTER SUMMARY: %d databases\n", len(m.results))))
+	s.WriteString(strings.Repeat("-", 60))
 	s.WriteString("\n\n")
 
 	if invalidCount == 0 {
-		s.WriteString(diagnosePassStyle.Render("✅ All dumps are valid"))
+		s.WriteString(diagnosePassStyle.Render("[OK] All dumps are valid"))
 		s.WriteString("\n\n")
 	} else {
-		s.WriteString(diagnoseFailStyle.Render(fmt.Sprintf("❌ %d/%d dumps have issues", invalidCount, len(m.results))))
+		s.WriteString(diagnoseFailStyle.Render(fmt.Sprintf("[FAIL] %d/%d dumps have issues", invalidCount, len(m.results))))
 		s.WriteString("\n\n")
 	}
 
@@ -378,13 +378,13 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 
 		var status string
 		if r.IsValid {
-			status = diagnosePassStyle.Render("✓")
+			status = diagnosePassStyle.Render("[+]")
 		} else if r.IsTruncated {
-			status = diagnoseFailStyle.Render("✗ TRUNCATED")
+			status = diagnoseFailStyle.Render("[-] TRUNCATED")
 		} else if r.IsCorrupted {
-			status = diagnoseFailStyle.Render("✗ CORRUPTED")
+			status = diagnoseFailStyle.Render("[-] CORRUPTED")
 		} else {
-			status = diagnoseFailStyle.Render("✗ INVALID")
+			status = diagnoseFailStyle.Render("[-] INVALID")
 		}
 
 		line := fmt.Sprintf("%s %s %-35s %s",
@@ -405,7 +405,7 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 	if m.cursor < len(m.results) {
 		selected := m.results[m.cursor]
 		s.WriteString("\n")
-		s.WriteString(strings.Repeat("─", 60))
+		s.WriteString(strings.Repeat("-", 60))
 		s.WriteString("\n")
 		s.WriteString(diagnoseHeaderStyle.Render("Selected: " + selected.FileName))
 		s.WriteString("\n\n")
@@ -413,7 +413,7 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 		// Show condensed details for selected
 		if selected.Details != nil {
 			if selected.Details.UnterminatedCopy {
-				s.WriteString(diagnoseFailStyle.Render("  ✗ Unterminated COPY: "))
+				s.WriteString(diagnoseFailStyle.Render("  [-] Unterminated COPY: "))
 				s.WriteString(selected.Details.LastCopyTable)
 				s.WriteString(fmt.Sprintf(" (line %d)\n", selected.Details.LastCopyLineNumber))
 			}
@@ -429,7 +429,7 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 				if i >= 2 {
 					break
 				}
-				s.WriteString(diagnoseFailStyle.Render("  • "))
+				s.WriteString(diagnoseFailStyle.Render("  - "))
 				s.WriteString(truncate(e, 55))
 				s.WriteString("\n")
 			}

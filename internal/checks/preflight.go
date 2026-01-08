@@ -49,15 +49,15 @@ func (s CheckStatus) String() string {
 func (s CheckStatus) Icon() string {
 	switch s {
 	case StatusPassed:
-		return "✓"
+		return "[+]"
 	case StatusWarning:
-		return "⚠"
+		return "[!]"
 	case StatusFailed:
-		return "✗"
+		return "[-]"
 	case StatusSkipped:
-		return "○"
+		return "[ ]"
 	default:
-		return "?"
+		return "[?]"
 	}
 }
 

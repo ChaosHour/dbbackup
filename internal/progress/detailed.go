@@ -256,7 +256,7 @@ func (ot *OperationTracker) Complete(message string) {
 
 			// Complete visual indicator
 			if ot.reporter.indicator != nil {
-				ot.reporter.indicator.Complete(fmt.Sprintf("✅ %s", message))
+				ot.reporter.indicator.Complete(fmt.Sprintf("[OK] %s", message))
 			}
 
 			// Log completion with duration
@@ -286,7 +286,7 @@ func (ot *OperationTracker) Fail(err error) {
 
 			// Fail visual indicator
 			if ot.reporter.indicator != nil {
-				ot.reporter.indicator.Fail(fmt.Sprintf("❌ %s", err.Error()))
+				ot.reporter.indicator.Fail(fmt.Sprintf("[FAIL] %s", err.Error()))
 			}
 
 			// Log failure
@@ -427,7 +427,7 @@ type OperationSummary struct {
 // FormatSummary returns a formatted string representation of the summary
 func (os *OperationSummary) FormatSummary() string {
 	return fmt.Sprintf(
-		"📊 Operations Summary:\n"+
+		"[STATS] Operations Summary:\n"+
 			"  Total: %d | Completed: %d | Failed: %d | Running: %d\n"+
 			"  Total Duration: %s",
 		os.TotalOperations,

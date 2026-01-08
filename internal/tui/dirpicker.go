@@ -208,7 +208,7 @@ func (dp *DirectoryPicker) View() string {
 	if dp.allowFiles {
 		pickerType = "File/Directory"
 	}
-	header := fmt.Sprintf("📁 %s Picker - %s", pickerType, dp.currentPath)
+	header := fmt.Sprintf("[DIR] %s Picker - %s", pickerType, dp.currentPath)
 	content.WriteString(dp.styles.Header.Render(header))
 	content.WriteString("\n\n")
 
@@ -216,13 +216,13 @@ func (dp *DirectoryPicker) View() string {
 	for i, item := range dp.items {
 		var prefix string
 		if item.Name == ".." {
-			prefix = "⬆️ "
+			prefix = "[UP] "
 		} else if item.Name == "Error reading directory" {
-			prefix = "❌ "
+			prefix = "[X] "
 		} else if item.IsDir {
-			prefix = "📁 "
+			prefix = "[DIR] "
 		} else {
-			prefix = "📄 "
+			prefix = "[FILE] "
 		}
 
 		line := prefix + item.Name
@@ -235,9 +235,9 @@ func (dp *DirectoryPicker) View() string {
 	}
 
 	// Help text
-	help := "\n↑/↓: Navigate • Enter: Open/Select File • s: Select Directory • q/Esc: Cancel"
+	help := "\nUp/Down: Navigate | Enter: Open/Select File | s: Select Directory | q/Esc: Cancel"
 	if !dp.allowFiles {
-		help = "\n↑/↓: Navigate • Enter: Open • s: Select Directory • q/Esc: Cancel"
+		help = "\nUp/Down: Navigate | Enter: Open | s: Select Directory | q/Esc: Cancel"
 	}
 	content.WriteString(dp.styles.Help.Render(help))
 

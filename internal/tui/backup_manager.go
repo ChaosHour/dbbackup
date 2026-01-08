@@ -86,7 +86,7 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Verify archive
 			if len(m.archives) > 0 && m.cursor < len(m.archives) {
 				selected := m.archives[m.cursor]
-				m.message = fmt.Sprintf("🔍 Verifying %s...", selected.Name)
+				m.message = fmt.Sprintf("[SEARCH] Verifying %s...", selected.Name)
 				// In real implementation, would run verification
 			}
 
@@ -96,16 +96,16 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				selected := m.archives[m.cursor]
 				archivePath := selected.Path
 				confirm := NewConfirmationModelWithAction(m.config, m.logger, m,
-					"🗑️  Delete Archive",
+					"[DELETE]  Delete Archive",
 					fmt.Sprintf("Delete archive '%s'? This cannot be undone.", selected.Name),
 					func() (tea.Model, tea.Cmd) {
 						// Delete the archive
 						err := deleteArchive(archivePath)
 						if err != nil {
 							m.err = fmt.Errorf("failed to delete archive: %v", err)
-							m.message = fmt.Sprintf("❌ Failed to delete: %v", err)
+							m.message = fmt.Sprintf("[FAIL] Failed to delete: %v", err)
 						} else {
-							m.message = fmt.Sprintf("✅ Deleted: %s", selected.Name)
+							m.message = fmt.Sprintf("[OK] Deleted: %s", selected.Name)
 						}
 						// Refresh the archive list
 						m.loading = true
@@ -118,7 +118,7 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Show info
 			if len(m.archives) > 0 && m.cursor < len(m.archives) {
 				selected := m.archives[m.cursor]
-				m.message = fmt.Sprintf("📦 %s | %s | %s | Modified: %s",
+				m.message = fmt.Sprintf("[PKG] %s | %s | %s | Modified: %s",
 					selected.Name,
 					selected.Format.String(),
 					formatSize(selected.Size),
@@ -152,7 +152,7 @@ func (m BackupManagerModel) View() string {
 	var s strings.Builder
 
 	// Title
-	s.WriteString(titleStyle.Render("🗄️  Backup Archive Manager"))
+	s.WriteString(titleStyle.Render("[DB]  Backup Archive Manager"))
 	s.WriteString("\n\n")
 
 	if m.loading {
@@ -161,7 +161,7 @@ func (m BackupManagerModel) View() string {
 	}
 
 	if m.err != nil {
-		s.WriteString(errorStyle.Render(fmt.Sprintf("❌ Error: %v", m.err)))
+		s.WriteString(errorStyle.Render(fmt.Sprintf("[FAIL] Error: %v", m.err)))
 		s.WriteString("\n\n")
 		s.WriteString(infoStyle.Render("Press Esc to go back"))
 		return s.String()
@@ -184,7 +184,7 @@ func (m BackupManagerModel) View() string {
 	s.WriteString(archiveHeaderStyle.Render(fmt.Sprintf("%-35s %-25s %-12s %-20s",
 		"FILENAME", "FORMAT", "SIZE", "MODIFIED")))
 	s.WriteString("\n")
-	s.WriteString(strings.Repeat("─", 95))
+	s.WriteString(strings.Repeat("-", 95))
 	s.WriteString("\n")
 
 	// Show archives (limit to visible area)
@@ -208,12 +208,12 @@ func (m BackupManagerModel) View() string {
 		}
 
 		// Status icon
-		statusIcon := "✓"
+		statusIcon := "[+]"
 		if !archive.Valid {
-			statusIcon = "✗"
+			statusIcon = "[-]"
 			style = archiveInvalidStyle
 		} else if time.Since(archive.Modified) > 30*24*time.Hour {
-			statusIcon = "⚠"
+			statusIcon = "[WARN]"
 		}
 
 		filename := truncate(archive.Name, 33)
@@ -240,7 +240,7 @@ func (m BackupManagerModel) View() string {
 
 	s.WriteString(infoStyle.Render(fmt.Sprintf("Selected: %d/%d", m.cursor+1, len(m.archives))))
 	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("⌨️  ↑/↓: Navigate | r: Restore | v: Verify | d: Delete | i: Info | R: Refresh | Esc: Back"))
+	s.WriteString(infoStyle.Render("[KEY]  ↑/↓: Navigate | r: Restore | v: Verify | d: Delete | i: Info | R: Refresh | Esc: Back"))
 
 	return s.String()
 }

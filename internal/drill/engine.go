@@ -41,20 +41,20 @@ func (e *Engine) Run(ctx context.Context, config *DrillConfig) (*DrillResult, er
 		TargetRTO:    float64(config.MaxRestoreSeconds),
 	}
 
-	e.log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	e.log.Info("  🧪 DR Drill: " + result.DrillID)
-	e.log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	e.log.Info("=====================================================")
+	e.log.Info("  [TEST] DR Drill: " + result.DrillID)
+	e.log.Info("=====================================================")
 	e.log.Info("")
 
 	// Cleanup function for error cases
 	var containerID string
 	cleanup := func() {
 		if containerID != "" && config.CleanupOnExit && (result.Success || !config.KeepOnFailure) {
-			e.log.Info("🗑️  Cleaning up container...")
+			e.log.Info("[DEL]  Cleaning up container...")
 			e.docker.RemoveContainer(context.Background(), containerID)
 		} else if containerID != "" {
 			result.ContainerKept = true
-			e.log.Info("📦 Container kept for debugging: " + containerID)
+			e.log.Info("[PKG] Container kept for debugging: " + containerID)
 		}
 	}
 	defer cleanup()
@@ -88,7 +88,7 @@ func (e *Engine) Run(ctx context.Context, config *DrillConfig) (*DrillResult, er
 	}
 	containerID = container.ID
 	result.ContainerID = containerID
-	e.log.Info("📦 Container started: " + containerID[:12])
+	e.log.Info("[PKG] Container started: " + containerID[:12])
 
 	// Wait for container to be healthy
 	if err := e.docker.WaitForHealth(ctx, containerID, config.DatabaseType, config.ContainerTimeout); err != nil {
@@ -118,7 +118,7 @@ func (e *Engine) Run(ctx context.Context, config *DrillConfig) (*DrillResult, er
 	result.RestoreTime = time.Since(restoreStart).Seconds()
 	e.completePhase(&phase, fmt.Sprintf("Restored in %.2fs", result.RestoreTime))
 	result.Phases = append(result.Phases, phase)
-	e.log.Info(fmt.Sprintf("✅ Backup restored in %.2fs", result.RestoreTime))
+	e.log.Info(fmt.Sprintf("[OK] Backup restored in %.2fs", result.RestoreTime))
 
 	// Phase 4: Validate
 	phase = e.startPhase("Validate Database")
@@ -182,24 +182,24 @@ func (e *Engine) preflightChecks(ctx context.Context, config *DrillConfig) error
 	if err := e.docker.CheckDockerAvailable(ctx); err != nil {
 		return fmt.Errorf("docker not available: %w", err)
 	}
-	e.log.Info("✓ Docker is available")
+	e.log.Info("[OK] Docker is available")
 
 	// Check backup file exists
 	if _, err := os.Stat(config.BackupPath); err != nil {
 		return fmt.Errorf("backup file not found: %s", config.BackupPath)
 	}
-	e.log.Info("✓ Backup file exists: " + filepath.Base(config.BackupPath))
+	e.log.Info("[OK] Backup file exists: " + filepath.Base(config.BackupPath))
 
 	// Pull Docker image
 	image := config.ContainerImage
 	if image == "" {
 		image = GetDefaultImage(config.DatabaseType, "")
 	}
-	e.log.Info("⬇️  Pulling image: " + image)
+	e.log.Info("[DOWN]  Pulling image: " + image)
 	if err := e.docker.PullImage(ctx, image); err != nil {
 		return fmt.Errorf("failed to pull image: %w", err)
 	}
-	e.log.Info("✓ Image ready: " + image)
+	e.log.Info("[OK] Image ready: " + image)
 
 	return nil
 }
@@ -243,7 +243,7 @@ func (e *Engine) restoreBackup(ctx context.Context, config *DrillConfig, contain
 	backupName := filepath.Base(config.BackupPath)
 	containerBackupPath := "/tmp/" + backupName
 
-	e.log.Info("📁 Copying backup to container...")
+	e.log.Info("[DIR] Copying backup to container...")
 	if err := e.docker.CopyToContainer(ctx, containerID, config.BackupPath, containerBackupPath); err != nil {
 		return fmt.Errorf("failed to copy backup: %w", err)
 	}
@@ -256,7 +256,7 @@ func (e *Engine) restoreBackup(ctx context.Context, config *DrillConfig, contain
 	}
 
 	// Restore based on database type and format
-	e.log.Info("🔄 Restoring backup...")
+	e.log.Info("[EXEC] Restoring backup...")
 	return e.executeRestore(ctx, config, containerID, containerBackupPath, containerConfig)
 }
 
@@ -366,13 +366,13 @@ func (e *Engine) validateDatabase(ctx context.Context, config *DrillConfig, resu
 	tables, err := validator.GetTableList(ctx)
 	if err == nil {
 		result.TableCount = len(tables)
-		e.log.Info(fmt.Sprintf("📊 Tables found: %d", result.TableCount))
+		e.log.Info(fmt.Sprintf("[STATS] Tables found: %d", result.TableCount))
 	}
 
 	totalRows, err := validator.GetTotalRowCount(ctx)
 	if err == nil {
 		result.TotalRows = totalRows
-		e.log.Info(fmt.Sprintf("📊 Total rows: %d", result.TotalRows))
+		e.log.Info(fmt.Sprintf("[STATS] Total rows: %d", result.TotalRows))
 	}
 
 	dbSize, err := validator.GetDatabaseSize(ctx, config.DatabaseName)
@@ -387,9 +387,9 @@ func (e *Engine) validateDatabase(ctx context.Context, config *DrillConfig, resu
 			result.CheckResults = append(result.CheckResults, tr)
 			if !tr.Success {
 				errorCount++
-				e.log.Warn("❌ " + tr.Message)
+				e.log.Warn("[FAIL] " + tr.Message)
 			} else {
-				e.log.Info("✓ " + tr.Message)
+				e.log.Info("[OK] " + tr.Message)
 			}
 		}
 	}
@@ -404,9 +404,9 @@ func (e *Engine) validateDatabase(ctx context.Context, config *DrillConfig, resu
 			totalQueryTime += qr.Duration
 			if !qr.Success {
 				errorCount++
-				e.log.Warn(fmt.Sprintf("❌ %s: %s", qr.Name, qr.Error))
+				e.log.Warn(fmt.Sprintf("[FAIL] %s: %s", qr.Name, qr.Error))
 			} else {
-				e.log.Info(fmt.Sprintf("✓ %s: %s (%.0fms)", qr.Name, qr.Result, qr.Duration))
+				e.log.Info(fmt.Sprintf("[OK] %s: %s (%.0fms)", qr.Name, qr.Result, qr.Duration))
 			}
 		}
 		if len(queryResults) > 0 {
@@ -421,9 +421,9 @@ func (e *Engine) validateDatabase(ctx context.Context, config *DrillConfig, resu
 			result.CheckResults = append(result.CheckResults, cr)
 			if !cr.Success {
 				errorCount++
-				e.log.Warn("❌ " + cr.Message)
+				e.log.Warn("[FAIL] " + cr.Message)
 			} else {
-				e.log.Info("✓ " + cr.Message)
+				e.log.Info("[OK] " + cr.Message)
 			}
 		}
 	}
@@ -433,7 +433,7 @@ func (e *Engine) validateDatabase(ctx context.Context, config *DrillConfig, resu
 		errorCount++
 		msg := fmt.Sprintf("Total rows (%d) below minimum (%d)", result.TotalRows, config.MinRowCount)
 		result.Warnings = append(result.Warnings, msg)
-		e.log.Warn("⚠️ " + msg)
+		e.log.Warn("[WARN] " + msg)
 	}
 
 	return errorCount
@@ -441,7 +441,7 @@ func (e *Engine) validateDatabase(ctx context.Context, config *DrillConfig, resu
 
 // startPhase starts a new drill phase
 func (e *Engine) startPhase(name string) DrillPhase {
-	e.log.Info("▶️  " + name)
+	e.log.Info("[RUN]  " + name)
 	return DrillPhase{
 		Name:      name,
 		Status:    "running",
@@ -463,7 +463,7 @@ func (e *Engine) failPhase(phase *DrillPhase, message string) {
 	phase.Duration = phase.EndTime.Sub(phase.StartTime).Seconds()
 	phase.Status = "failed"
 	phase.Message = message
-	e.log.Error("❌ Phase failed: " + message)
+	e.log.Error("[FAIL] Phase failed: " + message)
 }
 
 // finalize completes the drill result
@@ -472,9 +472,9 @@ func (e *Engine) finalize(result *DrillResult) {
 	result.Duration = result.EndTime.Sub(result.StartTime).Seconds()
 
 	e.log.Info("")
-	e.log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	e.log.Info("=====================================================")
 	e.log.Info("  " + result.Summary())
-	e.log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	e.log.Info("=====================================================")
 
 	if result.Success {
 		e.log.Info(fmt.Sprintf("  RTO: %.2fs (target: %.0fs) %s",
@@ -484,9 +484,9 @@ func (e *Engine) finalize(result *DrillResult) {
 
 func boolIcon(b bool) string {
 	if b {
-		return "✅"
+		return "[OK]"
 	}
-	return "❌"
+	return "[FAIL]"
 }
 
 // Cleanup removes drill resources
@@ -498,7 +498,7 @@ func (e *Engine) Cleanup(ctx context.Context, drillID string) error {
 
 	for _, c := range containers {
 		if strings.Contains(c.Name, drillID) || (drillID == "" && strings.HasPrefix(c.Name, "drill_")) {
-			e.log.Info("🗑️  Removing container: " + c.Name)
+			e.log.Info("[DEL]  Removing container: " + c.Name)
 			if err := e.docker.RemoveContainer(ctx, c.ID); err != nil {
 				e.log.Warn("Failed to remove container", "id", c.ID, "error", err)
 			}

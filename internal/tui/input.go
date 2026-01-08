@@ -137,10 +137,10 @@ func (m InputModel) View() string {
 	s.WriteString("\n\n")
 
 	if m.err != nil {
-		s.WriteString(errorStyle.Render(fmt.Sprintf("❌ Error: %v\n\n", m.err)))
+		s.WriteString(errorStyle.Render(fmt.Sprintf("[FAIL] Error: %v\n\n", m.err)))
 	}
 
-	s.WriteString("⌨️  Type value • Enter: Confirm • ESC: Cancel\n")
+	s.WriteString("[KEYS]  Type value | Enter: Confirm | ESC: Cancel\n")
 
 	return s.String()
 }

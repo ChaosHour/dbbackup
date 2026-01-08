@@ -285,7 +285,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.done && !m.cancelling {
 				// User requested cancellation - cancel the context
 				m.cancelling = true
-				m.status = "⏹️  Cancelling restore... (please wait)"
+				m.status = "[STOP]  Cancelling restore... (please wait)"
 				m.phase = "Cancelling"
 				if m.cancel != nil {
 					m.cancel()
@@ -297,7 +297,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q":
 			if !m.done && !m.cancelling {
 				m.cancelling = true
-				m.status = "⏹️  Cancelling restore... (please wait)"
+				m.status = "[STOP]  Cancelling restore... (please wait)"
 				m.phase = "Cancelling"
 				if m.cancel != nil {
 					m.cancel()
@@ -321,9 +321,9 @@ func (m RestoreExecutionModel) View() string {
 	s.Grow(512) // Pre-allocate estimated capacity for better performance
 
 	// Title
-	title := "💾 Restoring Database"
+	title := "[RESTORE] Restoring Database"
 	if m.restoreType == "restore-cluster" {
-		title = "💾 Restoring Cluster"
+		title = "[RESTORE] Restoring Cluster"
 	}
 	s.WriteString(titleStyle.Render(title))
 	s.WriteString("\n\n")
@@ -338,12 +338,12 @@ func (m RestoreExecutionModel) View() string {
 	if m.done {
 		// Show result
 		if m.err != nil {
-			s.WriteString(errorStyle.Render("❌ Restore Failed"))
+			s.WriteString(errorStyle.Render("[FAIL] Restore Failed"))
 			s.WriteString("\n\n")
 			s.WriteString(errorStyle.Render(fmt.Sprintf("Error: %v", m.err)))
 			s.WriteString("\n")
 		} else {
-			s.WriteString(successStyle.Render("✅ Restore Completed Successfully"))
+			s.WriteString(successStyle.Render("[OK] Restore Completed Successfully"))
 			s.WriteString("\n\n")
 			s.WriteString(successStyle.Render(m.result))
 			s.WriteString("\n")
@@ -351,7 +351,7 @@ func (m RestoreExecutionModel) View() string {
 
 		s.WriteString(fmt.Sprintf("\nElapsed Time: %s\n", formatDuration(m.elapsed)))
 		s.WriteString("\n")
-		s.WriteString(infoStyle.Render("⌨️  Press Enter to continue"))
+		s.WriteString(infoStyle.Render("[KEYS]  Press Enter to continue"))
 	} else {
 		// Show progress
 		s.WriteString(fmt.Sprintf("Phase: %s\n", m.phase))
@@ -373,7 +373,7 @@ func (m RestoreExecutionModel) View() string {
 		// Elapsed time
 		s.WriteString(fmt.Sprintf("Elapsed: %s\n", formatDuration(m.elapsed)))
 		s.WriteString("\n")
-		s.WriteString(infoStyle.Render("⌨️  Press Ctrl+C to cancel"))
+		s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C to cancel"))
 	}
 
 	return s.String()

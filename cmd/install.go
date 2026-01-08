@@ -176,12 +176,12 @@ func runInstallStatus(ctx context.Context) error {
 	}
 
 	fmt.Println()
-	fmt.Println("📦 DBBackup Installation Status")
-	fmt.Println(strings.Repeat("═", 50))
+	fmt.Println("[STATUS] DBBackup Installation Status")
+	fmt.Println(strings.Repeat("=", 50))
 
 	if clusterStatus.Installed {
 		fmt.Println()
-		fmt.Println("🔹 Cluster Backup:")
+		fmt.Println("  * Cluster Backup:")
 		fmt.Printf("   Service:  %s\n", formatStatus(clusterStatus.Installed, clusterStatus.Active))
 		fmt.Printf("   Timer:    %s\n", formatStatus(clusterStatus.TimerEnabled, clusterStatus.TimerActive))
 		if clusterStatus.NextRun != "" {
@@ -192,7 +192,7 @@ func runInstallStatus(ctx context.Context) error {
 		}
 	} else {
 		fmt.Println()
-		fmt.Println("❌ No systemd services installed")
+		fmt.Println("[NONE] No systemd services installed")
 		fmt.Println()
 		fmt.Println("Run 'sudo dbbackup install' to install as a systemd service")
 	}
@@ -200,13 +200,13 @@ func runInstallStatus(ctx context.Context) error {
 	// Check for exporter
 	if _, err := os.Stat("/etc/systemd/system/dbbackup-exporter.service"); err == nil {
 		fmt.Println()
-		fmt.Println("🔹 Metrics Exporter:")
+		fmt.Println("  * Metrics Exporter:")
 		// Check if exporter is active using systemctl
 		cmd := exec.CommandContext(ctx, "systemctl", "is-active", "dbbackup-exporter")
 		if err := cmd.Run(); err == nil {
-			fmt.Printf("   Service:  ✅ active\n")
+			fmt.Printf("   Service:  [OK] active\n")
 		} else {
-			fmt.Printf("   Service:  ⚪ inactive\n")
+			fmt.Printf("   Service:  [-] inactive\n")
 		}
 	}
 
@@ -219,9 +219,9 @@ func formatStatus(installed, active bool) string {
 		return "not installed"
 	}
 	if active {
-		return "✅ active"
+		return "[OK] active"
 	}
-	return "⚪ inactive"
+	return "[-] inactive"
 }
 
 func expandSchedule(schedule string) string {

@@ -202,9 +202,9 @@ func (b *Batcher) formatSummaryDigest(events []*Event, success, failure, dbCount
 
 func (b *Batcher) formatCompactDigest(events []*Event, success, failure int) string {
 	if failure > 0 {
-		return fmt.Sprintf("⚠️ %d/%d operations failed", failure, len(events))
+		return fmt.Sprintf("[WARN] %d/%d operations failed", failure, len(events))
 	}
-	return fmt.Sprintf("✅ All %d operations successful", success)
+	return fmt.Sprintf("[OK] All %d operations successful", success)
 }
 
 func (b *Batcher) formatDetailedDigest(events []*Event) string {
@@ -215,9 +215,9 @@ func (b *Batcher) formatDetailedDigest(events []*Event) string {
 		icon := "•"
 		switch e.Severity {
 		case SeverityError, SeverityCritical:
-			icon = "❌"
+			icon = "[FAIL]"
 		case SeverityWarning:
-			icon = "⚠️"
+			icon = "[WARN]"
 		}
 
 		msg += fmt.Sprintf("%s [%s] %s: %s\n",

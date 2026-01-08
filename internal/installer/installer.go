@@ -658,9 +658,9 @@ func (i *Installer) printNextSteps(opts InstallOptions) {
 	serviceName := strings.Replace(timerName, ".timer", ".service", 1)
 
 	fmt.Println()
-	fmt.Println("✅ Installation successful!")
+	fmt.Println("[OK] Installation successful!")
 	fmt.Println()
-	fmt.Println("📋 Next steps:")
+	fmt.Println("[NEXT] Next steps:")
 	fmt.Println()
 	fmt.Printf("  1. Edit configuration:     sudo nano %s\n", opts.ConfigPath)
 	fmt.Printf("  2. Set credentials:        sudo nano /etc/dbbackup/env.d/%s.conf\n", opts.Instance)
@@ -668,12 +668,12 @@ func (i *Installer) printNextSteps(opts InstallOptions) {
 	fmt.Printf("  4. Verify timer status:    sudo systemctl status %s\n", timerName)
 	fmt.Printf("  5. Run backup manually:    sudo systemctl start %s\n", serviceName)
 	fmt.Println()
-	fmt.Println("📊 View backup logs:")
+	fmt.Println("[LOGS] View backup logs:")
 	fmt.Printf("  journalctl -u %s -f\n", serviceName)
 	fmt.Println()
 
 	if opts.WithMetrics {
-		fmt.Println("📈 Prometheus metrics:")
+		fmt.Println("[METRICS] Prometheus metrics:")
 		fmt.Printf("  curl http://localhost:%d/metrics\n", opts.MetricsPort)
 		fmt.Println()
 	}

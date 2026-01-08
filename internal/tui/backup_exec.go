@@ -136,11 +136,11 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 		var result string
 		switch backupType {
 		case "single":
-			result = fmt.Sprintf("✓ Single database backup of '%s' completed successfully in %v", dbName, elapsed)
+			result = fmt.Sprintf("[+] Single database backup of '%s' completed successfully in %v", dbName, elapsed)
 		case "sample":
-			result = fmt.Sprintf("✓ Sample backup of '%s' (ratio: %d) completed successfully in %v", dbName, ratio, elapsed)
+			result = fmt.Sprintf("[+] Sample backup of '%s' (ratio: %d) completed successfully in %v", dbName, ratio, elapsed)
 		case "cluster":
-			result = fmt.Sprintf("✓ Cluster backup completed successfully in %v", elapsed)
+			result = fmt.Sprintf("[+] Cluster backup completed successfully in %v", elapsed)
 		}
 
 		return backupCompleteMsg{
@@ -200,9 +200,9 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.result = msg.result
 		if m.err == nil {
-			m.status = "✅ Backup completed successfully!"
+			m.status = "[OK] Backup completed successfully!"
 		} else {
-			m.status = fmt.Sprintf("❌ Backup failed: %v", m.err)
+			m.status = fmt.Sprintf("[FAIL] Backup failed: %v", m.err)
 		}
 		// Auto-forward in debug/auto-confirm mode
 		if m.config.TUIAutoConfirm {
@@ -216,7 +216,7 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.done && !m.cancelling {
 				// User requested cancellation - cancel the context
 				m.cancelling = true
-				m.status = "⏹️  Cancelling backup... (please wait)"
+				m.status = "[STOP]  Cancelling backup... (please wait)"
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -240,7 +240,7 @@ func (m BackupExecutionModel) View() string {
 
 	// Clear screen with newlines and render header
 	s.WriteString("\n\n")
-	header := titleStyle.Render("🔄 Backup Execution")
+	header := titleStyle.Render("[EXEC] Backup Execution")
 	s.WriteString(header)
 	s.WriteString("\n\n")
 
@@ -261,13 +261,13 @@ func (m BackupExecutionModel) View() string {
 			s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
 		} else {
 			s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
-			s.WriteString("\n  ⌨️  Press Ctrl+C or ESC to cancel\n")
+			s.WriteString("\n  [KEY]  Press Ctrl+C or ESC to cancel\n")
 		}
 	} else {
 		s.WriteString(fmt.Sprintf("  %s\n\n", m.status))
 
 		if m.err != nil {
-			s.WriteString(fmt.Sprintf("  ❌ Error: %v\n", m.err))
+			s.WriteString(fmt.Sprintf("  [FAIL] Error: %v\n", m.err))
 		} else if m.result != "" {
 			// Parse and display result cleanly
 			lines := strings.Split(m.result, "\n")
@@ -278,7 +278,7 @@ func (m BackupExecutionModel) View() string {
 				}
 			}
 		}
-		s.WriteString("\n  ⌨️  Press Enter or ESC to return to menu\n")
+		s.WriteString("\n  [KEY]  Press Enter or ESC to return to menu\n")
 	}
 
 	return s.String()

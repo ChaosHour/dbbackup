@@ -25,7 +25,7 @@ func (pc *PrivilegeChecker) CheckAndWarn(allowRoot bool) error {
 	isRoot, user := pc.isRunningAsRoot()
 
 	if isRoot {
-		pc.log.Warn("⚠️  Running with elevated privileges (root/Administrator)")
+		pc.log.Warn("[WARN] Running with elevated privileges (root/Administrator)")
 		pc.log.Warn("Security recommendation: Create a dedicated backup user with minimal privileges")
 
 		if !allowRoot {

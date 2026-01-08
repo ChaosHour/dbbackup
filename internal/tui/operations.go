@@ -49,14 +49,14 @@ func (m OperationsViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m OperationsViewModel) View() string {
 	var s strings.Builder
 
-	header := titleStyle.Render("📊 Active Operations")
+	header := titleStyle.Render("[STATS] Active Operations")
 	s.WriteString(fmt.Sprintf("\n%s\n\n", header))
 
 	s.WriteString("Currently running operations:\n\n")
-	s.WriteString(infoStyle.Render("📭 No active operations"))
+	s.WriteString(infoStyle.Render("[NONE] No active operations"))
 	s.WriteString("\n\n")
 
-	s.WriteString("⌨️  Press any key to return to menu\n")
+	s.WriteString("[KEYS]  Press any key to return to menu\n")
 
 	return s.String()
 }

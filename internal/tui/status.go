@@ -160,25 +160,25 @@ func (m StatusViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m StatusViewModel) View() string {
 	var s strings.Builder
 
-	header := titleStyle.Render("📊 Database Status & Health Check")
+	header := titleStyle.Render("[STATS] Database Status & Health Check")
 	s.WriteString(fmt.Sprintf("\n%s\n\n", header))
 
 	if m.loading {
-		spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		spinner := []string{"-", "\\", "|", "/"}
 		frame := int(time.Now().UnixMilli()/100) % len(spinner)
 		s.WriteString(fmt.Sprintf("%s Loading status information...\n", spinner[frame]))
 		return s.String()
 	}
 
 	if m.err != nil {
-		s.WriteString(errorStyle.Render(fmt.Sprintf("❌ Error: %v\n", m.err)))
+		s.WriteString(errorStyle.Render(fmt.Sprintf("[FAIL] Error: %v\n", m.err)))
 		s.WriteString("\n")
 	} else {
 		s.WriteString("Connection Status:\n")
 		if m.connected {
-			s.WriteString(successStyle.Render("  ✓ Connected\n"))
+			s.WriteString(successStyle.Render("  [+] Connected\n"))
 		} else {
-			s.WriteString(errorStyle.Render("  ✗ Disconnected\n"))
+			s.WriteString(errorStyle.Render("  [-] Disconnected\n"))
 		}
 		s.WriteString("\n")
 
@@ -193,9 +193,9 @@ func (m StatusViewModel) View() string {
 		}
 
 		s.WriteString("\n")
-		s.WriteString(successStyle.Render("✓ All systems operational\n"))
+		s.WriteString(successStyle.Render("[+] All systems operational\n"))
 	}
 
-	s.WriteString("\n⌨️  Press any key to return to menu\n")
+	s.WriteString("\n[KEYS]  Press any key to return to menu\n")
 	return s.String()
 }

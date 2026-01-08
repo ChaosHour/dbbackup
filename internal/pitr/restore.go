@@ -43,9 +43,9 @@ type RestoreOptions struct {
 
 // RestorePointInTime performs a Point-in-Time Recovery
 func (ro *RestoreOrchestrator) RestorePointInTime(ctx context.Context, opts *RestoreOptions) error {
-	ro.log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	ro.log.Info("=====================================================")
 	ro.log.Info("  Point-in-Time Recovery (PITR)")
-	ro.log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	ro.log.Info("=====================================================")
 	ro.log.Info("")
 	ro.log.Info("Target:", "summary", opts.Target.Summary())
 	ro.log.Info("Base Backup:", "path", opts.BaseBackupPath)
@@ -91,11 +91,11 @@ func (ro *RestoreOrchestrator) RestorePointInTime(ctx context.Context, opts *Res
 		return fmt.Errorf("failed to generate recovery configuration: %w", err)
 	}
 
-	ro.log.Info("✅ Recovery configuration generated successfully")
+	ro.log.Info("[OK] Recovery configuration generated successfully")
 	ro.log.Info("")
-	ro.log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	ro.log.Info("=====================================================")
 	ro.log.Info("  Next Steps:")
-	ro.log.Info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	ro.log.Info("=====================================================")
 	ro.log.Info("")
 	ro.log.Info("1. Start PostgreSQL to begin recovery:")
 	ro.log.Info(fmt.Sprintf("   pg_ctl -D %s start", opts.TargetDataDir))
@@ -192,7 +192,7 @@ func (ro *RestoreOrchestrator) validateInputs(opts *RestoreOptions) error {
 		}
 	}
 
-	ro.log.Info("✅ Validation passed")
+	ro.log.Info("[OK] Validation passed")
 	return nil
 }
 
@@ -238,7 +238,7 @@ func (ro *RestoreOrchestrator) extractTarGzBackup(ctx context.Context, source, d
 		return fmt.Errorf("tar extraction failed: %w", err)
 	}
 
-	ro.log.Info("✅ Base backup extracted successfully")
+	ro.log.Info("[OK] Base backup extracted successfully")
 	return nil
 }
 
@@ -254,7 +254,7 @@ func (ro *RestoreOrchestrator) extractTarBackup(ctx context.Context, source, des
 		return fmt.Errorf("tar extraction failed: %w", err)
 	}
 
-	ro.log.Info("✅ Base backup extracted successfully")
+	ro.log.Info("[OK] Base backup extracted successfully")
 	return nil
 }
 
@@ -270,7 +270,7 @@ func (ro *RestoreOrchestrator) copyDirectoryBackup(ctx context.Context, source, 
 		return fmt.Errorf("directory copy failed: %w", err)
 	}
 
-	ro.log.Info("✅ Base backup copied successfully")
+	ro.log.Info("[OK] Base backup copied successfully")
 	return nil
 }
 
@@ -291,7 +291,7 @@ func (ro *RestoreOrchestrator) startPostgreSQL(ctx context.Context, opts *Restor
 		return fmt.Errorf("pg_ctl start failed: %w", err)
 	}
 
-	ro.log.Info("✅ PostgreSQL started successfully")
+	ro.log.Info("[OK] PostgreSQL started successfully")
 	ro.log.Info("PostgreSQL is now performing recovery...")
 	return nil
 }
@@ -320,7 +320,7 @@ func (ro *RestoreOrchestrator) monitorRecovery(ctx context.Context, opts *Restor
 			// Check if recovery is complete by looking for postmaster.pid
 			pidFile := filepath.Join(opts.TargetDataDir, "postmaster.pid")
 			if _, err := os.Stat(pidFile); err == nil {
-				ro.log.Info("✅ PostgreSQL is running")
+				ro.log.Info("[OK] PostgreSQL is running")
 
 				// Check if recovery files still exist
 				recoverySignal := filepath.Join(opts.TargetDataDir, "recovery.signal")
@@ -328,7 +328,7 @@ func (ro *RestoreOrchestrator) monitorRecovery(ctx context.Context, opts *Restor
 
 				if _, err := os.Stat(recoverySignal); os.IsNotExist(err) {
 					if _, err := os.Stat(recoveryConf); os.IsNotExist(err) {
-						ro.log.Info("✅ Recovery completed - PostgreSQL promoted to primary")
+						ro.log.Info("[OK] Recovery completed - PostgreSQL promoted to primary")
 						return nil
 					}
 				}

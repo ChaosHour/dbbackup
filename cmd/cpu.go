@@ -61,10 +61,10 @@ func runCPUInfo(ctx context.Context) error {
 
 	// Show current vs optimal
 	if cfg.AutoDetectCores {
-		fmt.Println("\n✅ CPU optimization is enabled")
+		fmt.Println("\n[OK] CPU optimization is enabled")
 		fmt.Println("Job counts are automatically optimized based on detected hardware")
 	} else {
-		fmt.Println("\n⚠️  CPU optimization is disabled")
+		fmt.Println("\n[WARN] CPU optimization is disabled")
 		fmt.Println("Consider enabling --auto-detect-cores for better performance")
 	}
 

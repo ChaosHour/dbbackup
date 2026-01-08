@@ -8,7 +8,7 @@ import (
 
 func TestEncryptDecrypt(t *testing.T) {
 	// Test data
-	original := []byte("This is a secret database backup that needs encryption! 🔒")
+	original := []byte("This is a secret database backup that needs encryption! [LOCK]")
 
 	// Test with passphrase
 	t.Run("Passphrase", func(t *testing.T) {
@@ -57,7 +57,7 @@ func TestEncryptDecrypt(t *testing.T) {
 				string(original), string(decrypted))
 		}
 
-		t.Log("✅ Encryption/decryption successful")
+		t.Log("[OK] Encryption/decryption successful")
 	})
 
 	// Test with direct key
@@ -102,7 +102,7 @@ func TestEncryptDecrypt(t *testing.T) {
 			t.Errorf("Decrypted data doesn't match original")
 		}
 
-		t.Log("✅ Direct key encryption/decryption successful")
+		t.Log("[OK] Direct key encryption/decryption successful")
 	})
 
 	// Test wrong password
@@ -133,7 +133,7 @@ func TestEncryptDecrypt(t *testing.T) {
 			t.Error("Expected decryption to fail with wrong password, but it succeeded")
 		}
 
-		t.Logf("✅ Wrong password correctly rejected: %v", err)
+		t.Logf("[OK] Wrong password correctly rejected: %v", err)
 	})
 }
 
@@ -183,7 +183,7 @@ func TestLargeData(t *testing.T) {
 		t.Errorf("Large data decryption failed")
 	}
 
-	t.Log("✅ Large data encryption/decryption successful")
+	t.Log("[OK] Large data encryption/decryption successful")
 }
 
 func TestKeyGeneration(t *testing.T) {
@@ -207,7 +207,7 @@ func TestKeyGeneration(t *testing.T) {
 		t.Error("Generated keys are identical - randomness broken!")
 	}
 
-	t.Log("✅ Key generation successful")
+	t.Log("[OK] Key generation successful")
 }
 
 func TestKeyDerivation(t *testing.T) {
@@ -230,5 +230,5 @@ func TestKeyDerivation(t *testing.T) {
 		t.Error("Different salts produced same key")
 	}
 
-	t.Log("✅ Key derivation successful")
+	t.Log("[OK] Key derivation successful")
 }

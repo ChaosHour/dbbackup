@@ -52,7 +52,7 @@ func main() {
 		if metrics.GlobalMetrics != nil {
 			avgs := metrics.GlobalMetrics.GetAverages()
 			if ops, ok := avgs["total_operations"].(int); ok && ops > 0 {
-				fmt.Printf("\n📊 Session Summary: %d operations, %.1f%% success rate\n",
+				fmt.Printf("\n[INFO] Session Summary: %d operations, %.1f%% success rate\n",
 					ops, avgs["success_rate"])
 			}
 		}

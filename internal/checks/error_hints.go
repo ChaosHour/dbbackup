@@ -234,22 +234,22 @@ func FormatErrorWithHint(errorMsg string) string {
 	var icon string
 	switch classification.Type {
 	case "ignorable":
-		icon = "ℹ️ "
+		icon = "[i]"
 	case "warning":
-		icon = "⚠️ "
+		icon = "[!]"
 	case "critical":
-		icon = "❌"
+		icon = "[X]"
 	case "fatal":
-		icon = "🛑"
+		icon = "[!!]"
 	default:
-		icon = "⚠️ "
+		icon = "[!]"
 	}
 
 	output := fmt.Sprintf("%s %s Error\n\n", icon, strings.ToUpper(classification.Type))
 	output += fmt.Sprintf("Category: %s\n", classification.Category)
 	output += fmt.Sprintf("Message: %s\n\n", classification.Message)
-	output += fmt.Sprintf("💡 Hint: %s\n\n", classification.Hint)
-	output += fmt.Sprintf("🔧 Action: %s\n", classification.Action)
+	output += fmt.Sprintf("[HINT] Hint: %s\n\n", classification.Hint)
+	output += fmt.Sprintf("[ACTION] Action: %s\n", classification.Action)
 
 	return output
 }
@@ -257,7 +257,7 @@ func FormatErrorWithHint(errorMsg string) string {
 // FormatMultipleErrors formats multiple errors with classification
 func FormatMultipleErrors(errors []string) string {
 	if len(errors) == 0 {
-		return "✓ No errors"
+		return "[+] No errors"
 	}
 
 	ignorable := 0
@@ -285,22 +285,22 @@ func FormatMultipleErrors(errors []string) string {
 		}
 	}
 
-	output := "📊 Error Summary:\n\n"
+	output := "[SUMMARY] Error Summary:\n\n"
 	if ignorable > 0 {
-		output += fmt.Sprintf("   ℹ️  %d ignorable (objects already exist)\n", ignorable)
+		output += fmt.Sprintf("   [i] %d ignorable (objects already exist)\n", ignorable)
 	}
 	if warnings > 0 {
-		output += fmt.Sprintf("   ⚠️  %d warnings\n", warnings)
+		output += fmt.Sprintf("   [!] %d warnings\n", warnings)
 	}
 	if critical > 0 {
-		output += fmt.Sprintf("   ❌ %d critical errors\n", critical)
+		output += fmt.Sprintf("   [X] %d critical errors\n", critical)
 	}
 	if fatal > 0 {
-		output += fmt.Sprintf("   🛑 %d fatal errors\n", fatal)
+		output += fmt.Sprintf("   [!!] %d fatal errors\n", fatal)
 	}
 
 	if len(criticalErrors) > 0 {
-		output += "\n📝 Critical Issues:\n\n"
+		output += "\n[CRITICAL] Critical Issues:\n\n"
 		for i, err := range criticalErrors {
 			class := ClassifyError(err)
 			output += fmt.Sprintf("%d. %s\n", i+1, class.Hint)

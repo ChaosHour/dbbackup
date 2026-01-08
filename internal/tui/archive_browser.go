@@ -209,12 +209,12 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Validate selection based on mode
 				if m.mode == "restore-cluster" && !selected.Format.IsClusterBackup() {
-					m.message = errorStyle.Render("❌ Please select a cluster backup (.tar.gz)")
+					m.message = errorStyle.Render("[FAIL] Please select a cluster backup (.tar.gz)")
 					return m, nil
 				}
 
 				if m.mode == "restore-single" && selected.Format.IsClusterBackup() {
-					m.message = errorStyle.Render("❌ Please select a single database backup")
+					m.message = errorStyle.Render("[FAIL] Please select a single database backup")
 					return m, nil
 				}
 
@@ -227,7 +227,7 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Show detailed info
 			if len(m.archives) > 0 && m.cursor < len(m.archives) {
 				selected := m.archives[m.cursor]
-				m.message = fmt.Sprintf("📦 %s | Format: %s | Size: %s | Modified: %s",
+				m.message = fmt.Sprintf("[PKG] %s | Format: %s | Size: %s | Modified: %s",
 					selected.Name,
 					selected.Format.String(),
 					formatSize(selected.Size),
@@ -251,13 +251,13 @@ func (m ArchiveBrowserModel) View() string {
 	var s strings.Builder
 
 	// Header
-	title := "📦 Backup Archives"
+	title := "[PKG] Backup Archives"
 	if m.mode == "restore-single" {
-		title = "📦 Select Archive to Restore (Single Database)"
+		title = "[PKG] Select Archive to Restore (Single Database)"
 	} else if m.mode == "restore-cluster" {
-		title = "📦 Select Archive to Restore (Cluster)"
+		title = "[PKG] Select Archive to Restore (Cluster)"
 	} else if m.mode == "diagnose" {
-		title = "🔍 Select Archive to Diagnose"
+		title = "[SEARCH] Select Archive to Diagnose"
 	}
 
 	s.WriteString(titleStyle.Render(title))
@@ -269,7 +269,7 @@ func (m ArchiveBrowserModel) View() string {
 	}
 
 	if m.err != nil {
-		s.WriteString(errorStyle.Render(fmt.Sprintf("❌ Error: %v", m.err)))
+		s.WriteString(errorStyle.Render(fmt.Sprintf("[FAIL] Error: %v", m.err)))
 		s.WriteString("\n\n")
 		s.WriteString(infoStyle.Render("Press Esc to go back"))
 		return s.String()
@@ -293,7 +293,7 @@ func (m ArchiveBrowserModel) View() string {
 	s.WriteString(archiveHeaderStyle.Render(fmt.Sprintf("%-40s %-25s %-12s %-20s",
 		"FILENAME", "FORMAT", "SIZE", "MODIFIED")))
 	s.WriteString("\n")
-	s.WriteString(strings.Repeat("─", 100))
+	s.WriteString(strings.Repeat("-", 100))
 	s.WriteString("\n")
 
 	// Show archives (limit to visible area)
@@ -317,13 +317,13 @@ func (m ArchiveBrowserModel) View() string {
 		}
 
 		// Color code based on validity and age
-		statusIcon := "✓"
+		statusIcon := "[+]"
 		if !archive.Valid {
-			statusIcon = "✗"
+			statusIcon = "[-]"
 			style = archiveInvalidStyle
 		} else if time.Since(archive.Modified) > 30*24*time.Hour {
 			style = archiveOldStyle
-			statusIcon = "⚠"
+			statusIcon = "[WARN]"
 		}
 
 		filename := truncate(archive.Name, 38)
@@ -351,7 +351,7 @@ func (m ArchiveBrowserModel) View() string {
 	s.WriteString(infoStyle.Render(fmt.Sprintf("Total: %d archive(s) | Selected: %d/%d",
 		len(m.archives), m.cursor+1, len(m.archives))))
 	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("⌨️  ↑/↓: Navigate | Enter: Select | d: Diagnose | f: Filter | i: Info | Esc: Back"))
+	s.WriteString(infoStyle.Render("[KEY]  ↑/↓: Navigate | Enter: Select | d: Diagnose | f: Filter | i: Info | Esc: Back"))
 
 	return s.String()
 }

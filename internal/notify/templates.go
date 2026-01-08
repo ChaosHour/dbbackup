@@ -30,52 +30,52 @@ type Templates struct {
 func DefaultTemplates() map[EventType]Templates {
 	return map[EventType]Templates{
 		EventBackupStarted: {
-			Subject:  "🔄 Backup Started: {{.Database}} on {{.Hostname}}",
+			Subject:  "[EXEC] Backup Started: {{.Database}} on {{.Hostname}}",
 			TextBody: backupStartedText,
 			HTMLBody: backupStartedHTML,
 		},
 		EventBackupCompleted: {
-			Subject:  "✅ Backup Completed: {{.Database}} on {{.Hostname}}",
+			Subject:  "[OK] Backup Completed: {{.Database}} on {{.Hostname}}",
 			TextBody: backupCompletedText,
 			HTMLBody: backupCompletedHTML,
 		},
 		EventBackupFailed: {
-			Subject:  "❌ Backup FAILED: {{.Database}} on {{.Hostname}}",
+			Subject:  "[FAIL] Backup FAILED: {{.Database}} on {{.Hostname}}",
 			TextBody: backupFailedText,
 			HTMLBody: backupFailedHTML,
 		},
 		EventRestoreStarted: {
-			Subject:  "🔄 Restore Started: {{.Database}} on {{.Hostname}}",
+			Subject:  "[EXEC] Restore Started: {{.Database}} on {{.Hostname}}",
 			TextBody: restoreStartedText,
 			HTMLBody: restoreStartedHTML,
 		},
 		EventRestoreCompleted: {
-			Subject:  "✅ Restore Completed: {{.Database}} on {{.Hostname}}",
+			Subject:  "[OK] Restore Completed: {{.Database}} on {{.Hostname}}",
 			TextBody: restoreCompletedText,
 			HTMLBody: restoreCompletedHTML,
 		},
 		EventRestoreFailed: {
-			Subject:  "❌ Restore FAILED: {{.Database}} on {{.Hostname}}",
+			Subject:  "[FAIL] Restore FAILED: {{.Database}} on {{.Hostname}}",
 			TextBody: restoreFailedText,
 			HTMLBody: restoreFailedHTML,
 		},
 		EventVerificationPassed: {
-			Subject:  "✅ Verification Passed: {{.Database}}",
+			Subject:  "[OK] Verification Passed: {{.Database}}",
 			TextBody: verificationPassedText,
 			HTMLBody: verificationPassedHTML,
 		},
 		EventVerificationFailed: {
-			Subject:  "❌ Verification FAILED: {{.Database}}",
+			Subject:  "[FAIL] Verification FAILED: {{.Database}}",
 			TextBody: verificationFailedText,
 			HTMLBody: verificationFailedHTML,
 		},
 		EventDRDrillPassed: {
-			Subject:  "✅ DR Drill Passed: {{.Database}}",
+			Subject:  "[OK] DR Drill Passed: {{.Database}}",
 			TextBody: drDrillPassedText,
 			HTMLBody: drDrillPassedHTML,
 		},
 		EventDRDrillFailed: {
-			Subject:  "❌ DR Drill FAILED: {{.Database}}",
+			Subject:  "[FAIL] DR Drill FAILED: {{.Database}}",
 			TextBody: drDrillFailedText,
 			HTMLBody: drDrillFailedHTML,
 		},
@@ -95,7 +95,7 @@ Started At: {{formatTime .Timestamp}}
 
 const backupStartedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #3498db;">🔄 Backup Started</h2>
+  <h2 style="color: #3498db;">[EXEC] Backup Started</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>
@@ -121,7 +121,7 @@ Completed:  {{formatTime .Timestamp}}
 
 const backupCompletedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #27ae60;">✅ Backup Completed</h2>
+  <h2 style="color: #27ae60;">[OK] Backup Completed</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>
@@ -137,7 +137,7 @@ const backupCompletedHTML = `
 `
 
 const backupFailedText = `
-⚠️ BACKUP FAILED ⚠️
+[WARN] BACKUP FAILED [WARN]
 
 Database:   {{.Database}}
 Hostname:   {{.Hostname}}
@@ -152,7 +152,7 @@ Please investigate immediately.
 
 const backupFailedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #e74c3c;">❌ Backup FAILED</h2>
+  <h2 style="color: #e74c3c;">[FAIL] Backup FAILED</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>
@@ -176,7 +176,7 @@ Started At: {{formatTime .Timestamp}}
 
 const restoreStartedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #3498db;">🔄 Restore Started</h2>
+  <h2 style="color: #3498db;">[EXEC] Restore Started</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>
@@ -200,7 +200,7 @@ Completed:  {{formatTime .Timestamp}}
 
 const restoreCompletedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #27ae60;">✅ Restore Completed</h2>
+  <h2 style="color: #27ae60;">[OK] Restore Completed</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>
@@ -214,7 +214,7 @@ const restoreCompletedHTML = `
 `
 
 const restoreFailedText = `
-⚠️ RESTORE FAILED ⚠️
+[WARN] RESTORE FAILED [WARN]
 
 Database:   {{.Database}}
 Hostname:   {{.Hostname}}
@@ -229,7 +229,7 @@ Please investigate immediately.
 
 const restoreFailedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #e74c3c;">❌ Restore FAILED</h2>
+  <h2 style="color: #e74c3c;">[FAIL] Restore FAILED</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>
@@ -255,7 +255,7 @@ Verified:   {{formatTime .Timestamp}}
 
 const verificationPassedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #27ae60;">✅ Verification Passed</h2>
+  <h2 style="color: #27ae60;">[OK] Verification Passed</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>
@@ -269,7 +269,7 @@ const verificationPassedHTML = `
 `
 
 const verificationFailedText = `
-⚠️ VERIFICATION FAILED ⚠️
+[WARN] VERIFICATION FAILED [WARN]
 
 Database:   {{.Database}}
 Hostname:   {{.Hostname}}
@@ -284,7 +284,7 @@ Backup integrity may be compromised. Please investigate.
 
 const verificationFailedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #e74c3c;">❌ Verification FAILED</h2>
+  <h2 style="color: #e74c3c;">[FAIL] Verification FAILED</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>
@@ -314,7 +314,7 @@ Backup restore capability verified.
 
 const drDrillPassedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #27ae60;">✅ DR Drill Passed</h2>
+  <h2 style="color: #27ae60;">[OK] DR Drill Passed</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>
@@ -326,12 +326,12 @@ const drDrillPassedHTML = `
     {{end}}
   </table>
   {{if .Message}}<p style="margin-top: 20px; color: #27ae60;">{{.Message}}</p>{{end}}
-  <p style="margin-top: 20px; color: #27ae60;">✓ Backup restore capability verified</p>
+  <p style="margin-top: 20px; color: #27ae60;">[OK] Backup restore capability verified</p>
 </div>
 `
 
 const drDrillFailedText = `
-⚠️ DR DRILL FAILED ⚠️
+[WARN] DR DRILL FAILED [WARN]
 
 Database:   {{.Database}}
 Hostname:   {{.Hostname}}
@@ -346,7 +346,7 @@ Backup may not be restorable. Please investigate immediately.
 
 const drDrillFailedHTML = `
 <div style="font-family: Arial, sans-serif; padding: 20px;">
-  <h2 style="color: #e74c3c;">❌ DR Drill FAILED</h2>
+  <h2 style="color: #e74c3c;">[FAIL] DR Drill FAILED</h2>
   <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
     <tr><td style="padding: 8px; font-weight: bold;">Database:</td><td style="padding: 8px;">{{.Database}}</td></tr>
     <tr><td style="padding: 8px; font-weight: bold;">Hostname:</td><td style="padding: 8px;">{{.Hostname}}</td></tr>

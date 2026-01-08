@@ -372,9 +372,9 @@ func runDedupRestore(cmd *cobra.Command, args []string) error {
 	// Verify hash
 	if manifest.SHA256 != "" {
 		if restoredHash == manifest.SHA256 {
-			fmt.Printf("  Verification: ✓ SHA-256 matches\n")
+			fmt.Printf("  Verification: [OK] SHA-256 matches\n")
 		} else {
-			fmt.Printf("  Verification: ✗ SHA-256 MISMATCH!\n")
+			fmt.Printf("  Verification: [FAIL] SHA-256 MISMATCH!\n")
 			fmt.Printf("    Expected: %s\n", manifest.SHA256)
 			fmt.Printf("    Got:      %s\n", restoredHash)
 			return fmt.Errorf("integrity verification failed")

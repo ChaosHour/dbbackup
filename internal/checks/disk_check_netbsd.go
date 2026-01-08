@@ -58,16 +58,16 @@ func FormatDiskSpaceMessage(check *DiskSpaceCheck) string {
 
 	if check.Critical {
 		status = "CRITICAL"
-		icon = "❌"
+		icon = "[X]"
 	} else if check.Warning {
 		status = "WARNING"
-		icon = "⚠️ "
+		icon = "[!]"
 	} else {
 		status = "OK"
-		icon = "✓"
+		icon = "[+]"
 	}
 
-	msg := fmt.Sprintf(`📊 Disk Space Check (%s):
+	msg := fmt.Sprintf(`[DISK] Disk Space Check (%s):
    Path: %s
    Total: %s
    Available: %s (%.1f%% used)
@@ -81,13 +81,13 @@ func FormatDiskSpaceMessage(check *DiskSpaceCheck) string {
 		status)
 
 	if check.Critical {
-		msg += "\n   \n   ⚠️  CRITICAL: Insufficient disk space!"
+		msg += "\n   \n   [!!] CRITICAL: Insufficient disk space!"
 		msg += "\n   Operation blocked. Free up space before continuing."
 	} else if check.Warning {
-		msg += "\n   \n   ⚠️  WARNING: Low disk space!"
+		msg += "\n   \n   [!] WARNING: Low disk space!"
 		msg += "\n   Backup may fail if database is larger than estimated."
 	} else {
-		msg += "\n   \n   ✓ Sufficient space available"
+		msg += "\n   \n   [+] Sufficient space available"
 	}
 
 	return msg

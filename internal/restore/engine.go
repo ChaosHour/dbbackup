@@ -127,7 +127,7 @@ func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string
 		e.log.Warn("Checksum verification failed", "error", checksumErr)
 		e.log.Warn("Continuing restore without checksum verification (use with caution)")
 	} else {
-		e.log.Info("✓ Archive checksum verified successfully")
+		e.log.Info("[OK] Archive checksum verified successfully")
 	}
 
 	// Detect archive format
@@ -461,7 +461,7 @@ func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs [
 					e.log.Warn("Failed to save debug log", "error", saveErr)
 				} else {
 					e.log.Info("Debug log saved", "path", e.debugLogPath)
-					fmt.Printf("\n📋 Detailed error report saved to: %s\n", e.debugLogPath)
+					fmt.Printf("\n[LOG] Detailed error report saved to: %s\n", e.debugLogPath)
 				}
 			}
 		}
@@ -612,7 +612,7 @@ func (e *Engine) previewRestore(archivePath, targetDB string, format ArchiveForm
 		fmt.Printf("  1. Execute: mysql %s < %s\n", targetDB, archivePath)
 	}
 
-	fmt.Println("\n⚠️  WARNING: This will restore data to the target database.")
+	fmt.Println("\n[WARN]  WARNING: This will restore data to the target database.")
 	fmt.Println("   Existing data may be overwritten or merged.")
 	fmt.Println("\nTo execute this restore, add the --confirm flag.")
 	fmt.Println(strings.Repeat("=", 60) + "\n")
@@ -643,7 +643,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		e.log.Warn("Checksum verification failed", "error", checksumErr)
 		e.log.Warn("Continuing restore without checksum verification (use with caution)")
 	} else {
-		e.log.Info("✓ Cluster archive checksum verified successfully")
+		e.log.Info("[OK] Cluster archive checksum verified successfully")
 	}
 
 	format := DetectArchiveFormat(archivePath)
@@ -703,7 +703,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 
 	if !isSuperuser {
 		e.log.Warn("Current user is not a superuser - database ownership may not be fully restored")
-		e.progress.Update("⚠️  Warning: Non-superuser - ownership restoration limited")
+		e.progress.Update("[WARN]  Warning: Non-superuser - ownership restoration limited")
 		time.Sleep(2 * time.Second) // Give user time to see warning
 	} else {
 		e.log.Info("Superuser privileges confirmed - full ownership restoration enabled")
@@ -835,7 +835,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		e.log.Warn("Large objects detected in dump files - reducing parallelism to avoid lock contention",
 			"original_parallelism", parallelism,
 			"adjusted_parallelism", 1)
-		e.progress.Update("⚠️  Large objects detected - using sequential restore to avoid lock conflicts")
+		e.progress.Update("[WARN]  Large objects detected - using sequential restore to avoid lock conflicts")
 		time.Sleep(2 * time.Second) // Give user time to see warning
 		parallelism = 1
 	}
@@ -1339,7 +1339,7 @@ func (e *Engine) previewClusterRestore(archivePath string) error {
 	fmt.Println("  3. Restore all databases found in archive")
 	fmt.Println("  4. Cleanup temporary files")
 
-	fmt.Println("\n⚠️  WARNING: This will restore multiple databases.")
+	fmt.Println("\n[WARN]  WARNING: This will restore multiple databases.")
 	fmt.Println("   Existing databases may be overwritten or merged.")
 	fmt.Println("\nTo execute this restore, add the --confirm flag.")
 	fmt.Println(strings.Repeat("=", 60) + "\n")

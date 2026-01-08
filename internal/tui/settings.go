@@ -459,9 +459,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cursor < len(m.settings) {
 					setting := m.settings[m.cursor]
 					if err := setting.Update(m.config, selectedPath); err != nil {
-						m.message = "❌ Error: " + err.Error()
+						m.message = "[FAIL] Error: " + err.Error()
 					} else {
-						m.message = "✅ Directory updated: " + selectedPath
+						m.message = "[OK] Directory updated: " + selectedPath
 					}
 				}
 				m.browsingDir = false
@@ -500,9 +500,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				currentSetting := m.settings[m.cursor]
 				if currentSetting.Type == "selector" {
 					if err := currentSetting.Update(m.config, ""); err != nil {
-						m.message = errorStyle.Render(fmt.Sprintf("❌ %s", err.Error()))
+						m.message = errorStyle.Render(fmt.Sprintf("[FAIL] %s", err.Error()))
 					} else {
-						m.message = successStyle.Render(fmt.Sprintf("✅ Updated %s", currentSetting.DisplayName))
+						m.message = successStyle.Render(fmt.Sprintf("[OK] Updated %s", currentSetting.DisplayName))
 					}
 					return m, nil
 				}
@@ -515,11 +515,11 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.settings[m.cursor].Type == "path" {
 					return m.openDirectoryBrowser()
 				} else {
-					m.message = "❌ Tab key only works on directory path fields"
+					m.message = "[FAIL] Tab key only works on directory path fields"
 					return m, nil
 				}
 			} else {
-				m.message = "❌ Invalid selection"
+				m.message = "[FAIL] Invalid selection"
 				return m, nil
 			}
 
@@ -597,18 +597,18 @@ func (m SettingsModel) saveEditedValue() (tea.Model, tea.Cmd) {
 	}
 
 	if setting == nil {
-		m.message = errorStyle.Render("❌ Setting not found")
+		m.message = errorStyle.Render("[FAIL] Setting not found")
 		m.editing = false
 		return m, nil
 	}
 
 	// Update the configuration
 	if err := setting.Update(m.config, m.editingValue); err != nil {
-		m.message = errorStyle.Render(fmt.Sprintf("❌ %s", err.Error()))
+		m.message = errorStyle.Render(fmt.Sprintf("[FAIL] %s", err.Error()))
 		return m, nil
 	}
 
-	m.message = successStyle.Render(fmt.Sprintf("✅ Updated %s", setting.DisplayName))
+	m.message = successStyle.Render(fmt.Sprintf("[OK] Updated %s", setting.DisplayName))
 	m.editing = false
 	m.editingField = ""
 	m.editingValue = ""
@@ -628,7 +628,7 @@ func (m SettingsModel) resetToDefaults() (tea.Model, tea.Cmd) {
 	newConfig.DatabaseType = m.config.DatabaseType
 
 	*m.config = *newConfig
-	m.message = successStyle.Render("✅ Settings reset to defaults")
+	m.message = successStyle.Render("[OK] Settings reset to defaults")
 
 	return m, nil
 }
@@ -636,19 +636,19 @@ func (m SettingsModel) resetToDefaults() (tea.Model, tea.Cmd) {
 // saveSettings validates and saves current settings
 func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 	if err := m.config.Validate(); err != nil {
-		m.message = errorStyle.Render(fmt.Sprintf("❌ Validation failed: %s", err.Error()))
+		m.message = errorStyle.Render(fmt.Sprintf("[FAIL] Validation failed: %s", err.Error()))
 		return m, nil
 	}
 
 	// Optimize CPU settings if auto-detect is enabled
 	if m.config.AutoDetectCores {
 		if err := m.config.OptimizeForCPU(); err != nil {
-			m.message = errorStyle.Render(fmt.Sprintf("❌ CPU optimization failed: %s", err.Error()))
+			m.message = errorStyle.Render(fmt.Sprintf("[FAIL] CPU optimization failed: %s", err.Error()))
 			return m, nil
 		}
 	}
 
-	m.message = successStyle.Render("✅ Settings validated and saved")
+	m.message = successStyle.Render("[OK] Settings validated and saved")
 	return m, nil
 }
 
@@ -671,11 +671,11 @@ func (m SettingsModel) cycleDatabaseType() (tea.Model, tea.Cmd) {
 
 	// Update config
 	if err := m.config.SetDatabaseType(newType); err != nil {
-		m.message = errorStyle.Render(fmt.Sprintf("❌ Failed to set database type: %s", err.Error()))
+		m.message = errorStyle.Render(fmt.Sprintf("[FAIL] Failed to set database type: %s", err.Error()))
 		return m, nil
 	}
 
-	m.message = successStyle.Render(fmt.Sprintf("✅ Database type set to %s", m.config.DisplayDatabaseType()))
+	m.message = successStyle.Render(fmt.Sprintf("[OK] Database type set to %s", m.config.DisplayDatabaseType()))
 	return m, nil
 }
 
@@ -688,7 +688,7 @@ func (m SettingsModel) View() string {
 	var b strings.Builder
 
 	// Header
-	header := titleStyle.Render("⚙️  Configuration Settings")
+	header := titleStyle.Render("[CFG]  Configuration Settings")
 	b.WriteString(fmt.Sprintf("\n%s\n\n", header))
 
 	// Settings list
@@ -710,7 +710,7 @@ func (m SettingsModel) View() string {
 				}
 				line := fmt.Sprintf("%s %s: %s", cursor, setting.DisplayName, editValue)
 				b.WriteString(selectedStyle.Render(line))
-				b.WriteString(" ✏️")
+				b.WriteString(" [EDIT]")
 			} else {
 				line := fmt.Sprintf("%s %s: %s", cursor, setting.DisplayName, displayValue)
 				b.WriteString(selectedStyle.Render(line))
@@ -747,7 +747,7 @@ func (m SettingsModel) View() string {
 	// Current configuration summary
 	if !m.editing {
 		b.WriteString("\n")
-		b.WriteString(infoStyle.Render("📋 Current Configuration:"))
+		b.WriteString(infoStyle.Render("[LOG] Current Configuration:"))
 		b.WriteString("\n")
 
 		summary := []string{
@@ -775,16 +775,16 @@ func (m SettingsModel) View() string {
 	// Footer with instructions
 	var footer string
 	if m.editing {
-		footer = infoStyle.Render("\n⌨️  Type new value • Enter to save • Esc to cancel")
+		footer = infoStyle.Render("\n[KEYS]  Type new value | Enter to save | Esc to cancel")
 	} else {
 		if m.browsingDir {
-			footer = infoStyle.Render("\n⌨️  ↑/↓ navigate directories • Enter open • Space select • Tab/Esc back to settings")
+			footer = infoStyle.Render("\n[KEYS]  Up/Down navigate directories | Enter open | Space select | Tab/Esc back to settings")
 		} else {
 			// Show different help based on current selection
 			if m.cursor >= 0 && m.cursor < len(m.settings) && m.settings[m.cursor].Type == "path" {
-				footer = infoStyle.Render("\n⌨️  ↑/↓ navigate • Enter edit • Tab browse directories • 's' save • 'r' reset • 'q' menu")
+				footer = infoStyle.Render("\n[KEYS]  Up/Down navigate | Enter edit | Tab browse directories | 's' save | 'r' reset | 'q' menu")
 			} else {
-				footer = infoStyle.Render("\n⌨️  ↑/↓ navigate • Enter edit • 's' save • 'r' reset • 'q' menu • Tab=dirs on path fields only")
+				footer = infoStyle.Render("\n[KEYS]  Up/Down navigate | Enter edit | 's' save | 'r' reset | 'q' menu | Tab=dirs on path fields only")
 			}
 		}
 	}

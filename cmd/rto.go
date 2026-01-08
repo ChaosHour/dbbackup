@@ -181,13 +181,13 @@ func runRTOStatus(cmd *cobra.Command, args []string) error {
 
 	// Display status
 	fmt.Println()
-	fmt.Println("╔═══════════════════════════════════════════════════════════╗")
-	fmt.Println("║              RTO/RPO STATUS SUMMARY                       ║")
-	fmt.Println("╠═══════════════════════════════════════════════════════════╣")
-	fmt.Printf("║  Target RTO: %-15s  Target RPO: %-15s ║\n",
+	fmt.Println("+-----------------------------------------------------------+")
+	fmt.Println("|              RTO/RPO STATUS SUMMARY                       |")
+	fmt.Println("+-----------------------------------------------------------+")
+	fmt.Printf("|  Target RTO: %-15s  Target RPO: %-15s |\n",
 		formatDuration(config.TargetRTO),
 		formatDuration(config.TargetRPO))
-	fmt.Println("╠═══════════════════════════════════════════════════════════╣")
+	fmt.Println("+-----------------------------------------------------------+")
 
 	// Compliance status
 	rpoRate := 0.0
@@ -199,31 +199,31 @@ func runRTOStatus(cmd *cobra.Command, args []string) error {
 		fullRate = float64(summary.FullyCompliant) / float64(summary.TotalDatabases) * 100
 	}
 
-	fmt.Printf("║  Databases:     %-5d                                      ║\n", summary.TotalDatabases)
-	fmt.Printf("║  RPO Compliant: %-5d  (%.0f%%)                              ║\n", summary.RPOCompliant, rpoRate)
-	fmt.Printf("║  RTO Compliant: %-5d  (%.0f%%)                              ║\n", summary.RTOCompliant, rtoRate)
-	fmt.Printf("║  Fully Compliant: %-3d  (%.0f%%)                             ║\n", summary.FullyCompliant, fullRate)
+	fmt.Printf("|  Databases:     %-5d                                      |\n", summary.TotalDatabases)
+	fmt.Printf("|  RPO Compliant: %-5d  (%.0f%%)                              |\n", summary.RPOCompliant, rpoRate)
+	fmt.Printf("|  RTO Compliant: %-5d  (%.0f%%)                              |\n", summary.RTOCompliant, rtoRate)
+	fmt.Printf("|  Fully Compliant: %-3d  (%.0f%%)                             |\n", summary.FullyCompliant, fullRate)
 
 	if summary.CriticalIssues > 0 {
-		fmt.Printf("║  ⚠️  Critical Issues: %-3d                                  ║\n", summary.CriticalIssues)
+		fmt.Printf("|  [WARN]  Critical Issues: %-3d                                  |\n", summary.CriticalIssues)
 	}
 
-	fmt.Println("╠═══════════════════════════════════════════════════════════╣")
-	fmt.Printf("║  Average RPO: %-15s  Worst: %-15s    ║\n",
+	fmt.Println("+-----------------------------------------------------------+")
+	fmt.Printf("|  Average RPO: %-15s  Worst: %-15s    |\n",
 		formatDuration(summary.AverageRPO),
 		formatDuration(summary.WorstRPO))
-	fmt.Printf("║  Average RTO: %-15s  Worst: %-15s    ║\n",
+	fmt.Printf("|  Average RTO: %-15s  Worst: %-15s    |\n",
 		formatDuration(summary.AverageRTO),
 		formatDuration(summary.WorstRTO))
 
 	if summary.WorstRPODatabase != "" {
-		fmt.Printf("║  Worst RPO Database: %-38s║\n", summary.WorstRPODatabase)
+		fmt.Printf("|  Worst RPO Database: %-38s|\n", summary.WorstRPODatabase)
 	}
 	if summary.WorstRTODatabase != "" {
-		fmt.Printf("║  Worst RTO Database: %-38s║\n", summary.WorstRTODatabase)
+		fmt.Printf("|  Worst RTO Database: %-38s|\n", summary.WorstRTODatabase)
 	}
 
-	fmt.Println("╚═══════════════════════════════════════════════════════════╝")
+	fmt.Println("+-----------------------------------------------------------+")
 	fmt.Println()
 
 	// Per-database status
@@ -234,19 +234,19 @@ func runRTOStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println(strings.Repeat("-", 70))
 
 		for _, a := range analyses {
-			status := "✅"
+			status := "[OK]"
 			if !a.RPOCompliant || !a.RTOCompliant {
-				status = "❌"
+				status = "[FAIL]"
 			}
 
 			rpoStr := formatDuration(a.CurrentRPO)
 			rtoStr := formatDuration(a.CurrentRTO)
 
 			if !a.RPOCompliant {
-				rpoStr = "⚠️ " + rpoStr
+				rpoStr = "[WARN] " + rpoStr
 			}
 			if !a.RTOCompliant {
-				rtoStr = "⚠️ " + rtoStr
+				rtoStr = "[WARN] " + rtoStr
 			}
 
 			fmt.Printf("%-25s %-12s %-12s %s\n",
@@ -306,21 +306,21 @@ func runRTOCheck(cmd *cobra.Command, args []string) error {
 	exitCode := 0
 	for _, a := range analyses {
 		if !a.RPOCompliant {
-			fmt.Printf("❌ %s: RPO violation - current %s exceeds target %s\n",
+			fmt.Printf("[FAIL] %s: RPO violation - current %s exceeds target %s\n",
 				a.Database,
 				formatDuration(a.CurrentRPO),
 				formatDuration(config.TargetRPO))
 			exitCode = 1
 		}
 		if !a.RTOCompliant {
-			fmt.Printf("❌ %s: RTO violation - estimated %s exceeds target %s\n",
+			fmt.Printf("[FAIL] %s: RTO violation - estimated %s exceeds target %s\n",
 				a.Database,
 				formatDuration(a.CurrentRTO),
 				formatDuration(config.TargetRTO))
 			exitCode = 1
 		}
 		if a.RPOCompliant && a.RTOCompliant {
-			fmt.Printf("✅ %s: Compliant (RPO: %s, RTO: %s)\n",
+			fmt.Printf("[OK] %s: Compliant (RPO: %s, RTO: %s)\n",
 				a.Database,
 				formatDuration(a.CurrentRPO),
 				formatDuration(a.CurrentRTO))
@@ -371,13 +371,13 @@ func outputAnalysisText(analyses []*rto.Analysis) error {
 		fmt.Println(strings.Repeat("=", 60))
 
 		// Status
-		rpoStatus := "✅ Compliant"
+		rpoStatus := "[OK] Compliant"
 		if !a.RPOCompliant {
-			rpoStatus = "❌ Violation"
+			rpoStatus = "[FAIL] Violation"
 		}
-		rtoStatus := "✅ Compliant"
+		rtoStatus := "[OK] Compliant"
 		if !a.RTOCompliant {
-			rtoStatus = "❌ Violation"
+			rtoStatus = "[FAIL] Violation"
 		}
 
 		fmt.Println()
@@ -420,7 +420,7 @@ func outputAnalysisText(analyses []*rto.Analysis) error {
 			fmt.Println("  Recommendations:")
 			fmt.Println(strings.Repeat("-", 50))
 			for _, r := range a.Recommendations {
-				icon := "💡"
+				icon := "[TIP]"
 				switch r.Priority {
 				case rto.PriorityCritical:
 					icon = "🔴"

@@ -296,11 +296,11 @@ func generateID() string {
 func StatusIcon(s ComplianceStatus) string {
 	switch s {
 	case StatusCompliant:
-		return "✅"
+		return "[OK]"
 	case StatusNonCompliant:
-		return "❌"
+		return "[FAIL]"
 	case StatusPartial:
-		return "⚠️"
+		return "[WARN]"
 	case StatusNotApplicable:
 		return "➖"
 	default:

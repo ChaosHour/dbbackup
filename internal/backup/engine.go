@@ -473,7 +473,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 				mu.Lock()
 				e.printf("       Database size: %s\n", sizeStr)
 				if size > 10*1024*1024*1024 { // > 10GB
-					e.printf("       ⚠️  Large database detected - this may take a while\n")
+					e.printf("       [WARN]  Large database detected - this may take a while\n")
 				}
 				mu.Unlock()
 			}
@@ -518,16 +518,16 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			if err != nil {
 				e.log.Warn("Failed to backup database", "database", name, "error", err)
 				mu.Lock()
-				e.printf("   ⚠️  WARNING: Failed to backup %s: %v\n", name, err)
+				e.printf("   [WARN]  WARNING: Failed to backup %s: %v\n", name, err)
 				mu.Unlock()
 				atomic.AddInt32(&failCount, 1)
 			} else {
 				compressedCandidate := strings.TrimSuffix(dumpFile, ".dump") + ".sql.gz"
 				mu.Lock()
 				if info, err := os.Stat(compressedCandidate); err == nil {
-					e.printf("   ✅ Completed %s (%s)\n", name, formatBytes(info.Size()))
+					e.printf("   [OK] Completed %s (%s)\n", name, formatBytes(info.Size()))
 				} else if info, err := os.Stat(dumpFile); err == nil {
-					e.printf("   ✅ Completed %s (%s)\n", name, formatBytes(info.Size()))
+					e.printf("   [OK] Completed %s (%s)\n", name, formatBytes(info.Size()))
 				}
 				mu.Unlock()
 				atomic.AddInt32(&successCount, 1)

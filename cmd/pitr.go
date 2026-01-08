@@ -436,7 +436,7 @@ func runPITREnable(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to enable PITR: %w", err)
 	}
 
-	log.Info("✅ PITR enabled successfully!")
+	log.Info("[OK] PITR enabled successfully!")
 	log.Info("")
 	log.Info("Next steps:")
 	log.Info("1. Restart PostgreSQL: sudo systemctl restart postgresql")
@@ -463,7 +463,7 @@ func runPITRDisable(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to disable PITR: %w", err)
 	}
 
-	log.Info("✅ PITR disabled successfully!")
+	log.Info("[OK] PITR disabled successfully!")
 	log.Info("PostgreSQL restart required: sudo systemctl restart postgresql")
 
 	return nil
@@ -483,15 +483,15 @@ func runPITRStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Display PITR configuration
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("======================================================")
 	fmt.Println("  Point-in-Time Recovery (PITR) Status")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("======================================================")
 	fmt.Println()
 
 	if config.Enabled {
-		fmt.Println("Status:          ✅ ENABLED")
+		fmt.Println("Status:          [OK] ENABLED")
 	} else {
-		fmt.Println("Status:          ❌ DISABLED")
+		fmt.Println("Status:          [FAIL] DISABLED")
 	}
 
 	fmt.Printf("WAL Level:       %s\n", config.WALLevel)
@@ -510,7 +510,7 @@ func runPITRStatus(cmd *cobra.Command, args []string) error {
 		// Extract archive dir from command (simple parsing)
 		fmt.Println()
 		fmt.Println("WAL Archive Statistics:")
-		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Println("======================================================")
 		// TODO: Parse archive dir and show stats
 		fmt.Println("  (Use 'dbbackup wal list --archive-dir <dir>' to view archives)")
 	}
@@ -574,13 +574,13 @@ func runWALList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Display archives
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("======================================================")
 	fmt.Printf("  WAL Archives (%d files)\n", len(archives))
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("======================================================")
 	fmt.Println()
 
 	fmt.Printf("%-28s  %10s  %10s  %8s  %s\n", "WAL Filename", "Timeline", "Segment", "Size", "Archived At")
-	fmt.Println("────────────────────────────────────────────────────────────────────────────────")
+	fmt.Println("--------------------------------------------------------------------------------")
 
 	for _, archive := range archives {
 		size := formatWALSize(archive.ArchivedSize)
@@ -644,7 +644,7 @@ func runWALCleanup(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("WAL cleanup failed: %w", err)
 	}
 
-	log.Info("✅ WAL cleanup completed", "deleted", deleted, "retention_days", archiveConfig.RetentionDays)
+	log.Info("[OK] WAL cleanup completed", "deleted", deleted, "retention_days", archiveConfig.RetentionDays)
 	return nil
 }
 
@@ -671,7 +671,7 @@ func runWALTimeline(cmd *cobra.Command, args []string) error {
 	// Display timeline details
 	if len(history.Timelines) > 0 {
 		fmt.Println("\nTimeline Details:")
-		fmt.Println("═════════════════")
+		fmt.Println("=================")
 		for _, tl := range history.Timelines {
 			fmt.Printf("\nTimeline %d:\n", tl.TimelineID)
 			if tl.ParentTimeline > 0 {
@@ -690,7 +690,7 @@ func runWALTimeline(cmd *cobra.Command, args []string) error {
 				fmt.Printf("  Created:     %s\n", tl.CreatedAt.Format("2006-01-02 15:04:05"))
 			}
 			if tl.TimelineID == history.CurrentTimeline {
-				fmt.Printf("  Status:      ⚡ CURRENT\n")
+				fmt.Printf("  Status:      [CURR] CURRENT\n")
 			}
 		}
 	}
@@ -759,15 +759,15 @@ func runBinlogList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("=============================================================")
 	fmt.Printf("  Binary Log Files (%s)\n", bm.ServerType())
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("=============================================================")
 	fmt.Println()
 
 	if len(binlogs) > 0 {
 		fmt.Println("Source Directory:")
 		fmt.Printf("%-24s  %10s  %-19s  %-19s  %s\n", "Filename", "Size", "Start Time", "End Time", "Format")
-		fmt.Println("────────────────────────────────────────────────────────────────────────────────")
+		fmt.Println("--------------------------------------------------------------------------------")
 
 		var totalSize int64
 		for _, b := range binlogs {
@@ -797,7 +797,7 @@ func runBinlogList(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 		fmt.Println("Archived Binlogs:")
 		fmt.Printf("%-24s  %10s  %-19s  %s\n", "Original", "Size", "Archived At", "Flags")
-		fmt.Println("────────────────────────────────────────────────────────────────────────────────")
+		fmt.Println("--------------------------------------------------------------------------------")
 
 		var totalSize int64
 		for _, a := range archived {
@@ -914,7 +914,7 @@ func runBinlogArchive(cmd *cobra.Command, args []string) error {
 		bm.SaveArchiveMetadata(allArchived)
 	}
 
-	log.Info("✅ Binlog archiving completed", "archived", len(newArchives))
+	log.Info("[OK] Binlog archiving completed", "archived", len(newArchives))
 	return nil
 }
 
@@ -1014,15 +1014,15 @@ func runBinlogValidate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("validating binlog chain: %w", err)
 	}
 
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("=============================================================")
 	fmt.Println("  Binlog Chain Validation")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("=============================================================")
 	fmt.Println()
 
 	if validation.Valid {
-		fmt.Println("Status:     ✅ VALID - Binlog chain is complete")
+		fmt.Println("Status:     [OK] VALID - Binlog chain is complete")
 	} else {
-		fmt.Println("Status:     ❌ INVALID - Binlog chain has gaps")
+		fmt.Println("Status:     [FAIL] INVALID - Binlog chain has gaps")
 	}
 
 	fmt.Printf("Files:      %d binlog files\n", validation.LogCount)
@@ -1055,7 +1055,7 @@ func runBinlogValidate(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 		fmt.Println("Errors:")
 		for _, e := range validation.Errors {
-			fmt.Printf("  ✗ %s\n", e)
+			fmt.Printf("  [FAIL] %s\n", e)
 		}
 	}
 
@@ -1094,9 +1094,9 @@ func runBinlogPosition(cmd *cobra.Command, args []string) error {
 	}
 	defer rows.Close()
 
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("=============================================================")
 	fmt.Println("  Current Binary Log Position")
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("=============================================================")
 	fmt.Println()
 
 	if rows.Next() {
@@ -1178,24 +1178,24 @@ func runMySQLPITRStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting PITR status: %w", err)
 	}
 
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("=============================================================")
 	fmt.Printf("  MySQL/MariaDB PITR Status (%s)\n", status.DatabaseType)
-	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("=============================================================")
 	fmt.Println()
 
 	if status.Enabled {
-		fmt.Println("PITR Status:     ✅ ENABLED")
+		fmt.Println("PITR Status:     [OK] ENABLED")
 	} else {
-		fmt.Println("PITR Status:     ❌ NOT CONFIGURED")
+		fmt.Println("PITR Status:     [FAIL] NOT CONFIGURED")
 	}
 
 	// Get binary logging status
 	var logBin string
 	db.QueryRowContext(ctx, "SELECT @@log_bin").Scan(&logBin)
 	if logBin == "1" || logBin == "ON" {
-		fmt.Println("Binary Logging:  ✅ ENABLED")
+		fmt.Println("Binary Logging:  [OK] ENABLED")
 	} else {
-		fmt.Println("Binary Logging:  ❌ DISABLED")
+		fmt.Println("Binary Logging:  [FAIL] DISABLED")
 	}
 
 	fmt.Printf("Binlog Format:   %s\n", status.LogLevel)
@@ -1205,14 +1205,14 @@ func runMySQLPITRStatus(cmd *cobra.Command, args []string) error {
 	if status.DatabaseType == pitr.DatabaseMariaDB {
 		db.QueryRowContext(ctx, "SELECT @@gtid_current_pos").Scan(&gtidMode)
 		if gtidMode != "" {
-			fmt.Println("GTID Mode:       ✅ ENABLED")
+			fmt.Println("GTID Mode:       [OK] ENABLED")
 		} else {
-			fmt.Println("GTID Mode:       ❌ DISABLED")
+			fmt.Println("GTID Mode:       [FAIL] DISABLED")
 		}
 	} else {
 		db.QueryRowContext(ctx, "SELECT @@gtid_mode").Scan(&gtidMode)
 		if gtidMode == "ON" {
-			fmt.Println("GTID Mode:       ✅ ENABLED")
+			fmt.Println("GTID Mode:       [OK] ENABLED")
 		} else {
 			fmt.Printf("GTID Mode:       %s\n", gtidMode)
 		}
@@ -1237,12 +1237,12 @@ func runMySQLPITRStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("PITR Requirements:")
 	if logBin == "1" || logBin == "ON" {
-		fmt.Println("  ✅ Binary logging enabled")
+		fmt.Println("  [OK] Binary logging enabled")
 	} else {
-		fmt.Println("  ❌ Binary logging must be enabled (log_bin = mysql-bin)")
+		fmt.Println("  [FAIL] Binary logging must be enabled (log_bin = mysql-bin)")
 	}
 	if status.LogLevel == "ROW" {
-		fmt.Println("  ✅ Row-based logging (recommended)")
+		fmt.Println("  [OK] Row-based logging (recommended)")
 	} else {
 		fmt.Printf("  ⚠  binlog_format = %s (ROW recommended for PITR)\n", status.LogLevel)
 	}
@@ -1299,7 +1299,7 @@ func runMySQLPITREnable(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("enabling PITR: %w", err)
 	}
 
-	log.Info("✅ MySQL PITR enabled successfully!")
+	log.Info("[OK] MySQL PITR enabled successfully!")
 	log.Info("")
 	log.Info("Next steps:")
 	log.Info("1. Start binlog archiving: dbbackup binlog watch --archive-dir " + mysqlArchiveDir)

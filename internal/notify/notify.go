@@ -183,43 +183,43 @@ func DefaultConfig() Config {
 
 // FormatEventSubject generates a subject line for notifications
 func FormatEventSubject(event *Event) string {
-	icon := "ℹ️"
+	icon := "[INFO]"
 	switch event.Severity {
 	case SeverityWarning:
-		icon = "⚠️"
+		icon = "[WARN]"
 	case SeverityError, SeverityCritical:
-		icon = "❌"
+		icon = "[FAIL]"
 	}
 
 	verb := "Event"
 	switch event.Type {
 	case EventBackupStarted:
 		verb = "Backup Started"
-		icon = "🔄"
+		icon = "[EXEC]"
 	case EventBackupCompleted:
 		verb = "Backup Completed"
-		icon = "✅"
+		icon = "[OK]"
 	case EventBackupFailed:
 		verb = "Backup Failed"
-		icon = "❌"
+		icon = "[FAIL]"
 	case EventRestoreStarted:
 		verb = "Restore Started"
-		icon = "🔄"
+		icon = "[EXEC]"
 	case EventRestoreCompleted:
 		verb = "Restore Completed"
-		icon = "✅"
+		icon = "[OK]"
 	case EventRestoreFailed:
 		verb = "Restore Failed"
-		icon = "❌"
+		icon = "[FAIL]"
 	case EventCleanupCompleted:
 		verb = "Cleanup Completed"
-		icon = "🗑️"
+		icon = "[DEL]"
 	case EventVerifyCompleted:
 		verb = "Verification Passed"
-		icon = "✅"
+		icon = "[OK]"
 	case EventVerifyFailed:
 		verb = "Verification Failed"
-		icon = "❌"
+		icon = "[FAIL]"
 	case EventPITRRecovery:
 		verb = "PITR Recovery"
 		icon = "⏪"

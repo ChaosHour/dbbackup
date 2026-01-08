@@ -223,11 +223,11 @@ func (r *DrillResult) IsSuccess() bool {
 
 // Summary returns a human-readable summary of the drill
 func (r *DrillResult) Summary() string {
-	status := "✅ PASSED"
+	status := "[OK] PASSED"
 	if !r.Success {
-		status = "❌ FAILED"
+		status = "[FAIL] FAILED"
 	} else if r.Status == StatusPartial {
-		status = "⚠️ PARTIAL"
+		status = "[WARN] PARTIAL"
 	}
 
 	return fmt.Sprintf("%s - %s (%.2fs) - %d tables, %d rows",

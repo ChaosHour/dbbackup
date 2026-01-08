@@ -204,13 +204,13 @@ func CheckAuthenticationMismatch(cfg *config.Config) (bool, string) {
 func buildAuthMismatchMessage(osUser, dbUser string, method AuthMethod) string {
 	var msg strings.Builder
 
-	msg.WriteString("\n⚠️  Authentication Mismatch Detected\n")
+	msg.WriteString("\n[WARN]  Authentication Mismatch Detected\n")
 	msg.WriteString(strings.Repeat("=", 60) + "\n\n")
 
 	msg.WriteString(fmt.Sprintf("   PostgreSQL is using '%s' authentication\n", method))
 	msg.WriteString(fmt.Sprintf("   OS user '%s' cannot authenticate as DB user '%s'\n\n", osUser, dbUser))
 
-	msg.WriteString("💡 Solutions (choose one):\n\n")
+	msg.WriteString("[TIP] Solutions (choose one):\n\n")
 
 	msg.WriteString(fmt.Sprintf("   1. Run as matching user:\n"))
 	msg.WriteString(fmt.Sprintf("      sudo -u %s %s\n\n", dbUser, getCommandLine()))
@@ -226,7 +226,7 @@ func buildAuthMismatchMessage(osUser, dbUser string, method AuthMethod) string {
 	msg.WriteString("   4. Provide password via flag:\n")
 	msg.WriteString(fmt.Sprintf("      %s --password your_password\n\n", getCommandLine()))
 
-	msg.WriteString("📝 Note: For production use, ~/.pgpass or PGPASSWORD are recommended\n")
+	msg.WriteString("[NOTE] Note: For production use, ~/.pgpass or PGPASSWORD are recommended\n")
 	msg.WriteString("         to avoid exposing passwords in command history.\n\n")
 
 	msg.WriteString(strings.Repeat("=", 60) + "\n")

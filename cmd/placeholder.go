@@ -141,7 +141,7 @@ func runList(ctx context.Context) error {
 				continue
 			}
 
-			fmt.Printf("📦 %s\n", file.Name)
+			fmt.Printf("[FILE] %s\n", file.Name)
 			fmt.Printf("   Size: %s\n", formatFileSize(stat.Size()))
 			fmt.Printf("   Modified: %s\n", stat.ModTime().Format("2006-01-02 15:04:05"))
 			fmt.Printf("   Type: %s\n", getBackupType(file.Name))
@@ -237,56 +237,56 @@ func runPreflight(ctx context.Context) error {
 	totalChecks := 6
 
 	// 1. Database connectivity check
-	fmt.Print("🔗 Database connectivity... ")
+	fmt.Print("[1] Database connectivity... ")
 	if err := testDatabaseConnection(); err != nil {
-		fmt.Printf("❌ FAILED: %v\n", err)
+		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
-		fmt.Println("✅ PASSED")
+		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
 
 	// 2. Required tools check
-	fmt.Print("🛠️  Required tools (pg_dump/pg_restore)... ")
+	fmt.Print("[2] Required tools (pg_dump/pg_restore)... ")
 	if err := checkRequiredTools(); err != nil {
-		fmt.Printf("❌ FAILED: %v\n", err)
+		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
-		fmt.Println("✅ PASSED")
+		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
 
 	// 3. Backup directory check
-	fmt.Print("📁 Backup directory access... ")
+	fmt.Print("[3] Backup directory access... ")
 	if err := checkBackupDirectory(); err != nil {
-		fmt.Printf("❌ FAILED: %v\n", err)
+		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
-		fmt.Println("✅ PASSED")
+		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
 
 	// 4. Disk space check
-	fmt.Print("💾 Available disk space... ")
+	fmt.Print("[4] Available disk space... ")
 	if err := checkDiskSpace(); err != nil {
-		fmt.Printf("❌ FAILED: %v\n", err)
+		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
-		fmt.Println("✅ PASSED")
+		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
 
 	// 5. Permissions check
-	fmt.Print("🔐 File permissions... ")
+	fmt.Print("[5] File permissions... ")
 	if err := checkPermissions(); err != nil {
-		fmt.Printf("❌ FAILED: %v\n", err)
+		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
-		fmt.Println("✅ PASSED")
+		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
 
 	// 6. CPU/Memory resources check
-	fmt.Print("🖥️  System resources... ")
+	fmt.Print("[6] System resources... ")
 	if err := checkSystemResources(); err != nil {
-		fmt.Printf("❌ FAILED: %v\n", err)
+		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
-		fmt.Println("✅ PASSED")
+		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
 
@@ -294,10 +294,10 @@ func runPreflight(ctx context.Context) error {
 	fmt.Printf("Results: %d/%d checks passed\n", checksPassed, totalChecks)
 
 	if checksPassed == totalChecks {
-		fmt.Println("🎉 All preflight checks passed! System is ready for backup operations.")
+		fmt.Println("[SUCCESS] All preflight checks passed! System is ready for backup operations.")
 		return nil
 	} else {
-		fmt.Printf("⚠️  %d check(s) failed. Please address the issues before running backups.\n", totalChecks-checksPassed)
+		fmt.Printf("[WARN] %d check(s) failed. Please address the issues before running backups.\n", totalChecks-checksPassed)
 		return fmt.Errorf("preflight checks failed: %d/%d passed", checksPassed, totalChecks)
 	}
 }
@@ -414,44 +414,44 @@ func runRestore(ctx context.Context, archiveName string) error {
 	fmt.Println()
 
 	// Show warning
-	fmt.Println("⚠️  WARNING: This will restore data to the target database.")
+	fmt.Println("[WARN] WARNING: This will restore data to the target database.")
 	fmt.Println("   Existing data may be overwritten or merged depending on the restore method.")
 	fmt.Println()
 
 	// For safety, show what would be done without actually doing it
 	switch archiveType {
 	case "Single Database (.dump)":
-		fmt.Println("🔄 Would execute: pg_restore to restore single database")
+		fmt.Println("[EXEC] Would execute: pg_restore to restore single database")
 		fmt.Printf("   Command: pg_restore -h %s -p %d -U %s -d %s --verbose %s\n",
 			cfg.Host, cfg.Port, cfg.User, cfg.Database, archivePath)
 	case "Single Database (.dump.gz)":
-		fmt.Println("🔄 Would execute: gunzip and pg_restore to restore single database")
+		fmt.Println("[EXEC] Would execute: gunzip and pg_restore to restore single database")
 		fmt.Printf("   Command: gunzip -c %s | pg_restore -h %s -p %d -U %s -d %s --verbose\n",
 			archivePath, cfg.Host, cfg.Port, cfg.User, cfg.Database)
 	case "SQL Script (.sql)":
 		if cfg.IsPostgreSQL() {
-			fmt.Println("🔄 Would execute: psql to run SQL script")
+			fmt.Println("[EXEC] Would execute: psql to run SQL script")
 			fmt.Printf("   Command: psql -h %s -p %d -U %s -d %s -f %s\n",
 				cfg.Host, cfg.Port, cfg.User, cfg.Database, archivePath)
 		} else if cfg.IsMySQL() {
-			fmt.Println("🔄 Would execute: mysql to run SQL script")
+			fmt.Println("[EXEC] Would execute: mysql to run SQL script")
 			fmt.Printf("   Command: %s\n", mysqlRestoreCommand(archivePath, false))
 		} else {
-			fmt.Println("🔄 Would execute: SQL client to run script (database type unknown)")
+			fmt.Println("[EXEC] Would execute: SQL client to run script (database type unknown)")
 		}
 	case "SQL Script (.sql.gz)":
 		if cfg.IsPostgreSQL() {
-			fmt.Println("🔄 Would execute: gunzip and psql to run SQL script")
+			fmt.Println("[EXEC] Would execute: gunzip and psql to run SQL script")
 			fmt.Printf("   Command: gunzip -c %s | psql -h %s -p %d -U %s -d %s\n",
 				archivePath, cfg.Host, cfg.Port, cfg.User, cfg.Database)
 		} else if cfg.IsMySQL() {
-			fmt.Println("🔄 Would execute: gunzip and mysql to run SQL script")
+			fmt.Println("[EXEC] Would execute: gunzip and mysql to run SQL script")
 			fmt.Printf("   Command: %s\n", mysqlRestoreCommand(archivePath, true))
 		} else {
-			fmt.Println("🔄 Would execute: gunzip and SQL client to run script (database type unknown)")
+			fmt.Println("[EXEC] Would execute: gunzip and SQL client to run script (database type unknown)")
 		}
 	case "Cluster Backup (.tar.gz)":
-		fmt.Println("🔄 Would execute: Extract and restore cluster backup")
+		fmt.Println("[EXEC] Would execute: Extract and restore cluster backup")
 		fmt.Println("   Steps:")
 		fmt.Println("   1. Extract tar.gz archive")
 		fmt.Println("   2. Restore global objects (roles, tablespaces)")
@@ -461,7 +461,7 @@ func runRestore(ctx context.Context, archiveName string) error {
 	}
 
 	fmt.Println()
-	fmt.Println("🛡️  SAFETY MODE: Restore command is in preview mode.")
+	fmt.Println("[SAFETY] SAFETY MODE: Restore command is in preview mode.")
 	fmt.Println("   This shows what would be executed without making changes.")
 	fmt.Println("   To enable actual restore, add --confirm flag (not yet implemented).")
 
@@ -520,25 +520,25 @@ func runVerify(ctx context.Context, archiveName string) error {
 	checksPassed := 0
 
 	// Basic file existence and readability
-	fmt.Print("📁 File accessibility... ")
+	fmt.Print("[CHK] File accessibility... ")
 	if file, err := os.Open(archivePath); err != nil {
-		fmt.Printf("❌ FAILED: %v\n", err)
+		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
 		file.Close()
-		fmt.Println("✅ PASSED")
+		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
 	checksRun++
 
 	// File size sanity check
-	fmt.Print("📏 File size check... ")
+	fmt.Print("[CHK] File size check... ")
 	if stat.Size() == 0 {
-		fmt.Println("❌ FAILED: File is empty")
+		fmt.Println("[FAIL] FAILED: File is empty")
 	} else if stat.Size() < 100 {
-		fmt.Println("⚠️  WARNING: File is very small (< 100 bytes)")
+		fmt.Println("[WARN] WARNING: File is very small (< 100 bytes)")
 		checksPassed++
 	} else {
-		fmt.Println("✅ PASSED")
+		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
 	checksRun++
@@ -546,51 +546,51 @@ func runVerify(ctx context.Context, archiveName string) error {
 	// Type-specific verification
 	switch archiveType {
 	case "Single Database (.dump)":
-		fmt.Print("🔍 PostgreSQL dump format check... ")
+		fmt.Print("[CHK] PostgreSQL dump format check... ")
 		if err := verifyPgDump(archivePath); err != nil {
-			fmt.Printf("❌ FAILED: %v\n", err)
+			fmt.Printf("[FAIL] FAILED: %v\n", err)
 		} else {
-			fmt.Println("✅ PASSED")
+			fmt.Println("[OK] PASSED")
 			checksPassed++
 		}
 		checksRun++
 
 	case "Single Database (.dump.gz)":
-		fmt.Print("🔍 PostgreSQL dump format check (gzip)... ")
+		fmt.Print("[CHK] PostgreSQL dump format check (gzip)... ")
 		if err := verifyPgDumpGzip(archivePath); err != nil {
-			fmt.Printf("❌ FAILED: %v\n", err)
+			fmt.Printf("[FAIL] FAILED: %v\n", err)
 		} else {
-			fmt.Println("✅ PASSED")
+			fmt.Println("[OK] PASSED")
 			checksPassed++
 		}
 		checksRun++
 
 	case "SQL Script (.sql)":
-		fmt.Print("📜 SQL script validation... ")
+		fmt.Print("[CHK] SQL script validation... ")
 		if err := verifySqlScript(archivePath); err != nil {
-			fmt.Printf("❌ FAILED: %v\n", err)
+			fmt.Printf("[FAIL] FAILED: %v\n", err)
 		} else {
-			fmt.Println("✅ PASSED")
+			fmt.Println("[OK] PASSED")
 			checksPassed++
 		}
 		checksRun++
 
 	case "SQL Script (.sql.gz)":
-		fmt.Print("📜 SQL script validation (gzip)... ")
+		fmt.Print("[CHK] SQL script validation (gzip)... ")
 		if err := verifyGzipSqlScript(archivePath); err != nil {
-			fmt.Printf("❌ FAILED: %v\n", err)
+			fmt.Printf("[FAIL] FAILED: %v\n", err)
 		} else {
-			fmt.Println("✅ PASSED")
+			fmt.Println("[OK] PASSED")
 			checksPassed++
 		}
 		checksRun++
 
 	case "Cluster Backup (.tar.gz)":
-		fmt.Print("📦 Archive extraction test... ")
+		fmt.Print("[CHK] Archive extraction test... ")
 		if err := verifyTarGz(archivePath); err != nil {
-			fmt.Printf("❌ FAILED: %v\n", err)
+			fmt.Printf("[FAIL] FAILED: %v\n", err)
 		} else {
-			fmt.Println("✅ PASSED")
+			fmt.Println("[OK] PASSED")
 			checksPassed++
 		}
 		checksRun++
@@ -598,11 +598,11 @@ func runVerify(ctx context.Context, archiveName string) error {
 
 	// Check for metadata file
 	metadataPath := archivePath + ".info"
-	fmt.Print("📋 Metadata file check... ")
+	fmt.Print("[CHK] Metadata file check... ")
 	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
-		fmt.Println("⚠️  WARNING: No metadata file found")
+		fmt.Println("[WARN] WARNING: No metadata file found")
 	} else {
-		fmt.Println("✅ PASSED")
+		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
 	checksRun++
@@ -611,13 +611,13 @@ func runVerify(ctx context.Context, archiveName string) error {
 	fmt.Printf("Verification Results: %d/%d checks passed\n", checksPassed, checksRun)
 
 	if checksPassed == checksRun {
-		fmt.Println("🎉 Archive verification completed successfully!")
+		fmt.Println("[SUCCESS] Archive verification completed successfully!")
 		return nil
 	} else if float64(checksPassed)/float64(checksRun) >= 0.8 {
-		fmt.Println("⚠️  Archive verification completed with warnings.")
+		fmt.Println("[WARN] Archive verification completed with warnings.")
 		return nil
 	} else {
-		fmt.Println("❌ Archive verification failed. Archive may be corrupted.")
+		fmt.Println("[FAIL] Archive verification failed. Archive may be corrupted.")
 		return fmt.Errorf("verification failed: %d/%d checks passed", checksPassed, checksRun)
 	}
 }

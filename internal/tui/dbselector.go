@@ -109,7 +109,7 @@ func (m DatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								return executor, executor.Init()
 							}
 							inputModel := NewInputModel(m.config, m.logger, m,
-								"📊 Sample Ratio",
+								"[STATS] Sample Ratio",
 								"Enter sample ratio (1-100):",
 								"10",
 								ValidateInt(1, 100))
@@ -152,7 +152,7 @@ func (m DatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// If sample backup, ask for ratio first
 				if m.backupType == "sample" {
 					inputModel := NewInputModel(m.config, m.logger, m,
-						"📊 Sample Ratio",
+						"[STATS] Sample Ratio",
 						"Enter sample ratio (1-100):",
 						"10",
 						ValidateInt(1, 100))
@@ -176,12 +176,12 @@ func (m DatabaseSelectorModel) View() string {
 	s.WriteString(fmt.Sprintf("\n%s\n\n", header))
 
 	if m.loading {
-		s.WriteString("⏳ Loading databases...\n")
+		s.WriteString("[WAIT] Loading databases...\n")
 		return s.String()
 	}
 
 	if m.err != nil {
-		s.WriteString(fmt.Sprintf("❌ Error: %v\n", m.err))
+		s.WriteString(fmt.Sprintf("[FAIL] Error: %v\n", m.err))
 		s.WriteString("\nPress ESC to go back\n")
 		return s.String()
 	}
@@ -203,7 +203,7 @@ func (m DatabaseSelectorModel) View() string {
 		s.WriteString(fmt.Sprintf("\n%s\n", m.message))
 	}
 
-	s.WriteString("\n⌨️  ↑/↓: Navigate • Enter: Select • ESC: Back • q: Quit\n")
+	s.WriteString("\n[KEYS]  Up/Down: Navigate | Enter: Select | ESC: Back | q: Quit\n")
 
 	return s.String()
 }

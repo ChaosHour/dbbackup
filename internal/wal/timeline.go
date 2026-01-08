@@ -361,7 +361,7 @@ func (tm *TimelineManager) FormatTimelineTree(history *TimelineHistory) string {
 
 	var sb strings.Builder
 	sb.WriteString("Timeline Branching Structure:\n")
-	sb.WriteString("═════════════════════════════\n\n")
+	sb.WriteString("=============================\n\n")
 
 	// Build tree recursively
 	tm.formatTimelineNode(&sb, history, 1, 0, "")
@@ -378,9 +378,9 @@ func (tm *TimelineManager) formatTimelineNode(sb *strings.Builder, history *Time
 
 	// Format current node
 	indent := strings.Repeat("  ", depth)
-	marker := "├─"
+	marker := "+-"
 	if depth == 0 {
-		marker = "●"
+		marker = "*"
 	}
 
 	sb.WriteString(fmt.Sprintf("%s%s Timeline %d", indent, marker, tl.TimelineID))

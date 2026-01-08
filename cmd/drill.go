@@ -318,7 +318,7 @@ func runDrillList(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("%-15s %-40s %-20s %s\n", "ID", "NAME", "IMAGE", "STATUS")
-	fmt.Println(strings.Repeat("─", 100))
+	fmt.Println(strings.Repeat("-", 100))
 
 	for _, c := range containers {
 		fmt.Printf("%-15s %-40s %-20s %s\n",
@@ -345,7 +345,7 @@ func runDrillCleanup(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Println("✅ Cleanup completed")
+	fmt.Println("[OK] Cleanup completed")
 	return nil
 }
 
@@ -369,32 +369,32 @@ func runDrillReport(cmd *cobra.Command, args []string) error {
 
 func printDrillResult(result *drill.DrillResult) {
 	fmt.Printf("\n")
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("=====================================================\n")
 	fmt.Printf("  DR Drill Report: %s\n", result.DrillID)
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n")
+	fmt.Printf("=====================================================\n\n")
 
-	status := "✅ PASSED"
+	status := "[OK] PASSED"
 	if !result.Success {
-		status = "❌ FAILED"
+		status = "[FAIL] FAILED"
 	} else if result.Status == drill.StatusPartial {
-		status = "⚠️ PARTIAL"
+		status = "[WARN] PARTIAL"
 	}
 
-	fmt.Printf("📋 Status:       %s\n", status)
-	fmt.Printf("💾 Backup:       %s\n", filepath.Base(result.BackupPath))
-	fmt.Printf("🗄️  Database:     %s (%s)\n", result.DatabaseName, result.DatabaseType)
-	fmt.Printf("⏱️  Duration:     %.2fs\n", result.Duration)
+	fmt.Printf("[LOG] Status:       %s\n", status)
+	fmt.Printf("[SAVE] Backup:       %s\n", filepath.Base(result.BackupPath))
+	fmt.Printf("[DB]  Database:     %s (%s)\n", result.DatabaseName, result.DatabaseType)
+	fmt.Printf("[TIME]  Duration:     %.2fs\n", result.Duration)
 	fmt.Printf("📅 Started:      %s\n", result.StartTime.Format(time.RFC3339))
 	fmt.Printf("\n")
 
 	// Phases
-	fmt.Printf("📊 Phases:\n")
+	fmt.Printf("[STATS] Phases:\n")
 	for _, phase := range result.Phases {
-		icon := "✅"
+		icon := "[OK]"
 		if phase.Status == "failed" {
-			icon = "❌"
+			icon = "[FAIL]"
 		} else if phase.Status == "running" {
-			icon = "🔄"
+			icon = "[SYNC]"
 		}
 		fmt.Printf("   %s %-20s (%.2fs) %s\n", icon, phase.Name, phase.Duration, phase.Message)
 	}
@@ -412,10 +412,10 @@ func printDrillResult(result *drill.DrillResult) {
 	fmt.Printf("\n")
 
 	// RTO
-	fmt.Printf("⏱️  RTO Analysis:\n")
-	rtoIcon := "✅"
+	fmt.Printf("[TIME]  RTO Analysis:\n")
+	rtoIcon := "[OK]"
 	if !result.RTOMet {
-		rtoIcon = "❌"
+		rtoIcon = "[FAIL]"
 	}
 	fmt.Printf("   Actual RTO:     %.2fs\n", result.ActualRTO)
 	fmt.Printf("   Target RTO:     %.0fs\n", result.TargetRTO)
@@ -424,11 +424,11 @@ func printDrillResult(result *drill.DrillResult) {
 
 	// Validation results
 	if len(result.ValidationResults) > 0 {
-		fmt.Printf("🔍 Validation Queries:\n")
+		fmt.Printf("[SEARCH] Validation Queries:\n")
 		for _, vr := range result.ValidationResults {
-			icon := "✅"
+			icon := "[OK]"
 			if !vr.Success {
-				icon = "❌"
+				icon = "[FAIL]"
 			}
 			fmt.Printf("   %s %s: %s\n", icon, vr.Name, vr.Result)
 			if vr.Error != "" {
@@ -440,11 +440,11 @@ func printDrillResult(result *drill.DrillResult) {
 
 	// Check results
 	if len(result.CheckResults) > 0 {
-		fmt.Printf("✓ Checks:\n")
+		fmt.Printf("[OK] Checks:\n")
 		for _, cr := range result.CheckResults {
-			icon := "✅"
+			icon := "[OK]"
 			if !cr.Success {
-				icon = "❌"
+				icon = "[FAIL]"
 			}
 			fmt.Printf("   %s %s\n", icon, cr.Message)
 		}
@@ -453,7 +453,7 @@ func printDrillResult(result *drill.DrillResult) {
 
 	// Errors and warnings
 	if len(result.Errors) > 0 {
-		fmt.Printf("❌ Errors:\n")
+		fmt.Printf("[FAIL] Errors:\n")
 		for _, e := range result.Errors {
 			fmt.Printf("   • %s\n", e)
 		}
@@ -461,7 +461,7 @@ func printDrillResult(result *drill.DrillResult) {
 	}
 
 	if len(result.Warnings) > 0 {
-		fmt.Printf("⚠️ Warnings:\n")
+		fmt.Printf("[WARN] Warnings:\n")
 		for _, w := range result.Warnings {
 			fmt.Printf("   • %s\n", w)
 		}
@@ -470,14 +470,14 @@ func printDrillResult(result *drill.DrillResult) {
 
 	// Container info
 	if result.ContainerKept {
-		fmt.Printf("📦 Container kept: %s\n", result.ContainerID[:12])
+		fmt.Printf("[PKG] Container kept: %s\n", result.ContainerID[:12])
 		fmt.Printf("   Connect with: docker exec -it %s bash\n", result.ContainerID[:12])
 		fmt.Printf("\n")
 	}
 
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("=====================================================\n")
 	fmt.Printf("  %s\n", result.Message)
-	fmt.Printf("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+	fmt.Printf("=====================================================\n")
 }
 
 func updateCatalogWithDrillResult(ctx context.Context, backupPath string, result *drill.DrillResult) {

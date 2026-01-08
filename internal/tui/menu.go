@@ -89,12 +89,12 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
 			"Single Database Backup",
 			"Sample Database Backup (with ratio)",
 			"Cluster Backup (all databases)",
-			"────────────────────────────────",
+			"--------------------------------",
 			"Restore Single Database",
 			"Restore Cluster Backup",
 			"Diagnose Backup File",
 			"List & Manage Backups",
-			"────────────────────────────────",
+			"--------------------------------",
 			"View Active Operations",
 			"Show Operation History",
 			"Database Status & Health Check",
@@ -177,7 +177,7 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 12: // Settings
 				return m.handleSettings()
 			case 13: // Clear History
-				m.message = "🗑️ History cleared"
+				m.message = "[DEL] History cleared"
 			case 14: // Quit
 				if m.cancel != nil {
 					m.cancel()
@@ -262,7 +262,7 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 12: // Settings
 				return m.handleSettings()
 			case 13: // Clear History
-				m.message = "🗑️ History cleared"
+				m.message = "[DEL] History cleared"
 			case 14: // Quit
 				if m.cancel != nil {
 					m.cancel()
@@ -285,7 +285,7 @@ func (m *MenuModel) View() string {
 	var s string
 
 	// Header
-	header := titleStyle.Render("🗄️  Database Backup Tool - Interactive Menu")
+	header := titleStyle.Render("[DB]  Database Backup Tool - Interactive Menu")
 	s += fmt.Sprintf("\n%s\n\n", header)
 
 	if len(m.dbTypes) > 0 {
@@ -299,7 +299,7 @@ func (m *MenuModel) View() string {
 		}
 		selector := fmt.Sprintf("Target Engine: %s", strings.Join(options, menuStyle.Render("  |  ")))
 		s += dbSelectorLabelStyle.Render(selector) + "\n"
-		hint := infoStyle.Render("Switch with ←/→ or t • Cluster backup requires PostgreSQL")
+		hint := infoStyle.Render("Switch with <-/-> or t | Cluster backup requires PostgreSQL")
 		s += hint + "\n"
 	}
 
@@ -326,7 +326,7 @@ func (m *MenuModel) View() string {
 	}
 
 	// Footer
-	footer := infoStyle.Render("\n⌨️ Press ↑/↓ to navigate • Enter to select • q to quit")
+	footer := infoStyle.Render("\n[KEYS] Press Up/Down to navigate | Enter to select | q to quit")
 	s += footer
 
 	return s
@@ -334,20 +334,20 @@ func (m *MenuModel) View() string {
 
 // handleSingleBackup opens database selector for single backup
 func (m *MenuModel) handleSingleBackup() (tea.Model, tea.Cmd) {
-	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "🗄️  Single Database Backup", "single")
+	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "[DB]  Single Database Backup", "single")
 	return selector, selector.Init()
 }
 
 // handleSampleBackup opens database selector for sample backup
 func (m *MenuModel) handleSampleBackup() (tea.Model, tea.Cmd) {
-	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "📊 Sample Database Backup", "sample")
+	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "[STATS] Sample Database Backup", "sample")
 	return selector, selector.Init()
 }
 
 // handleClusterBackup shows confirmation and executes cluster backup
 func (m *MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
 	if !m.config.IsPostgreSQL() {
-		m.message = errorStyle.Render("❌ Cluster backup is available only for PostgreSQL targets")
+		m.message = errorStyle.Render("[FAIL] Cluster backup is available only for PostgreSQL targets")
 		return m, nil
 	}
 	// Skip confirmation in auto-confirm mode
@@ -356,7 +356,7 @@ func (m *MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
 		return executor, executor.Init()
 	}
 	confirm := NewConfirmationModelWithAction(m.config, m.logger, m,
-		"🗄️  Cluster Backup",
+		"[DB]  Cluster Backup",
 		"This will backup ALL databases in the cluster. Continue?",
 		func() (tea.Model, tea.Cmd) {
 			executor := NewBackupExecution(m.config, m.logger, m, m.ctx, "cluster", "", 0)
@@ -399,7 +399,7 @@ func (m *MenuModel) handleRestoreSingle() (tea.Model, tea.Cmd) {
 // handleRestoreCluster opens archive browser for cluster restore
 func (m *MenuModel) handleRestoreCluster() (tea.Model, tea.Cmd) {
 	if !m.config.IsPostgreSQL() {
-		m.message = errorStyle.Render("❌ Cluster restore is available only for PostgreSQL")
+		m.message = errorStyle.Render("[FAIL] Cluster restore is available only for PostgreSQL")
 		return m, nil
 	}
 	browser := NewArchiveBrowser(m.config, m.logger, m, m.ctx, "restore-cluster")
@@ -428,7 +428,7 @@ func (m *MenuModel) applyDatabaseSelection() {
 
 	selection := m.dbTypes[m.dbTypeCursor]
 	if err := m.config.SetDatabaseType(selection.value); err != nil {
-		m.message = errorStyle.Render(fmt.Sprintf("❌ %v", err))
+		m.message = errorStyle.Render(fmt.Sprintf("[FAIL] %v", err))
 		return
 	}
 
@@ -437,7 +437,7 @@ func (m *MenuModel) applyDatabaseSelection() {
 		m.config.Port = m.config.GetDefaultPort()
 	}
 
-	m.message = successStyle.Render(fmt.Sprintf("🔀 Target database set to %s", m.config.DisplayDatabaseType()))
+	m.message = successStyle.Render(fmt.Sprintf("[SWITCH] Target database set to %s", m.config.DisplayDatabaseType()))
 	if m.logger != nil {
 		m.logger.Info("updated target database type", "type", m.config.DatabaseType, "port", m.config.Port)
 	}

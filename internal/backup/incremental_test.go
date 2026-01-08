@@ -242,7 +242,7 @@ func TestIncrementalBackupRestore(t *testing.T) {
 		t.Errorf("Unchanged file base/12345/1235 not found in restore: %v", err)
 	}
 
-	t.Log("✅ Incremental backup and restore test completed successfully")
+	t.Log("[OK] Incremental backup and restore test completed successfully")
 }
 
 // TestIncrementalBackupErrors tests error handling

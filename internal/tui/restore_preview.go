@@ -264,7 +264,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Toggle cluster cleanup
 				m.cleanClusterFirst = !m.cleanClusterFirst
 				if m.cleanClusterFirst {
-					m.message = checkWarningStyle.Render(fmt.Sprintf("⚠️  Will drop %d existing database(s) before restore", m.existingDBCount))
+					m.message = checkWarningStyle.Render(fmt.Sprintf("[WARN] Will drop %d existing database(s) before restore", m.existingDBCount))
 				} else {
 					m.message = fmt.Sprintf("Clean cluster first: disabled")
 				}
@@ -278,7 +278,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle debug log saving
 			m.saveDebugLog = !m.saveDebugLog
 			if m.saveDebugLog {
-				m.message = infoStyle.Render("📋 Debug log: enabled (will save detailed report on failure)")
+				m.message = infoStyle.Render("[DEBUG] Debug log: enabled (will save detailed report on failure)")
 			} else {
 				m.message = "Debug log: disabled"
 			}
@@ -288,7 +288,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.workDir == "" {
 				// Set to backup directory as default alternative
 				m.workDir = m.config.BackupDir
-				m.message = infoStyle.Render(fmt.Sprintf("📁 Work directory set to: %s", m.workDir))
+				m.message = infoStyle.Render(fmt.Sprintf("[DIR] Work directory set to: %s", m.workDir))
 			} else {
 				// Clear work directory (use system temp)
 				m.workDir = ""
@@ -302,7 +302,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if !m.canProceed {
-				m.message = errorStyle.Render("❌ Cannot proceed - critical safety checks failed")
+				m.message = errorStyle.Render("[FAIL] Cannot proceed - critical safety checks failed")
 				return m, nil
 			}
 
@@ -319,15 +319,15 @@ func (m RestorePreviewModel) View() string {
 	var s strings.Builder
 
 	// Title
-	title := "🔍 Restore Preview"
+	title := "Restore Preview"
 	if m.mode == "restore-cluster" {
-		title = "🔍 Cluster Restore Preview"
+		title = "Cluster Restore Preview"
 	}
 	s.WriteString(titleStyle.Render(title))
 	s.WriteString("\n\n")
 
 	// Archive Information
-	s.WriteString(archiveHeaderStyle.Render("📦 Archive Information"))
+	s.WriteString(archiveHeaderStyle.Render("[ARCHIVE] Information"))
 	s.WriteString("\n")
 	s.WriteString(fmt.Sprintf("  File: %s\n", m.archive.Name))
 	s.WriteString(fmt.Sprintf("  Format: %s\n", m.archive.Format.String()))
@@ -340,25 +340,25 @@ func (m RestorePreviewModel) View() string {
 
 	// Target Information
 	if m.mode == "restore-single" {
-		s.WriteString(archiveHeaderStyle.Render("🎯 Target Information"))
+		s.WriteString(archiveHeaderStyle.Render("[TARGET] Information"))
 		s.WriteString("\n")
 		s.WriteString(fmt.Sprintf("  Database: %s\n", m.targetDB))
 		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
 
-		cleanIcon := "✗"
+		cleanIcon := "[N]"
 		if m.cleanFirst {
-			cleanIcon = "✓"
+			cleanIcon = "[Y]"
 		}
 		s.WriteString(fmt.Sprintf("  Clean First: %s %v\n", cleanIcon, m.cleanFirst))
 
-		createIcon := "✗"
+		createIcon := "[N]"
 		if m.createIfMissing {
-			createIcon = "✓"
+			createIcon = "[Y]"
 		}
 		s.WriteString(fmt.Sprintf("  Create If Missing: %s %v\n", createIcon, m.createIfMissing))
 		s.WriteString("\n")
 	} else if m.mode == "restore-cluster" {
-		s.WriteString(archiveHeaderStyle.Render("🎯 Cluster Restore Options"))
+		s.WriteString(archiveHeaderStyle.Render("[CLUSTER] Restore Options"))
 		s.WriteString("\n")
 		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
 
@@ -376,10 +376,10 @@ func (m RestorePreviewModel) View() string {
 				s.WriteString(fmt.Sprintf("    - %s\n", db))
 			}
 
-			cleanIcon := "✗"
+			cleanIcon := "[N]"
 			cleanStyle := infoStyle
 			if m.cleanClusterFirst {
-				cleanIcon = "✓"
+				cleanIcon = "[Y]"
 				cleanStyle = checkWarningStyle
 			}
 			s.WriteString(cleanStyle.Render(fmt.Sprintf("  Clean All First: %s %v (press 'c' to toggle)\n", cleanIcon, m.cleanClusterFirst)))
@@ -390,7 +390,7 @@ func (m RestorePreviewModel) View() string {
 	}
 
 	// Safety Checks
-	s.WriteString(archiveHeaderStyle.Render("🛡️  Safety Checks"))
+	s.WriteString(archiveHeaderStyle.Render("[SAFETY] Checks"))
 	s.WriteString("\n")
 
 	if m.checking {
@@ -398,21 +398,21 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString("\n")
 	} else {
 		for _, check := range m.safetyChecks {
-			icon := "○"
+			icon := "[ ]"
 			style := checkPendingStyle
 
 			switch check.Status {
 			case "passed":
-				icon = "✓"
+				icon = "[+]"
 				style = checkPassedStyle
 			case "failed":
-				icon = "✗"
+				icon = "[-]"
 				style = checkFailedStyle
 			case "warning":
-				icon = "⚠"
+				icon = "[!]"
 				style = checkWarningStyle
 			case "checking":
-				icon = "⟳"
+				icon = "[~]"
 				style = checkPendingStyle
 			}
 
@@ -428,13 +428,13 @@ func (m RestorePreviewModel) View() string {
 
 	// Warnings
 	if m.cleanFirst {
-		s.WriteString(checkWarningStyle.Render("⚠️  Warning: Clean-first enabled"))
+		s.WriteString(checkWarningStyle.Render("[WARN] Warning: Clean-first enabled"))
 		s.WriteString("\n")
 		s.WriteString(infoStyle.Render("   All existing data in target database will be dropped!"))
 		s.WriteString("\n\n")
 	}
 	if m.cleanClusterFirst && m.existingDBCount > 0 {
-		s.WriteString(checkWarningStyle.Render("🔥 WARNING: Cluster cleanup enabled"))
+		s.WriteString(checkWarningStyle.Render("[DANGER] WARNING: Cluster cleanup enabled"))
 		s.WriteString("\n")
 		s.WriteString(checkWarningStyle.Render(fmt.Sprintf("   %d existing database(s) will be DROPPED before restore!", m.existingDBCount)))
 		s.WriteString("\n")
@@ -443,30 +443,30 @@ func (m RestorePreviewModel) View() string {
 	}
 
 	// Advanced Options
-	s.WriteString(archiveHeaderStyle.Render("⚙️  Advanced Options"))
+	s.WriteString(archiveHeaderStyle.Render("[OPTIONS] Advanced"))
 	s.WriteString("\n")
 
 	// Work directory option
-	workDirIcon := "✗"
+	workDirIcon := "[-]"
 	workDirStyle := infoStyle
 	workDirValue := "(system temp)"
 	if m.workDir != "" {
-		workDirIcon = "✓"
+		workDirIcon = "[+]"
 		workDirStyle = checkPassedStyle
 		workDirValue = m.workDir
 	}
 	s.WriteString(workDirStyle.Render(fmt.Sprintf("  %s Work Dir: %s (press 'w' to toggle)", workDirIcon, workDirValue)))
 	s.WriteString("\n")
 	if m.workDir == "" {
-		s.WriteString(infoStyle.Render("    ⚠️  Large archives need more space than /tmp may have"))
+		s.WriteString(infoStyle.Render("    [WARN] Large archives need more space than /tmp may have"))
 		s.WriteString("\n")
 	}
 
 	// Debug log option
-	debugIcon := "✗"
+	debugIcon := "[-]"
 	debugStyle := infoStyle
 	if m.saveDebugLog {
-		debugIcon = "✓"
+		debugIcon = "[+]"
 		debugStyle = checkPassedStyle
 	}
 	s.WriteString(debugStyle.Render(fmt.Sprintf("  %s Debug Log: %v (press 'd' to toggle)", debugIcon, m.saveDebugLog)))
@@ -485,25 +485,25 @@ func (m RestorePreviewModel) View() string {
 
 	// Footer
 	if m.checking {
-		s.WriteString(infoStyle.Render("⌨️  Please wait..."))
+		s.WriteString(infoStyle.Render("Please wait..."))
 	} else if m.canProceed {
-		s.WriteString(successStyle.Render("✅ Ready to restore"))
+		s.WriteString(successStyle.Render("[OK] Ready to restore"))
 		s.WriteString("\n")
 		if m.mode == "restore-single" {
-			s.WriteString(infoStyle.Render("⌨️  t: Clean-first | c: Create | w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
+			s.WriteString(infoStyle.Render("t: Clean-first | c: Create | w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
 		} else if m.mode == "restore-cluster" {
 			if m.existingDBCount > 0 {
-				s.WriteString(infoStyle.Render("⌨️  c: Cleanup | w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
+				s.WriteString(infoStyle.Render("c: Cleanup | w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
 			} else {
-				s.WriteString(infoStyle.Render("⌨️  w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
+				s.WriteString(infoStyle.Render("w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
 			}
 		} else {
-			s.WriteString(infoStyle.Render("⌨️  w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
+			s.WriteString(infoStyle.Render("w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
 		}
 	} else {
-		s.WriteString(errorStyle.Render("❌ Cannot proceed - please fix errors above"))
+		s.WriteString(errorStyle.Render("[FAIL] Cannot proceed - please fix errors above"))
 		s.WriteString("\n")
-		s.WriteString(infoStyle.Render("⌨️  Esc: Go back"))
+		s.WriteString(infoStyle.Render("Esc: Go back"))
 	}
 
 	return s.String()

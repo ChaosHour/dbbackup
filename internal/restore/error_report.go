@@ -397,20 +397,20 @@ func (ec *ErrorCollector) SaveReport(report *RestoreErrorReport, outputPath stri
 // PrintReport prints a human-readable summary of the error report
 func (ec *ErrorCollector) PrintReport(report *RestoreErrorReport) {
 	fmt.Println()
-	fmt.Println(strings.Repeat("═", 70))
-	fmt.Println("  🔴 RESTORE ERROR REPORT")
-	fmt.Println(strings.Repeat("═", 70))
+	fmt.Println(strings.Repeat("=", 70))
+	fmt.Println("  [ERROR] RESTORE ERROR REPORT")
+	fmt.Println(strings.Repeat("=", 70))
 
-	fmt.Printf("\n📅 Timestamp:    %s\n", report.Timestamp.Format("2006-01-02 15:04:05"))
-	fmt.Printf("📦 Archive:      %s\n", filepath.Base(report.ArchivePath))
-	fmt.Printf("📊 Format:       %s\n", report.ArchiveFormat)
-	fmt.Printf("🎯 Target DB:    %s\n", report.TargetDB)
-	fmt.Printf("⚠️  Exit Code:    %d\n", report.ExitCode)
-	fmt.Printf("❌ Total Errors: %d\n", report.TotalErrors)
+	fmt.Printf("\n[TIME] Timestamp:    %s\n", report.Timestamp.Format("2006-01-02 15:04:05"))
+	fmt.Printf("[FILE] Archive:      %s\n", filepath.Base(report.ArchivePath))
+	fmt.Printf("[FMT] Format:       %s\n", report.ArchiveFormat)
+	fmt.Printf("[TGT] Target DB:    %s\n", report.TargetDB)
+	fmt.Printf("[CODE] Exit Code:    %d\n", report.ExitCode)
+	fmt.Printf("[ERR] Total Errors: %d\n", report.TotalErrors)
 
-	fmt.Println("\n" + strings.Repeat("─", 70))
+	fmt.Println("\n" + strings.Repeat("-", 70))
 	fmt.Println("ERROR DETAILS:")
-	fmt.Println(strings.Repeat("─", 70))
+	fmt.Println(strings.Repeat("-", 70))
 
 	fmt.Printf("\nType: %s\n", report.ErrorType)
 	fmt.Printf("Message: %s\n", report.ErrorMessage)
@@ -420,9 +420,9 @@ func (ec *ErrorCollector) PrintReport(report *RestoreErrorReport) {
 
 	// Show failure context
 	if report.FailureContext != nil && report.FailureContext.FailedLine > 0 {
-		fmt.Println("\n" + strings.Repeat("─", 70))
+		fmt.Println("\n" + strings.Repeat("-", 70))
 		fmt.Println("FAILURE CONTEXT:")
-		fmt.Println(strings.Repeat("─", 70))
+		fmt.Println(strings.Repeat("-", 70))
 
 		fmt.Printf("\nFailed at line: %d\n", report.FailureContext.FailedLine)
 		if report.FailureContext.InCopyBlock {
@@ -439,9 +439,9 @@ func (ec *ErrorCollector) PrintReport(report *RestoreErrorReport) {
 
 	// Show first few errors
 	if len(report.FirstErrors) > 0 {
-		fmt.Println("\n" + strings.Repeat("─", 70))
+		fmt.Println("\n" + strings.Repeat("-", 70))
 		fmt.Println("FIRST ERRORS:")
-		fmt.Println(strings.Repeat("─", 70))
+		fmt.Println(strings.Repeat("-", 70))
 
 		for i, err := range report.FirstErrors {
 			if i >= 5 {
@@ -454,15 +454,15 @@ func (ec *ErrorCollector) PrintReport(report *RestoreErrorReport) {
 
 	// Show diagnosis summary
 	if report.DiagnosisResult != nil && !report.DiagnosisResult.IsValid {
-		fmt.Println("\n" + strings.Repeat("─", 70))
+		fmt.Println("\n" + strings.Repeat("-", 70))
 		fmt.Println("DIAGNOSIS:")
-		fmt.Println(strings.Repeat("─", 70))
+		fmt.Println(strings.Repeat("-", 70))
 
 		if report.DiagnosisResult.IsTruncated {
-			fmt.Println("  ❌ File is TRUNCATED")
+			fmt.Println("  [FAIL] File is TRUNCATED")
 		}
 		if report.DiagnosisResult.IsCorrupted {
-			fmt.Println("  ❌ File is CORRUPTED")
+			fmt.Println("  [FAIL] File is CORRUPTED")
 		}
 		for i, err := range report.DiagnosisResult.Errors {
 			if i >= 3 {
@@ -473,18 +473,18 @@ func (ec *ErrorCollector) PrintReport(report *RestoreErrorReport) {
 	}
 
 	// Show recommendations
-	fmt.Println("\n" + strings.Repeat("─", 70))
-	fmt.Println("💡 RECOMMENDATIONS:")
-	fmt.Println(strings.Repeat("─", 70))
+	fmt.Println("\n" + strings.Repeat("-", 70))
+	fmt.Println("[HINT] RECOMMENDATIONS:")
+	fmt.Println(strings.Repeat("-", 70))
 
 	for _, rec := range report.Recommendations {
-		fmt.Printf("  • %s\n", rec)
+		fmt.Printf("  - %s\n", rec)
 	}
 
 	// Show tool versions
-	fmt.Println("\n" + strings.Repeat("─", 70))
+	fmt.Println("\n" + strings.Repeat("-", 70))
 	fmt.Println("ENVIRONMENT:")
-	fmt.Println(strings.Repeat("─", 70))
+	fmt.Println(strings.Repeat("-", 70))
 
 	fmt.Printf("  OS: %s/%s\n", report.OS, report.Arch)
 	fmt.Printf("  Go: %s\n", report.GoVersion)
@@ -495,7 +495,7 @@ func (ec *ErrorCollector) PrintReport(report *RestoreErrorReport) {
 		fmt.Printf("  psql: %s\n", report.PsqlVersion)
 	}
 
-	fmt.Println(strings.Repeat("═", 70))
+	fmt.Println(strings.Repeat("=", 70))
 }
 
 // Helper functions

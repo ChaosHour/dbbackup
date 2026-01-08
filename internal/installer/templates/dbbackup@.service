@@ -33,8 +33,11 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 # Environment
 EnvironmentFile=-/etc/dbbackup/env.d/%i.conf
 
+# Working directory (config is loaded from .dbbackup.conf here)
+WorkingDirectory=/var/lib/dbbackup
+
 # Execution
-ExecStart={{.BinaryPath}} backup {{.BackupType}} %i --config {{.ConfigPath}}
+ExecStart={{.BinaryPath}} backup {{.BackupType}} %i --backup-dir {{.BackupDir}}
 TimeoutStartSec={{.TimeoutSeconds}}
 
 # Post-backup metrics export

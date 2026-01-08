@@ -116,8 +116,9 @@ sudo chmod 755 /usr/local/bin/dbbackup
 ### Step 2: Create Configuration
 
 ```bash
-# Main configuration
-sudo tee /etc/dbbackup/dbbackup.conf << 'EOF'
+# Main configuration in working directory (where service runs from)
+# dbbackup reads .dbbackup.conf from WorkingDirectory
+sudo tee /var/lib/dbbackup/.dbbackup.conf << 'EOF'
 # DBBackup Configuration
 db-type=postgres
 host=localhost
@@ -128,6 +129,8 @@ compression=6
 retention-days=30
 min-backups=7
 EOF
+sudo chown dbbackup:dbbackup /var/lib/dbbackup/.dbbackup.conf
+sudo chmod 600 /var/lib/dbbackup/.dbbackup.conf
 
 # Instance credentials (secure permissions)
 sudo tee /etc/dbbackup/env.d/cluster.conf << 'EOF'
@@ -157,13 +160,15 @@ Group=dbbackup
 # Load configuration
 EnvironmentFile=-/etc/dbbackup/env.d/cluster.conf
 
-# Working directory
+# Working directory (config is loaded from .dbbackup.conf here)
 WorkingDirectory=/var/lib/dbbackup
 
-# Execute backup
+# Execute backup (reads .dbbackup.conf from WorkingDirectory)
 ExecStart=/usr/local/bin/dbbackup backup cluster \
-    --config /etc/dbbackup/dbbackup.conf \
     --backup-dir /var/lib/dbbackup/backups \
+    --host localhost \
+    --port 5432 \
+    --user postgres \
     --allow-root
 
 # Security hardening
@@ -443,12 +448,12 @@ sudo systemctl status dbbackup-cluster.service
 # View detailed error
 sudo journalctl -u dbbackup-cluster.service -n 50 --no-pager
 
-# Test manually as dbbackup user
-sudo -u dbbackup /usr/local/bin/dbbackup backup cluster --config /etc/dbbackup/dbbackup.conf
+# Test manually as dbbackup user (run from working directory with .dbbackup.conf)
+cd /var/lib/dbbackup && sudo -u dbbackup /usr/local/bin/dbbackup backup cluster
 
 # Check permissions
 ls -la /var/lib/dbbackup/
-ls -la /etc/dbbackup/
+ls -la /var/lib/dbbackup/.dbbackup.conf
 ```
 
 ### Permission Denied

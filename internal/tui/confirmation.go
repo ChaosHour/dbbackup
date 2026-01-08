@@ -67,7 +67,6 @@ func (m ConfirmationModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case autoConfirmMsg:
 		// Auto-confirm triggered
-		m.confirmed = true
 		if m.onConfirm != nil {
 			return m.onConfirm()
 		}
@@ -95,7 +94,6 @@ func (m ConfirmationModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter", "y":
 			if msg.String() == "y" || m.cursor == 0 {
-				m.confirmed = true
 				// Execute the onConfirm callback if provided
 				if m.onConfirm != nil {
 					return m.onConfirm()

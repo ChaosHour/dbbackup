@@ -482,7 +482,6 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
-			m.quitting = true
 			return m.parent, nil
 
 		case "up", "k":

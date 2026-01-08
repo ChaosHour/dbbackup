@@ -63,7 +63,7 @@ func (b *BtrfsBackend) Detect(dataDir string) (bool, error) {
 // CreateSnapshot creates a Btrfs snapshot
 func (b *BtrfsBackend) CreateSnapshot(ctx context.Context, opts SnapshotOptions) (*Snapshot, error) {
 	if b.config == nil || b.config.Subvolume == "" {
-		return nil, fmt.Errorf("Btrfs subvolume not configured")
+		return nil, fmt.Errorf("btrfs subvolume not configured")
 	}
 
 	// Generate snapshot name

@@ -27,8 +27,7 @@ type Engine struct {
 	progress         progress.Indicator
 	detailedReporter *progress.DetailedReporter
 	dryRun           bool
-	debugLogPath     string          // Path to save debug log on error
-	errorCollector   *ErrorCollector // Collects detailed error info
+	debugLogPath     string // Path to save debug log on error
 }
 
 // New creates a new restore engine
@@ -803,8 +802,8 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	if len(corruptedDumps) > 0 {
 		operation.Fail("Corrupted dump files detected")
 		e.progress.Fail(fmt.Sprintf("Found %d corrupted dump files - restore aborted", len(corruptedDumps)))
-		return fmt.Errorf("pre-validation failed: %d corrupted dump files detected:\n  %s\n\nThe backup archive appears to be damaged. You need to restore from a different backup.",
-			len(corruptedDumps), strings.Join(corruptedDumps, "\n  "))
+		return fmt.Errorf("pre-validation failed: %d corrupted dump files detected: %s - the backup archive appears to be damaged, restore from a different backup",
+			len(corruptedDumps), strings.Join(corruptedDumps, ", "))
 	}
 	e.log.Info("All dump files passed validation")
 

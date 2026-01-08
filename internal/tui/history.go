@@ -2,7 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -59,7 +59,7 @@ func loadHistory(cfg *config.Config) []HistoryEntry {
 	var entries []HistoryEntry
 
 	// Read backup files from backup directory
-	files, err := ioutil.ReadDir(cfg.BackupDir)
+	files, err := os.ReadDir(cfg.BackupDir)
 	if err != nil {
 		return entries
 	}
@@ -71,6 +71,12 @@ func loadHistory(cfg *config.Config) []HistoryEntry {
 
 		name := file.Name()
 		if strings.HasSuffix(name, ".info") {
+			continue
+		}
+
+		// Get file info for ModTime
+		info, err := file.Info()
+		if err != nil {
 			continue
 		}
 
@@ -97,7 +103,7 @@ func loadHistory(cfg *config.Config) []HistoryEntry {
 		entries = append(entries, HistoryEntry{
 			Type:      backupType,
 			Database:  database,
-			Timestamp: file.ModTime(),
+			Timestamp: info.ModTime(),
 			Status:    "✅ Completed",
 			Filename:  name,
 		})

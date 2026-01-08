@@ -90,7 +90,7 @@ func NewAzureBackend(cfg *Config) (*AzureBackend, error) {
 			}
 		} else {
 			// Use default Azure credential (managed identity, environment variables, etc.)
-			return nil, fmt.Errorf("Azure authentication requires account name and key, or use AZURE_STORAGE_CONNECTION_STRING environment variable")
+			return nil, fmt.Errorf("azure authentication requires account name and key, or use AZURE_STORAGE_CONNECTION_STRING environment variable")
 		}
 	}
 

@@ -15,7 +15,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
-	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver (pgx)
 )
 
 // PostgreSQL implements Database interface for PostgreSQL

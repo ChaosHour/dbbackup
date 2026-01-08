@@ -306,6 +306,12 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
+			// Cluster-specific check: must enable cleanup if existing databases found
+			if m.mode == "restore-cluster" && m.existingDBCount > 0 && !m.cleanClusterFirst {
+				m.message = errorStyle.Render("[FAIL] Cannot proceed - press 'c' to enable cleanup of " + fmt.Sprintf("%d", m.existingDBCount) + " existing database(s) first")
+				return m, nil
+			}
+
 			// Proceed to restore execution
 			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.ctx, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs, m.saveDebugLog, m.workDir)
 			return exec, exec.Init()

@@ -146,11 +146,10 @@ func (m StatusViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if !m.loading {
-			switch msg.String() {
-			case "ctrl+c", "q", "esc", "enter":
-				return m.parent, nil
-			}
+		// Always allow escape, even during loading
+		switch msg.String() {
+		case "ctrl+c", "q", "esc", "enter":
+			return m.parent, nil
 		}
 	}
 

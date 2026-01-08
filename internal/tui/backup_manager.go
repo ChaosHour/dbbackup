@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mattn/go-runewidth"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
@@ -130,15 +131,24 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// Block input during operations
+		// Allow escape/cancel even during operations
+		if msg.String() == "ctrl+c" || msg.String() == "esc" || msg.String() == "q" {
+			if m.opState != OpIdle {
+				// Cancel current operation
+				m.opState = OpIdle
+				m.opTarget = ""
+				m.message = "Operation cancelled"
+				return m, nil
+			}
+			return m.parent, nil
+		}
+
+		// Block other input during operations
 		if m.opState != OpIdle {
 			return m, nil
 		}
 
 		switch msg.String() {
-		case "ctrl+c", "q", "esc":
-			return m.parent, nil
-
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -219,39 +229,45 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m BackupManagerModel) View() string {
 	var s strings.Builder
+	const boxWidth = 60
+
+	// Helper to pad string to box width (handles UTF-8)
+	padToWidth := func(text string, width int) string {
+		textWidth := runewidth.StringWidth(text)
+		if textWidth >= width {
+			return runewidth.Truncate(text, width-3, "...")
+		}
+		return text + strings.Repeat(" ", width-textWidth)
+	}
 
 	// Title
 	s.WriteString(titleStyle.Render("[DB]  Backup Archive Manager"))
 	s.WriteString("\n\n")
 
 	// Operation Status Box (always visible)
-	s.WriteString("+--[ STATUS ]" + strings.Repeat("-", 47) + "+\n")
+	s.WriteString("+--[ STATUS ]" + strings.Repeat("-", boxWidth-13) + "+\n")
 	switch m.opState {
 	case OpVerifying:
 		spinner := spinnerFrames[m.spinnerFrame]
 		statusText := fmt.Sprintf(" %s Verifying: %s", spinner, m.opTarget)
-		s.WriteString("|" + statusText + strings.Repeat(" ", 59-len(statusText)) + "|\n")
+		s.WriteString("|" + padToWidth(statusText, boxWidth) + "|\n")
 	case OpDeleting:
 		spinner := spinnerFrames[m.spinnerFrame]
 		statusText := fmt.Sprintf(" %s Deleting: %s", spinner, m.opTarget)
-		s.WriteString("|" + statusText + strings.Repeat(" ", 59-len(statusText)) + "|\n")
+		s.WriteString("|" + padToWidth(statusText, boxWidth) + "|\n")
 	default:
 		if m.loading {
 			spinner := spinnerFrames[m.spinnerFrame]
 			statusText := fmt.Sprintf(" %s Loading archives...", spinner)
-			s.WriteString("|" + statusText + strings.Repeat(" ", 59-len(statusText)) + "|\n")
+			s.WriteString("|" + padToWidth(statusText, boxWidth) + "|\n")
 		} else if m.message != "" {
 			msgText := " " + m.message
-			if len(msgText) > 58 {
-				msgText = msgText[:55] + "..."
-			}
-			s.WriteString("|" + msgText + strings.Repeat(" ", 59-len(msgText)) + "|\n")
+			s.WriteString("|" + padToWidth(msgText, boxWidth) + "|\n")
 		} else {
-			statusText := " Ready"
-			s.WriteString("|" + statusText + strings.Repeat(" ", 59-len(statusText)) + "|\n")
+			s.WriteString("|" + padToWidth(" Ready", boxWidth) + "|\n")
 		}
 	}
-	s.WriteString("+" + strings.Repeat("-", 60) + "+\n\n")
+	s.WriteString("+" + strings.Repeat("-", boxWidth) + "+\n\n")
 
 	if m.loading {
 		return s.String()
@@ -334,14 +350,8 @@ func (m BackupManagerModel) View() string {
 	s.WriteString(infoStyle.Render(fmt.Sprintf("Selected: %d/%d", m.cursor+1, len(m.archives))))
 	s.WriteString("\n\n")
 
-	// Grouped keyboard shortcuts for better readability
-	s.WriteString("+--[ SHORTCUTS ]" + strings.Repeat("-", 44) + "+\n")
-	s.WriteString("| NAVIGATE          ACTIONS           OTHER      |\n")
-	s.WriteString("| Up/Down: Move     r: Restore        R: Refresh |\n")
-	s.WriteString("|                   v: Verify         Esc: Back  |\n")
-	s.WriteString("|                   d: Delete         q: Quit    |\n")
-	s.WriteString("|                   i: Info                      |\n")
-	s.WriteString("+" + strings.Repeat("-", 60) + "+")
+	// Grouped keyboard shortcuts - simple aligned format
+	s.WriteString("SHORTCUTS: Up/Down=Move | r=Restore | v=Verify | d=Delete | i=Info | R=Refresh | Esc=Back | q=Quit")
 
 	return s.String()
 }

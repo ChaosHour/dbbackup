@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -13,38 +14,99 @@ import (
 	"dbbackup/internal/logger"
 )
 
+// OperationState represents the current operation state
+type OperationState int
+
+const (
+	OpIdle OperationState = iota
+	OpVerifying
+	OpDeleting
+)
+
 // BackupManagerModel manages backup archives
 type BackupManagerModel struct {
-	config    *config.Config
-	logger    logger.Logger
-	parent    tea.Model
-	ctx       context.Context
-	archives  []ArchiveInfo
-	cursor    int
-	loading   bool
-	err       error
-	message   string
-	totalSize int64
-	freeSpace int64
+	config       *config.Config
+	logger       logger.Logger
+	parent       tea.Model
+	ctx          context.Context
+	archives     []ArchiveInfo
+	cursor       int
+	loading      bool
+	err          error
+	message      string
+	totalSize    int64
+	freeSpace    int64
+	opState      OperationState
+	opTarget     string // Name of archive being operated on
+	spinnerFrame int
 }
 
 // NewBackupManager creates a new backup manager
 func NewBackupManager(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context) BackupManagerModel {
 	return BackupManagerModel{
-		config:  cfg,
-		logger:  log,
-		parent:  parent,
-		ctx:     ctx,
-		loading: true,
+		config:       cfg,
+		logger:       log,
+		parent:       parent,
+		ctx:          ctx,
+		loading:      true,
+		opState:      OpIdle,
+		spinnerFrame: 0,
 	}
 }
 
 func (m BackupManagerModel) Init() tea.Cmd {
-	return loadArchives(m.config, m.logger)
+	return tea.Batch(loadArchives(m.config, m.logger), managerTickCmd())
+}
+
+// Tick for spinner animation
+type managerTickMsg time.Time
+
+func managerTickCmd() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return managerTickMsg(t)
+	})
+}
+
+// Verify result message
+type verifyResultMsg struct {
+	archive string
+	valid   bool
+	err     error
+	details string
 }
 
 func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case managerTickMsg:
+		// Update spinner frame
+		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		return m, managerTickCmd()
+
+	case verifyResultMsg:
+		m.opState = OpIdle
+		m.opTarget = ""
+		if msg.err != nil {
+			m.message = fmt.Sprintf("[-] Verify failed: %v", msg.err)
+		} else if msg.valid {
+			m.message = fmt.Sprintf("[+] %s: Valid - %s", msg.archive, msg.details)
+			// Update archive validity in list
+			for i := range m.archives {
+				if m.archives[i].Name == msg.archive {
+					m.archives[i].Valid = true
+					break
+				}
+			}
+		} else {
+			m.message = fmt.Sprintf("[-] %s: Invalid - %s", msg.archive, msg.details)
+			for i := range m.archives {
+				if m.archives[i].Name == msg.archive {
+					m.archives[i].Valid = false
+					break
+				}
+			}
+		}
+		return m, nil
+
 	case archiveListMsg:
 		m.loading = false
 		if msg.err != nil {
@@ -68,6 +130,11 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// Block input during operations
+		if m.opState != OpIdle {
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m.parent, nil
@@ -83,11 +150,13 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "v":
-			// Verify archive
+			// Verify archive with real verification
 			if len(m.archives) > 0 && m.cursor < len(m.archives) {
 				selected := m.archives[m.cursor]
-				m.message = fmt.Sprintf("[SEARCH] Verifying %s...", selected.Name)
-				// In real implementation, would run verification
+				m.opState = OpVerifying
+				m.opTarget = selected.Name
+				m.message = ""
+				return m, verifyArchiveCmd(selected)
 			}
 
 		case "d":
@@ -155,8 +224,36 @@ func (m BackupManagerModel) View() string {
 	s.WriteString(titleStyle.Render("[DB]  Backup Archive Manager"))
 	s.WriteString("\n\n")
 
+	// Operation Status Box (always visible)
+	s.WriteString("+--[ STATUS ]" + strings.Repeat("-", 47) + "+\n")
+	switch m.opState {
+	case OpVerifying:
+		spinner := spinnerFrames[m.spinnerFrame]
+		statusText := fmt.Sprintf(" %s Verifying: %s", spinner, m.opTarget)
+		s.WriteString("|" + statusText + strings.Repeat(" ", 59-len(statusText)) + "|\n")
+	case OpDeleting:
+		spinner := spinnerFrames[m.spinnerFrame]
+		statusText := fmt.Sprintf(" %s Deleting: %s", spinner, m.opTarget)
+		s.WriteString("|" + statusText + strings.Repeat(" ", 59-len(statusText)) + "|\n")
+	default:
+		if m.loading {
+			spinner := spinnerFrames[m.spinnerFrame]
+			statusText := fmt.Sprintf(" %s Loading archives...", spinner)
+			s.WriteString("|" + statusText + strings.Repeat(" ", 59-len(statusText)) + "|\n")
+		} else if m.message != "" {
+			msgText := " " + m.message
+			if len(msgText) > 58 {
+				msgText = msgText[:55] + "..."
+			}
+			s.WriteString("|" + msgText + strings.Repeat(" ", 59-len(msgText)) + "|\n")
+		} else {
+			statusText := " Ready"
+			s.WriteString("|" + statusText + strings.Repeat(" ", 59-len(statusText)) + "|\n")
+		}
+	}
+	s.WriteString("+" + strings.Repeat("-", 60) + "+\n\n")
+
 	if m.loading {
-		s.WriteString(infoStyle.Render("Loading archives..."))
 		return s.String()
 	}
 
@@ -233,28 +330,102 @@ func (m BackupManagerModel) View() string {
 
 	// Footer
 	s.WriteString("\n")
-	if m.message != "" {
-		s.WriteString(infoStyle.Render(m.message))
-		s.WriteString("\n")
-	}
 
 	s.WriteString(infoStyle.Render(fmt.Sprintf("Selected: %d/%d", m.cursor+1, len(m.archives))))
 	s.WriteString("\n\n")
 
 	// Grouped keyboard shortcuts for better readability
-	s.WriteString(infoStyle.Render("NAVIGATE          ACTIONS           OTHER"))
-	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("--------          -------           -----"))
-	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("Up/Down: Move     r: Restore        R: Refresh"))
-	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("                  v: Verify         Esc: Back"))
-	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("                  d: Delete         q: Quit"))
-	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("                  i: Info"))
+	s.WriteString("+--[ SHORTCUTS ]" + strings.Repeat("-", 44) + "+\n")
+	s.WriteString("| NAVIGATE          ACTIONS           OTHER      |\n")
+	s.WriteString("| Up/Down: Move     r: Restore        R: Refresh |\n")
+	s.WriteString("|                   v: Verify         Esc: Back  |\n")
+	s.WriteString("|                   d: Delete         q: Quit    |\n")
+	s.WriteString("|                   i: Info                      |\n")
+	s.WriteString("+" + strings.Repeat("-", 60) + "+")
 
 	return s.String()
+}
+
+// verifyArchiveCmd runs actual archive verification
+func verifyArchiveCmd(archive ArchiveInfo) tea.Cmd {
+	return func() tea.Msg {
+		// Determine verification method based on format
+		var valid bool
+		var details string
+		var err error
+
+		switch {
+		case strings.HasSuffix(archive.Path, ".tar.gz") || strings.HasSuffix(archive.Path, ".tgz"):
+			// Verify tar.gz archive
+			cmd := exec.Command("tar", "-tzf", archive.Path)
+			output, cmdErr := cmd.CombinedOutput()
+			if cmdErr != nil {
+				return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "Archive corrupt or incomplete"}
+			}
+			lines := strings.Split(string(output), "\n")
+			fileCount := 0
+			for _, l := range lines {
+				if l != "" {
+					fileCount++
+				}
+			}
+			valid = true
+			details = fmt.Sprintf("%d files in archive", fileCount)
+
+		case strings.HasSuffix(archive.Path, ".dump") || strings.HasSuffix(archive.Path, ".sql"):
+			// Verify PostgreSQL dump with pg_restore --list
+			cmd := exec.Command("pg_restore", "--list", archive.Path)
+			output, cmdErr := cmd.CombinedOutput()
+			if cmdErr != nil {
+				// Try as plain SQL
+				if strings.HasSuffix(archive.Path, ".sql") {
+					// Just check file is readable and has content
+					fi, statErr := os.Stat(archive.Path)
+					if statErr == nil && fi.Size() > 0 {
+						valid = true
+						details = "Plain SQL file readable"
+					} else {
+						return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "File empty or unreadable"}
+					}
+				} else {
+					return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "pg_restore cannot read dump"}
+				}
+			} else {
+				lines := strings.Split(string(output), "\n")
+				objectCount := 0
+				for _, l := range lines {
+					if l != "" && !strings.HasPrefix(l, ";") {
+						objectCount++
+					}
+				}
+				valid = true
+				details = fmt.Sprintf("%d objects in dump", objectCount)
+			}
+
+		case strings.HasSuffix(archive.Path, ".sql.gz"):
+			// Verify gzipped SQL
+			cmd := exec.Command("gzip", "-t", archive.Path)
+			if cmdErr := cmd.Run(); cmdErr != nil {
+				return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "Gzip archive corrupt"}
+			}
+			valid = true
+			details = "Gzip integrity OK"
+
+		default:
+			// Unknown format - just check file exists and has size
+			fi, statErr := os.Stat(archive.Path)
+			if statErr != nil {
+				return verifyResultMsg{archive: archive.Name, valid: false, err: statErr, details: "Cannot access file"}
+			}
+			if fi.Size() == 0 {
+				return verifyResultMsg{archive: archive.Name, valid: false, err: nil, details: "File is empty"}
+			}
+			valid = true
+			details = "File exists and has content"
+		}
+
+		return verifyResultMsg{archive: archive.Name, valid: valid, err: err, details: details}
+	}
 }
 
 // deleteArchive deletes a backup archive (to be called from confirmation)

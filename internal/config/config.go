@@ -217,8 +217,8 @@ func New() *Config {
 		SingleDBName:  getEnvString("SINGLE_DB_NAME", ""),
 		RestoreDBName: getEnvString("RESTORE_DB_NAME", ""),
 
-		// Timeouts
-		ClusterTimeoutMinutes: getEnvInt("CLUSTER_TIMEOUT_MIN", 240),
+		// Timeouts - default 24 hours (1440 min) to handle very large databases with large objects
+		ClusterTimeoutMinutes: getEnvInt("CLUSTER_TIMEOUT_MIN", 1440),
 
 		// Cluster parallelism (default: 2 concurrent operations for faster cluster backup/restore)
 		ClusterParallelism: getEnvInt("CLUSTER_PARALLELISM", 2),
@@ -227,7 +227,7 @@ func New() *Config {
 		WorkDir: getEnvString("WORK_DIR", ""),
 
 		// Swap file management
-		SwapFilePath:   "", // Will be set after WorkDir is initialized
+		SwapFilePath:   "",                                // Will be set after WorkDir is initialized
 		SwapFileSizeGB: getEnvInt("SWAP_FILE_SIZE_GB", 0), // 0 = disabled by default
 		AutoSwap:       getEnvBool("AUTO_SWAP", false),
 

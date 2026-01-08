@@ -53,7 +53,8 @@ type databaseListMsg struct {
 
 func fetchDatabases(cfg *config.Config, log logger.Logger) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		// 60 seconds for database listing - busy servers may be slow
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
 		dbClient, err := database.New(cfg, log)

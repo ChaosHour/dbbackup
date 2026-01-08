@@ -83,10 +83,10 @@ type backupCompleteMsg struct {
 
 func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
 	return func() tea.Msg {
-		// Use configurable cluster timeout (minutes) from config; default set in config.New()
-		// Use parent context to inherit cancellation from TUI
-		clusterTimeout := time.Duration(cfg.ClusterTimeoutMinutes) * time.Minute
-		ctx, cancel := context.WithTimeout(parentCtx, clusterTimeout)
+		// NO TIMEOUT for backup operations - a backup takes as long as it takes
+		// Large databases can take many hours
+		// Only manual cancellation (Ctrl+C) should stop the backup
+		ctx, cancel := context.WithCancel(parentCtx)
 		defer cancel()
 
 		start := time.Now()

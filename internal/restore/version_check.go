@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"time"
 
 	"dbbackup/internal/database"
 )
@@ -47,8 +48,13 @@ func ParsePostgreSQLVersion(versionStr string) (*VersionInfo, error) {
 
 // GetDumpFileVersion extracts the PostgreSQL version from a dump file
 // Uses pg_restore -l to read the dump metadata
+// Uses a 30-second timeout to avoid blocking on large files
 func GetDumpFileVersion(dumpPath string) (*VersionInfo, error) {
-	cmd := exec.Command("pg_restore", "-l", dumpPath)
+	// Use a timeout context to prevent blocking on very large dump files
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read dump file metadata: %w (output: %s)", err, string(output))

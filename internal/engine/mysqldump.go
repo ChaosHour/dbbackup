@@ -234,10 +234,26 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 		gzWriter.Close()
 	}
 
-	// Wait for command
-	if err := cmd.Wait(); err != nil {
+	// Wait for command with proper context handling
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+		// Command completed
+	case <-ctx.Done():
+		e.log.Warn("MySQL backup cancelled - killing process")
+		cmd.Process.Kill()
+		<-cmdDone
+		cmdErr = ctx.Err()
+	}
+
+	if cmdErr != nil {
 		stderr := stderrBuf.String()
-		return nil, fmt.Errorf("mysqldump failed: %w\n%s", err, stderr)
+		return nil, fmt.Errorf("mysqldump failed: %w\n%s", cmdErr, stderr)
 	}
 
 	// Get file info
@@ -442,8 +458,25 @@ func (e *MySQLDumpEngine) BackupToWriter(ctx context.Context, w io.Writer, opts 
 		gzWriter.Close()
 	}
 
-	if err := cmd.Wait(); err != nil {
-		return nil, fmt.Errorf("mysqldump failed: %w\n%s", err, stderrBuf.String())
+	// Wait for command with proper context handling
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+		// Command completed
+	case <-ctx.Done():
+		e.log.Warn("MySQL streaming backup cancelled - killing process")
+		cmd.Process.Kill()
+		<-cmdDone
+		cmdErr = ctx.Err()
+	}
+
+	if cmdErr != nil {
+		return nil, fmt.Errorf("mysqldump failed: %w\n%s", cmdErr, stderrBuf.String())
 	}
 
 	return &BackupResult{

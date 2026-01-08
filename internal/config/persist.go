@@ -28,8 +28,9 @@ type LocalConfig struct {
 	DumpJobs    int
 
 	// Performance settings
-	CPUWorkload string
-	MaxCores    int
+	CPUWorkload    string
+	MaxCores       int
+	ClusterTimeout int // Cluster operation timeout in minutes (default: 1440 = 24 hours)
 
 	// Security settings
 	RetentionDays int
@@ -121,6 +122,10 @@ func LoadLocalConfig() (*LocalConfig, error) {
 				if mc, err := strconv.Atoi(value); err == nil {
 					cfg.MaxCores = mc
 				}
+			case "cluster_timeout":
+				if ct, err := strconv.Atoi(value); err == nil {
+					cfg.ClusterTimeout = ct
+				}
 			}
 		case "security":
 			switch key {
@@ -199,6 +204,9 @@ func SaveLocalConfig(cfg *LocalConfig) error {
 	if cfg.MaxCores != 0 {
 		sb.WriteString(fmt.Sprintf("max_cores = %d\n", cfg.MaxCores))
 	}
+	if cfg.ClusterTimeout != 0 {
+		sb.WriteString(fmt.Sprintf("cluster_timeout = %d\n", cfg.ClusterTimeout))
+	}
 	sb.WriteString("\n")
 
 	// Security section
@@ -268,6 +276,10 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.MaxCores != 0 {
 		cfg.MaxCores = local.MaxCores
 	}
+	// Apply cluster timeout from config file (overrides default)
+	if local.ClusterTimeout != 0 {
+		cfg.ClusterTimeoutMinutes = local.ClusterTimeout
+	}
 	if cfg.RetentionDays == 30 && local.RetentionDays != 0 {
 		cfg.RetentionDays = local.RetentionDays
 	}
@@ -282,21 +294,22 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 // ConfigFromConfig creates a LocalConfig from a Config
 func ConfigFromConfig(cfg *Config) *LocalConfig {
 	return &LocalConfig{
-		DBType:        cfg.DatabaseType,
-		Host:          cfg.Host,
-		Port:          cfg.Port,
-		User:          cfg.User,
-		Database:      cfg.Database,
-		SSLMode:       cfg.SSLMode,
-		BackupDir:     cfg.BackupDir,
-		WorkDir:       cfg.WorkDir,
-		Compression:   cfg.CompressionLevel,
-		Jobs:          cfg.Jobs,
-		DumpJobs:      cfg.DumpJobs,
-		CPUWorkload:   cfg.CPUWorkloadType,
-		MaxCores:      cfg.MaxCores,
-		RetentionDays: cfg.RetentionDays,
-		MinBackups:    cfg.MinBackups,
-		MaxRetries:    cfg.MaxRetries,
+		DBType:         cfg.DatabaseType,
+		Host:           cfg.Host,
+		Port:           cfg.Port,
+		User:           cfg.User,
+		Database:       cfg.Database,
+		SSLMode:        cfg.SSLMode,
+		BackupDir:      cfg.BackupDir,
+		WorkDir:        cfg.WorkDir,
+		Compression:    cfg.CompressionLevel,
+		Jobs:           cfg.Jobs,
+		DumpJobs:       cfg.DumpJobs,
+		CPUWorkload:    cfg.CPUWorkloadType,
+		MaxCores:       cfg.MaxCores,
+		ClusterTimeout: cfg.ClusterTimeoutMinutes,
+		RetentionDays:  cfg.RetentionDays,
+		MinBackups:     cfg.MinBackups,
+		MaxRetries:     cfg.MaxRetries,
 	}
 }

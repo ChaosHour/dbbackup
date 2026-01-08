@@ -2,12 +2,14 @@ package auth
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"dbbackup/internal/config"
 )
@@ -69,7 +71,10 @@ func checkPgHbaConf(user string) AuthMethod {
 
 // findHbaFileViaPostgres asks PostgreSQL for the hba_file location
 func findHbaFileViaPostgres() string {
-	cmd := exec.Command("psql", "-U", "postgres", "-t", "-c", "SHOW hba_file;")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "psql", "-U", "postgres", "-t", "-c", "SHOW hba_file;")
 	output, err := cmd.Output()
 	if err != nil {
 		return ""
@@ -82,8 +87,11 @@ func parsePgHbaConf(path string, user string) AuthMethod {
 	// Try with sudo if we can't read directly
 	file, err := os.Open(path)
 	if err != nil {
-		// Try with sudo
-		cmd := exec.Command("sudo", "cat", path)
+		// Try with sudo (with timeout)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, "sudo", "cat", path)
 		output, err := cmd.Output()
 		if err != nil {
 			return AuthUnknown

@@ -87,20 +87,46 @@ func IsBackupEncrypted(backupPath string) bool {
 		return meta.Encrypted
 	}
 
-	// Fallback: check if file starts with encryption nonce
+	// No metadata found - check file format to determine if encrypted
+	// Known unencrypted formats have specific magic bytes:
+	// - Gzip: 1f 8b
+	// - PGDMP (PostgreSQL custom): 50 47 44 4d 50 (PGDMP)
+	// - Plain SQL: starts with text (-- or SET or CREATE)
+	// - Tar: 75 73 74 61 72 (ustar) at offset 257
+	//
+	// If file doesn't match any known format, it MIGHT be encrypted,
+	// but we return false to avoid false positives. User must provide
+	// metadata file or use --encrypt flag explicitly.
 	file, err := os.Open(backupPath)
 	if err != nil {
 		return false
 	}
 	defer file.Close()
 
-	// Try to read nonce - if it succeeds, likely encrypted
-	nonce := make([]byte, crypto.NonceSize)
-	if n, err := file.Read(nonce); err != nil || n != crypto.NonceSize {
+	header := make([]byte, 6)
+	if n, err := file.Read(header); err != nil || n < 2 {
 		return false
 	}
 
-	return true
+	// Check for known unencrypted formats
+	// Gzip magic: 1f 8b
+	if header[0] == 0x1f && header[1] == 0x8b {
+		return false // Gzip compressed - not encrypted
+	}
+
+	// PGDMP magic (PostgreSQL custom format)
+	if len(header) >= 5 && string(header[:5]) == "PGDMP" {
+		return false // PostgreSQL custom dump - not encrypted
+	}
+
+	// Plain text SQL (starts with --, SET, CREATE, etc.)
+	if header[0] == '-' || header[0] == 'S' || header[0] == 'C' || header[0] == '/' {
+		return false // Plain text SQL - not encrypted
+	}
+
+	// Without metadata, we cannot reliably determine encryption status
+	// Return false to avoid blocking restores with false positives
+	return false
 }
 
 // DecryptBackupFile decrypts an encrypted backup file

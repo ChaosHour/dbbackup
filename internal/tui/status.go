@@ -70,7 +70,8 @@ type statusMsg struct {
 
 func fetchStatus(cfg *config.Config, log logger.Logger) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// 30 seconds for status check - slow networks or SSL negotiation
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		dbClient, err := database.New(cfg, log)

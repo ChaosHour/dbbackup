@@ -443,6 +443,14 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release
 
+			// Panic recovery - prevent one database failure from crashing entire cluster backup
+			defer func() {
+				if r := recover(); r != nil {
+					e.log.Error("Panic in database backup goroutine", "database", name, "panic", r)
+					atomic.AddInt32(&failCount, 1)
+				}
+			}()
+
 			// Check for cancellation at start of goroutine
 			select {
 			case <-ctx.Done():
@@ -502,26 +510,10 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 
 			cmd := e.db.BuildBackupCommand(name, dumpFile, options)
 
-			// Calculate timeout based on database size:
-			// - Minimum 2 hours for small databases
-			// - Add 1 hour per 20GB for large databases
-			// - This allows ~69GB database to take up to 5+ hours
-			timeout := 2 * time.Hour
-			if size, err := e.db.GetDatabaseSize(ctx, name); err == nil {
-				sizeGB := size / (1024 * 1024 * 1024)
-				if sizeGB > 20 {
-					extraHours := (sizeGB / 20) + 1
-					timeout = time.Duration(2+extraHours) * time.Hour
-					mu.Lock()
-					e.printf("       Extended timeout: %v (for %dGB database)\n", timeout, sizeGB)
-					mu.Unlock()
-				}
-			}
-
-			dbCtx, cancel := context.WithTimeout(ctx, timeout)
-			defer cancel()
-			err := e.executeCommand(dbCtx, cmd, dumpFile)
-			cancel()
+			// NO TIMEOUT for individual database backups
+			// Large databases with large objects can take many hours
+			// The parent context handles cancellation if needed
+			err := e.executeCommand(ctx, cmd, dumpFile)
 
 			if err != nil {
 				e.log.Warn("Failed to backup database", "database", name, "error", err)
@@ -614,12 +606,36 @@ func (e *Engine) executeCommandWithProgress(ctx context.Context, cmdArgs []strin
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
-	// Monitor progress via stderr
-	go e.monitorCommandProgress(stderr, tracker)
+	// Monitor progress via stderr in goroutine
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		e.monitorCommandProgress(stderr, tracker)
+	}()
 
-	// Wait for command to complete
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("backup command failed: %w", err)
+	// Wait for command to complete with proper context handling
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+		// Command completed (success or failure)
+	case <-ctx.Done():
+		// Context cancelled - kill process to unblock
+		e.log.Warn("Backup cancelled - killing process")
+		cmd.Process.Kill()
+		<-cmdDone // Wait for goroutine to finish
+		cmdErr = ctx.Err()
+	}
+
+	// Wait for stderr reader to finish
+	<-stderrDone
+
+	if cmdErr != nil {
+		return fmt.Errorf("backup command failed: %w", cmdErr)
 	}
 
 	return nil
@@ -696,8 +712,12 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 		return fmt.Errorf("failed to get stderr pipe: %w", err)
 	}
 
-	// Start monitoring progress
-	go e.monitorCommandProgress(stderr, tracker)
+	// Start monitoring progress in goroutine
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		e.monitorCommandProgress(stderr, tracker)
+	}()
 
 	// Start both commands
 	if err := gzipCmd.Start(); err != nil {
@@ -705,18 +725,39 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	}
 
 	if err := dumpCmd.Start(); err != nil {
+		gzipCmd.Process.Kill()
 		return fmt.Errorf("failed to start mysqldump: %w", err)
 	}
 
-	// Wait for mysqldump to complete
-	if err := dumpCmd.Wait(); err != nil {
-		return fmt.Errorf("mysqldump failed: %w", err)
+	// Wait for mysqldump with context handling
+	dumpDone := make(chan error, 1)
+	go func() {
+		dumpDone <- dumpCmd.Wait()
+	}()
+
+	var dumpErr error
+	select {
+	case dumpErr = <-dumpDone:
+		// mysqldump completed
+	case <-ctx.Done():
+		e.log.Warn("Backup cancelled - killing mysqldump")
+		dumpCmd.Process.Kill()
+		gzipCmd.Process.Kill()
+		<-dumpDone
+		return ctx.Err()
 	}
+
+	// Wait for stderr reader
+	<-stderrDone
 
 	// Close pipe and wait for gzip
 	pipe.Close()
 	if err := gzipCmd.Wait(); err != nil {
 		return fmt.Errorf("gzip failed: %w", err)
+	}
+
+	if dumpErr != nil {
+		return fmt.Errorf("mysqldump failed: %w", dumpErr)
 	}
 
 	return nil
@@ -749,17 +790,43 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	gzipCmd.Stdin = stdin
 	gzipCmd.Stdout = outFile
 
-	// Start both commands
+	// Start gzip first
 	if err := gzipCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start gzip: %w", err)
 	}
 
-	if err := dumpCmd.Run(); err != nil {
-		return fmt.Errorf("mysqldump failed: %w", err)
+	// Start mysqldump
+	if err := dumpCmd.Start(); err != nil {
+		gzipCmd.Process.Kill()
+		return fmt.Errorf("failed to start mysqldump: %w", err)
 	}
 
+	// Wait for mysqldump with context handling
+	dumpDone := make(chan error, 1)
+	go func() {
+		dumpDone <- dumpCmd.Wait()
+	}()
+
+	var dumpErr error
+	select {
+	case dumpErr = <-dumpDone:
+		// mysqldump completed
+	case <-ctx.Done():
+		e.log.Warn("Backup cancelled - killing mysqldump")
+		dumpCmd.Process.Kill()
+		gzipCmd.Process.Kill()
+		<-dumpDone
+		return ctx.Err()
+	}
+
+	// Close pipe and wait for gzip
+	stdin.Close()
 	if err := gzipCmd.Wait(); err != nil {
 		return fmt.Errorf("gzip failed: %w", err)
+	}
+
+	if dumpErr != nil {
+		return fmt.Errorf("mysqldump failed: %w", dumpErr)
 	}
 
 	return nil
@@ -898,15 +965,46 @@ func (e *Engine) createArchive(ctx context.Context, sourceDir, outputFile string
 			goto regularTar
 		}
 
-		// Wait for tar to finish
-		if err := cmd.Wait(); err != nil {
+		// Wait for tar with proper context handling
+		tarDone := make(chan error, 1)
+		go func() {
+			tarDone <- cmd.Wait()
+		}()
+
+		var tarErr error
+		select {
+		case tarErr = <-tarDone:
+			// tar completed
+		case <-ctx.Done():
+			e.log.Warn("Archive creation cancelled - killing processes")
+			cmd.Process.Kill()
 			pigzCmd.Process.Kill()
-			return fmt.Errorf("tar failed: %w", err)
+			<-tarDone
+			return ctx.Err()
 		}
 
-		// Wait for pigz to finish
-		if err := pigzCmd.Wait(); err != nil {
-			return fmt.Errorf("pigz compression failed: %w", err)
+		if tarErr != nil {
+			pigzCmd.Process.Kill()
+			return fmt.Errorf("tar failed: %w", tarErr)
+		}
+
+		// Wait for pigz with proper context handling
+		pigzDone := make(chan error, 1)
+		go func() {
+			pigzDone <- pigzCmd.Wait()
+		}()
+
+		var pigzErr error
+		select {
+		case pigzErr = <-pigzDone:
+		case <-ctx.Done():
+			pigzCmd.Process.Kill()
+			<-pigzDone
+			return ctx.Err()
+		}
+
+		if pigzErr != nil {
+			return fmt.Errorf("pigz compression failed: %w", pigzErr)
 		}
 		return nil
 	}
@@ -1251,8 +1349,10 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 		return fmt.Errorf("failed to start backup command: %w", err)
 	}
 
-	// Stream stderr output (don't buffer it all in memory)
+	// Stream stderr output in goroutine (don't buffer it all in memory)
+	stderrDone := make(chan struct{})
 	go func() {
+		defer close(stderrDone)
 		scanner := bufio.NewScanner(stderr)
 		scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 1MB max line size
 		for scanner.Scan() {
@@ -1263,10 +1363,30 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 		}
 	}()
 
-	// Wait for command to complete
-	if err := cmd.Wait(); err != nil {
-		e.log.Error("Backup command failed", "error", err, "database", filepath.Base(outputFile))
-		return fmt.Errorf("backup command failed: %w", err)
+	// Wait for command to complete with proper context handling
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+		// Command completed (success or failure)
+	case <-ctx.Done():
+		// Context cancelled - kill process to unblock
+		e.log.Warn("Backup cancelled - killing pg_dump process")
+		cmd.Process.Kill()
+		<-cmdDone // Wait for goroutine to finish
+		cmdErr = ctx.Err()
+	}
+
+	// Wait for stderr reader to finish
+	<-stderrDone
+
+	if cmdErr != nil {
+		e.log.Error("Backup command failed", "error", cmdErr, "database", filepath.Base(outputFile))
+		return fmt.Errorf("backup command failed: %w", cmdErr)
 	}
 
 	return nil

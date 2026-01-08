@@ -212,7 +212,11 @@ func (m *BinlogManager) detectTools() error {
 
 // detectServerType determines if we're working with MySQL or MariaDB
 func (m *BinlogManager) detectServerType() DatabaseType {
-	cmd := exec.Command(m.mysqlbinlogPath, "--version")
+	// Use timeout to prevent blocking if command hangs
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, m.mysqlbinlogPath, "--version")
 	output, err := cmd.Output()
 	if err != nil {
 		return DatabaseMySQL // Default to MySQL

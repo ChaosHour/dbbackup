@@ -111,10 +111,10 @@ type restoreCompleteMsg struct {
 
 func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool) tea.Cmd {
 	return func() tea.Msg {
-		// Use configurable cluster timeout (minutes) from config; default set in config.New()
-		// Use parent context to inherit cancellation from TUI
-		restoreTimeout := time.Duration(cfg.ClusterTimeoutMinutes) * time.Minute
-		ctx, cancel := context.WithTimeout(parentCtx, restoreTimeout)
+		// NO TIMEOUT for restore operations - a restore takes as long as it takes
+		// Large databases with large objects can take many hours
+		// Only manual cancellation (Ctrl+C) should stop the restore
+		ctx, cancel := context.WithCancel(parentCtx)
 		defer cancel()
 
 		start := time.Now()
@@ -138,8 +138,8 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			// This matches how cluster restore works - uses CLI tools, not database connections
 			droppedCount := 0
 			for _, dbName := range existingDBs {
-				// Create timeout context for each database drop (30 seconds per DB)
-				dropCtx, dropCancel := context.WithTimeout(ctx, 30*time.Second)
+				// Create timeout context for each database drop (5 minutes per DB - large DBs take time)
+				dropCtx, dropCancel := context.WithTimeout(ctx, 5*time.Minute)
 				if err := dropDatabaseCLI(dropCtx, cfg, dbName); err != nil {
 					log.Warn("Failed to drop database", "name", dbName, "error", err)
 					// Continue with other databases

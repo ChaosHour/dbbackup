@@ -27,7 +27,7 @@ type Engine struct {
 	progress         progress.Indicator
 	detailedReporter *progress.DetailedReporter
 	dryRun           bool
-	debugLogPath     string         // Path to save debug log on error
+	debugLogPath     string          // Path to save debug log on error
 	errorCollector   *ErrorCollector // Collects detailed error info
 }
 
@@ -357,43 +357,68 @@ func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs [
 		return fmt.Errorf("failed to start restore command: %w", err)
 	}
 
-	// Read stderr in chunks to log errors without loading all into memory
-	buf := make([]byte, 4096)
+	// Read stderr in goroutine to avoid blocking
 	var lastError string
 	var errorCount int
-	const maxErrors = 10 // Limit captured errors to prevent OOM
-	for {
-		n, err := stderr.Read(buf)
-		if n > 0 {
-			chunk := string(buf[:n])
-			
-			// Feed to error collector if enabled
-			if collector != nil {
-				collector.CaptureStderr(chunk)
-			}
-			
-			// Only capture REAL errors, not verbose output
-			if strings.Contains(chunk, "ERROR:") || strings.Contains(chunk, "FATAL:") || strings.Contains(chunk, "error:") {
-				lastError = strings.TrimSpace(chunk)
-				errorCount++
-				if errorCount <= maxErrors {
-					e.log.Warn("Restore stderr", "output", chunk)
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		buf := make([]byte, 4096)
+		const maxErrors = 10 // Limit captured errors to prevent OOM
+		for {
+			n, err := stderr.Read(buf)
+			if n > 0 {
+				chunk := string(buf[:n])
+
+				// Feed to error collector if enabled
+				if collector != nil {
+					collector.CaptureStderr(chunk)
 				}
+
+				// Only capture REAL errors, not verbose output
+				if strings.Contains(chunk, "ERROR:") || strings.Contains(chunk, "FATAL:") || strings.Contains(chunk, "error:") {
+					lastError = strings.TrimSpace(chunk)
+					errorCount++
+					if errorCount <= maxErrors {
+						e.log.Warn("Restore stderr", "output", chunk)
+					}
+				}
+				// Note: --verbose output is discarded to prevent OOM
 			}
-			// Note: --verbose output is discarded to prevent OOM
+			if err != nil {
+				break
+			}
 		}
-		if err != nil {
-			break
-		}
+	}()
+
+	// Wait for command with proper context handling
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+		// Command completed (success or failure)
+	case <-ctx.Done():
+		// Context cancelled - kill process
+		e.log.Warn("Restore cancelled - killing process")
+		cmd.Process.Kill()
+		<-cmdDone
+		cmdErr = ctx.Err()
 	}
 
-	if err := cmd.Wait(); err != nil {
+	// Wait for stderr reader to finish
+	<-stderrDone
+
+	if cmdErr != nil {
 		// Get exit code
 		exitCode := 1
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr, ok := cmdErr.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		}
-		
+
 		// PostgreSQL pg_restore returns exit code 1 even for ignorable errors
 		// Check if errors are ignorable (already exists, duplicate, etc.)
 		if lastError != "" && e.isIgnorableError(lastError) {
@@ -427,10 +452,10 @@ func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs [
 				errType,
 				errHint,
 			)
-			
+
 			// Print report to console
 			collector.PrintReport(report)
-			
+
 			// Save to file
 			if e.debugLogPath != "" {
 				if saveErr := collector.SaveReport(report, e.debugLogPath); saveErr != nil {
@@ -481,31 +506,56 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 		return fmt.Errorf("failed to start restore command: %w", err)
 	}
 
-	// Read stderr in chunks to log errors without loading all into memory
-	buf := make([]byte, 4096)
+	// Read stderr in goroutine to avoid blocking
 	var lastError string
 	var errorCount int
-	const maxErrors = 10 // Limit captured errors to prevent OOM
-	for {
-		n, err := stderr.Read(buf)
-		if n > 0 {
-			chunk := string(buf[:n])
-			// Only capture REAL errors, not verbose output
-			if strings.Contains(chunk, "ERROR:") || strings.Contains(chunk, "FATAL:") || strings.Contains(chunk, "error:") {
-				lastError = strings.TrimSpace(chunk)
-				errorCount++
-				if errorCount <= maxErrors {
-					e.log.Warn("Restore stderr", "output", chunk)
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		buf := make([]byte, 4096)
+		const maxErrors = 10 // Limit captured errors to prevent OOM
+		for {
+			n, err := stderr.Read(buf)
+			if n > 0 {
+				chunk := string(buf[:n])
+				// Only capture REAL errors, not verbose output
+				if strings.Contains(chunk, "ERROR:") || strings.Contains(chunk, "FATAL:") || strings.Contains(chunk, "error:") {
+					lastError = strings.TrimSpace(chunk)
+					errorCount++
+					if errorCount <= maxErrors {
+						e.log.Warn("Restore stderr", "output", chunk)
+					}
 				}
+				// Note: --verbose output is discarded to prevent OOM
 			}
-			// Note: --verbose output is discarded to prevent OOM
+			if err != nil {
+				break
+			}
 		}
-		if err != nil {
-			break
-		}
+	}()
+
+	// Wait for command with proper context handling
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+		// Command completed (success or failure)
+	case <-ctx.Done():
+		// Context cancelled - kill process
+		e.log.Warn("Restore with decompression cancelled - killing process")
+		cmd.Process.Kill()
+		<-cmdDone
+		cmdErr = ctx.Err()
 	}
 
-	if err := cmd.Wait(); err != nil {
+	// Wait for stderr reader to finish
+	<-stderrDone
+
+	if cmdErr != nil {
 		// PostgreSQL pg_restore returns exit code 1 even for ignorable errors
 		// Check if errors are ignorable (already exists, duplicate, etc.)
 		if lastError != "" && e.isIgnorableError(lastError) {
@@ -517,18 +567,18 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 		if lastError != "" {
 			classification := checks.ClassifyError(lastError)
 			e.log.Error("Restore with decompression failed",
-				"error", err,
+				"error", cmdErr,
 				"last_stderr", lastError,
 				"error_count", errorCount,
 				"error_type", classification.Type,
 				"hint", classification.Hint,
 				"action", classification.Action)
 			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s",
-				err, lastError, errorCount, classification.Hint)
+				cmdErr, lastError, errorCount, classification.Hint)
 		}
 
-		e.log.Error("Restore with decompression failed", "error", err, "last_stderr", lastError, "error_count", errorCount)
-		return fmt.Errorf("restore failed: %w", err)
+		e.log.Error("Restore with decompression failed", "error", cmdErr, "last_stderr", lastError, "error_count", errorCount)
+		return fmt.Errorf("restore failed: %w", cmdErr)
 	}
 
 	return nil
@@ -727,7 +777,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 			}
 		} else if strings.HasSuffix(dumpFile, ".dump") {
 			// Validate custom format dumps using pg_restore --list
-			cmd := exec.Command("pg_restore", "--list", dumpFile)
+			cmd := exec.CommandContext(ctx, "pg_restore", "--list", dumpFile)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				dbName := strings.TrimSuffix(entry.Name(), ".dump")
@@ -811,6 +861,14 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		go func(idx int, filename string) {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release
+
+			// Panic recovery - prevent one database failure from crashing entire cluster restore
+			defer func() {
+				if r := recover(); r != nil {
+					e.log.Error("Panic in database restore goroutine", "file", filename, "panic", r)
+					atomic.AddInt32(&failCount, 1)
+				}
+			}()
 
 			// Update estimator progress (thread-safe)
 			mu.Lock()
@@ -939,16 +997,39 @@ func (e *Engine) extractArchive(ctx context.Context, archivePath, destDir string
 	}
 
 	// Discard stderr output in chunks to prevent memory buildup
-	buf := make([]byte, 4096)
-	for {
-		_, err := stderr.Read(buf)
-		if err != nil {
-			break
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		buf := make([]byte, 4096)
+		for {
+			_, err := stderr.Read(buf)
+			if err != nil {
+				break
+			}
 		}
+	}()
+
+	// Wait for command with proper context handling
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+		// Command completed
+	case <-ctx.Done():
+		e.log.Warn("Archive extraction cancelled - killing process")
+		cmd.Process.Kill()
+		<-cmdDone
+		cmdErr = ctx.Err()
 	}
 
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("tar extraction failed: %w", err)
+	<-stderrDone
+
+	if cmdErr != nil {
+		return fmt.Errorf("tar extraction failed: %w", cmdErr)
 	}
 	return nil
 }
@@ -981,25 +1062,48 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 		return fmt.Errorf("failed to start psql: %w", err)
 	}
 
-	// Read stderr in chunks
-	buf := make([]byte, 4096)
+	// Read stderr in chunks in goroutine
 	var lastError string
-	for {
-		n, err := stderr.Read(buf)
-		if n > 0 {
-			chunk := string(buf[:n])
-			if strings.Contains(chunk, "ERROR") || strings.Contains(chunk, "FATAL") {
-				lastError = chunk
-				e.log.Warn("Globals restore stderr", "output", chunk)
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		buf := make([]byte, 4096)
+		for {
+			n, err := stderr.Read(buf)
+			if n > 0 {
+				chunk := string(buf[:n])
+				if strings.Contains(chunk, "ERROR") || strings.Contains(chunk, "FATAL") {
+					lastError = chunk
+					e.log.Warn("Globals restore stderr", "output", chunk)
+				}
+			}
+			if err != nil {
+				break
 			}
 		}
-		if err != nil {
-			break
-		}
+	}()
+
+	// Wait for command with proper context handling
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+		// Command completed
+	case <-ctx.Done():
+		e.log.Warn("Globals restore cancelled - killing process")
+		cmd.Process.Kill()
+		<-cmdDone
+		cmdErr = ctx.Err()
 	}
 
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("failed to restore globals: %w (last error: %s)", err, lastError)
+	<-stderrDone
+
+	if cmdErr != nil {
+		return fmt.Errorf("failed to restore globals: %w (last error: %s)", cmdErr, lastError)
 	}
 
 	return nil
@@ -1263,7 +1367,8 @@ func (e *Engine) detectLargeObjectsInDumps(dumpsDir string, entries []os.DirEntr
 		}
 
 		// Use pg_restore -l to list contents (fast, doesn't restore data)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// 2 minutes for large dumps with many objects
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
 		cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)

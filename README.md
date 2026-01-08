@@ -143,7 +143,7 @@ Backup Execution
 
   Backup created: cluster_20251128_092928.tar.gz
   Size: 22.5 GB (compressed)
-  Location: /u01/dba/dumps/
+  Location: /var/backups/postgres/
   Databases: 7
   Checksum: SHA-256 verified
 ```

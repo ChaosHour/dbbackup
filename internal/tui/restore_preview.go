@@ -106,7 +106,8 @@ type safetyCheckCompleteMsg struct {
 
 func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		// 10 minutes for safety checks - large archives can take a long time to diagnose
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
 
 		safety := restore.NewSafety(cfg, log)
@@ -444,7 +445,7 @@ func (m RestorePreviewModel) View() string {
 	// Advanced Options
 	s.WriteString(archiveHeaderStyle.Render("⚙️  Advanced Options"))
 	s.WriteString("\n")
-	
+
 	// Work directory option
 	workDirIcon := "✗"
 	workDirStyle := infoStyle
@@ -460,7 +461,7 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(infoStyle.Render("    ⚠️  Large archives need more space than /tmp may have"))
 		s.WriteString("\n")
 	}
-	
+
 	// Debug log option
 	debugIcon := "✗"
 	debugStyle := infoStyle

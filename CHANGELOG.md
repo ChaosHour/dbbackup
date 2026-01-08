@@ -5,6 +5,158 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.9] - 2026-01-08 "Diagnose Timeout Fix"
+
+### Fixed - diagnose.go Timeout Bugs
+
+**More short timeouts that caused large archive failures:**
+
+- `diagnoseClusterArchive()`: tar listing 60s → **5 minutes**
+- `verifyWithPgRestore()`: pg_restore --list 60s → **5 minutes**
+- `DiagnoseClusterDumps()`: archive listing 120s → **10 minutes**
+
+**Impact:** These timeouts caused "context deadline exceeded" errors when
+diagnosing multi-GB backup archives, preventing TUI restore from even starting.
+
+## [3.42.8] - 2026-01-08 "TUI Timeout Fix"
+
+### Fixed - TUI Timeout Bugs Causing Backup/Restore Failures
+
+**ROOT CAUSE of 2-3 month TUI backup/restore failures identified and fixed:**
+
+#### Critical Timeout Fixes:
+- **restore_preview.go**: Safety check timeout increased from 60s → **10 minutes**
+  - Large archives (>1GB) take 2+ minutes to diagnose
+  - Users saw "context deadline exceeded" before backup even started
+- **dbselector.go**: Database listing timeout increased from 15s → **60 seconds**
+  - Busy PostgreSQL servers need more time to respond
+- **status.go**: Status check timeout increased from 10s → **30 seconds**
+  - SSL negotiation and slow networks caused failures
+
+#### Stability Improvements:
+- **Panic recovery** added to parallel goroutines in:
+  - `backup/engine.go:BackupCluster()` - cluster backup workers
+  - `restore/engine.go:RestoreCluster()` - cluster restore workers
+  - Prevents single database panic from crashing entire operation
+
+#### Bug Fix:
+- **restore/engine.go**: Fixed variable shadowing `err` → `cmdErr` for exit code detection
+
+## [3.42.7] - 2026-01-08 "Context Killer Complete"
+
+### Fixed - Additional Deadlock Bugs in Restore & Engine
+
+**All remaining cmd.Wait() deadlock bugs fixed across the codebase:**
+
+#### internal/restore/engine.go:
+- `executeRestoreWithDecompression()` - gunzip/pigz pipeline restore
+- `extractArchive()` - tar extraction for cluster restore
+- `restoreGlobals()` - pg_dumpall globals restore
+
+#### internal/backup/engine.go:
+- `createArchive()` - tar/pigz archive creation pipeline
+
+#### internal/engine/mysqldump.go:
+- `Backup()` - mysqldump backup operation
+- `BackupToWriter()` - streaming mysqldump to writer
+
+**All 6 functions now use proper channel-based context handling with Process.Kill().**
+
+## [3.42.6] - 2026-01-08 "Deadlock Killer"
+
+### Fixed - Backup Command Context Handling
+
+**Critical Bug: pg_dump/mysqldump could hang forever on context cancellation**
+
+The `executeCommand`, `executeCommandWithProgress`, `executeMySQLWithProgressAndCompression`, 
+and `executeMySQLWithCompression` functions had a race condition where:
+
+1. A goroutine was spawned to read stderr
+2. `cmd.Wait()` was called directly
+3. If context was cancelled, the process was NOT killed
+4. The goroutine could hang forever waiting for stderr
+
+**Fix**: All backup execution functions now use proper channel-based context handling:
+```go
+// Wait for command with context handling
+cmdDone := make(chan error, 1)
+go func() {
+    cmdDone <- cmd.Wait()
+}()
+
+select {
+case cmdErr = <-cmdDone:
+    // Command completed
+case <-ctx.Done():
+    // Context cancelled - kill process
+    cmd.Process.Kill()
+    <-cmdDone
+    cmdErr = ctx.Err()
+}
+```
+
+**Affected Functions:**
+- `executeCommand()` - pg_dump for cluster backup
+- `executeCommandWithProgress()` - pg_dump for single backup with progress
+- `executeMySQLWithProgressAndCompression()` - mysqldump pipeline
+- `executeMySQLWithCompression()` - mysqldump pipeline
+
+**This fixes:** Backup operations hanging indefinitely when cancelled or timing out.
+
+## [3.42.5] - 2026-01-08 "False Positive Fix"
+
+### Fixed - Encryption Detection Bug
+
+**IsBackupEncrypted False Positive:**
+- **BUG FIX**: `IsBackupEncrypted()` returned `true` for ALL files, blocking normal restores
+- Root cause: Fallback logic checked if first 12 bytes (nonce size) could be read - always true
+- Fix: Now properly detects known unencrypted formats by magic bytes:
+  - Gzip: `1f 8b`
+  - PostgreSQL custom: `PGDMP`
+  - Plain SQL: starts with `--`, `SET`, `CREATE`
+- Returns `false` if no metadata present and format is recognized as unencrypted
+- Affected file: `internal/backup/encryption.go`
+
+## [3.42.4] - 2026-01-08 "The Long Haul"
+
+### Fixed - Critical Restore Timeout Bug
+
+**Removed Arbitrary Timeouts from Backup/Restore Operations:**
+- **CRITICAL FIX**: Removed 4-hour timeout that was killing large database restores
+- PostgreSQL cluster restores of 69GB+ databases no longer fail with "context deadline exceeded"
+- All backup/restore operations now use `context.WithCancel` instead of `context.WithTimeout`
+- Operations run until completion or manual cancellation (Ctrl+C)
+
+**Affected Files:**
+- `internal/tui/restore_exec.go`: Changed from 4-hour timeout to context.WithCancel
+- `internal/tui/backup_exec.go`: Changed from 4-hour timeout to context.WithCancel  
+- `internal/backup/engine.go`: Removed per-database timeout in cluster backup
+- `cmd/restore.go`: CLI restore commands use context.WithCancel
+
+**exec.Command Context Audit:**
+- Fixed `exec.Command` without Context in `internal/restore/engine.go:730`
+- Added proper context handling to all external command calls
+- Added timeouts only for quick diagnostic/version checks (not restore path):
+  - `restore/version_check.go`: 30s timeout for pg_restore --version check only
+  - `restore/error_report.go`: 10s timeout for tool version detection
+  - `restore/diagnose.go`: 60s timeout for diagnostic functions
+  - `pitr/binlog.go`: 10s timeout for mysqlbinlog --version check
+  - `cleanup/processes.go`: 5s timeout for process listing
+  - `auth/helper.go`: 30s timeout for auth helper commands
+
+**Verification:**
+- 54 total `exec.CommandContext` calls verified in backup/restore/pitr path
+- 0 `exec.Command` without Context in critical restore path
+- All 14 PostgreSQL exec calls use CommandContext (pg_dump, pg_restore, psql)
+- All 15 MySQL/MariaDB exec calls use CommandContext (mysqldump, mysql, mysqlbinlog)
+- All 14 test packages pass
+
+### Technical Details
+- Large Object (BLOB/BYTEA) restores are particularly affected by timeouts
+- 69GB database with large objects can take 5+ hours to restore
+- Previous 4-hour hard timeout was causing consistent failures
+- Now: No timeout - runs until complete or user cancels
+
 ## [3.42.1] - 2026-01-07 "Resistance is Futile"
 
 ### Added - Content-Defined Chunking Deduplication

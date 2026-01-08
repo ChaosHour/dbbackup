@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"dbbackup/internal/logger"
 )
@@ -60,9 +62,9 @@ type DiagnoseDetails struct {
 	TableList         []string `json:"table_list,omitempty"`
 
 	// Compression analysis
-	GzipValid     bool   `json:"gzip_valid,omitempty"`
-	GzipError     string `json:"gzip_error,omitempty"`
-	ExpandedSize  int64  `json:"expanded_size,omitempty"`
+	GzipValid        bool    `json:"gzip_valid,omitempty"`
+	GzipError        string  `json:"gzip_error,omitempty"`
+	ExpandedSize     int64   `json:"expanded_size,omitempty"`
 	CompressionRatio float64 `json:"compression_ratio,omitempty"`
 }
 
@@ -157,7 +159,7 @@ func (d *Diagnoser) diagnosePgDump(filePath string, result *DiagnoseResult) {
 		result.IsCorrupted = true
 		result.Details.HasPGDMPSignature = false
 		result.Details.FirstBytes = fmt.Sprintf("%q", header[:minInt(n, 20)])
-		result.Errors = append(result.Errors, 
+		result.Errors = append(result.Errors,
 			"Missing PGDMP signature - file is NOT PostgreSQL custom format",
 			"This file may be SQL format incorrectly named as .dump",
 			"Try: file "+filePath+" to check actual file type")
@@ -185,7 +187,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 		result.IsCorrupted = true
 		result.Details.GzipValid = false
 		result.Details.GzipError = err.Error()
-		result.Errors = append(result.Errors, 
+		result.Errors = append(result.Errors,
 			fmt.Sprintf("Invalid gzip format: %v", err),
 			"The file may be truncated or corrupted during transfer")
 		return
@@ -210,7 +212,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 	} else {
 		result.Details.HasPGDMPSignature = false
 		result.Details.FirstBytes = fmt.Sprintf("%q", header[:minInt(n, 20)])
-		
+
 		// Check if it's actually SQL content
 		content := string(header[:n])
 		if strings.Contains(content, "PostgreSQL") || strings.Contains(content, "pg_dump") ||
@@ -233,7 +235,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 	// Verify full gzip stream integrity by reading to end
 	file.Seek(0, 0)
 	gz, _ = gzip.NewReader(file)
-	
+
 	var totalRead int64
 	buf := make([]byte, 32*1024)
 	for {
@@ -255,7 +257,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 		}
 	}
 	gz.Close()
-	
+
 	result.Details.ExpandedSize = totalRead
 	if result.FileSize > 0 {
 		result.Details.CompressionRatio = float64(totalRead) / float64(result.FileSize)
@@ -392,7 +394,7 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 				lastCopyTable, copyStartLine),
 			"The backup was truncated during data export",
 			"This explains the 'syntax error' during restore - COPY data is being interpreted as SQL")
-		
+
 		if len(copyDataSamples) > 0 {
 			result.Errors = append(result.Errors,
 				fmt.Sprintf("Sample orphaned data: %s", copyDataSamples[0]))
@@ -412,8 +414,12 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 
 // diagnoseClusterArchive analyzes a cluster tar.gz archive
 func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResult) {
-	// First verify tar.gz integrity
-	cmd := exec.Command("tar", "-tzf", filePath)
+	// First verify tar.gz integrity with timeout
+	// 5 minutes for large archives (multi-GB archives need more time)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "tar", "-tzf", filePath)
 	output, err := cmd.Output()
 	if err != nil {
 		result.IsValid = false
@@ -491,13 +497,18 @@ func (d *Diagnoser) diagnoseUnknown(filePath string, result *DiagnoseResult) {
 
 // verifyWithPgRestore uses pg_restore --list to verify dump integrity
 func (d *Diagnoser) verifyWithPgRestore(filePath string, result *DiagnoseResult) {
-	cmd := exec.Command("pg_restore", "--list", filePath)
+	// Use timeout to prevent blocking on very large dump files
+	// 5 minutes for large dumps (multi-GB dumps with many tables)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pg_restore", "--list", filePath)
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
 		result.Details.PgRestoreListable = false
 		result.Details.PgRestoreError = string(output)
-		
+
 		// Check for specific errors
 		errStr := string(output)
 		if strings.Contains(errStr, "unexpected end of file") ||
@@ -544,7 +555,11 @@ func (d *Diagnoser) verifyWithPgRestore(filePath string, result *DiagnoseResult)
 // DiagnoseClusterDumps extracts and diagnoses all dumps in a cluster archive
 func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*DiagnoseResult, error) {
 	// First, try to list archive contents without extracting (fast check)
-	listCmd := exec.Command("tar", "-tzf", archivePath)
+	// 10 minutes for very large archives
+	listCtx, listCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer listCancel()
+
+	listCmd := exec.CommandContext(listCtx, "tar", "-tzf", archivePath)
 	listOutput, listErr := listCmd.CombinedOutput()
 	if listErr != nil {
 		// Archive listing failed - likely corrupted
@@ -557,9 +572,9 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 			IsCorrupted:    true,
 			Details:        &DiagnoseDetails{},
 		}
-		
+
 		errOutput := string(listOutput)
-		if strings.Contains(errOutput, "unexpected end of file") || 
+		if strings.Contains(errOutput, "unexpected end of file") ||
 			strings.Contains(errOutput, "Unexpected EOF") ||
 			strings.Contains(errOutput, "truncated") {
 			errResult.IsTruncated = true
@@ -574,28 +589,34 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 				fmt.Sprintf("tar error: %s", truncateString(errOutput, 300)),
 				"Run manually: tar -tzf "+archivePath+" 2>&1 | tail -50")
 		}
-		
+
 		return []*DiagnoseResult{errResult}, nil
 	}
 
 	// Archive is listable - now check disk space before extraction
 	files := strings.Split(strings.TrimSpace(string(listOutput)), "\n")
-	
+
 	// Check if we have enough disk space (estimate 4x archive size needed)
 	archiveInfo, _ := os.Stat(archivePath)
 	requiredSpace := archiveInfo.Size() * 4
-	
+
 	// Check temp directory space - try to extract metadata first
 	if stat, err := os.Stat(tempDir); err == nil && stat.IsDir() {
-		// Try extraction of a small test file first
-		testCmd := exec.Command("tar", "-xzf", archivePath, "-C", tempDir, "--wildcards", "*.json", "--wildcards", "globals.sql")
+		// Try extraction of a small test file first with timeout
+		testCtx, testCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		testCmd := exec.CommandContext(testCtx, "tar", "-xzf", archivePath, "-C", tempDir, "--wildcards", "*.json", "--wildcards", "globals.sql")
 		testCmd.Run() // Ignore error - just try to extract metadata
+		testCancel()
 	}
-	
+
 	d.log.Info("Archive listing successful", "files", len(files))
-	
-	// Try full extraction
-	cmd := exec.Command("tar", "-xzf", archivePath, "-C", tempDir)
+
+	// Try full extraction - NO TIMEOUT here as large archives can take a long time
+	// Use a generous timeout (30 minutes) for very large archives
+	extractCtx, extractCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer extractCancel()
+
+	cmd := exec.CommandContext(extractCtx, "tar", "-xzf", archivePath, "-C", tempDir)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -608,14 +629,14 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 			IsValid:        false,
 			Details:        &DiagnoseDetails{},
 		}
-		
+
 		errOutput := stderr.String()
-		if strings.Contains(errOutput, "No space left") || 
+		if strings.Contains(errOutput, "No space left") ||
 			strings.Contains(errOutput, "cannot write") ||
 			strings.Contains(errOutput, "Disk quota exceeded") {
 			errResult.Errors = append(errResult.Errors,
 				"INSUFFICIENT DISK SPACE to extract archive for diagnosis",
-				fmt.Sprintf("Archive size: %s (needs ~%s for extraction)", 
+				fmt.Sprintf("Archive size: %s (needs ~%s for extraction)",
 					formatBytes(archiveInfo.Size()), formatBytes(requiredSpace)),
 				"Use CLI diagnosis instead: dbbackup restore diagnose "+archivePath,
 				"Or use --workdir flag to specify a location with more space")
@@ -634,7 +655,7 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 				fmt.Sprintf("Extraction failed: %v", err),
 				fmt.Sprintf("tar error: %s", truncateString(errOutput, 300)))
 		}
-		
+
 		// Still report what files we found in the listing
 		var dumpFiles []string
 		for _, f := range files {
@@ -648,7 +669,7 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 			errResult.Warnings = append(errResult.Warnings,
 				fmt.Sprintf("Archive contains %d database dumps (listing only)", len(dumpFiles)))
 		}
-		
+
 		return []*DiagnoseResult{errResult}, nil
 	}
 

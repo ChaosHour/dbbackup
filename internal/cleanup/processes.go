@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"dbbackup/internal/logger"
 )
@@ -116,8 +117,11 @@ func KillOrphanedProcesses(log logger.Logger) error {
 
 // findProcessesByName returns PIDs of processes matching the given name
 func findProcessesByName(name string, excludePID int) ([]int, error) {
-	// Use pgrep for efficient process searching
-	cmd := exec.Command("pgrep", "-x", name)
+	// Use pgrep for efficient process searching with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pgrep", "-x", name)
 	output, err := cmd.Output()
 	if err != nil {
 		// Exit code 1 means no processes found (not an error)

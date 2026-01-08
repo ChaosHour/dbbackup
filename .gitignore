@@ -35,3 +35,6 @@ coverage.html
 tmp/
 temp/
 CRITICAL_BUGS_FIXED.md
+LEGAL_DOCUMENTATION.md
+LEGAL_*.md
+legal/

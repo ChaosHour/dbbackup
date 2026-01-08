@@ -9,7 +9,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/mattn/go-runewidth"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
@@ -229,72 +228,66 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m BackupManagerModel) View() string {
 	var s strings.Builder
-	const boxWidth = 60
-
-	// Helper to pad string to box width (handles UTF-8)
-	padToWidth := func(text string, width int) string {
-		textWidth := runewidth.StringWidth(text)
-		if textWidth >= width {
-			return runewidth.Truncate(text, width-3, "...")
-		}
-		return text + strings.Repeat(" ", width-textWidth)
-	}
 
 	// Title
-	s.WriteString(titleStyle.Render("[DB]  Backup Archive Manager"))
+	s.WriteString(TitleStyle.Render("[DB]  Backup Archive Manager"))
 	s.WriteString("\n\n")
 
-	// Operation Status Box (always visible)
-	s.WriteString("+--[ STATUS ]" + strings.Repeat("-", boxWidth-13) + "+\n")
+	// Status line (no box, bold+color accents)
 	switch m.opState {
 	case OpVerifying:
 		spinner := spinnerFrames[m.spinnerFrame]
-		statusText := fmt.Sprintf(" %s Verifying: %s", spinner, m.opTarget)
-		s.WriteString("|" + padToWidth(statusText, boxWidth) + "|\n")
+		s.WriteString(StatusActiveStyle.Render(fmt.Sprintf("%s Verifying: %s", spinner, m.opTarget)))
+		s.WriteString("\n\n")
 	case OpDeleting:
 		spinner := spinnerFrames[m.spinnerFrame]
-		statusText := fmt.Sprintf(" %s Deleting: %s", spinner, m.opTarget)
-		s.WriteString("|" + padToWidth(statusText, boxWidth) + "|\n")
+		s.WriteString(StatusActiveStyle.Render(fmt.Sprintf("%s Deleting: %s", spinner, m.opTarget)))
+		s.WriteString("\n\n")
 	default:
 		if m.loading {
 			spinner := spinnerFrames[m.spinnerFrame]
-			statusText := fmt.Sprintf(" %s Loading archives...", spinner)
-			s.WriteString("|" + padToWidth(statusText, boxWidth) + "|\n")
+			s.WriteString(StatusActiveStyle.Render(fmt.Sprintf("%s Loading archives...", spinner)))
+			s.WriteString("\n\n")
 		} else if m.message != "" {
-			msgText := " " + m.message
-			s.WriteString("|" + padToWidth(msgText, boxWidth) + "|\n")
-		} else {
-			s.WriteString("|" + padToWidth(" Ready", boxWidth) + "|\n")
+			// Color based on message content
+			if strings.HasPrefix(m.message, "[+]") || strings.HasPrefix(m.message, "Valid") {
+				s.WriteString(StatusSuccessStyle.Render(m.message))
+			} else if strings.HasPrefix(m.message, "[-]") || strings.HasPrefix(m.message, "Error") {
+				s.WriteString(StatusErrorStyle.Render(m.message))
+			} else {
+				s.WriteString(StatusActiveStyle.Render(m.message))
+			}
+			s.WriteString("\n\n")
 		}
+		// No "Ready" message when idle - cleaner UI
 	}
-	s.WriteString("+" + strings.Repeat("-", boxWidth) + "+\n\n")
 
 	if m.loading {
 		return s.String()
 	}
 
 	if m.err != nil {
-		s.WriteString(errorStyle.Render(fmt.Sprintf("[FAIL] Error: %v", m.err)))
+		s.WriteString(StatusErrorStyle.Render(fmt.Sprintf("[FAIL] Error: %v", m.err)))
 		s.WriteString("\n\n")
-		s.WriteString(infoStyle.Render("Press Esc to go back"))
+		s.WriteString(ShortcutStyle.Render("Press Esc to go back"))
 		return s.String()
 	}
 
 	// Summary
-	s.WriteString(infoStyle.Render(fmt.Sprintf("Total Archives: %d  |  Total Size: %s",
+	s.WriteString(LabelStyle.Render(fmt.Sprintf("Total Archives: %d  |  Total Size: %s",
 		len(m.archives), formatSize(m.totalSize))))
 	s.WriteString("\n\n")
 
 	// Archives list
 	if len(m.archives) == 0 {
-		s.WriteString(infoStyle.Render("No backup archives found"))
+		s.WriteString(StatusReadyStyle.Render("No backup archives found"))
 		s.WriteString("\n\n")
-		s.WriteString(infoStyle.Render("Press Esc to go back"))
+		s.WriteString(ShortcutStyle.Render("Press Esc to go back"))
 		return s.String()
 	}
 
 	// Column headers with better alignment
-	s.WriteString(archiveHeaderStyle.Render(fmt.Sprintf("     %-32s %-22s %10s  %-16s",
+	s.WriteString(ListHeaderStyle.Render(fmt.Sprintf("     %-32s %-22s %10s  %-16s",
 		"FILENAME", "FORMAT", "SIZE", "MODIFIED")))
 	s.WriteString("\n")
 	s.WriteString(strings.Repeat("-", 90))
@@ -313,18 +306,18 @@ func (m BackupManagerModel) View() string {
 	for i := start; i < end; i++ {
 		archive := m.archives[i]
 		cursor := "  "
-		style := archiveNormalStyle
+		style := ListNormalStyle
 
 		if i == m.cursor {
 			cursor = "> "
-			style = archiveSelectedStyle
+			style = ListSelectedStyle
 		}
 
 		// Status icon - consistent 4-char width
 		statusIcon := " [+]"
 		if !archive.Valid {
 			statusIcon = " [-]"
-			style = archiveInvalidStyle
+			style = ItemInvalidStyle
 		} else if time.Since(archive.Modified) > 30*24*time.Hour {
 			statusIcon = " [!]"
 		}
@@ -347,11 +340,11 @@ func (m BackupManagerModel) View() string {
 	// Footer
 	s.WriteString("\n")
 
-	s.WriteString(infoStyle.Render(fmt.Sprintf("Selected: %d/%d", m.cursor+1, len(m.archives))))
+	s.WriteString(StatusReadyStyle.Render(fmt.Sprintf("Selected: %d/%d", m.cursor+1, len(m.archives))))
 	s.WriteString("\n\n")
 
-	// Grouped keyboard shortcuts - simple aligned format
-	s.WriteString("SHORTCUTS: Up/Down=Move | r=Restore | v=Verify | d=Delete | i=Info | R=Refresh | Esc=Back | q=Quit")
+	// Grouped keyboard shortcuts
+	s.WriteString(ShortcutStyle.Render("SHORTCUTS: Up/Down=Move | r=Restore | v=Verify | d=Delete | i=Info | R=Refresh | Esc=Back | q=Quit"))
 
 	return s.String()
 }

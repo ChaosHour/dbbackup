@@ -53,16 +53,16 @@ type InstallOptions struct {
 
 // ServiceStatus contains information about installed services
 type ServiceStatus struct {
-	Installed     bool
-	Enabled       bool
-	Active        bool
-	TimerEnabled  bool
-	TimerActive   bool
-	LastRun       string
-	NextRun       string
-	ServicePath   string
-	TimerPath     string
-	ExporterPath  string
+	Installed    bool
+	Enabled      bool
+	Active       bool
+	TimerEnabled bool
+	TimerActive  bool
+	LastRun      string
+	NextRun      string
+	ServicePath  string
+	TimerPath    string
+	ExporterPath string
 }
 
 // NewInstaller creates a new Installer
@@ -188,7 +188,7 @@ func (i *Installer) Uninstall(ctx context.Context, instance string, purge bool) 
 	if instance != "cluster" && instance != "" {
 		templateService := filepath.Join(i.unitDir, "dbbackup@.service")
 		templateTimer := filepath.Join(i.unitDir, "dbbackup@.timer")
-		
+
 		// Only remove templates if no other instances are using them
 		if i.canRemoveTemplates() {
 			if !i.dryRun {
@@ -644,11 +644,11 @@ func (i *Installer) canRemoveTemplates() bool {
 	// Check if any dbbackup@*.service instances exist
 	pattern := filepath.Join(i.unitDir, "dbbackup@*.service")
 	matches, _ := filepath.Glob(pattern)
-	
+
 	// Also check for running instances
 	cmd := exec.Command("systemctl", "list-units", "--type=service", "--all", "dbbackup@*")
 	output, _ := cmd.Output()
-	
+
 	return len(matches) == 0 && !strings.Contains(string(output), "dbbackup@")
 }
 

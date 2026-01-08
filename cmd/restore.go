@@ -37,9 +37,9 @@ var (
 	restoreSaveDebugLog string // Path to save debug log on failure
 
 	// Diagnose flags
-	diagnoseJSON       bool
-	diagnoseDeep       bool
-	diagnoseKeepTemp   bool
+	diagnoseJSON     bool
+	diagnoseDeep     bool
+	diagnoseKeepTemp bool
 
 	// Encryption flags
 	restoreEncryptionKeyFile string
@@ -565,7 +565,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 
 	// Create restore engine
 	engine := restore.New(cfg, log, db)
-	
+
 	// Enable debug logging if requested
 	if restoreSaveDebugLog != "" {
 		engine.SetDebugLogPath(restoreSaveDebugLog)
@@ -589,15 +589,15 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	// Run pre-restore diagnosis if requested
 	if restoreDiagnose {
 		log.Info("[DIAG] Running pre-restore diagnosis...")
-		
+
 		diagnoser := restore.NewDiagnoser(log, restoreVerbose)
 		result, err := diagnoser.DiagnoseFile(archivePath)
 		if err != nil {
 			return fmt.Errorf("diagnosis failed: %w", err)
 		}
-		
+
 		diagnoser.PrintDiagnosis(result)
-		
+
 		if !result.IsValid {
 			log.Error("[FAIL] Pre-restore diagnosis found issues")
 			if result.IsTruncated {
@@ -607,7 +607,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 				log.Error("   The backup file appears to be CORRUPTED")
 			}
 			fmt.Println("\nUse --force to attempt restore anyway.")
-			
+
 			if !restoreForce {
 				return fmt.Errorf("aborting restore due to backup file issues")
 			}
@@ -785,7 +785,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 
 	// Create restore engine
 	engine := restore.New(cfg, log, db)
-	
+
 	// Enable debug logging if requested
 	if restoreSaveDebugLog != "" {
 		engine.SetDebugLogPath(restoreSaveDebugLog)
@@ -830,7 +830,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 	// Run pre-restore diagnosis if requested
 	if restoreDiagnose {
 		log.Info("[DIAG] Running pre-restore diagnosis...")
-		
+
 		// Create temp directory for extraction in configured WorkDir
 		workDir := cfg.GetEffectiveWorkDir()
 		diagTempDir, err := os.MkdirTemp(workDir, "dbbackup-diagnose-*")
@@ -838,13 +838,13 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to create temp directory for diagnosis in %s: %w", workDir, err)
 		}
 		defer os.RemoveAll(diagTempDir)
-		
+
 		diagnoser := restore.NewDiagnoser(log, restoreVerbose)
 		results, err := diagnoser.DiagnoseClusterDumps(archivePath, diagTempDir)
 		if err != nil {
 			return fmt.Errorf("diagnosis failed: %w", err)
 		}
-		
+
 		// Check for any invalid dumps
 		var invalidDumps []string
 		for _, result := range results {
@@ -853,7 +853,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 				diagnoser.PrintDiagnosis(result)
 			}
 		}
-		
+
 		if len(invalidDumps) > 0 {
 			log.Error("[FAIL] Pre-restore diagnosis found issues",
 				"invalid_dumps", len(invalidDumps),
@@ -864,7 +864,7 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 			}
 			fmt.Println("\nRun 'dbbackup restore diagnose <archive> --deep' for full details.")
 			fmt.Println("Use --force to attempt restore anyway.")
-			
+
 			if !restoreForce {
 				return fmt.Errorf("aborting restore due to %d invalid dump(s)", len(invalidDumps))
 			}

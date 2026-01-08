@@ -180,11 +180,11 @@ func (m BackupManagerModel) View() string {
 		return s.String()
 	}
 
-	// Column headers
-	s.WriteString(archiveHeaderStyle.Render(fmt.Sprintf("%-35s %-25s %-12s %-20s",
+	// Column headers with better alignment
+	s.WriteString(archiveHeaderStyle.Render(fmt.Sprintf("     %-32s %-22s %10s  %-16s",
 		"FILENAME", "FORMAT", "SIZE", "MODIFIED")))
 	s.WriteString("\n")
-	s.WriteString(strings.Repeat("-", 95))
+	s.WriteString(strings.Repeat("-", 90))
 	s.WriteString("\n")
 
 	// Show archives (limit to visible area)
@@ -199,27 +199,27 @@ func (m BackupManagerModel) View() string {
 
 	for i := start; i < end; i++ {
 		archive := m.archives[i]
-		cursor := " "
+		cursor := "  "
 		style := archiveNormalStyle
 
 		if i == m.cursor {
-			cursor = ">"
+			cursor = "> "
 			style = archiveSelectedStyle
 		}
 
-		// Status icon
-		statusIcon := "[+]"
+		// Status icon - consistent 4-char width
+		statusIcon := " [+]"
 		if !archive.Valid {
-			statusIcon = "[-]"
+			statusIcon = " [-]"
 			style = archiveInvalidStyle
 		} else if time.Since(archive.Modified) > 30*24*time.Hour {
-			statusIcon = "[WARN]"
+			statusIcon = " [!]"
 		}
 
-		filename := truncate(archive.Name, 33)
-		format := truncate(archive.Format.String(), 23)
+		filename := truncate(archive.Name, 32)
+		format := truncate(archive.Format.String(), 22)
 
-		line := fmt.Sprintf("%s %s %-33s %-23s %-10s %-19s",
+		line := fmt.Sprintf("%s%s %-32s %-22s %10s  %-16s",
 			cursor,
 			statusIcon,
 			filename,
@@ -239,8 +239,20 @@ func (m BackupManagerModel) View() string {
 	}
 
 	s.WriteString(infoStyle.Render(fmt.Sprintf("Selected: %d/%d", m.cursor+1, len(m.archives))))
+	s.WriteString("\n\n")
+
+	// Grouped keyboard shortcuts for better readability
+	s.WriteString(infoStyle.Render("NAVIGATE          ACTIONS           OTHER"))
 	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("[KEY]  ↑/↓: Navigate | r: Restore | v: Verify | d: Delete | i: Info | R: Refresh | Esc: Back"))
+	s.WriteString(infoStyle.Render("--------          -------           -----"))
+	s.WriteString("\n")
+	s.WriteString(infoStyle.Render("Up/Down: Move     r: Restore        R: Refresh"))
+	s.WriteString("\n")
+	s.WriteString(infoStyle.Render("                  v: Verify         Esc: Back"))
+	s.WriteString("\n")
+	s.WriteString(infoStyle.Render("                  d: Delete         q: Quit"))
+	s.WriteString("\n")
+	s.WriteString(infoStyle.Render("                  i: Info"))
 
 	return s.String()
 }

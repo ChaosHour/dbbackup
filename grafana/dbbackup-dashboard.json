@@ -474,7 +474,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_backup_size_bytes{instance=~\"$instance\"}",
+          "expr": "dbbackup_last_backup_size_bytes{instance=~\"$instance\"}",
           "legendFormat": "{{instance}} - {{database}}",
           "range": true,
           "refId": "A"
@@ -564,7 +564,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_backup_duration_seconds{instance=~\"$instance\"}",
+          "expr": "dbbackup_last_backup_duration_seconds{instance=~\"$instance\"}",
           "legendFormat": "{{instance}} - {{database}}",
           "range": true,
           "refId": "A"
@@ -744,7 +744,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_backup_size_bytes{instance=~\"$instance\"}",
+          "expr": "dbbackup_last_backup_size_bytes{instance=~\"$instance\"}",
           "format": "table",
           "hide": false,
           "instant": true,

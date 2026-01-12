@@ -1,4 +1,6 @@
 # golangci-lint configuration - relaxed for existing codebase
+version: "2"
+
 run:
   timeout: 5m
   tests: false

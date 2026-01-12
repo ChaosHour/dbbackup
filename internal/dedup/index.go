@@ -3,7 +3,9 @@ package dedup
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
@@ -11,25 +13,65 @@ import (
 
 // ChunkIndex provides fast chunk lookups using SQLite
 type ChunkIndex struct {
-	db *sql.DB
+	db     *sql.DB
+	dbPath string
 }
 
-// NewChunkIndex opens or creates a chunk index database
+// NewChunkIndex opens or creates a chunk index database at the default location
 func NewChunkIndex(basePath string) (*ChunkIndex, error) {
 	dbPath := filepath.Join(basePath, "chunks.db")
+	return NewChunkIndexAt(dbPath)
+}
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_synchronous=NORMAL")
+// NewChunkIndexAt opens or creates a chunk index database at a specific path
+// Use this to put the SQLite index on local storage when chunks are on NFS/CIFS
+func NewChunkIndexAt(dbPath string) (*ChunkIndex, error) {
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0700); err != nil {
+		return nil, fmt.Errorf("failed to create index directory: %w", err)
+	}
+
+	// Add busy_timeout to handle lock contention gracefully
+	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_synchronous=NORMAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open chunk index: %w", err)
 	}
 
-	idx := &ChunkIndex{db: db}
+	// Test the connection and check for locking issues
+	if err := db.Ping(); err != nil {
+		db.Close()
+		if isNFSLockingError(err) {
+			return nil, fmt.Errorf("database locked (common on NFS/CIFS): %w\n\n"+
+				"HINT: Use --index-db to put the SQLite index on local storage:\n"+
+				"  dbbackup dedup ... --index-db /var/lib/dbbackup/dedup-index.db", err)
+		}
+		return nil, fmt.Errorf("failed to connect to chunk index: %w", err)
+	}
+
+	idx := &ChunkIndex{db: db, dbPath: dbPath}
 	if err := idx.migrate(); err != nil {
 		db.Close()
+		if isNFSLockingError(err) {
+			return nil, fmt.Errorf("database locked during migration (common on NFS/CIFS): %w\n\n"+
+				"HINT: Use --index-db to put the SQLite index on local storage:\n"+
+				"  dbbackup dedup ... --index-db /var/lib/dbbackup/dedup-index.db", err)
+		}
 		return nil, err
 	}
 
 	return idx, nil
+}
+
+// isNFSLockingError checks if an error is likely due to NFS/CIFS locking issues
+func isNFSLockingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "database is locked") ||
+		strings.Contains(errStr, "SQLITE_BUSY") ||
+		strings.Contains(errStr, "cannot lock") ||
+		strings.Contains(errStr, "lock protocol")
 }
 
 // migrate creates the schema if needed
@@ -166,15 +208,26 @@ func (idx *ChunkIndex) RemoveManifest(id string) error {
 	return err
 }
 
+// UpdateManifestVerified updates the verified timestamp for a manifest
+func (idx *ChunkIndex) UpdateManifestVerified(id string, verifiedAt time.Time) error {
+	_, err := idx.db.Exec("UPDATE manifests SET verified_at = ? WHERE id = ?", verifiedAt, id)
+	return err
+}
+
 // IndexStats holds statistics about the dedup index
 type IndexStats struct {
 	TotalChunks     int64
 	TotalManifests  int64
-	TotalSizeRaw    int64 // Uncompressed, undeduplicated
-	TotalSizeStored int64 // On-disk after dedup+compression
-	DedupRatio      float64
+	TotalSizeRaw    int64   // Uncompressed, undeduplicated (per-chunk)
+	TotalSizeStored int64   // On-disk after dedup+compression (per-chunk)
+	DedupRatio      float64 // Based on manifests (real dedup ratio)
 	OldestChunk     time.Time
 	NewestChunk     time.Time
+
+	// Manifest-based stats (accurate dedup calculation)
+	TotalBackupSize int64 // Sum of all backup original sizes
+	TotalNewData    int64 // Sum of all new chunks stored
+	SpaceSaved      int64 // Difference = what dedup saved
 }
 
 // Stats returns statistics about the index
@@ -206,8 +259,22 @@ func (idx *ChunkIndex) Stats() (*IndexStats, error) {
 
 	idx.db.QueryRow("SELECT COUNT(*) FROM manifests").Scan(&stats.TotalManifests)
 
-	if stats.TotalSizeRaw > 0 {
-		stats.DedupRatio = 1.0 - float64(stats.TotalSizeStored)/float64(stats.TotalSizeRaw)
+	// Calculate accurate dedup ratio from manifests
+	// Sum all backup original sizes and all new data stored
+	err = idx.db.QueryRow(`
+		SELECT 
+			COALESCE(SUM(original_size), 0),
+			COALESCE(SUM(stored_size), 0)
+		FROM manifests
+	`).Scan(&stats.TotalBackupSize, &stats.TotalNewData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate real dedup ratio: how much data was deduplicated across all backups
+	if stats.TotalBackupSize > 0 {
+		stats.DedupRatio = 1.0 - float64(stats.TotalNewData)/float64(stats.TotalBackupSize)
+		stats.SpaceSaved = stats.TotalBackupSize - stats.TotalNewData
 	}
 
 	return stats, nil

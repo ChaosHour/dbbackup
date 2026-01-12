@@ -36,8 +36,9 @@ type Manifest struct {
 	DedupRatio   float64 `json:"dedup_ratio"` // 1.0 = no dedup, 0.0 = 100% dedup
 
 	// Encryption and compression settings used
-	Encrypted  bool `json:"encrypted"`
-	Compressed bool `json:"compressed"`
+	Encrypted    bool `json:"encrypted"`
+	Compressed   bool `json:"compressed"`
+	Decompressed bool `json:"decompressed,omitempty"` // Input was auto-decompressed before chunking
 
 	// Verification
 	SHA256     string    `json:"sha256"`              // Hash of reconstructed file

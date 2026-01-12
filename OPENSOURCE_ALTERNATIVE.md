@@ -46,7 +46,7 @@ You end up writing wrapper scripts. Then more scripts. Then a monitoring layer. 
 | Binlog/WAL streaming | ❌ | ❌ | ✅ Continuous |
 | Direct cloud streaming | ❌ | ✅ | ✅ S3/GCS/Azure |
 | Zero dependencies | ❌ | ❌ | ✅ Single binary |
-| License cost | $$$$ | Free | **Free (MIT)** |
+| License cost | $$$$ | Free | **Free (Apache 2.0)** |
 
 ## Deduplication: We Killed the Borg
 
@@ -201,6 +201,6 @@ Not just "free as in beer" - but actually solving the problem without requiring 
 
 ---
 
-*MIT Licensed. Free forever. No sales calls. No wrapper scripts.*
+*Apache 2.0 Licensed. Free forever. No sales calls. No wrapper scripts.*
 
 [GitHub](https://github.com/PlusOne/dbbackup) | [Releases](https://github.com/PlusOne/dbbackup/releases) | [Changelog](CHANGELOG.md)

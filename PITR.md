@@ -584,6 +584,100 @@ Document your recovery procedure:
 9. Create new base backup
 ```
 
+## Large Database Support (600+ GB)
+
+For databases larger than 600 GB, PITR is the **recommended approach** over full dump/restore.
+
+### Why PITR Works Better for Large DBs
+
+| Approach | 600 GB Database | Recovery Time (RTO) |
+|----------|-----------------|---------------------|
+| Full pg_dump/restore | Hours to dump, hours to restore | 4-12+ hours |
+| PITR (base + WAL) | Incremental WAL only | 30 min - 2 hours |
+
+### Setup for Large Databases
+
+**1. Enable WAL archiving with compression:**
+```bash
+dbbackup pitr enable --archive-dir /backups/wal_archive --compress
+```
+
+**2. Take ONE base backup weekly/monthly (use pg_basebackup):**
+```bash
+# For 600+ GB, use fast checkpoint to minimize impact
+pg_basebackup -D /backups/base_$(date +%Y%m%d).tar.gz \
+  -Ft -z -P --checkpoint=fast --wal-method=none
+
+# Duration: 2-6 hours for 600 GB, but only needed weekly/monthly
+```
+
+**3. WAL files archive continuously** (~1-5 GB/hour typical), capturing every change.
+
+**4. Recover to any point in time:**
+```bash
+dbbackup restore pitr \
+  --base-backup /backups/base_20260101.tar.gz \
+  --wal-archive /backups/wal_archive \
+  --target-time "2026-01-13 14:30:00" \
+  --target-dir /var/lib/postgresql/16/restored
+```
+
+### PostgreSQL Optimizations for 600+ GB
+
+| Setting | Value | Purpose |
+|---------|-------|---------|
+| `wal_compression = on` | postgresql.conf | 70-80% smaller WAL files |
+| `max_wal_size = 4GB` | postgresql.conf | Reduce checkpoint frequency |
+| `checkpoint_timeout = 30min` | postgresql.conf | Less frequent checkpoints |
+| `archive_timeout = 300` | postgresql.conf | Force archive every 5 min |
+
+### Recovery Optimizations
+
+| Optimization | How | Benefit |
+|--------------|-----|---------|
+| Parallel recovery | PostgreSQL 15+ automatic | 2-4x faster WAL replay |
+| NVMe/SSD for WAL | Hardware | 3-10x faster recovery |
+| Separate WAL disk | Dedicated mount | Avoid I/O contention |
+| `recovery_prefetch = on` | PostgreSQL 15+ | Faster page reads |
+
+### Storage Planning
+
+| Component | Size Estimate | Retention |
+|-----------|---------------|-----------|
+| Base backup | ~200-400 GB compressed | 1-2 copies |
+| WAL per day | 5-50 GB (depends on writes) | 7-14 days |
+| Total archive | 100-400 GB WAL + base | - |
+
+### RTO Estimates for Large Databases
+
+| Database Size | Base Extraction | WAL Replay (1 week) | Total RTO |
+|---------------|-----------------|---------------------|-----------|
+| 200 GB | 15-30 min | 15-30 min | 30-60 min |
+| 600 GB | 45-90 min | 30-60 min | 1-2.5 hours |
+| 1 TB | 60-120 min | 45-90 min | 2-3.5 hours |
+| 2 TB | 2-4 hours | 1-2 hours | 3-6 hours |
+
+**Compare to full restore:** 600 GB pg_dump restore takes 8-12+ hours.
+
+### Best Practices for 600+ GB
+
+1. **Weekly base backups** - Monthly if storage is tight
+2. **Test recovery monthly** - Verify WAL chain integrity
+3. **Monitor WAL lag** - Alert if archive falls behind
+4. **Use streaming replication** - For HA, combine with PITR for DR
+5. **Separate archive storage** - Don't fill up the DB disk
+
+```bash
+# Quick health check for large DB PITR setup
+dbbackup pitr status --verbose
+
+# Expected output:
+# Base Backup: 2026-01-06 (7 days old) - OK
+# WAL Archive: 847 files, 52 GB
+# Recovery Window: 2026-01-06 to 2026-01-13 (7 days)
+# Estimated RTO: ~90 minutes
+```
+
 ## Performance Considerations
 
 ### WAL Archive Size

@@ -106,9 +106,23 @@ type safetyCheckCompleteMsg struct {
 
 func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string) tea.Cmd {
 	return func() tea.Msg {
-		// 10 minutes for safety checks - large archives can take a long time to diagnose
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		// Dynamic timeout based on archive size for large database support
+		// Base: 10 minutes + 1 minute per 5 GB, max 120 minutes
+		timeoutMinutes := 10
+		if archive.Size > 0 {
+			sizeGB := archive.Size / (1024 * 1024 * 1024)
+			estimatedMinutes := int(sizeGB/5) + 10
+			if estimatedMinutes > timeoutMinutes {
+				timeoutMinutes = estimatedMinutes
+			}
+			if timeoutMinutes > 120 {
+				timeoutMinutes = 120
+			}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 		defer cancel()
+		_ = ctx // Used by database checks below
 
 		safety := restore.NewSafety(cfg, log)
 		checks := []SafetyCheck{}

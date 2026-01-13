@@ -229,8 +229,14 @@ func containsSQLKeywords(content string) bool {
 }
 
 // CheckDiskSpace verifies sufficient disk space for restore
+// Uses the effective work directory (WorkDir if set, otherwise BackupDir) since
+// that's where extraction actually happens for large databases
 func (s *Safety) CheckDiskSpace(archivePath string, multiplier float64) error {
-	return s.CheckDiskSpaceAt(archivePath, s.cfg.BackupDir, multiplier)
+	checkDir := s.cfg.GetEffectiveWorkDir()
+	if checkDir == "" {
+		checkDir = s.cfg.BackupDir
+	}
+	return s.CheckDiskSpaceAt(archivePath, checkDir, multiplier)
 }
 
 // CheckDiskSpaceAt verifies sufficient disk space at a specific directory

@@ -414,14 +414,42 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 
 // diagnoseClusterArchive analyzes a cluster tar.gz archive
 func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResult) {
-	// First verify tar.gz integrity with timeout
-	// 5 minutes for large archives (multi-GB archives need more time)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// Calculate dynamic timeout based on file size
+	// Assume minimum 50 MB/s throughput for compressed archive listing
+	// Minimum 5 minutes, scales with file size
+	timeoutMinutes := 5
+	if result.FileSize > 0 {
+		// 1 minute per 3 GB, minimum 5 minutes, max 60 minutes
+		sizeGB := result.FileSize / (1024 * 1024 * 1024)
+		estimatedMinutes := int(sizeGB/3) + 5
+		if estimatedMinutes > timeoutMinutes {
+			timeoutMinutes = estimatedMinutes
+		}
+		if timeoutMinutes > 60 {
+			timeoutMinutes = 60
+		}
+	}
+
+	d.log.Info("Verifying cluster archive integrity",
+		"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)),
+		"timeout", fmt.Sprintf("%d min", timeoutMinutes))
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "tar", "-tzf", filePath)
 	output, err := cmd.Output()
 	if err != nil {
+		// Check if it was a timeout
+		if ctx.Err() == context.DeadlineExceeded {
+			result.IsValid = false
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("Verification timed out after %d minutes - archive is very large", timeoutMinutes),
+				"This does not necessarily mean the archive is corrupted",
+				"Manual verification: tar -tzf "+filePath+" | wc -l")
+			// Don't mark as corrupted on timeout
+			return
+		}
 		result.IsValid = false
 		result.IsCorrupted = true
 		result.Errors = append(result.Errors,
@@ -497,9 +525,22 @@ func (d *Diagnoser) diagnoseUnknown(filePath string, result *DiagnoseResult) {
 
 // verifyWithPgRestore uses pg_restore --list to verify dump integrity
 func (d *Diagnoser) verifyWithPgRestore(filePath string, result *DiagnoseResult) {
-	// Use timeout to prevent blocking on very large dump files
-	// 5 minutes for large dumps (multi-GB dumps with many tables)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// Calculate dynamic timeout based on file size
+	// pg_restore --list is usually faster than tar -tzf for same size
+	timeoutMinutes := 5
+	if result.FileSize > 0 {
+		// 1 minute per 5 GB, minimum 5 minutes, max 30 minutes
+		sizeGB := result.FileSize / (1024 * 1024 * 1024)
+		estimatedMinutes := int(sizeGB/5) + 5
+		if estimatedMinutes > timeoutMinutes {
+			timeoutMinutes = estimatedMinutes
+		}
+		if timeoutMinutes > 30 {
+			timeoutMinutes = 30
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "pg_restore", "--list", filePath)
@@ -554,14 +595,72 @@ func (d *Diagnoser) verifyWithPgRestore(filePath string, result *DiagnoseResult)
 
 // DiagnoseClusterDumps extracts and diagnoses all dumps in a cluster archive
 func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*DiagnoseResult, error) {
-	// First, try to list archive contents without extracting (fast check)
-	// 10 minutes for very large archives
-	listCtx, listCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	// Get archive size for dynamic timeout calculation
+	archiveInfo, err := os.Stat(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot stat archive: %w", err)
+	}
+
+	// Dynamic timeout based on archive size: base 10 min + 1 min per 3 GB
+	// Large archives like 100+ GB need more time for tar -tzf
+	timeoutMinutes := 10
+	if archiveInfo.Size() > 0 {
+		sizeGB := archiveInfo.Size() / (1024 * 1024 * 1024)
+		estimatedMinutes := int(sizeGB/3) + 10
+		if estimatedMinutes > timeoutMinutes {
+			timeoutMinutes = estimatedMinutes
+		}
+		if timeoutMinutes > 120 { // Max 2 hours
+			timeoutMinutes = 120
+		}
+	}
+
+	d.log.Info("Listing cluster archive contents",
+		"size", fmt.Sprintf("%.1f GB", float64(archiveInfo.Size())/(1024*1024*1024)),
+		"timeout", fmt.Sprintf("%d min", timeoutMinutes))
+
+	listCtx, listCancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer listCancel()
 
 	listCmd := exec.CommandContext(listCtx, "tar", "-tzf", archivePath)
-	listOutput, listErr := listCmd.CombinedOutput()
-	if listErr != nil {
+
+	// Use pipes for streaming to avoid buffering entire output in memory
+	// This prevents OOM kills on large archives (100GB+) with millions of files
+	stdout, err := listCmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+
+	var stderrBuf bytes.Buffer
+	listCmd.Stderr = &stderrBuf
+
+	if err := listCmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start tar listing: %w", err)
+	}
+
+	// Stream the output line by line, only keeping relevant files
+	var files []string
+	scanner := bufio.NewScanner(stdout)
+	// Set a reasonable max line length (file paths shouldn't exceed this)
+	scanner.Buffer(make([]byte, 0, 4096), 1024*1024)
+
+	fileCount := 0
+	for scanner.Scan() {
+		fileCount++
+		line := scanner.Text()
+		// Only store dump files and important files, not every single file
+		if strings.HasSuffix(line, ".dump") || strings.HasSuffix(line, ".sql") ||
+			strings.HasSuffix(line, ".sql.gz") || strings.HasSuffix(line, ".json") ||
+			strings.Contains(line, "globals") || strings.Contains(line, "manifest") ||
+			strings.Contains(line, "metadata") || strings.HasSuffix(line, "/") {
+			files = append(files, line)
+		}
+	}
+
+	scanErr := scanner.Err()
+	listErr := listCmd.Wait()
+
+	if listErr != nil || scanErr != nil {
 		// Archive listing failed - likely corrupted
 		errResult := &DiagnoseResult{
 			FilePath:       archivePath,
@@ -573,7 +672,12 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 			Details:        &DiagnoseDetails{},
 		}
 
-		errOutput := string(listOutput)
+		errOutput := stderrBuf.String()
+		actualErr := listErr
+		if scanErr != nil {
+			actualErr = scanErr
+		}
+
 		if strings.Contains(errOutput, "unexpected end of file") ||
 			strings.Contains(errOutput, "Unexpected EOF") ||
 			strings.Contains(errOutput, "truncated") {
@@ -585,7 +689,7 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 				"Solution: Re-create the backup from source database")
 		} else {
 			errResult.Errors = append(errResult.Errors,
-				fmt.Sprintf("Cannot list archive contents: %v", listErr),
+				fmt.Sprintf("Cannot list archive contents: %v", actualErr),
 				fmt.Sprintf("tar error: %s", truncateString(errOutput, 300)),
 				"Run manually: tar -tzf "+archivePath+" 2>&1 | tail -50")
 		}
@@ -593,11 +697,10 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 		return []*DiagnoseResult{errResult}, nil
 	}
 
-	// Archive is listable - now check disk space before extraction
-	files := strings.Split(strings.TrimSpace(string(listOutput)), "\n")
+	d.log.Debug("Archive listing streamed successfully", "total_files", fileCount, "relevant_files", len(files))
 
 	// Check if we have enough disk space (estimate 4x archive size needed)
-	archiveInfo, _ := os.Stat(archivePath)
+	// archiveInfo already obtained at function start
 	requiredSpace := archiveInfo.Size() * 4
 
 	// Check temp directory space - try to extract metadata first

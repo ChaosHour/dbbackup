@@ -185,15 +185,15 @@ Examples:
 
 // Flags
 var (
-	dedupDir       string
-	dedupIndexDB   string // Separate path for SQLite index (for NFS/CIFS support)
-	dedupCompress  bool
-	dedupEncrypt   bool
-	dedupKey       string
-	dedupName      string
-	dedupDBType    string
-	dedupDBName    string
-	dedupDBHost    string
+	dedupDir        string
+	dedupIndexDB    string // Separate path for SQLite index (for NFS/CIFS support)
+	dedupCompress   bool
+	dedupEncrypt    bool
+	dedupKey        string
+	dedupName       string
+	dedupDBType     string
+	dedupDBName     string
+	dedupDBHost     string
 	dedupDecompress bool // Auto-decompress gzip input
 )
 

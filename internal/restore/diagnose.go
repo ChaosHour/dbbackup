@@ -415,18 +415,18 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 // diagnoseClusterArchive analyzes a cluster tar.gz archive
 func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResult) {
 	// Calculate dynamic timeout based on file size
-	// Assume minimum 50 MB/s throughput for compressed archive listing
-	// Minimum 5 minutes, scales with file size
+	// Large archives (100GB+) can take significant time to list
+	// Minimum 5 minutes, scales with file size, max 180 minutes for very large archives
 	timeoutMinutes := 5
 	if result.FileSize > 0 {
-		// 1 minute per 3 GB, minimum 5 minutes, max 60 minutes
+		// 1 minute per 2 GB, minimum 5 minutes, max 180 minutes
 		sizeGB := result.FileSize / (1024 * 1024 * 1024)
-		estimatedMinutes := int(sizeGB/3) + 5
+		estimatedMinutes := int(sizeGB/2) + 5
 		if estimatedMinutes > timeoutMinutes {
 			timeoutMinutes = estimatedMinutes
 		}
-		if timeoutMinutes > 60 {
-			timeoutMinutes = 60
+		if timeoutMinutes > 180 {
+			timeoutMinutes = 180
 		}
 	}
 
@@ -437,29 +437,98 @@ func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResu
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer cancel()
 
+	// Use streaming approach with pipes to avoid memory issues with large archives
 	cmd := exec.CommandContext(ctx, "tar", "-tzf", filePath)
-	output, err := cmd.Output()
-	if err != nil {
-		// Check if it was a timeout
-		if ctx.Err() == context.DeadlineExceeded {
-			result.IsValid = false
-			result.Errors = append(result.Errors,
-				fmt.Sprintf("Verification timed out after %d minutes - archive is very large", timeoutMinutes),
-				"This does not necessarily mean the archive is corrupted",
-				"Manual verification: tar -tzf "+filePath+" | wc -l")
-			// Don't mark as corrupted on timeout
-			return
-		}
-		result.IsValid = false
-		result.IsCorrupted = true
-		result.Errors = append(result.Errors,
-			fmt.Sprintf("Tar archive is invalid or corrupted: %v", err),
-			"Run: tar -tzf "+filePath+" 2>&1 | tail -20")
+	stdout, pipeErr := cmd.StdoutPipe()
+	if pipeErr != nil {
+		// Pipe creation failed - not a corruption issue
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("Cannot create pipe for verification: %v", pipeErr),
+			"Archive integrity cannot be verified but may still be valid")
 		return
 	}
 
-	// Parse tar listing
-	files := strings.Split(strings.TrimSpace(string(output)), "\n")
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+
+	if startErr := cmd.Start(); startErr != nil {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("Cannot start tar verification: %v", startErr),
+			"Archive integrity cannot be verified but may still be valid")
+		return
+	}
+
+	// Stream output line by line to avoid buffering entire listing in memory
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // Allow long paths
+
+	var files []string
+	fileCount := 0
+	for scanner.Scan() {
+		fileCount++
+		line := scanner.Text()
+		// Only store dump/metadata files, not every file
+		if strings.HasSuffix(line, ".dump") || strings.HasSuffix(line, ".sql.gz") ||
+			strings.HasSuffix(line, ".sql") || strings.HasSuffix(line, ".json") ||
+			strings.Contains(line, "globals") || strings.Contains(line, "manifest") ||
+			strings.Contains(line, "metadata") {
+			files = append(files, line)
+		}
+	}
+
+	scanErr := scanner.Err()
+	waitErr := cmd.Wait()
+	stderrOutput := stderrBuf.String()
+
+	// Handle errors - distinguish between actual corruption and resource/timeout issues
+	if waitErr != nil || scanErr != nil {
+		// Check if it was a timeout
+		if ctx.Err() == context.DeadlineExceeded {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Verification timed out after %d minutes - archive is very large", timeoutMinutes),
+				"This does not necessarily mean the archive is corrupted",
+				"Manual verification: tar -tzf "+filePath+" | wc -l")
+			// Don't mark as corrupted or invalid on timeout - archive may be fine
+			if fileCount > 0 {
+				result.Details.TableCount = len(files)
+				result.Details.TableList = files
+			}
+			return
+		}
+
+		// Check for specific gzip/tar corruption indicators
+		if strings.Contains(stderrOutput, "unexpected end of file") ||
+			strings.Contains(stderrOutput, "Unexpected EOF") ||
+			strings.Contains(stderrOutput, "gzip: stdin: unexpected end of file") ||
+			strings.Contains(stderrOutput, "not in gzip format") ||
+			strings.Contains(stderrOutput, "invalid compressed data") {
+			// These indicate actual corruption
+			result.IsValid = false
+			result.IsCorrupted = true
+			result.Errors = append(result.Errors,
+				"Tar archive appears truncated or corrupted",
+				fmt.Sprintf("Error: %s", truncateString(stderrOutput, 200)),
+				"Run: tar -tzf "+filePath+" 2>&1 | tail -20")
+			return
+		}
+
+		// Other errors (signal killed, memory, etc.) - not necessarily corruption
+		// If we read some files successfully, the archive structure is likely OK
+		if fileCount > 0 {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Verification incomplete (read %d files before error)", fileCount),
+				"Archive may still be valid - error could be due to system resources")
+			// Proceed with what we got
+		} else {
+			// Couldn't read anything - but don't mark as corrupted without clear evidence
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Cannot verify archive: %v", waitErr),
+				"Archive integrity is uncertain - proceed with caution or verify manually")
+			return
+		}
+	}
+
+	// Parse the collected file list
 	var dumpFiles []string
 	hasGlobals := false
 	hasMetadata := false

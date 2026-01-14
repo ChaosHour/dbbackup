@@ -368,7 +368,7 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 		}
 
 		// Store last line for termination check
-		if lineNumber > 0 && (lineNumber%100000 == 0) && d.verbose {
+		if lineNumber > 0 && (lineNumber%100000 == 0) && d.verbose && d.log != nil {
 			d.log.Debug("Scanning SQL file", "lines_processed", lineNumber)
 		}
 	}
@@ -430,9 +430,11 @@ func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResu
 		}
 	}
 
-	d.log.Info("Verifying cluster archive integrity",
-		"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)),
-		"timeout", fmt.Sprintf("%d min", timeoutMinutes))
+	if d.log != nil {
+		d.log.Info("Verifying cluster archive integrity",
+			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)),
+			"timeout", fmt.Sprintf("%d min", timeoutMinutes))
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer cancel()
@@ -561,7 +563,7 @@ func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResu
 	}
 
 	// For verbose mode, diagnose individual dumps inside the archive
-	if d.verbose && len(dumpFiles) > 0 {
+	if d.verbose && len(dumpFiles) > 0 && d.log != nil {
 		d.log.Info("Cluster archive contains databases", "count", len(dumpFiles))
 		for _, df := range dumpFiles {
 			d.log.Info("  - " + df)
@@ -684,9 +686,11 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 		}
 	}
 
-	d.log.Info("Listing cluster archive contents",
-		"size", fmt.Sprintf("%.1f GB", float64(archiveInfo.Size())/(1024*1024*1024)),
-		"timeout", fmt.Sprintf("%d min", timeoutMinutes))
+	if d.log != nil {
+		d.log.Info("Listing cluster archive contents",
+			"size", fmt.Sprintf("%.1f GB", float64(archiveInfo.Size())/(1024*1024*1024)),
+			"timeout", fmt.Sprintf("%d min", timeoutMinutes))
+	}
 
 	listCtx, listCancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer listCancel()
@@ -766,7 +770,9 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 		return []*DiagnoseResult{errResult}, nil
 	}
 
-	d.log.Debug("Archive listing streamed successfully", "total_files", fileCount, "relevant_files", len(files))
+	if d.log != nil {
+		d.log.Debug("Archive listing streamed successfully", "total_files", fileCount, "relevant_files", len(files))
+	}
 
 	// Check if we have enough disk space (estimate 4x archive size needed)
 	// archiveInfo already obtained at function start
@@ -781,7 +787,9 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 		testCancel()
 	}
 
-	d.log.Info("Archive listing successful", "files", len(files))
+	if d.log != nil {
+		d.log.Info("Archive listing successful", "files", len(files))
+	}
 
 	// Try full extraction - NO TIMEOUT here as large archives can take a long time
 	// Use a generous timeout (30 minutes) for very large archives
@@ -870,11 +878,15 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 		}
 
 		dumpPath := filepath.Join(dumpsDir, name)
-		d.log.Info("Diagnosing dump file", "file", name)
+		if d.log != nil {
+			d.log.Info("Diagnosing dump file", "file", name)
+		}
 
 		result, err := d.DiagnoseFile(dumpPath)
 		if err != nil {
-			d.log.Warn("Failed to diagnose file", "file", name, "error", err)
+			if d.log != nil {
+				d.log.Warn("Failed to diagnose file", "file", name, "error", err)
+			}
 			continue
 		}
 		results = append(results, result)

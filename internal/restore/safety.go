@@ -255,7 +255,9 @@ func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplie
 	// Get available disk space
 	availableSpace, err := getDiskSpace(checkDir)
 	if err != nil {
-		s.log.Warn("Cannot check disk space", "error", err)
+		if s.log != nil {
+			s.log.Warn("Cannot check disk space", "error", err)
+		}
 		return nil // Don't fail if we can't check
 	}
 
@@ -278,10 +280,12 @@ func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplie
 			checkDir)
 	}
 
-	s.log.Info("Disk space check passed",
-		"location", checkDir,
-		"required", FormatBytes(requiredSpace),
-		"available", FormatBytes(availableSpace))
+	if s.log != nil {
+		s.log.Info("Disk space check passed",
+			"location", checkDir,
+			"required", FormatBytes(requiredSpace),
+			"available", FormatBytes(availableSpace))
+	}
 
 	return nil
 }

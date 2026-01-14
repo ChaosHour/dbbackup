@@ -688,7 +688,7 @@ func (m SettingsModel) View() string {
 	var b strings.Builder
 
 	// Header
-	header := titleStyle.Render("[CFG]  Configuration Settings")
+	header := titleStyle.Render("[CONFIG] Configuration Settings")
 	b.WriteString(fmt.Sprintf("\n%s\n\n", header))
 
 	// Settings list

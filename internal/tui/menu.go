@@ -285,7 +285,7 @@ func (m *MenuModel) View() string {
 	var s string
 
 	// Header
-	header := titleStyle.Render("[DB]  Database Backup Tool - Interactive Menu")
+	header := titleStyle.Render("Database Backup Tool - Interactive Menu")
 	s += fmt.Sprintf("\n%s\n\n", header)
 
 	if len(m.dbTypes) > 0 {

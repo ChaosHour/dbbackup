@@ -191,7 +191,7 @@ func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m HistoryViewModel) View() string {
 	var s strings.Builder
 
-	header := titleStyle.Render("[HISTORY] Operation History")
+	header := titleStyle.Render("[STATS] Operation History")
 	s.WriteString(fmt.Sprintf("\n%s\n\n", header))
 
 	if len(m.history) == 0 {

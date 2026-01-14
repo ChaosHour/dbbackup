@@ -230,7 +230,7 @@ func (m BackupManagerModel) View() string {
 	var s strings.Builder
 
 	// Title
-	s.WriteString(TitleStyle.Render("[DB]  Backup Archive Manager"))
+	s.WriteString(TitleStyle.Render("[SELECT] Backup Archive Manager"))
 	s.WriteString("\n\n")
 
 	// Status line (no box, bold+color accents)

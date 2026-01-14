@@ -251,13 +251,13 @@ func (m ArchiveBrowserModel) View() string {
 	var s strings.Builder
 
 	// Header
-	title := "[PKG] Backup Archives"
+	title := "[SELECT] Backup Archives"
 	if m.mode == "restore-single" {
-		title = "[PKG] Select Archive to Restore (Single Database)"
+		title = "[SELECT] Select Archive to Restore (Single Database)"
 	} else if m.mode == "restore-cluster" {
-		title = "[PKG] Select Archive to Restore (Cluster)"
+		title = "[SELECT] Select Archive to Restore (Cluster)"
 	} else if m.mode == "diagnose" {
-		title = "[SEARCH] Select Archive to Diagnose"
+		title = "[SELECT] Select Archive to Diagnose"
 	}
 
 	s.WriteString(titleStyle.Render(title))

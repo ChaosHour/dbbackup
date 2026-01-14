@@ -160,7 +160,7 @@ func (m DiagnoseViewModel) View() string {
 	var s strings.Builder
 
 	// Header
-	s.WriteString(titleStyle.Render("[SEARCH] Backup Diagnosis"))
+	s.WriteString(titleStyle.Render("[CHECK] Backup Diagnosis"))
 	s.WriteString("\n\n")
 
 	// Archive info
@@ -351,7 +351,7 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 
 	s.WriteString(strings.Repeat("-", 60))
 	s.WriteString("\n")
-	s.WriteString(diagnoseHeaderStyle.Render(fmt.Sprintf("[STATS] CLUSTER SUMMARY: %d databases\n", len(m.results))))
+	s.WriteString(diagnoseHeaderStyle.Render(fmt.Sprintf("CLUSTER SUMMARY: %d databases\n", len(m.results))))
 	s.WriteString(strings.Repeat("-", 60))
 	s.WriteString("\n\n")
 

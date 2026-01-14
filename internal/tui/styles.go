@@ -120,12 +120,36 @@ var ShortcutStyle = lipgloss.NewStyle().
 // =============================================================================
 // HELPER PREFIXES (no emoticons)
 // =============================================================================
+// Convention for TUI titles/headers:
+//   [CHECK]  - Verification/diagnosis screens
+//   [STATS]  - Statistics/status screens
+//   [SELECT] - Selection/browser screens
+//   [EXEC]   - Execution/running screens
+//   [CONFIG] - Configuration/settings screens
+//
+// Convention for status messages:
+//   [OK]     - Success
+//   [FAIL]   - Error/failure
+//   [WAIT]   - In progress
+//   [WARN]   - Warning
+//   [INFO]   - Information
 
 const (
+	// Title prefixes (for view headers)
+	PrefixCheck  = "[CHECK]"
+	PrefixStats  = "[STATS]"
+	PrefixSelect = "[SELECT]"
+	PrefixExec   = "[EXEC]"
+	PrefixConfig = "[CONFIG]"
+
+	// Status prefixes
 	PrefixOK      = "[OK]"
 	PrefixFail    = "[FAIL]"
-	PrefixWarn    = "[!]"
-	PrefixInfo    = "[i]"
+	PrefixWait    = "[WAIT]"
+	PrefixWarn    = "[WARN]"
+	PrefixInfo    = "[INFO]"
+
+	// List item prefixes
 	PrefixPlus    = "[+]"
 	PrefixMinus   = "[-]"
 	PrefixArrow   = ">"

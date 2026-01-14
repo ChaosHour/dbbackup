@@ -339,9 +339,9 @@ func (m RestorePreviewModel) View() string {
 	var s strings.Builder
 
 	// Title
-	title := "Restore Preview"
+	title := "[CHECK] Restore Preview"
 	if m.mode == "restore-cluster" {
-		title = "Cluster Restore Preview"
+		title = "[CHECK] Cluster Restore Preview"
 	}
 	s.WriteString(titleStyle.Render(title))
 	s.WriteString("\n\n")

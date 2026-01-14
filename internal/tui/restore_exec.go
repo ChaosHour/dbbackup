@@ -321,9 +321,9 @@ func (m RestoreExecutionModel) View() string {
 	s.Grow(512) // Pre-allocate estimated capacity for better performance
 
 	// Title
-	title := "[RESTORE] Restoring Database"
+	title := "[EXEC] Restoring Database"
 	if m.restoreType == "restore-cluster" {
-		title = "[RESTORE] Restoring Cluster"
+		title = "[EXEC] Restoring Cluster"
 	}
 	s.WriteString(titleStyle.Render(title))
 	s.WriteString("\n\n")

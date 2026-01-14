@@ -204,132 +204,111 @@ func (m DiagnoseViewModel) View() string {
 func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) string {
 	var s strings.Builder
 
-	// Status Box
-	s.WriteString("+--[ VALIDATION STATUS ]" + strings.Repeat("-", 37) + "+\n")
+	// Validation Status
+	s.WriteString(diagnoseHeaderStyle.Render("[STATUS] Validation"))
+	s.WriteString("\n")
 
 	if result.IsValid {
-		s.WriteString("|  " + diagnosePassStyle.Render("[OK] VALID - Archive passed all checks") + strings.Repeat(" ", 18) + "|\n")
+		s.WriteString(diagnosePassStyle.Render("  [OK] VALID - Archive passed all checks"))
+		s.WriteString("\n")
 	} else {
-		s.WriteString("|  " + diagnoseFailStyle.Render("[FAIL] INVALID - Archive has problems") + strings.Repeat(" ", 19) + "|\n")
+		s.WriteString(diagnoseFailStyle.Render("  [FAIL] INVALID - Archive has problems"))
+		s.WriteString("\n")
 	}
 
 	if result.IsTruncated {
-		s.WriteString("|  " + diagnoseFailStyle.Render("[!] TRUNCATED - File is incomplete") + strings.Repeat(" ", 22) + "|\n")
+		s.WriteString(diagnoseFailStyle.Render("  [!] TRUNCATED - File is incomplete"))
+		s.WriteString("\n")
 	}
 
 	if result.IsCorrupted {
-		s.WriteString("|  " + diagnoseFailStyle.Render("[!] CORRUPTED - File structure damaged") + strings.Repeat(" ", 18) + "|\n")
+		s.WriteString(diagnoseFailStyle.Render("  [!] CORRUPTED - File structure damaged"))
+		s.WriteString("\n")
 	}
 
-	s.WriteString("+" + strings.Repeat("-", 60) + "+\n\n")
+	s.WriteString("\n")
 
-	// Details Box
+	// Details
 	if result.Details != nil {
-		s.WriteString("+--[ DETAILS ]" + strings.Repeat("-", 46) + "+\n")
+		s.WriteString(diagnoseHeaderStyle.Render("[INFO] Details"))
+		s.WriteString("\n")
 
 		if result.Details.HasPGDMPSignature {
-			s.WriteString("|  " + diagnosePassStyle.Render("[+]") + " PostgreSQL custom format (PGDMP)" + strings.Repeat(" ", 20) + "|\n")
+			s.WriteString(diagnosePassStyle.Render("  [+]") + " PostgreSQL custom format (PGDMP)\n")
 		}
 
 		if result.Details.HasSQLHeader {
-			s.WriteString("|  " + diagnosePassStyle.Render("[+]") + " PostgreSQL SQL header found" + strings.Repeat(" ", 25) + "|\n")
+			s.WriteString(diagnosePassStyle.Render("  [+]") + " PostgreSQL SQL header found\n")
 		}
 
 		if result.Details.GzipValid {
-			s.WriteString("|  " + diagnosePassStyle.Render("[+]") + " Gzip compression valid" + strings.Repeat(" ", 30) + "|\n")
+			s.WriteString(diagnosePassStyle.Render("  [+]") + " Gzip compression valid\n")
 		}
 
 		if result.Details.PgRestoreListable {
-			tableInfo := fmt.Sprintf(" (%d tables)", result.Details.TableCount)
-			padding := 36 - len(tableInfo)
-			if padding < 0 {
-				padding = 0
-			}
-			s.WriteString("|  " + diagnosePassStyle.Render("[+]") + " pg_restore can list contents" + tableInfo + strings.Repeat(" ", padding) + "|\n")
+			s.WriteString(diagnosePassStyle.Render("  [+]") + fmt.Sprintf(" pg_restore can list contents (%d tables)\n", result.Details.TableCount))
 		}
 
 		if result.Details.CopyBlockCount > 0 {
-			blockInfo := fmt.Sprintf("%d COPY blocks found", result.Details.CopyBlockCount)
-			padding := 50 - len(blockInfo)
-			if padding < 0 {
-				padding = 0
-			}
-			s.WriteString("|  [-] " + blockInfo + strings.Repeat(" ", padding) + "|\n")
+			s.WriteString(fmt.Sprintf("  [-] %d COPY blocks found\n", result.Details.CopyBlockCount))
 		}
 
 		if result.Details.UnterminatedCopy {
-			s.WriteString("|  " + diagnoseFailStyle.Render("[-]") + " Unterminated COPY: " + truncate(result.Details.LastCopyTable, 30) + strings.Repeat(" ", 5) + "|\n")
+			s.WriteString(diagnoseFailStyle.Render("  [-]") + " Unterminated COPY: " + truncate(result.Details.LastCopyTable, 30) + "\n")
 		}
 
 		if result.Details.ProperlyTerminated {
-			s.WriteString("|  " + diagnosePassStyle.Render("[+]") + " All COPY blocks properly terminated" + strings.Repeat(" ", 17) + "|\n")
+			s.WriteString(diagnosePassStyle.Render("  [+]") + " All COPY blocks properly terminated\n")
 		}
 
 		if result.Details.ExpandedSize > 0 {
-			sizeInfo := fmt.Sprintf("Expanded: %s (%.1fx)", formatSize(result.Details.ExpandedSize), result.Details.CompressionRatio)
-			padding := 50 - len(sizeInfo)
-			if padding < 0 {
-				padding = 0
-			}
-			s.WriteString("|  [-] " + sizeInfo + strings.Repeat(" ", padding) + "|\n")
+			s.WriteString(fmt.Sprintf("  [-] Expanded: %s (%.1fx)\n", formatSize(result.Details.ExpandedSize), result.Details.CompressionRatio))
 		}
 
-		s.WriteString("+" + strings.Repeat("-", 60) + "+\n")
+		s.WriteString("\n")
 	}
 
-	// Errors Box
+	// Errors
 	if len(result.Errors) > 0 {
-		s.WriteString("\n+--[ ERRORS ]" + strings.Repeat("-", 47) + "+\n")
+		s.WriteString(diagnoseFailStyle.Render("[FAIL] Errors"))
+		s.WriteString("\n")
 		for i, e := range result.Errors {
 			if i >= 5 {
-				remaining := fmt.Sprintf("... and %d more errors", len(result.Errors)-5)
-				padding := 56 - len(remaining)
-				s.WriteString("|  " + remaining + strings.Repeat(" ", padding) + "|\n")
+				s.WriteString(fmt.Sprintf("  ... and %d more errors\n", len(result.Errors)-5))
 				break
 			}
-			errText := truncate(e, 54)
-			padding := 56 - len(errText)
-			if padding < 0 {
-				padding = 0
-			}
-			s.WriteString("|  " + errText + strings.Repeat(" ", padding) + "|\n")
+			s.WriteString("  " + truncate(e, 60) + "\n")
 		}
-		s.WriteString("+" + strings.Repeat("-", 60) + "+\n")
+		s.WriteString("\n")
 	}
 
-	// Warnings Box
+	// Warnings
 	if len(result.Warnings) > 0 {
-		s.WriteString("\n+--[ WARNINGS ]" + strings.Repeat("-", 45) + "+\n")
+		s.WriteString(diagnoseWarnStyle.Render("[WARN] Warnings"))
+		s.WriteString("\n")
 		for i, w := range result.Warnings {
 			if i >= 3 {
-				remaining := fmt.Sprintf("... and %d more warnings", len(result.Warnings)-3)
-				padding := 56 - len(remaining)
-				s.WriteString("|  " + remaining + strings.Repeat(" ", padding) + "|\n")
+				s.WriteString(fmt.Sprintf("  ... and %d more warnings\n", len(result.Warnings)-3))
 				break
 			}
-			warnText := truncate(w, 54)
-			padding := 56 - len(warnText)
-			if padding < 0 {
-				padding = 0
-			}
-			s.WriteString("|  " + warnText + strings.Repeat(" ", padding) + "|\n")
+			s.WriteString("  " + truncate(w, 60) + "\n")
 		}
-		s.WriteString("+" + strings.Repeat("-", 60) + "+\n")
+		s.WriteString("\n")
 	}
 
-	// Recommendations Box
+	// Recommendations
 	if !result.IsValid {
-		s.WriteString("\n+--[ RECOMMENDATIONS ]" + strings.Repeat("-", 38) + "+\n")
+		s.WriteString(diagnoseInfoStyle.Render("[HINT] Recommendations"))
+		s.WriteString("\n")
 		if result.IsTruncated {
-			s.WriteString("|  1. Re-run backup with current version (v3.42.12+)    |\n")
-			s.WriteString("|  2. Check disk space on backup server                 |\n")
-			s.WriteString("|  3. Verify network stability for remote backups       |\n")
+			s.WriteString("  1. Re-run backup with current version (v3.42+)\n")
+			s.WriteString("  2. Check disk space on backup server\n")
+			s.WriteString("  3. Verify network stability for remote backups\n")
 		}
 		if result.IsCorrupted {
-			s.WriteString("|  1. Verify backup was transferred completely          |\n")
-			s.WriteString("|  2. Try restoring from a previous backup              |\n")
+			s.WriteString("  1. Verify backup was transferred completely\n")
+			s.WriteString("  2. Try restoring from a previous backup\n")
 		}
-		s.WriteString("+" + strings.Repeat("-", 60) + "+\n")
 	}
 
 	return s.String()

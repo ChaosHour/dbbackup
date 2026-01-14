@@ -143,11 +143,11 @@ const (
 	PrefixConfig = "[CONFIG]"
 
 	// Status prefixes
-	PrefixOK      = "[OK]"
-	PrefixFail    = "[FAIL]"
-	PrefixWait    = "[WAIT]"
-	PrefixWarn    = "[WARN]"
-	PrefixInfo    = "[INFO]"
+	PrefixOK   = "[OK]"
+	PrefixFail = "[FAIL]"
+	PrefixWait = "[WAIT]"
+	PrefixWarn = "[WARN]"
+	PrefixInfo = "[INFO]"
 
 	// List item prefixes
 	PrefixPlus    = "[+]"

@@ -334,13 +334,13 @@ func (m *MenuModel) View() string {
 
 // handleSingleBackup opens database selector for single backup
 func (m *MenuModel) handleSingleBackup() (tea.Model, tea.Cmd) {
-	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "[DB]  Single Database Backup", "single")
+	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "[SELECT] Single Database Backup", "single")
 	return selector, selector.Init()
 }
 
 // handleSampleBackup opens database selector for sample backup
 func (m *MenuModel) handleSampleBackup() (tea.Model, tea.Cmd) {
-	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "[STATS] Sample Database Backup", "sample")
+	selector := NewDatabaseSelector(m.config, m.logger, m, m.ctx, "[SELECT] Sample Database Backup", "sample")
 	return selector, selector.Init()
 }
 
@@ -356,7 +356,7 @@ func (m *MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
 		return executor, executor.Init()
 	}
 	confirm := NewConfirmationModelWithAction(m.config, m.logger, m,
-		"[DB]  Cluster Backup",
+		"[CHECK] Cluster Backup",
 		"This will backup ALL databases in the cluster. Continue?",
 		func() (tea.Model, tea.Cmd) {
 			executor := NewBackupExecution(m.config, m.logger, m, m.ctx, "cluster", "", 0)

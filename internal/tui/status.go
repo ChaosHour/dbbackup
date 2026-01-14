@@ -173,7 +173,7 @@ func (m StatusViewModel) View() string {
 		s.WriteString(errorStyle.Render(fmt.Sprintf("[FAIL] Error: %v\n", m.err)))
 		s.WriteString("\n")
 	} else {
-		s.WriteString("Connection Status:\n")
+		s.WriteString("[CONN] Connection Status\n")
 		if m.connected {
 			s.WriteString(successStyle.Render("  [+] Connected\n"))
 		} else {
@@ -181,11 +181,12 @@ func (m StatusViewModel) View() string {
 		}
 		s.WriteString("\n")
 
-		s.WriteString(fmt.Sprintf("Database Type: %s (%s)\n", m.config.DisplayDatabaseType(), m.config.DatabaseType))
-		s.WriteString(fmt.Sprintf("Host: %s:%d\n", m.config.Host, m.config.Port))
-		s.WriteString(fmt.Sprintf("User: %s\n", m.config.User))
-		s.WriteString(fmt.Sprintf("Backup Directory: %s\n", m.config.BackupDir))
-		s.WriteString(fmt.Sprintf("Version: %s\n\n", m.dbVersion))
+		s.WriteString("[INFO] Server Details\n")
+		s.WriteString(fmt.Sprintf("  Database Type: %s (%s)\n", m.config.DisplayDatabaseType(), m.config.DatabaseType))
+		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
+		s.WriteString(fmt.Sprintf("  User: %s\n", m.config.User))
+		s.WriteString(fmt.Sprintf("  Backup Directory: %s\n", m.config.BackupDir))
+		s.WriteString(fmt.Sprintf("  Version: %s\n\n", m.dbVersion))
 
 		if m.dbCount > 0 {
 			s.WriteString(fmt.Sprintf("Databases Found: %s\n", successStyle.Render(fmt.Sprintf("%d", m.dbCount))))

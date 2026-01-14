@@ -747,7 +747,7 @@ func (m SettingsModel) View() string {
 	// Current configuration summary
 	if !m.editing {
 		b.WriteString("\n")
-		b.WriteString(infoStyle.Render("[LOG] Current Configuration:"))
+		b.WriteString(infoStyle.Render("[INFO] Current Configuration"))
 		b.WriteString("\n")
 
 		summary := []string{

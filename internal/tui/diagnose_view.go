@@ -349,10 +349,8 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 		}
 	}
 
-	s.WriteString(strings.Repeat("-", 60))
 	s.WriteString("\n")
-	s.WriteString(diagnoseHeaderStyle.Render(fmt.Sprintf("CLUSTER SUMMARY: %d databases\n", len(m.results))))
-	s.WriteString(strings.Repeat("-", 60))
+	s.WriteString(diagnoseHeaderStyle.Render(fmt.Sprintf("[STATS] Cluster Summary: %d databases", len(m.results))))
 	s.WriteString("\n\n")
 
 	if invalidCount == 0 {
@@ -364,7 +362,7 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 	}
 
 	// List all dumps with status
-	s.WriteString(diagnoseHeaderStyle.Render("Database Dumps:"))
+	s.WriteString(diagnoseHeaderStyle.Render("[LIST] Database Dumps"))
 	s.WriteString("\n")
 
 	// Show visible range based on cursor
@@ -413,9 +411,7 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 	if m.cursor < len(m.results) {
 		selected := m.results[m.cursor]
 		s.WriteString("\n")
-		s.WriteString(strings.Repeat("-", 60))
-		s.WriteString("\n")
-		s.WriteString(diagnoseHeaderStyle.Render("Selected: " + selected.FileName))
+		s.WriteString(diagnoseHeaderStyle.Render("[INFO] Selected: " + selected.FileName))
 		s.WriteString("\n\n")
 
 		// Show condensed details for selected

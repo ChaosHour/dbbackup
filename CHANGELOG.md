@@ -5,6 +5,29 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.34] - 2026-01-14 "Filesystem Abstraction"
+
+### Added - spf13/afero for Filesystem Abstraction
+- **New `internal/fs` package** for testable filesystem operations
+- **In-memory filesystem** for unit testing without disk I/O
+- **Global FS interface** that can be swapped for testing:
+  ```go
+  fs.SetFS(afero.NewMemMapFs())  // Use memory
+  fs.ResetFS()                    // Back to real disk
+  ```
+- **Wrapper functions** for all common file operations:
+  - `ReadFile`, `WriteFile`, `Create`, `Open`, `Remove`, `RemoveAll`
+  - `Mkdir`, `MkdirAll`, `ReadDir`, `Walk`, `Glob`
+  - `Exists`, `DirExists`, `IsDir`, `IsEmpty`
+  - `TempDir`, `TempFile`, `CopyFile`, `FileSize`
+- **Testing helpers**:
+  - `WithMemFs(fn)` - Execute function with temp in-memory FS
+  - `SetupTestDir(files)` - Create test directory structure
+- **Comprehensive test suite** demonstrating usage
+
+### Changed
+- Upgraded afero from v1.10.0 to v1.15.0
+
 ## [3.42.33] - 2026-01-14 "Exponential Backoff Retry"
 
 ### Added - cenkalti/backoff for Cloud Operation Retry

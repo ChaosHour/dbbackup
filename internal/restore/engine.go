@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -928,23 +929,34 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	}
 	e.log.Info("All dump files passed validation")
 
-	// AUTO-TUNE: Boost PostgreSQL lock capacity for large restores
-	// This prevents "out of shared memory" / max_locks_per_transaction errors
+	// Run comprehensive preflight checks (Linux system + PostgreSQL + Archive analysis)
+	preflight, preflightErr := e.RunPreflightChecks(ctx, dumpsDir, entries)
+	if preflightErr != nil {
+		e.log.Warn("Preflight checks failed", "error", preflightErr)
+	}
+
+	// Calculate optimal lock boost based on BLOB count
+	lockBoostValue := 2048 // Default
+	if preflight != nil && preflight.Archive.RecommendedLockBoost > 0 {
+		lockBoostValue = preflight.Archive.RecommendedLockBoost
+	}
+
+	// AUTO-TUNE: Boost PostgreSQL settings for large restores
 	e.progress.Update("Tuning PostgreSQL for large restore...")
-	originalLockValue, tuneErr := e.boostLockCapacity(ctx)
+	originalSettings, tuneErr := e.boostPostgreSQLSettings(ctx, lockBoostValue)
 	if tuneErr != nil {
-		e.log.Warn("Could not boost lock capacity - restore may fail on BLOB-heavy databases",
+		e.log.Warn("Could not boost PostgreSQL settings - restore may fail on BLOB-heavy databases",
 			"error", tuneErr)
 	} else {
-		e.log.Info("Boosted max_locks_per_transaction for restore",
-			"original", originalLockValue,
-			"boosted", 2048)
-		// Ensure we reset lock capacity when done (even on failure)
+		e.log.Info("Boosted PostgreSQL settings for restore",
+			"max_locks_per_transaction", fmt.Sprintf("%d → %d", originalSettings.MaxLocks, lockBoostValue),
+			"maintenance_work_mem", fmt.Sprintf("%s → 2GB", originalSettings.MaintenanceWorkMem))
+		// Ensure we reset settings when done (even on failure)
 		defer func() {
-			if resetErr := e.resetLockCapacity(ctx, originalLockValue); resetErr != nil {
-				e.log.Warn("Could not reset lock capacity", "error", resetErr)
+			if resetErr := e.resetPostgreSQLSettings(ctx, originalSettings); resetErr != nil {
+				e.log.Warn("Could not reset PostgreSQL settings", "error", resetErr)
 			} else {
-				e.log.Info("Reset max_locks_per_transaction to original value", "value", originalLockValue)
+				e.log.Info("Reset PostgreSQL settings to original values")
 			}
 		}()
 	}
@@ -1720,6 +1732,87 @@ func (e *Engine) resetLockCapacity(ctx context.Context, originalValue int) error
 	}
 	if err != nil {
 		return fmt.Errorf("failed to reset max_locks_per_transaction: %w", err)
+	}
+
+	// Reload config
+	_, err = db.ExecContext(ctx, "SELECT pg_reload_conf()")
+	if err != nil {
+		return fmt.Errorf("failed to reload config: %w", err)
+	}
+
+	return nil
+}
+
+// OriginalSettings stores PostgreSQL settings to restore after operation
+type OriginalSettings struct {
+	MaxLocks           int
+	MaintenanceWorkMem string
+}
+
+// boostPostgreSQLSettings boosts multiple PostgreSQL settings for large restores
+func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int) (*OriginalSettings, error) {
+	connStr := e.buildConnString()
+	db, err := sql.Open("pgx", connStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+	defer db.Close()
+
+	original := &OriginalSettings{}
+
+	// Get current max_locks_per_transaction
+	var maxLocksStr string
+	if err := db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&maxLocksStr); err == nil {
+		original.MaxLocks, _ = strconv.Atoi(maxLocksStr)
+	}
+
+	// Get current maintenance_work_mem
+	db.QueryRowContext(ctx, "SHOW maintenance_work_mem").Scan(&original.MaintenanceWorkMem)
+
+	// Boost max_locks_per_transaction (if not already high enough)
+	if original.MaxLocks < lockBoostValue {
+		_, err = db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", lockBoostValue))
+		if err != nil {
+			e.log.Warn("Could not boost max_locks_per_transaction", "error", err)
+		}
+	}
+
+	// Boost maintenance_work_mem to 2GB for faster index creation
+	_, err = db.ExecContext(ctx, "ALTER SYSTEM SET maintenance_work_mem = '2GB'")
+	if err != nil {
+		e.log.Warn("Could not boost maintenance_work_mem", "error", err)
+	}
+
+	// Reload config to apply changes (no restart needed for these settings)
+	_, err = db.ExecContext(ctx, "SELECT pg_reload_conf()")
+	if err != nil {
+		return original, fmt.Errorf("failed to reload config: %w", err)
+	}
+
+	return original, nil
+}
+
+// resetPostgreSQLSettings restores original PostgreSQL settings
+func (e *Engine) resetPostgreSQLSettings(ctx context.Context, original *OriginalSettings) error {
+	connStr := e.buildConnString()
+	db, err := sql.Open("pgx", connStr)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer db.Close()
+
+	// Reset max_locks_per_transaction
+	if original.MaxLocks == 64 { // Default
+		db.ExecContext(ctx, "ALTER SYSTEM RESET max_locks_per_transaction")
+	} else if original.MaxLocks > 0 {
+		db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", original.MaxLocks))
+	}
+
+	// Reset maintenance_work_mem
+	if original.MaintenanceWorkMem == "64MB" { // Default
+		db.ExecContext(ctx, "ALTER SYSTEM RESET maintenance_work_mem")
+	} else if original.MaintenanceWorkMem != "" {
+		db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET maintenance_work_mem = '%s'", original.MaintenanceWorkMem))
 	}
 
 	// Reload config

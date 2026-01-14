@@ -35,15 +35,15 @@ type PreflightResult struct {
 
 // LinuxChecks contains Linux kernel/system checks
 type LinuxChecks struct {
-	ShmMax         int64  // /proc/sys/kernel/shmmax
-	ShmAll         int64  // /proc/sys/kernel/shmall
-	MemTotal       uint64 // Total RAM in bytes
-	MemAvailable   uint64 // Available RAM in bytes
+	ShmMax         int64   // /proc/sys/kernel/shmmax
+	ShmAll         int64   // /proc/sys/kernel/shmall
+	MemTotal       uint64  // Total RAM in bytes
+	MemAvailable   uint64  // Available RAM in bytes
 	MemUsedPercent float64 // Memory usage percentage
-	ShmMaxOK       bool   // Is shmmax sufficient?
-	ShmAllOK       bool   // Is shmall sufficient?
-	MemAvailableOK bool   // Is available RAM sufficient?
-	IsLinux        bool   // Are we running on Linux?
+	ShmMaxOK       bool    // Is shmmax sufficient?
+	ShmAllOK       bool    // Is shmall sufficient?
+	MemAvailableOK bool    // Is available RAM sufficient?
+	IsLinux        bool    // Are we running on Linux?
 }
 
 // PostgreSQLChecks contains PostgreSQL configuration checks

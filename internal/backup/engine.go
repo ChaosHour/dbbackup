@@ -1242,22 +1242,28 @@ func (e *Engine) uploadToCloud(ctx context.Context, backupFile string, tracker *
 	filename := filepath.Base(backupFile)
 	e.log.Info("Uploading backup to cloud", "file", filename, "size", cloud.FormatSize(info.Size()))
 
-	// Progress callback
-	var lastPercent int
+	// Create schollz progressbar for visual upload progress
+	bar := progress.NewSchollzBar(info.Size(), fmt.Sprintf("Uploading %s", filename))
+
+	// Progress callback with schollz progressbar
+	var lastBytes int64
 	progressCallback := func(transferred, total int64) {
-		percent := int(float64(transferred) / float64(total) * 100)
-		if percent != lastPercent && percent%10 == 0 {
-			e.log.Debug("Upload progress", "percent", percent, "transferred", cloud.FormatSize(transferred), "total", cloud.FormatSize(total))
-			lastPercent = percent
+		delta := transferred - lastBytes
+		if delta > 0 {
+			_ = bar.Add64(delta)
 		}
+		lastBytes = transferred
 	}
 
 	// Upload to cloud
 	err = backend.Upload(ctx, backupFile, filename, progressCallback)
 	if err != nil {
+		bar.Fail("Upload failed")
 		uploadStep.Fail(fmt.Errorf("cloud upload failed: %w", err))
 		return err
 	}
+
+	_ = bar.Finish()
 
 	// Also upload metadata file
 	metaFile := backupFile + ".meta.json"

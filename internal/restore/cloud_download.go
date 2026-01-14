@@ -12,6 +12,7 @@ import (
 	"dbbackup/internal/cloud"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
+	"dbbackup/internal/progress"
 )
 
 // CloudDownloader handles downloading backups from cloud storage
@@ -73,24 +74,42 @@ func (d *CloudDownloader) Download(ctx context.Context, remotePath string, opts 
 		size = 0 // Continue anyway
 	}
 
-	// Progress callback
-	var lastPercent int
+	// Create schollz progressbar for visual download progress
+	var bar *progress.SchollzBar
+	if size > 0 {
+		bar = progress.NewSchollzBar(size, fmt.Sprintf("Downloading %s", filename))
+	} else {
+		bar = progress.NewSchollzSpinner(fmt.Sprintf("Downloading %s", filename))
+	}
+
+	// Progress callback with schollz progressbar
+	var lastBytes int64
 	progressCallback := func(transferred, total int64) {
-		if total > 0 {
-			percent := int(float64(transferred) / float64(total) * 100)
-			if percent != lastPercent && percent%10 == 0 {
-				d.log.Info("Download progress", "percent", percent, "transferred", cloud.FormatSize(transferred), "total", cloud.FormatSize(total))
-				lastPercent = percent
+		if bar != nil {
+			// Update progress bar with delta
+			delta := transferred - lastBytes
+			if delta > 0 {
+				_ = bar.Add64(delta)
 			}
+			lastBytes = transferred
 		}
 	}
 
 	// Download file
 	if err := d.backend.Download(ctx, remotePath, localPath, progressCallback); err != nil {
+		if bar != nil {
+			bar.Fail("Download failed")
+		}
 		// Cleanup on failure
 		os.RemoveAll(tempSubDir)
 		return nil, fmt.Errorf("download failed: %w", err)
 	}
+
+	if bar != nil {
+		_ = bar.Finish()
+	}
+
+	d.log.Info("Download completed", "size", cloud.FormatSize(size))
 
 	result := &DownloadResult{
 		LocalPath:  localPath,
@@ -115,7 +134,7 @@ func (d *CloudDownloader) Download(ctx context.Context, remotePath string, opts 
 	// Verify checksum if requested
 	if opts.VerifyChecksum {
 		d.log.Info("Verifying checksum...")
-		checksum, err := calculateSHA256(localPath)
+		checksum, err := calculateSHA256WithProgress(localPath)
 		if err != nil {
 			// Cleanup on verification failure
 			os.RemoveAll(tempSubDir)
@@ -183,6 +202,35 @@ func calculateSHA256(filePath string) (string, error) {
 		return "", err
 	}
 
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// calculateSHA256WithProgress calculates SHA-256 with visual progress bar
+func calculateSHA256WithProgress(filePath string) (string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// Get file size for progress bar
+	stat, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+
+	bar := progress.NewSchollzBar(stat.Size(), "Verifying checksum")
+	hash := sha256.New()
+
+	// Create a multi-writer to update both hash and progress
+	writer := io.MultiWriter(hash, bar.Writer())
+
+	if _, err := io.Copy(writer, file); err != nil {
+		bar.Fail("Verification failed")
+		return "", err
+	}
+
+	_ = bar.Finish()
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 

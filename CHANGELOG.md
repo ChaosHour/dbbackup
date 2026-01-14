@@ -5,6 +5,24 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.31] - 2026-01-14 "Visual Progress Bars"
+
+### Added - schollz/progressbar for Enhanced Progress Display
+- **Visual progress bars** for cloud uploads/downloads with:
+  - Byte transfer display (e.g., `245 MB / 1.2 GB`)
+  - Transfer speed (e.g., `45 MB/s`)
+  - ETA prediction
+  - Color-coded progress with Unicode blocks
+- **Checksum verification progress** - visual progress while calculating SHA-256
+- **Spinner for indeterminate operations** - Braille-style spinner when size unknown
+- New progress types: `NewSchollzBar()`, `NewSchollzBarItems()`, `NewSchollzSpinner()`
+- Progress bar `Writer()` method for io.Copy integration
+
+### Changed
+- Cloud download shows real-time byte progress instead of 10% log messages
+- Cloud upload shows visual progress bar instead of debug logs  
+- Checksum verification shows progress for large files
+
 ## [3.42.30] - 2026-01-09 "Better Error Aggregation"
 
 ### Added - go-multierror for Cluster Restore Errors

@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/schollz/progressbar/v3"
 )
 
 // Indicator represents a progress indicator interface
@@ -440,6 +442,8 @@ func NewIndicator(interactive bool, indicatorType string) Indicator {
 		return NewDots()
 	case "bar":
 		return NewProgressBar(100) // Default to 100 steps
+	case "schollz":
+		return NewSchollzBarItems(100, "Progress")
 	case "line":
 		return NewLineByLine()
 	case "light":
@@ -463,3 +467,159 @@ func (n *NullIndicator) Complete(message string)              {}
 func (n *NullIndicator) Fail(message string)                  {}
 func (n *NullIndicator) Stop()                                {}
 func (n *NullIndicator) SetEstimator(estimator *ETAEstimator) {}
+
+// SchollzBar wraps schollz/progressbar for enhanced progress display
+// Ideal for byte-based operations like archive extraction and file transfers
+type SchollzBar struct {
+	bar       *progressbar.ProgressBar
+	message   string
+	total     int64
+	estimator *ETAEstimator
+}
+
+// NewSchollzBar creates a new schollz progressbar with byte-based progress
+func NewSchollzBar(total int64, description string) *SchollzBar {
+	bar := progressbar.NewOptions64(
+		total,
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetWidth(40),
+		progressbar.OptionSetDescription(description),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]█[reset]",
+			SaucerHead:    "[green]▌[reset]",
+			SaucerPadding: "░",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetPredictTime(true),
+		progressbar.OptionFullWidth(),
+		progressbar.OptionClearOnFinish(),
+	)
+	return &SchollzBar{
+		bar:     bar,
+		message: description,
+		total:   total,
+	}
+}
+
+// NewSchollzBarItems creates a progressbar for item counts (not bytes)
+func NewSchollzBarItems(total int, description string) *SchollzBar {
+	bar := progressbar.NewOptions(
+		total,
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetWidth(40),
+		progressbar.OptionSetDescription(description),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[cyan]█[reset]",
+			SaucerHead:    "[cyan]▌[reset]",
+			SaucerPadding: "░",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+		progressbar.OptionSetPredictTime(true),
+		progressbar.OptionFullWidth(),
+		progressbar.OptionClearOnFinish(),
+	)
+	return &SchollzBar{
+		bar:     bar,
+		message: description,
+		total:   int64(total),
+	}
+}
+
+// NewSchollzSpinner creates an indeterminate spinner for unknown-length operations
+func NewSchollzSpinner(description string) *SchollzBar {
+	bar := progressbar.NewOptions(
+		-1, // Indeterminate
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionSetWidth(40),
+		progressbar.OptionSetDescription(description),
+		progressbar.OptionSpinnerType(14), // Braille spinner
+		progressbar.OptionFullWidth(),
+	)
+	return &SchollzBar{
+		bar:     bar,
+		message: description,
+		total:   -1,
+	}
+}
+
+// Start initializes the progress bar (Indicator interface)
+func (s *SchollzBar) Start(message string) {
+	s.message = message
+	s.bar.Describe(message)
+}
+
+// Update updates the description (Indicator interface)
+func (s *SchollzBar) Update(message string) {
+	s.message = message
+	s.bar.Describe(message)
+}
+
+// Add adds bytes/items to the progress
+func (s *SchollzBar) Add(n int) error {
+	return s.bar.Add(n)
+}
+
+// Add64 adds bytes to the progress (for large files)
+func (s *SchollzBar) Add64(n int64) error {
+	return s.bar.Add64(n)
+}
+
+// Set sets the current progress value
+func (s *SchollzBar) Set(n int) error {
+	return s.bar.Set(n)
+}
+
+// Set64 sets the current progress value (for large files)
+func (s *SchollzBar) Set64(n int64) error {
+	return s.bar.Set64(n)
+}
+
+// ChangeMax updates the maximum value
+func (s *SchollzBar) ChangeMax(max int) {
+	s.bar.ChangeMax(max)
+	s.total = int64(max)
+}
+
+// ChangeMax64 updates the maximum value (for large files)
+func (s *SchollzBar) ChangeMax64(max int64) {
+	s.bar.ChangeMax64(max)
+	s.total = max
+}
+
+// Complete finishes with success (Indicator interface)
+func (s *SchollzBar) Complete(message string) {
+	_ = s.bar.Finish()
+	fmt.Printf("\n[green][OK][reset] %s\n", message)
+}
+
+// Fail finishes with failure (Indicator interface)
+func (s *SchollzBar) Fail(message string) {
+	_ = s.bar.Clear()
+	fmt.Printf("\n[red][FAIL][reset] %s\n", message)
+}
+
+// Stop stops the progress bar (Indicator interface)
+func (s *SchollzBar) Stop() {
+	_ = s.bar.Clear()
+}
+
+// SetEstimator is a no-op (schollz has built-in ETA)
+func (s *SchollzBar) SetEstimator(estimator *ETAEstimator) {
+	s.estimator = estimator
+}
+
+// Writer returns an io.Writer that updates progress as data is written
+// Useful for wrapping readers/writers in copy operations
+func (s *SchollzBar) Writer() io.Writer {
+	return s.bar
+}
+
+// Finish marks the progress as complete
+func (s *SchollzBar) Finish() error {
+	return s.bar.Finish()
+}

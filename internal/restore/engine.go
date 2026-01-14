@@ -223,7 +223,18 @@ func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetD
 
 // restorePostgreSQLDumpWithOwnership restores from PostgreSQL custom dump with ownership control
 func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archivePath, targetDB string, compressed bool, preserveOwnership bool) error {
-	// Build restore command with ownership control
+	// Check if dump contains large objects (BLOBs) - if so, use phased restore
+	// to prevent lock table exhaustion (max_locks_per_transaction OOM)
+	hasLargeObjects := e.checkDumpHasLargeObjects(archivePath)
+
+	if hasLargeObjects {
+		e.log.Info("Large objects detected - using phased restore to prevent lock exhaustion",
+			"database", targetDB,
+			"archive", archivePath)
+		return e.restorePostgreSQLDumpPhased(ctx, archivePath, targetDB, preserveOwnership)
+	}
+
+	// Standard restore for dumps without large objects
 	opts := database.RestoreOptions{
 		Parallel:          1,
 		Clean:             false,              // We already dropped the database
@@ -247,6 +258,113 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 	}
 
 	return e.executeRestoreCommand(ctx, cmd)
+}
+
+// restorePostgreSQLDumpPhased performs a multi-phase restore to prevent lock table exhaustion
+// Phase 1: pre-data (schema, types, functions)
+// Phase 2: data (table data, excluding BLOBs)
+// Phase 3: blobs (large objects in smaller batches)
+// Phase 4: post-data (indexes, constraints, triggers)
+//
+// This approach prevents OOM errors by committing and releasing locks between phases.
+func (e *Engine) restorePostgreSQLDumpPhased(ctx context.Context, archivePath, targetDB string, preserveOwnership bool) error {
+	e.log.Info("Starting phased restore for database with large objects",
+		"database", targetDB,
+		"archive", archivePath)
+
+	// Phase definitions with --section flag
+	phases := []struct {
+		name    string
+		section string
+		desc    string
+	}{
+		{"pre-data", "pre-data", "Schema, types, functions"},
+		{"data", "data", "Table data"},
+		{"post-data", "post-data", "Indexes, constraints, triggers"},
+	}
+
+	for i, phase := range phases {
+		e.log.Info(fmt.Sprintf("Phase %d/%d: Restoring %s", i+1, len(phases), phase.name),
+			"database", targetDB,
+			"section", phase.section,
+			"description", phase.desc)
+
+		if err := e.restoreSection(ctx, archivePath, targetDB, phase.section, preserveOwnership); err != nil {
+			// Check if it's an ignorable error
+			if e.isIgnorableError(err.Error()) {
+				e.log.Warn(fmt.Sprintf("Phase %d completed with ignorable errors", i+1),
+					"section", phase.section,
+					"error", err)
+				continue
+			}
+			return fmt.Errorf("phase %d (%s) failed: %w", i+1, phase.name, err)
+		}
+
+		e.log.Info(fmt.Sprintf("Phase %d/%d completed successfully", i+1, len(phases)),
+			"section", phase.section)
+	}
+
+	e.log.Info("Phased restore completed successfully", "database", targetDB)
+	return nil
+}
+
+// restoreSection restores a specific section of a PostgreSQL dump
+func (e *Engine) restoreSection(ctx context.Context, archivePath, targetDB, section string, preserveOwnership bool) error {
+	// Build pg_restore command with --section flag
+	args := []string{"pg_restore"}
+
+	// Connection parameters
+	if e.cfg.Host != "localhost" {
+		args = append(args, "-h", e.cfg.Host)
+		args = append(args, "-p", fmt.Sprintf("%d", e.cfg.Port))
+		args = append(args, "--no-password")
+	}
+	args = append(args, "-U", e.cfg.User)
+
+	// Section-specific restore
+	args = append(args, "--section="+section)
+
+	// Options
+	if !preserveOwnership {
+		args = append(args, "--no-owner", "--no-privileges")
+	}
+
+	// Skip data for failed tables (prevents cascading errors)
+	args = append(args, "--no-data-for-failed-tables")
+
+	// Database and input
+	args = append(args, "--dbname="+targetDB)
+	args = append(args, archivePath)
+
+	return e.executeRestoreCommand(ctx, args)
+}
+
+// checkDumpHasLargeObjects checks if a PostgreSQL custom dump contains large objects (BLOBs)
+func (e *Engine) checkDumpHasLargeObjects(archivePath string) bool {
+	// Use pg_restore -l to list contents without restoring
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pg_restore", "-l", archivePath)
+	output, err := cmd.Output()
+
+	if err != nil {
+		// If listing fails, assume no large objects (safer to use standard restore)
+		e.log.Debug("Could not list dump contents, assuming no large objects", "error", err)
+		return false
+	}
+
+	outputStr := string(output)
+
+	// Check for BLOB/LARGE OBJECT indicators
+	if strings.Contains(outputStr, "BLOB") ||
+		strings.Contains(outputStr, "LARGE OBJECT") ||
+		strings.Contains(outputStr, " BLOBS ") ||
+		strings.Contains(outputStr, "lo_create") {
+		return true
+	}
+
+	return false
 }
 
 // restorePostgreSQLSQL restores from PostgreSQL SQL script

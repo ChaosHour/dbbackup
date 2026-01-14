@@ -68,8 +68,8 @@ func ClassifyError(errorMsg string) *ErrorClassification {
 			Type:     "critical",
 			Category: "locks",
 			Message:  errorMsg,
-			Hint:     "Lock table exhausted - typically caused by large objects in parallel restore",
-			Action:   "Increase max_locks_per_transaction in postgresql.conf to 512 or higher",
+			Hint:     "Lock table exhausted - typically caused by large objects (BLOBs) during restore",
+			Action:   "Option 1: Increase max_locks_per_transaction to 1024+ in postgresql.conf (requires restart). Option 2: Update dbbackup and retry - phased restore now auto-enabled for BLOB databases",
 			Severity: 2,
 		}
 	case "permission_denied":
@@ -142,8 +142,8 @@ func ClassifyError(errorMsg string) *ErrorClassification {
 			Type:     "critical",
 			Category: "locks",
 			Message:  errorMsg,
-			Hint:     "Lock table exhausted - typically caused by large objects in parallel restore",
-			Action:   "Increase max_locks_per_transaction in postgresql.conf to 512 or higher",
+			Hint:     "Lock table exhausted - typically caused by large objects (BLOBs) during restore",
+			Action:   "Option 1: Increase max_locks_per_transaction to 1024+ in postgresql.conf (requires restart). Option 2: Update dbbackup and retry - phased restore now auto-enabled for BLOB databases",
 			Severity: 2,
 		}
 	}

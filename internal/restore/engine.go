@@ -20,6 +20,7 @@ import (
 	"dbbackup/internal/progress"
 	"dbbackup/internal/security"
 
+	"github.com/hashicorp/go-multierror"
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
 )
 
@@ -961,7 +962,8 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		}()
 	}
 
-	var failedDBs []string
+	var restoreErrors *multierror.Error
+	var restoreErrorsMu sync.Mutex
 	totalDBs := 0
 
 	// Count total databases
@@ -995,7 +997,6 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	}
 
 	var successCount, failCount int32
-	var failedDBsMu sync.Mutex
 	var mu sync.Mutex // Protect shared resources (progress, logger)
 
 	// Create semaphore to limit concurrency
@@ -1050,9 +1051,9 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 			// STEP 2: Create fresh database
 			if err := e.ensureDatabaseExists(ctx, dbName); err != nil {
 				e.log.Error("Failed to create database", "name", dbName, "error", err)
-				failedDBsMu.Lock()
-				failedDBs = append(failedDBs, fmt.Sprintf("%s: failed to create database: %v", dbName, err))
-				failedDBsMu.Unlock()
+				restoreErrorsMu.Lock()
+				restoreErrors = multierror.Append(restoreErrors, fmt.Errorf("%s: failed to create database: %w", dbName, err))
+				restoreErrorsMu.Unlock()
 				atomic.AddInt32(&failCount, 1)
 				return
 			}
@@ -1095,10 +1096,10 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 					mu.Unlock()
 				}
 
-				failedDBsMu.Lock()
+				restoreErrorsMu.Lock()
 				// Include more context in the error message
-				failedDBs = append(failedDBs, fmt.Sprintf("%s: restore failed: %v", dbName, restoreErr))
-				failedDBsMu.Unlock()
+				restoreErrors = multierror.Append(restoreErrors, fmt.Errorf("%s: restore failed: %w", dbName, restoreErr))
+				restoreErrorsMu.Unlock()
 				atomic.AddInt32(&failCount, 1)
 				return
 			}
@@ -1116,7 +1117,17 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	failCountFinal := int(atomic.LoadInt32(&failCount))
 
 	if failCountFinal > 0 {
-		failedList := strings.Join(failedDBs, "\n  ")
+		// Format multi-error with detailed output
+		restoreErrors.ErrorFormat = func(errs []error) string {
+			if len(errs) == 1 {
+				return errs[0].Error()
+			}
+			points := make([]string, len(errs))
+			for i, err := range errs {
+				points[i] = fmt.Sprintf("  • %s", err.Error())
+			}
+			return fmt.Sprintf("%d database(s) failed:\n%s", len(errs), strings.Join(points, "\n"))
+		}
 
 		// Log summary
 		e.log.Info("Cluster restore completed with failures",
@@ -1127,7 +1138,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		e.progress.Fail(fmt.Sprintf("Cluster restore: %d succeeded, %d failed out of %d total", successCountFinal, failCountFinal, totalDBs))
 		operation.Complete(fmt.Sprintf("Partial restore: %d/%d databases succeeded", successCountFinal, totalDBs))
 
-		return fmt.Errorf("cluster restore completed with %d failures:\n  %s", failCountFinal, failedList)
+		return fmt.Errorf("cluster restore completed with %d failures:\n%s", failCountFinal, restoreErrors.Error())
 	}
 
 	e.progress.Complete(fmt.Sprintf("Cluster restored successfully: %d databases", successCountFinal))

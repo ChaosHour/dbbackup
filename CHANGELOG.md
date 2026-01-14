@@ -5,6 +5,26 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.30] - 2026-01-09 "Better Error Aggregation"
+
+### Added - go-multierror for Cluster Restore Errors
+- **Enhanced error reporting** - Now shows ALL database failures, not just a count
+- Uses `hashicorp/go-multierror` for proper error aggregation
+- Each failed database error is preserved with full context
+- Bullet-pointed error output for readability:
+  ```
+  cluster restore completed with 3 failures:
+  3 database(s) failed:
+    • db1: restore failed: max_locks_per_transaction exceeded
+    • db2: restore failed: connection refused
+    • db3: failed to create database: permission denied
+  ```
+
+### Changed
+- Replaced string slice error collection with proper `*multierror.Error`
+- Thread-safe error aggregation with dedicated mutex
+- Improved error wrapping with `%w` for error chain preservation
+
 ## [3.42.10] - 2026-01-08 "Code Quality"
 
 ### Fixed - Code Quality Issues

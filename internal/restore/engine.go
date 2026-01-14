@@ -2,6 +2,7 @@ package restore
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,6 +18,8 @@ import (
 	"dbbackup/internal/logger"
 	"dbbackup/internal/progress"
 	"dbbackup/internal/security"
+
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
 )
 
 // Engine handles database restore operations
@@ -925,6 +928,27 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	}
 	e.log.Info("All dump files passed validation")
 
+	// AUTO-TUNE: Boost PostgreSQL lock capacity for large restores
+	// This prevents "out of shared memory" / max_locks_per_transaction errors
+	e.progress.Update("Tuning PostgreSQL for large restore...")
+	originalLockValue, tuneErr := e.boostLockCapacity(ctx)
+	if tuneErr != nil {
+		e.log.Warn("Could not boost lock capacity - restore may fail on BLOB-heavy databases",
+			"error", tuneErr)
+	} else {
+		e.log.Info("Boosted max_locks_per_transaction for restore",
+			"original", originalLockValue,
+			"boosted", 2048)
+		// Ensure we reset lock capacity when done (even on failure)
+		defer func() {
+			if resetErr := e.resetLockCapacity(ctx, originalLockValue); resetErr != nil {
+				e.log.Warn("Could not reset lock capacity", "error", resetErr)
+			} else {
+				e.log.Info("Reset max_locks_per_transaction to original value", "value", originalLockValue)
+			}
+		}()
+	}
+
 	var failedDBs []string
 	totalDBs := 0
 
@@ -1615,5 +1639,94 @@ func (e *Engine) quickValidateSQLDump(archivePath string, compressed bool) error
 	}
 
 	e.log.Debug("SQL dump validation passed", "path", archivePath)
+	return nil
+}
+
+// boostLockCapacity temporarily increases max_locks_per_transaction to prevent OOM
+// during large restores with many BLOBs. Returns the original value for later reset.
+// Uses ALTER SYSTEM + pg_reload_conf() so no restart is needed.
+func (e *Engine) boostLockCapacity(ctx context.Context) (int, error) {
+	// Connect to PostgreSQL to run system commands
+	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
+		e.cfg.Host, e.cfg.Port, e.cfg.User, e.cfg.Password)
+
+	// For localhost, use Unix socket
+	if e.cfg.Host == "localhost" || e.cfg.Host == "" {
+		connStr = fmt.Sprintf("user=%s password=%s dbname=postgres sslmode=disable",
+			e.cfg.User, e.cfg.Password)
+	}
+
+	db, err := sql.Open("pgx", connStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to connect: %w", err)
+	}
+	defer db.Close()
+
+	// Get current value
+	var currentValue int
+	err = db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&currentValue)
+	if err != nil {
+		// Try parsing as string (some versions return string)
+		var currentValueStr string
+		err = db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&currentValueStr)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get current max_locks_per_transaction: %w", err)
+		}
+		fmt.Sscanf(currentValueStr, "%d", &currentValue)
+	}
+
+	// Skip if already high enough
+	if currentValue >= 2048 {
+		e.log.Info("max_locks_per_transaction already sufficient", "value", currentValue)
+		return currentValue, nil
+	}
+
+	// Boost to 2048 (enough for most BLOB-heavy databases)
+	_, err = db.ExecContext(ctx, "ALTER SYSTEM SET max_locks_per_transaction = 2048")
+	if err != nil {
+		return currentValue, fmt.Errorf("failed to set max_locks_per_transaction: %w", err)
+	}
+
+	// Reload config without restart
+	_, err = db.ExecContext(ctx, "SELECT pg_reload_conf()")
+	if err != nil {
+		return currentValue, fmt.Errorf("failed to reload config: %w", err)
+	}
+
+	return currentValue, nil
+}
+
+// resetLockCapacity restores the original max_locks_per_transaction value
+func (e *Engine) resetLockCapacity(ctx context.Context, originalValue int) error {
+	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
+		e.cfg.Host, e.cfg.Port, e.cfg.User, e.cfg.Password)
+
+	if e.cfg.Host == "localhost" || e.cfg.Host == "" {
+		connStr = fmt.Sprintf("user=%s password=%s dbname=postgres sslmode=disable",
+			e.cfg.User, e.cfg.Password)
+	}
+
+	db, err := sql.Open("pgx", connStr)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %w", err)
+	}
+	defer db.Close()
+
+	// Reset to original value (or use RESET to go back to default)
+	if originalValue == 64 { // Default value
+		_, err = db.ExecContext(ctx, "ALTER SYSTEM RESET max_locks_per_transaction")
+	} else {
+		_, err = db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", originalValue))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to reset max_locks_per_transaction: %w", err)
+	}
+
+	// Reload config
+	_, err = db.ExecContext(ctx, "SELECT pg_reload_conf()")
+	if err != nil {
+		return fmt.Errorf("failed to reload config: %w", err)
+	}
+
 	return nil
 }

@@ -1,7 +1,6 @@
 package restore
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
@@ -12,6 +11,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dustin/go-humanize"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
 // PreflightResult contains all preflight check results
@@ -35,8 +37,9 @@ type PreflightResult struct {
 type LinuxChecks struct {
 	ShmMax         int64  // /proc/sys/kernel/shmmax
 	ShmAll         int64  // /proc/sys/kernel/shmall
-	MemTotal       int64  // Total RAM in bytes
-	MemAvailable   int64  // Available RAM in bytes
+	MemTotal       uint64 // Total RAM in bytes
+	MemAvailable   uint64 // Available RAM in bytes
+	MemUsedPercent float64 // Memory usage percentage
 	ShmMaxOK       bool   // Is shmmax sufficient?
 	ShmAllOK       bool   // Is shmall sufficient?
 	MemAvailableOK bool   // Is available RAM sufficient?
@@ -55,11 +58,11 @@ type PostgreSQLChecks struct {
 
 // ArchiveChecks contains analysis of the backup archive
 type ArchiveChecks struct {
-	TotalDatabases int
-	TotalBlobCount int            // Estimated total BLOBs across all databases
-	BlobsByDB      map[string]int // BLOBs per database
-	HasLargeBlobs  bool           // Any DB with >1000 BLOBs?
-	RecommendedLockBoost int      // Calculated lock boost value
+	TotalDatabases       int
+	TotalBlobCount       int            // Estimated total BLOBs across all databases
+	BlobsByDB            map[string]int // BLOBs per database
+	HasLargeBlobs        bool           // Any DB with >1000 BLOBs?
+	RecommendedLockBoost int            // Calculated lock boost value
 }
 
 // RunPreflightChecks performs all preflight checks before a cluster restore
@@ -74,8 +77,8 @@ func (e *Engine) RunPreflightChecks(ctx context.Context, dumpsDir string, entrie
 	e.progress.Update("[PREFLIGHT] Running system checks...")
 	e.log.Info("Starting preflight checks for cluster restore")
 
-	// 1. Linux system checks (read-only from /proc)
-	e.checkLinuxSystem(result)
+	// 1. System checks (cross-platform via gopsutil)
+	e.checkSystemResources(result)
 
 	// 2. PostgreSQL checks (via existing connection)
 	e.checkPostgreSQL(ctx, result)
@@ -92,15 +95,46 @@ func (e *Engine) RunPreflightChecks(ctx context.Context, dumpsDir string, entrie
 	return result, nil
 }
 
-// checkLinuxSystem reads kernel limits from /proc (no auth needed)
-func (e *Engine) checkLinuxSystem(result *PreflightResult) {
+// checkSystemResources uses gopsutil for cross-platform system checks
+func (e *Engine) checkSystemResources(result *PreflightResult) {
 	result.Linux.IsLinux = runtime.GOOS == "linux"
 
-	if !result.Linux.IsLinux {
-		e.log.Info("Not running on Linux - skipping kernel checks", "os", runtime.GOOS)
-		return
+	// Get memory info (works on Linux, macOS, Windows, BSD)
+	if vmem, err := mem.VirtualMemory(); err == nil {
+		result.Linux.MemTotal = vmem.Total
+		result.Linux.MemAvailable = vmem.Available
+		result.Linux.MemUsedPercent = vmem.UsedPercent
+
+		// 4GB minimum available for large restores
+		result.Linux.MemAvailableOK = vmem.Available >= 4*1024*1024*1024
+
+		e.log.Info("System memory detected",
+			"total", humanize.Bytes(vmem.Total),
+			"available", humanize.Bytes(vmem.Available),
+			"used_percent", fmt.Sprintf("%.1f%%", vmem.UsedPercent))
+	} else {
+		e.log.Warn("Could not detect system memory", "error", err)
 	}
 
+	// Linux-specific kernel checks (shmmax, shmall)
+	if result.Linux.IsLinux {
+		e.checkLinuxKernel(result)
+	}
+
+	// Add warnings for insufficient resources
+	if !result.Linux.MemAvailableOK && result.Linux.MemAvailable > 0 {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("Available RAM is low: %s (recommend 4GB+ for large restores)",
+				humanize.Bytes(result.Linux.MemAvailable)))
+	}
+	if result.Linux.MemUsedPercent > 85 {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("High memory usage: %.1f%% - restore may cause OOM", result.Linux.MemUsedPercent))
+	}
+}
+
+// checkLinuxKernel reads Linux-specific kernel limits from /proc
+func (e *Engine) checkLinuxKernel(result *PreflightResult) {
 	// Read shmmax
 	if data, err := os.ReadFile("/proc/sys/kernel/shmmax"); err == nil {
 		val, _ := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
@@ -117,46 +151,16 @@ func (e *Engine) checkLinuxSystem(result *PreflightResult) {
 		result.Linux.ShmAllOK = val >= 2*1024*1024
 	}
 
-	// Read memory info
-	if file, err := os.Open("/proc/meminfo"); err == nil {
-		defer file.Close()
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.HasPrefix(line, "MemTotal:") {
-				parts := strings.Fields(line)
-				if len(parts) >= 2 {
-					val, _ := strconv.ParseInt(parts[1], 10, 64)
-					result.Linux.MemTotal = val * 1024 // Convert KB to bytes
-				}
-			}
-			if strings.HasPrefix(line, "MemAvailable:") {
-				parts := strings.Fields(line)
-				if len(parts) >= 2 {
-					val, _ := strconv.ParseInt(parts[1], 10, 64)
-					result.Linux.MemAvailable = val * 1024 // Convert KB to bytes
-					// 4GB minimum available for large restores
-					result.Linux.MemAvailableOK = result.Linux.MemAvailable >= 4*1024*1024*1024
-				}
-			}
-		}
-	}
-
-	// Add warnings for insufficient resources
+	// Add kernel warnings
 	if !result.Linux.ShmMaxOK && result.Linux.ShmMax > 0 {
 		result.Warnings = append(result.Warnings,
 			fmt.Sprintf("Linux shmmax is low: %s (recommend 8GB+). Fix: sudo sysctl -w kernel.shmmax=17179869184",
-				formatBytesLong(result.Linux.ShmMax)))
+				humanize.Bytes(uint64(result.Linux.ShmMax))))
 	}
 	if !result.Linux.ShmAllOK && result.Linux.ShmAll > 0 {
 		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("Linux shmall is low: %d pages (recommend 2M+). Fix: sudo sysctl -w kernel.shmall=4194304",
-				result.Linux.ShmAll))
-	}
-	if !result.Linux.MemAvailableOK && result.Linux.MemAvailable > 0 {
-		result.Warnings = append(result.Warnings,
-			fmt.Sprintf("Available RAM is low: %s (recommend 4GB+ for large restores)",
-				formatBytesLong(result.Linux.MemAvailable)))
+			fmt.Sprintf("Linux shmall is low: %s pages (recommend 2M+). Fix: sudo sysctl -w kernel.shmall=4194304",
+				humanize.Comma(result.Linux.ShmAll)))
 	}
 }
 
@@ -332,19 +336,25 @@ func (e *Engine) printPreflightSummary(result *PreflightResult) {
 	fmt.Println("                    PREFLIGHT CHECKS")
 	fmt.Println(strings.Repeat("─", 60))
 
-	// Linux checks
-	if result.Linux.IsLinux {
-		fmt.Println("\n  Linux System:")
-		printCheck("shmmax", formatBytesLong(result.Linux.ShmMax), result.Linux.ShmMaxOK || result.Linux.ShmMax == 0)
-		printCheck("shmall", fmt.Sprintf("%d pages", result.Linux.ShmAll), result.Linux.ShmAllOK || result.Linux.ShmAll == 0)
-		printCheck("Available RAM", formatBytesLong(result.Linux.MemAvailable), result.Linux.MemAvailableOK || result.Linux.MemAvailable == 0)
+	// System checks (cross-platform)
+	fmt.Println("\n  System Resources:")
+	printCheck("Total RAM", humanize.Bytes(result.Linux.MemTotal), true)
+	printCheck("Available RAM", humanize.Bytes(result.Linux.MemAvailable), result.Linux.MemAvailableOK || result.Linux.MemAvailable == 0)
+	printCheck("Memory Usage", fmt.Sprintf("%.1f%%", result.Linux.MemUsedPercent), result.Linux.MemUsedPercent < 85)
+
+	// Linux-specific kernel checks
+	if result.Linux.IsLinux && result.Linux.ShmMax > 0 {
+		fmt.Println("\n  Linux Kernel:")
+		printCheck("shmmax", humanize.Bytes(uint64(result.Linux.ShmMax)), result.Linux.ShmMaxOK)
+		printCheck("shmall", humanize.Comma(result.Linux.ShmAll)+" pages", result.Linux.ShmAllOK)
 	}
 
 	// PostgreSQL checks
 	fmt.Println("\n  PostgreSQL:")
 	printCheck("Version", result.PostgreSQL.Version, true)
-	printCheck("max_locks_per_transaction", fmt.Sprintf("%d → %d (auto-boost)",
-		result.PostgreSQL.MaxLocksPerTransaction, result.Archive.RecommendedLockBoost),
+	printCheck("max_locks_per_transaction", fmt.Sprintf("%s → %s (auto-boost)",
+		humanize.Comma(int64(result.PostgreSQL.MaxLocksPerTransaction)),
+		humanize.Comma(int64(result.Archive.RecommendedLockBoost))),
 		true)
 	printCheck("maintenance_work_mem", fmt.Sprintf("%s → 2GB (auto-boost)",
 		result.PostgreSQL.MaintenanceWorkMem), true)
@@ -353,16 +363,17 @@ func (e *Engine) printPreflightSummary(result *PreflightResult) {
 
 	// Archive analysis
 	fmt.Println("\n  Archive Analysis:")
-	printInfo("Total databases", fmt.Sprintf("%d", result.Archive.TotalDatabases))
-	printInfo("Total BLOBs detected", fmt.Sprintf("%d", result.Archive.TotalBlobCount))
+	printInfo("Total databases", humanize.Comma(int64(result.Archive.TotalDatabases)))
+	printInfo("Total BLOBs detected", humanize.Comma(int64(result.Archive.TotalBlobCount)))
 	if len(result.Archive.BlobsByDB) > 0 {
 		fmt.Println("    Databases with BLOBs:")
 		for db, count := range result.Archive.BlobsByDB {
 			status := "✓"
 			if count > 1000 {
-				status = "⚠"
+				status := "⚠"
+				_ = status
 			}
-			fmt.Printf("      %s %s: %d BLOBs\n", status, db, count)
+			fmt.Printf("      %s %s: %s BLOBs\n", status, db, humanize.Comma(int64(count)))
 		}
 	}
 
@@ -388,23 +399,6 @@ func printCheck(name, value string, ok bool) {
 
 func printInfo(name, value string) {
 	fmt.Printf("    ℹ %s: %s\n", name, value)
-}
-
-// formatBytesLong is a local formatting helper for preflight display
-func formatBytesLong(bytes int64) string {
-	if bytes == 0 {
-		return "unknown"
-	}
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 func parseMemoryToMB(memStr string) int {

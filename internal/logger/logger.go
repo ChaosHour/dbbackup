@@ -7,7 +7,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/sirupsen/logrus"
+)
+
+// Color printers for consistent output across the application
+var (
+	// Status colors
+	SuccessColor = color.New(color.FgGreen, color.Bold)
+	ErrorColor   = color.New(color.FgRed, color.Bold)
+	WarnColor    = color.New(color.FgYellow, color.Bold)
+	InfoColor    = color.New(color.FgCyan)
+	DebugColor   = color.New(color.FgWhite)
+
+	// Highlight colors
+	HighlightColor = color.New(color.FgMagenta, color.Bold)
+	DimColor       = color.New(color.FgHiBlack)
+
+	// Data colors
+	NumberColor = color.New(color.FgYellow)
+	PathColor   = color.New(color.FgBlue, color.Underline)
+	TimeColor   = color.New(color.FgCyan)
 )
 
 // Logger defines the interface for logging
@@ -226,34 +246,32 @@ type CleanFormatter struct{}
 func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	timestamp := entry.Time.Format("2006-01-02T15:04:05")
 
-	// Color codes for different log levels
-	var levelColor, levelText string
+	// Get level color and text using fatih/color
+	var levelPrinter *color.Color
+	var levelText string
 	switch entry.Level {
 	case logrus.DebugLevel:
-		levelColor = "\033[36m" // Cyan
+		levelPrinter = DebugColor
 		levelText = "DEBUG"
 	case logrus.InfoLevel:
-		levelColor = "\033[32m" // Green
+		levelPrinter = SuccessColor
 		levelText = "INFO "
 	case logrus.WarnLevel:
-		levelColor = "\033[33m" // Yellow
+		levelPrinter = WarnColor
 		levelText = "WARN "
 	case logrus.ErrorLevel:
-		levelColor = "\033[31m" // Red
+		levelPrinter = ErrorColor
 		levelText = "ERROR"
 	default:
-		levelColor = "\033[0m" // Reset
+		levelPrinter = InfoColor
 		levelText = "INFO "
 	}
-	resetColor := "\033[0m"
 
 	// Build the message with perfectly aligned columns
 	var output strings.Builder
 
 	// Column 1: Level (with color, fixed width 5 chars)
-	output.WriteString(levelColor)
-	output.WriteString(levelText)
-	output.WriteString(resetColor)
+	output.WriteString(levelPrinter.Sprint(levelText))
 	output.WriteString(" ")
 
 	// Column 2: Timestamp (fixed format)

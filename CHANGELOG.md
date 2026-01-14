@@ -5,6 +5,23 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.32] - 2026-01-14 "Cross-Platform Colors"
+
+### Added - fatih/color for Cross-Platform Terminal Colors
+- **Windows-compatible colors** - Native Windows console API support
+- **Color helper functions** in `logger` package:
+  - `Success()`, `Error()`, `Warning()`, `Info()` - Status messages with icons
+  - `Header()`, `Dim()`, `Bold()` - Text styling
+  - `Green()`, `Red()`, `Yellow()`, `Cyan()` - Colored text
+  - `StatusLine()`, `TableRow()` - Formatted output
+  - `DisableColors()`, `EnableColors()` - Runtime control
+- **Consistent color scheme** across all log levels
+
+### Changed
+- Logger `CleanFormatter` now uses fatih/color instead of raw ANSI codes
+- All progress indicators use fatih/color for `[OK]`/`[FAIL]` status
+- Automatic color detection (disabled for non-TTY)
+
 ## [3.42.31] - 2026-01-14 "Visual Progress Bars"
 
 ### Added - schollz/progressbar for Enhanced Progress Display

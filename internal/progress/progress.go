@@ -7,7 +7,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/schollz/progressbar/v3"
+)
+
+// Color printers for progress indicators
+var (
+	okColor   = color.New(color.FgGreen, color.Bold)
+	failColor = color.New(color.FgRed, color.Bold)
+	warnColor = color.New(color.FgYellow, color.Bold)
 )
 
 // Indicator represents a progress indicator interface
@@ -94,13 +102,15 @@ func (s *Spinner) Update(message string) {
 // Complete stops the spinner with a success message
 func (s *Spinner) Complete(message string) {
 	s.Stop()
-	fmt.Fprintf(s.writer, "\n[OK] %s\n", message)
+	okColor.Fprint(s.writer, "[OK] ")
+	fmt.Fprintln(s.writer, message)
 }
 
 // Fail stops the spinner with a failure message
 func (s *Spinner) Fail(message string) {
 	s.Stop()
-	fmt.Fprintf(s.writer, "\n[FAIL] %s\n", message)
+	failColor.Fprint(s.writer, "[FAIL] ")
+	fmt.Fprintln(s.writer, message)
 }
 
 // Stop stops the spinner
@@ -169,13 +179,15 @@ func (d *Dots) Update(message string) {
 // Complete stops the dots with a success message
 func (d *Dots) Complete(message string) {
 	d.Stop()
-	fmt.Fprintf(d.writer, " [OK] %s\n", message)
+	okColor.Fprint(d.writer, " [OK] ")
+	fmt.Fprintln(d.writer, message)
 }
 
 // Fail stops the dots with a failure message
 func (d *Dots) Fail(message string) {
 	d.Stop()
-	fmt.Fprintf(d.writer, " [FAIL] %s\n", message)
+	failColor.Fprint(d.writer, " [FAIL] ")
+	fmt.Fprintln(d.writer, message)
 }
 
 // Stop stops the dots indicator
@@ -241,14 +253,16 @@ func (p *ProgressBar) Complete(message string) {
 	p.current = p.total
 	p.message = message
 	p.render()
-	fmt.Fprintf(p.writer, " [OK] %s\n", message)
+	okColor.Fprint(p.writer, " [OK] ")
+	fmt.Fprintln(p.writer, message)
 	p.Stop()
 }
 
 // Fail stops the progress bar with failure
 func (p *ProgressBar) Fail(message string) {
 	p.render()
-	fmt.Fprintf(p.writer, " [FAIL] %s\n", message)
+	failColor.Fprint(p.writer, " [FAIL] ")
+	fmt.Fprintln(p.writer, message)
 	p.Stop()
 }
 
@@ -300,12 +314,14 @@ func (s *Static) Update(message string) {
 
 // Complete shows completion message
 func (s *Static) Complete(message string) {
-	fmt.Fprintf(s.writer, " [OK] %s\n", message)
+	okColor.Fprint(s.writer, " [OK] ")
+	fmt.Fprintln(s.writer, message)
 }
 
 // Fail shows failure message
 func (s *Static) Fail(message string) {
-	fmt.Fprintf(s.writer, " [FAIL] %s\n", message)
+	failColor.Fprint(s.writer, " [FAIL] ")
+	fmt.Fprintln(s.writer, message)
 }
 
 // Stop does nothing for static indicator
@@ -382,12 +398,14 @@ func (l *LineByLine) SetEstimator(estimator *ETAEstimator) {
 
 // Complete shows completion message
 func (l *LineByLine) Complete(message string) {
-	fmt.Fprintf(l.writer, "[OK] %s\n\n", message)
+	okColor.Fprint(l.writer, "[OK] ")
+	fmt.Fprintf(l.writer, "%s\n\n", message)
 }
 
 // Fail shows failure message
 func (l *LineByLine) Fail(message string) {
-	fmt.Fprintf(l.writer, "[FAIL] %s\n\n", message)
+	failColor.Fprint(l.writer, "[FAIL] ")
+	fmt.Fprintf(l.writer, "%s\n\n", message)
 }
 
 // Stop does nothing for line-by-line (no cleanup needed)
@@ -410,13 +428,15 @@ func (l *Light) Update(message string) {
 
 func (l *Light) Complete(message string) {
 	if !l.silent {
-		fmt.Fprintf(l.writer, "[OK] %s\n", message)
+		okColor.Fprint(l.writer, "[OK] ")
+		fmt.Fprintln(l.writer, message)
 	}
 }
 
 func (l *Light) Fail(message string) {
 	if !l.silent {
-		fmt.Fprintf(l.writer, "[FAIL] %s\n", message)
+		failColor.Fprint(l.writer, "[FAIL] ")
+		fmt.Fprintln(l.writer, message)
 	}
 }
 
@@ -594,13 +614,15 @@ func (s *SchollzBar) ChangeMax64(max int64) {
 // Complete finishes with success (Indicator interface)
 func (s *SchollzBar) Complete(message string) {
 	_ = s.bar.Finish()
-	fmt.Printf("\n[green][OK][reset] %s\n", message)
+	okColor.Print("[OK] ")
+	fmt.Println(message)
 }
 
 // Fail finishes with failure (Indicator interface)
 func (s *SchollzBar) Fail(message string) {
 	_ = s.bar.Clear()
-	fmt.Printf("\n[red][FAIL][reset] %s\n", message)
+	failColor.Print("[FAIL] ")
+	fmt.Println(message)
 }
 
 // Stop stops the progress bar (Indicator interface)

@@ -89,7 +89,7 @@ func (g *GCSBackend) Name() string {
 	return "gcs"
 }
 
-// Upload uploads a file to Google Cloud Storage
+// Upload uploads a file to Google Cloud Storage with retry
 func (g *GCSBackend) Upload(ctx context.Context, localPath, remotePath string, progress ProgressCallback) error {
 	file, err := os.Open(localPath)
 	if err != nil {
@@ -106,45 +106,54 @@ func (g *GCSBackend) Upload(ctx context.Context, localPath, remotePath string, p
 	// Remove leading slash from remote path
 	objectName := strings.TrimPrefix(remotePath, "/")
 
-	bucket := g.client.Bucket(g.bucketName)
-	object := bucket.Object(objectName)
+	return RetryOperationWithNotify(ctx, DefaultRetryConfig(), func() error {
+		// Reset file position for retry
+		if _, err := file.Seek(0, 0); err != nil {
+			return fmt.Errorf("failed to reset file position: %w", err)
+		}
 
-	// Create writer with automatic chunking for large files
-	writer := object.NewWriter(ctx)
-	writer.ChunkSize = 16 * 1024 * 1024 // 16MB chunks for streaming
+		bucket := g.client.Bucket(g.bucketName)
+		object := bucket.Object(objectName)
 
-	// Wrap reader with progress tracking and hash calculation
-	hash := sha256.New()
-	reader := NewProgressReader(io.TeeReader(file, hash), fileSize, progress)
+		// Create writer with automatic chunking for large files
+		writer := object.NewWriter(ctx)
+		writer.ChunkSize = 16 * 1024 * 1024 // 16MB chunks for streaming
 
-	// Upload with progress tracking
-	_, err = io.Copy(writer, reader)
-	if err != nil {
-		writer.Close()
-		return fmt.Errorf("failed to upload object: %w", err)
-	}
+		// Wrap reader with progress tracking and hash calculation
+		hash := sha256.New()
+		reader := NewProgressReader(io.TeeReader(file, hash), fileSize, progress)
 
-	// Close writer (finalizes upload)
-	if err := writer.Close(); err != nil {
-		return fmt.Errorf("failed to finalize upload: %w", err)
-	}
+		// Upload with progress tracking
+		_, err = io.Copy(writer, reader)
+		if err != nil {
+			writer.Close()
+			return fmt.Errorf("failed to upload object: %w", err)
+		}
 
-	// Store checksum as metadata
-	checksum := hex.EncodeToString(hash.Sum(nil))
-	_, err = object.Update(ctx, storage.ObjectAttrsToUpdate{
-		Metadata: map[string]string{
-			"sha256": checksum,
-		},
+		// Close writer (finalizes upload)
+		if err := writer.Close(); err != nil {
+			return fmt.Errorf("failed to finalize upload: %w", err)
+		}
+
+		// Store checksum as metadata
+		checksum := hex.EncodeToString(hash.Sum(nil))
+		_, err = object.Update(ctx, storage.ObjectAttrsToUpdate{
+			Metadata: map[string]string{
+				"sha256": checksum,
+			},
+		})
+		if err != nil {
+			// Non-fatal: upload succeeded but metadata failed
+			fmt.Fprintf(os.Stderr, "Warning: failed to set object metadata: %v\n", err)
+		}
+
+		return nil
+	}, func(err error, duration time.Duration) {
+		fmt.Printf("[GCS] Upload retry in %v: %v\n", duration, err)
 	})
-	if err != nil {
-		// Non-fatal: upload succeeded but metadata failed
-		fmt.Fprintf(os.Stderr, "Warning: failed to set object metadata: %v\n", err)
-	}
-
-	return nil
 }
 
-// Download downloads a file from Google Cloud Storage
+// Download downloads a file from Google Cloud Storage with retry
 func (g *GCSBackend) Download(ctx context.Context, remotePath, localPath string, progress ProgressCallback) error {
 	objectName := strings.TrimPrefix(remotePath, "/")
 
@@ -159,30 +168,34 @@ func (g *GCSBackend) Download(ctx context.Context, remotePath, localPath string,
 
 	fileSize := attrs.Size
 
-	// Create reader
-	reader, err := object.NewReader(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to download object: %w", err)
-	}
-	defer reader.Close()
+	return RetryOperationWithNotify(ctx, DefaultRetryConfig(), func() error {
+		// Create reader
+		reader, err := object.NewReader(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to download object: %w", err)
+		}
+		defer reader.Close()
 
-	// Create local file
-	file, err := os.Create(localPath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer file.Close()
+		// Create/truncate local file
+		file, err := os.Create(localPath)
+		if err != nil {
+			return fmt.Errorf("failed to create file: %w", err)
+		}
+		defer file.Close()
 
-	// Wrap reader with progress tracking
-	progressReader := NewProgressReader(reader, fileSize, progress)
+		// Wrap reader with progress tracking
+		progressReader := NewProgressReader(reader, fileSize, progress)
 
-	// Copy with progress
-	_, err = io.Copy(file, progressReader)
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
+		// Copy with progress
+		_, err = io.Copy(file, progressReader)
+		if err != nil {
+			return fmt.Errorf("failed to write file: %w", err)
+		}
 
-	return nil
+		return nil
+	}, func(err error, duration time.Duration) {
+		fmt.Printf("[GCS] Download retry in %v: %v\n", duration, err)
+	})
 }
 
 // Delete deletes a file from Google Cloud Storage

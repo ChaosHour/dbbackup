@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -123,63 +124,81 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, pr
 	return s.uploadSimple(ctx, file, key, fileSize, progress)
 }
 
-// uploadSimple performs a simple single-part upload
+// uploadSimple performs a simple single-part upload with retry
 func (s *S3Backend) uploadSimple(ctx context.Context, file *os.File, key string, fileSize int64, progress ProgressCallback) error {
-	// Create progress reader
-	var reader io.Reader = file
-	if progress != nil {
-		reader = NewProgressReader(file, fileSize, progress)
-	}
+	return RetryOperationWithNotify(ctx, DefaultRetryConfig(), func() error {
+		// Reset file position for retry
+		if _, err := file.Seek(0, 0); err != nil {
+			return fmt.Errorf("failed to reset file position: %w", err)
+		}
 
-	// Upload to S3
-	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-		Body:   reader,
+		// Create progress reader
+		var reader io.Reader = file
+		if progress != nil {
+			reader = NewProgressReader(file, fileSize, progress)
+		}
+
+		// Upload to S3
+		_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(key),
+			Body:   reader,
+		})
+
+		if err != nil {
+			return fmt.Errorf("failed to upload to S3: %w", err)
+		}
+
+		return nil
+	}, func(err error, duration time.Duration) {
+		fmt.Printf("[S3] Upload retry in %v: %v\n", duration, err)
 	})
-
-	if err != nil {
-		return fmt.Errorf("failed to upload to S3: %w", err)
-	}
-
-	return nil
 }
 
-// uploadMultipart performs a multipart upload for large files
+// uploadMultipart performs a multipart upload for large files with retry
 func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key string, fileSize int64, progress ProgressCallback) error {
-	// Create uploader with custom options
-	uploader := manager.NewUploader(s.client, func(u *manager.Uploader) {
-		// Part size: 10MB
-		u.PartSize = 10 * 1024 * 1024
+	return RetryOperationWithNotify(ctx, AggressiveRetryConfig(), func() error {
+		// Reset file position for retry
+		if _, err := file.Seek(0, 0); err != nil {
+			return fmt.Errorf("failed to reset file position: %w", err)
+		}
 
-		// Upload up to 10 parts concurrently
-		u.Concurrency = 10
+		// Create uploader with custom options
+		uploader := manager.NewUploader(s.client, func(u *manager.Uploader) {
+			// Part size: 10MB
+			u.PartSize = 10 * 1024 * 1024
 
-		// Leave parts on failure for debugging
-		u.LeavePartsOnError = false
+			// Upload up to 10 parts concurrently
+			u.Concurrency = 10
+
+			// Leave parts on failure for debugging
+			u.LeavePartsOnError = false
+		})
+
+		// Wrap file with progress reader
+		var reader io.Reader = file
+		if progress != nil {
+			reader = NewProgressReader(file, fileSize, progress)
+		}
+
+		// Upload with multipart
+		_, err := uploader.Upload(ctx, &s3.PutObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(key),
+			Body:   reader,
+		})
+
+		if err != nil {
+			return fmt.Errorf("multipart upload failed: %w", err)
+		}
+
+		return nil
+	}, func(err error, duration time.Duration) {
+		fmt.Printf("[S3] Multipart upload retry in %v: %v\n", duration, err)
 	})
-
-	// Wrap file with progress reader
-	var reader io.Reader = file
-	if progress != nil {
-		reader = NewProgressReader(file, fileSize, progress)
-	}
-
-	// Upload with multipart
-	_, err := uploader.Upload(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-		Body:   reader,
-	})
-
-	if err != nil {
-		return fmt.Errorf("multipart upload failed: %w", err)
-	}
-
-	return nil
 }
 
-// Download downloads a file from S3
+// Download downloads a file from S3 with retry
 func (s *S3Backend) Download(ctx context.Context, remotePath, localPath string, progress ProgressCallback) error {
 	// Build S3 key
 	key := s.buildKey(remotePath)
@@ -190,39 +209,44 @@ func (s *S3Backend) Download(ctx context.Context, remotePath, localPath string, 
 		return fmt.Errorf("failed to get object size: %w", err)
 	}
 
-	// Download from S3
-	result, err := s.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(s.bucket),
-		Key:    aws.String(key),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to download from S3: %w", err)
-	}
-	defer result.Body.Close()
-
-	// Create local file
+	// Create directory for local file
 	if err := os.MkdirAll(filepath.Dir(localPath), 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	outFile, err := os.Create(localPath)
-	if err != nil {
-		return fmt.Errorf("failed to create local file: %w", err)
-	}
-	defer outFile.Close()
+	return RetryOperationWithNotify(ctx, DefaultRetryConfig(), func() error {
+		// Download from S3
+		result, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(s.bucket),
+			Key:    aws.String(key),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to download from S3: %w", err)
+		}
+		defer result.Body.Close()
 
-	// Copy with progress tracking
-	var reader io.Reader = result.Body
-	if progress != nil {
-		reader = NewProgressReader(result.Body, size, progress)
-	}
+		// Create/truncate local file
+		outFile, err := os.Create(localPath)
+		if err != nil {
+			return fmt.Errorf("failed to create local file: %w", err)
+		}
+		defer outFile.Close()
 
-	_, err = io.Copy(outFile, reader)
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
+		// Copy with progress tracking
+		var reader io.Reader = result.Body
+		if progress != nil {
+			reader = NewProgressReader(result.Body, size, progress)
+		}
 
-	return nil
+		_, err = io.Copy(outFile, reader)
+		if err != nil {
+			return fmt.Errorf("failed to write file: %w", err)
+		}
+
+		return nil
+	}, func(err error, duration time.Duration) {
+		fmt.Printf("[S3] Download retry in %v: %v\n", duration, err)
+	})
 }
 
 // List lists all backup files in S3

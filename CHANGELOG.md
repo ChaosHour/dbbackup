@@ -5,6 +5,25 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.33] - 2026-01-14 "Exponential Backoff Retry"
+
+### Added - cenkalti/backoff for Cloud Operation Retry
+- **Exponential backoff retry** for all cloud operations (S3, Azure, GCS)
+- **Retry configurations**:
+  - `DefaultRetryConfig()` - 5 retries, 500ms→30s backoff, 5 min max
+  - `AggressiveRetryConfig()` - 10 retries, 1s→60s backoff, 15 min max
+  - `QuickRetryConfig()` - 3 retries, 100ms→5s backoff, 30s max
+- **Smart error classification**:
+  - `IsPermanentError()` - Auth/bucket errors (no retry)
+  - `IsRetryableError()` - Timeout/network errors (retry)
+- **Retry logging** - Each retry attempt is logged with wait duration
+
+### Changed
+- S3 simple upload, multipart upload, download now retry on transient failures
+- Azure simple upload, download now retry on transient failures
+- GCS upload, download now retry on transient failures
+- Large file multipart uploads use `AggressiveRetryConfig()` (more retries)
+
 ## [3.42.32] - 2026-01-14 "Cross-Platform Colors"
 
 ### Added - fatih/color for Cross-Platform Terminal Colors

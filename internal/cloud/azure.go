@@ -151,37 +151,46 @@ func (a *AzureBackend) Upload(ctx context.Context, localPath, remotePath string,
 	return a.uploadSimple(ctx, file, blobName, fileSize, progress)
 }
 
-// uploadSimple uploads a file using simple upload (single request)
+// uploadSimple uploads a file using simple upload (single request) with retry
 func (a *AzureBackend) uploadSimple(ctx context.Context, file *os.File, blobName string, fileSize int64, progress ProgressCallback) error {
-	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobName)
+	return RetryOperationWithNotify(ctx, DefaultRetryConfig(), func() error {
+		// Reset file position for retry
+		if _, err := file.Seek(0, 0); err != nil {
+			return fmt.Errorf("failed to reset file position: %w", err)
+		}
 
-	// Wrap reader with progress tracking
-	reader := NewProgressReader(file, fileSize, progress)
+		blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobName)
 
-	// Calculate MD5 hash for integrity
-	hash := sha256.New()
-	teeReader := io.TeeReader(reader, hash)
+		// Wrap reader with progress tracking
+		reader := NewProgressReader(file, fileSize, progress)
 
-	_, err := blockBlobClient.UploadStream(ctx, teeReader, &blockblob.UploadStreamOptions{
-		BlockSize: 4 * 1024 * 1024, // 4MB blocks
+		// Calculate MD5 hash for integrity
+		hash := sha256.New()
+		teeReader := io.TeeReader(reader, hash)
+
+		_, err := blockBlobClient.UploadStream(ctx, teeReader, &blockblob.UploadStreamOptions{
+			BlockSize: 4 * 1024 * 1024, // 4MB blocks
+		})
+		if err != nil {
+			return fmt.Errorf("failed to upload blob: %w", err)
+		}
+
+		// Store checksum as metadata
+		checksum := hex.EncodeToString(hash.Sum(nil))
+		metadata := map[string]*string{
+			"sha256": &checksum,
+		}
+
+		_, err = blockBlobClient.SetMetadata(ctx, metadata, nil)
+		if err != nil {
+			// Non-fatal: upload succeeded but metadata failed
+			fmt.Fprintf(os.Stderr, "Warning: failed to set blob metadata: %v\n", err)
+		}
+
+		return nil
+	}, func(err error, duration time.Duration) {
+		fmt.Printf("[Azure] Upload retry in %v: %v\n", duration, err)
 	})
-	if err != nil {
-		return fmt.Errorf("failed to upload blob: %w", err)
-	}
-
-	// Store checksum as metadata
-	checksum := hex.EncodeToString(hash.Sum(nil))
-	metadata := map[string]*string{
-		"sha256": &checksum,
-	}
-
-	_, err = blockBlobClient.SetMetadata(ctx, metadata, nil)
-	if err != nil {
-		// Non-fatal: upload succeeded but metadata failed
-		fmt.Fprintf(os.Stderr, "Warning: failed to set blob metadata: %v\n", err)
-	}
-
-	return nil
 }
 
 // uploadBlocks uploads a file using block blob staging (for large files)
@@ -251,7 +260,7 @@ func (a *AzureBackend) uploadBlocks(ctx context.Context, file *os.File, blobName
 	return nil
 }
 
-// Download downloads a file from Azure Blob Storage
+// Download downloads a file from Azure Blob Storage with retry
 func (a *AzureBackend) Download(ctx context.Context, remotePath, localPath string, progress ProgressCallback) error {
 	blobName := strings.TrimPrefix(remotePath, "/")
 	blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobName)
@@ -264,30 +273,34 @@ func (a *AzureBackend) Download(ctx context.Context, remotePath, localPath strin
 
 	fileSize := *props.ContentLength
 
-	// Download blob
-	resp, err := blockBlobClient.DownloadStream(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to download blob: %w", err)
-	}
-	defer resp.Body.Close()
+	return RetryOperationWithNotify(ctx, DefaultRetryConfig(), func() error {
+		// Download blob
+		resp, err := blockBlobClient.DownloadStream(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("failed to download blob: %w", err)
+		}
+		defer resp.Body.Close()
 
-	// Create local file
-	file, err := os.Create(localPath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer file.Close()
+		// Create/truncate local file
+		file, err := os.Create(localPath)
+		if err != nil {
+			return fmt.Errorf("failed to create file: %w", err)
+		}
+		defer file.Close()
 
-	// Wrap reader with progress tracking
-	reader := NewProgressReader(resp.Body, fileSize, progress)
+		// Wrap reader with progress tracking
+		reader := NewProgressReader(resp.Body, fileSize, progress)
 
-	// Copy with progress
-	_, err = io.Copy(file, reader)
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
+		// Copy with progress
+		_, err = io.Copy(file, reader)
+		if err != nil {
+			return fmt.Errorf("failed to write file: %w", err)
+		}
 
-	return nil
+		return nil
+	}, func(err error, duration time.Duration) {
+		fmt.Printf("[Azure] Download retry in %v: %v\n", duration, err)
+	})
 }
 
 // Delete deletes a file from Azure Blob Storage

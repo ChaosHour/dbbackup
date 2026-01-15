@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -44,6 +45,17 @@ type RestoreExecutionModel struct {
 	startTime     time.Time
 	spinnerFrame  int
 	spinnerFrames []string
+
+	// Detailed byte progress for schollz-style display
+	bytesTotal  int64
+	bytesDone   int64
+	description string
+	showBytes   bool    // True when we have real byte progress to show
+	speed       float64 // Rolling window speed in bytes/sec
+
+	// Database count progress (for cluster restore)
+	dbTotal int
+	dbDone  int
 
 	// Results
 	done       bool
@@ -97,10 +109,13 @@ func restoreTickCmd() tea.Cmd {
 }
 
 type restoreProgressMsg struct {
-	status   string
-	phase    string
-	progress int
-	detail   string
+	status      string
+	phase       string
+	progress    int
+	detail      string
+	bytesTotal  int64
+	bytesDone   int64
+	description string
 }
 
 type restoreCompleteMsg struct {
@@ -108,6 +123,102 @@ type restoreCompleteMsg struct {
 	err     error
 	elapsed time.Duration
 }
+
+// sharedProgressState holds progress state that can be safely accessed from callbacks
+type sharedProgressState struct {
+	mu          sync.Mutex
+	bytesTotal  int64
+	bytesDone   int64
+	description string
+	hasUpdate   bool
+
+	// Database count progress (for cluster restore)
+	dbTotal int
+	dbDone  int
+
+	// Rolling window for speed calculation
+	speedSamples []restoreSpeedSample
+}
+
+type restoreSpeedSample struct {
+	timestamp time.Time
+	bytes     int64
+}
+
+// Package-level shared progress state for restore operations
+var (
+	currentRestoreProgressMu    sync.Mutex
+	currentRestoreProgressState *sharedProgressState
+)
+
+func setCurrentRestoreProgress(state *sharedProgressState) {
+	currentRestoreProgressMu.Lock()
+	defer currentRestoreProgressMu.Unlock()
+	currentRestoreProgressState = state
+}
+
+func clearCurrentRestoreProgress() {
+	currentRestoreProgressMu.Lock()
+	defer currentRestoreProgressMu.Unlock()
+	currentRestoreProgressState = nil
+}
+
+func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64) {
+	currentRestoreProgressMu.Lock()
+	defer currentRestoreProgressMu.Unlock()
+
+	if currentRestoreProgressState == nil {
+		return 0, 0, "", false, 0, 0, 0
+	}
+
+	currentRestoreProgressState.mu.Lock()
+	defer currentRestoreProgressState.mu.Unlock()
+
+	// Calculate rolling window speed
+	speed = calculateRollingSpeed(currentRestoreProgressState.speedSamples)
+
+	return currentRestoreProgressState.bytesTotal, currentRestoreProgressState.bytesDone,
+		currentRestoreProgressState.description, currentRestoreProgressState.hasUpdate,
+		currentRestoreProgressState.dbTotal, currentRestoreProgressState.dbDone, speed
+}
+
+// calculateRollingSpeed calculates speed from recent samples (last 5 seconds)
+func calculateRollingSpeed(samples []restoreSpeedSample) float64 {
+	if len(samples) < 2 {
+		return 0
+	}
+
+	// Use samples from last 5 seconds for smoothed speed
+	now := time.Now()
+	cutoff := now.Add(-5 * time.Second)
+
+	var firstInWindow, lastInWindow *restoreSpeedSample
+	for i := range samples {
+		if samples[i].timestamp.After(cutoff) {
+			if firstInWindow == nil {
+				firstInWindow = &samples[i]
+			}
+			lastInWindow = &samples[i]
+		}
+	}
+
+	// Fall back to first and last if window is empty
+	if firstInWindow == nil || lastInWindow == nil || firstInWindow == lastInWindow {
+		firstInWindow = &samples[0]
+		lastInWindow = &samples[len(samples)-1]
+	}
+
+	elapsed := lastInWindow.timestamp.Sub(firstInWindow.timestamp).Seconds()
+	if elapsed <= 0 {
+		return 0
+	}
+
+	bytesTransferred := lastInWindow.bytes - firstInWindow.bytes
+	return float64(bytesTransferred) / elapsed
+}
+
+// restoreProgressChannel allows sending progress updates from the restore goroutine
+type restoreProgressChannel chan restoreProgressMsg
 
 func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool) tea.Cmd {
 	return func() tea.Msg {
@@ -156,6 +267,48 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		// STEP 2: Create restore engine with silent progress (no stdout interference with TUI)
 		engine := restore.NewSilent(cfg, log, dbClient)
 
+		// Set up progress callback for detailed progress reporting
+		// We use a shared pointer that can be queried by the TUI ticker
+		progressState := &sharedProgressState{
+			speedSamples: make([]restoreSpeedSample, 0, 100),
+		}
+		engine.SetProgressCallback(func(current, total int64, description string) {
+			progressState.mu.Lock()
+			defer progressState.mu.Unlock()
+			progressState.bytesDone = current
+			progressState.bytesTotal = total
+			progressState.description = description
+			progressState.hasUpdate = true
+
+			// Add speed sample for rolling window calculation
+			progressState.speedSamples = append(progressState.speedSamples, restoreSpeedSample{
+				timestamp: time.Now(),
+				bytes:     current,
+			})
+			// Keep only last 100 samples
+			if len(progressState.speedSamples) > 100 {
+				progressState.speedSamples = progressState.speedSamples[len(progressState.speedSamples)-100:]
+			}
+		})
+
+		// Set up database progress callback for cluster restore
+		engine.SetDatabaseProgressCallback(func(done, total int, dbName string) {
+			progressState.mu.Lock()
+			defer progressState.mu.Unlock()
+			progressState.dbDone = done
+			progressState.dbTotal = total
+			progressState.description = fmt.Sprintf("Restoring %s", dbName)
+			progressState.hasUpdate = true
+			// Clear byte progress when switching to db progress
+			progressState.bytesTotal = 0
+			progressState.bytesDone = 0
+		})
+
+		// Store progress state in a package-level variable for the ticker to access
+		// This is a workaround because tea messages can't be sent from callbacks
+		setCurrentRestoreProgress(progressState)
+		defer clearCurrentRestoreProgress()
+
 		// Enable debug logging if requested
 		if saveDebugLog {
 			// Generate debug log path using configured WorkDir
@@ -164,9 +317,6 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			engine.SetDebugLogPath(debugLogPath)
 			log.Info("Debug logging enabled", "path", debugLogPath)
 		}
-
-		// Set up progress callback (but it won't work in goroutine - progress is already sent via logs)
-		// The TUI will just use spinner animation to show activity
 
 		// STEP 3: Execute restore based on type
 		var restoreErr error
@@ -206,39 +356,62 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(m.spinnerFrames)
 			m.elapsed = time.Since(m.startTime)
 
-			// Update status based on elapsed time to show progress
-			// This provides visual feedback even though we don't have real-time progress
-			elapsedSec := int(m.elapsed.Seconds())
+			// Poll shared progress state for real-time updates
+			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed := getCurrentRestoreProgress()
+			if hasUpdate && bytesTotal > 0 {
+				m.bytesTotal = bytesTotal
+				m.bytesDone = bytesDone
+				m.description = description
+				m.showBytes = true
+				m.speed = speed
 
-			if elapsedSec < 2 {
-				m.status = "Initializing restore..."
-				m.phase = "Starting"
-			} else if elapsedSec < 5 {
-				if m.cleanClusterFirst && len(m.existingDBs) > 0 {
-					m.status = fmt.Sprintf("Cleaning %d existing database(s)...", len(m.existingDBs))
-					m.phase = "Cleanup"
-				} else if m.restoreType == "restore-cluster" {
-					m.status = "Extracting cluster archive..."
-					m.phase = "Extraction"
-				} else {
-					m.status = "Preparing restore..."
-					m.phase = "Preparation"
-				}
-			} else if elapsedSec < 10 {
-				if m.restoreType == "restore-cluster" {
-					m.status = "Restoring global objects..."
-					m.phase = "Globals"
-				} else {
-					m.status = fmt.Sprintf("Restoring database '%s'...", m.targetDB)
-					m.phase = "Restore"
-				}
+				// Update status to reflect actual progress
+				m.status = description
+				m.phase = "Extracting"
+				m.progress = int((bytesDone * 100) / bytesTotal)
+			} else if hasUpdate && dbTotal > 0 {
+				// Database count progress for cluster restore
+				m.dbTotal = dbTotal
+				m.dbDone = dbDone
+				m.showBytes = false
+				m.status = fmt.Sprintf("Restoring database %d of %d...", dbDone+1, dbTotal)
+				m.phase = "Restore"
+				m.progress = int((dbDone * 100) / dbTotal)
 			} else {
-				if m.restoreType == "restore-cluster" {
-					m.status = "Restoring cluster databases..."
-					m.phase = "Restore"
+				// Fallback: Update status based on elapsed time to show progress
+				// This provides visual feedback even though we don't have real-time progress
+				elapsedSec := int(m.elapsed.Seconds())
+
+				if elapsedSec < 2 {
+					m.status = "Initializing restore..."
+					m.phase = "Starting"
+				} else if elapsedSec < 5 {
+					if m.cleanClusterFirst && len(m.existingDBs) > 0 {
+						m.status = fmt.Sprintf("Cleaning %d existing database(s)...", len(m.existingDBs))
+						m.phase = "Cleanup"
+					} else if m.restoreType == "restore-cluster" {
+						m.status = "Extracting cluster archive..."
+						m.phase = "Extraction"
+					} else {
+						m.status = "Preparing restore..."
+						m.phase = "Preparation"
+					}
+				} else if elapsedSec < 10 {
+					if m.restoreType == "restore-cluster" {
+						m.status = "Restoring global objects..."
+						m.phase = "Globals"
+					} else {
+						m.status = fmt.Sprintf("Restoring database '%s'...", m.targetDB)
+						m.phase = "Restore"
+					}
 				} else {
-					m.status = fmt.Sprintf("Restoring database '%s'...", m.targetDB)
-					m.phase = "Restore"
+					if m.restoreType == "restore-cluster" {
+						m.status = "Restoring cluster databases..."
+						m.phase = "Restore"
+					} else {
+						m.status = fmt.Sprintf("Restoring database '%s'...", m.targetDB)
+						m.phase = "Restore"
+					}
 				}
 			}
 
@@ -250,6 +423,15 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = msg.status
 		m.phase = msg.phase
 		m.progress = msg.progress
+
+		// Update byte-level progress if available
+		if msg.bytesTotal > 0 {
+			m.bytesTotal = msg.bytesTotal
+			m.bytesDone = msg.bytesDone
+			m.description = msg.description
+			m.showBytes = true
+		}
+
 		if msg.detail != "" {
 			m.details = append(m.details, msg.detail)
 			// Keep only last 5 details
@@ -356,18 +538,38 @@ func (m RestoreExecutionModel) View() string {
 		// Show progress
 		s.WriteString(fmt.Sprintf("Phase: %s\n", m.phase))
 
-		// Show status with rotating spinner (unified indicator for all operations)
-		spinner := m.spinnerFrames[m.spinnerFrame]
-		s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
-		s.WriteString("\n")
-
-		// Only show progress bar for single database restore
-		// Cluster restore uses spinner only (consistent with CLI behavior)
-		if m.restoreType == "restore-single" {
-			progressBar := renderProgressBar(m.progress)
-			s.WriteString(progressBar)
-			s.WriteString(fmt.Sprintf("  %d%%\n", m.progress))
+		// Show detailed progress bar when we have byte-level information
+		// In this case, hide the spinner for cleaner display
+		if m.showBytes && m.bytesTotal > 0 {
+			// Status line without spinner (progress bar provides activity indication)
+			s.WriteString(fmt.Sprintf("Status: %s\n", m.status))
 			s.WriteString("\n")
+
+			// Render schollz-style progress bar with bytes, rolling speed, ETA
+			s.WriteString(renderDetailedProgressBarWithSpeed(m.bytesDone, m.bytesTotal, m.speed))
+			s.WriteString("\n\n")
+		} else if m.dbTotal > 0 {
+			// Database count progress for cluster restore
+			spinner := m.spinnerFrames[m.spinnerFrame]
+			s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
+			s.WriteString("\n")
+
+			// Show database progress bar
+			s.WriteString(renderDatabaseProgressBar(m.dbDone, m.dbTotal))
+			s.WriteString("\n\n")
+		} else {
+			// Show status with rotating spinner (for phases without detailed progress)
+			spinner := m.spinnerFrames[m.spinnerFrame]
+			s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
+			s.WriteString("\n")
+
+			if m.restoreType == "restore-single" {
+				// Fallback to simple progress bar for single database restore
+				progressBar := renderProgressBar(m.progress)
+				s.WriteString(progressBar)
+				s.WriteString(fmt.Sprintf("  %d%%\n", m.progress))
+				s.WriteString("\n")
+			}
 		}
 
 		// Elapsed time
@@ -388,6 +590,92 @@ func renderProgressBar(percent int) string {
 	empty := strings.Repeat("░", width-filled)
 
 	return successStyle.Render(bar) + infoStyle.Render(empty)
+}
+
+// renderDetailedProgressBar renders a schollz-style progress bar with bytes, speed, and ETA
+// Uses elapsed time for speed calculation (fallback)
+func renderDetailedProgressBar(done, total int64, elapsed time.Duration) string {
+	speed := 0.0
+	if elapsed.Seconds() > 0 {
+		speed = float64(done) / elapsed.Seconds()
+	}
+	return renderDetailedProgressBarWithSpeed(done, total, speed)
+}
+
+// renderDetailedProgressBarWithSpeed renders a schollz-style progress bar with pre-calculated rolling speed
+func renderDetailedProgressBarWithSpeed(done, total int64, speed float64) string {
+	var s strings.Builder
+
+	// Calculate percentage
+	percent := 0
+	if total > 0 {
+		percent = int((done * 100) / total)
+		if percent > 100 {
+			percent = 100
+		}
+	}
+
+	// Render progress bar
+	width := 30
+	filled := (percent * width) / 100
+	barFilled := strings.Repeat("█", filled)
+	barEmpty := strings.Repeat("░", width-filled)
+
+	s.WriteString(successStyle.Render("["))
+	s.WriteString(successStyle.Render(barFilled))
+	s.WriteString(infoStyle.Render(barEmpty))
+	s.WriteString(successStyle.Render("]"))
+
+	// Percentage
+	s.WriteString(fmt.Sprintf("  %3d%%", percent))
+
+	// Bytes progress
+	s.WriteString(fmt.Sprintf("  %s / %s", FormatBytes(done), FormatBytes(total)))
+
+	// Speed display (using rolling window speed)
+	if speed > 0 {
+		s.WriteString(fmt.Sprintf("  %s/s", FormatBytes(int64(speed))))
+
+		// ETA calculation based on rolling speed
+		if done < total {
+			remaining := total - done
+			etaSeconds := float64(remaining) / speed
+			eta := time.Duration(etaSeconds) * time.Second
+			s.WriteString(fmt.Sprintf("  ETA: %s", FormatDurationShort(eta)))
+		}
+	}
+
+	return s.String()
+}
+
+// renderDatabaseProgressBar renders a progress bar for database count (cluster restore)
+func renderDatabaseProgressBar(done, total int) string {
+	var s strings.Builder
+
+	// Calculate percentage
+	percent := 0
+	if total > 0 {
+		percent = (done * 100) / total
+		if percent > 100 {
+			percent = 100
+		}
+	}
+
+	// Render progress bar
+	width := 30
+	filled := (percent * width) / 100
+	barFilled := strings.Repeat("█", filled)
+	barEmpty := strings.Repeat("░", width-filled)
+
+	s.WriteString(successStyle.Render("["))
+	s.WriteString(successStyle.Render(barFilled))
+	s.WriteString(infoStyle.Render(barEmpty))
+	s.WriteString(successStyle.Render("]"))
+
+	// Count and percentage
+	s.WriteString(fmt.Sprintf("  %3d%%  %d / %d databases", percent, done, total))
+
+	return s.String()
 }
 
 // formatDuration formats duration in human readable format

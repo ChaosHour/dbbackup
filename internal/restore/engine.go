@@ -1,9 +1,12 @@
 package restore
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +27,13 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
 )
 
+// ProgressCallback is called with progress updates during long operations
+// Parameters: current bytes/items done, total bytes/items, description
+type ProgressCallback func(current, total int64, description string)
+
+// DatabaseProgressCallback is called with database count progress during cluster restore
+type DatabaseProgressCallback func(done, total int, dbName string)
+
 // Engine handles database restore operations
 type Engine struct {
 	cfg              *config.Config
@@ -33,6 +43,10 @@ type Engine struct {
 	detailedReporter *progress.DetailedReporter
 	dryRun           bool
 	debugLogPath     string // Path to save debug log on error
+
+	// TUI progress callback for detailed progress reporting
+	progressCallback   ProgressCallback
+	dbProgressCallback DatabaseProgressCallback
 }
 
 // New creates a new restore engine
@@ -86,6 +100,30 @@ func NewWithProgress(cfg *config.Config, log logger.Logger, db database.Database
 // SetDebugLogPath enables saving detailed error reports on failure
 func (e *Engine) SetDebugLogPath(path string) {
 	e.debugLogPath = path
+}
+
+// SetProgressCallback sets a callback for detailed progress reporting (for TUI mode)
+func (e *Engine) SetProgressCallback(cb ProgressCallback) {
+	e.progressCallback = cb
+}
+
+// SetDatabaseProgressCallback sets a callback for database count progress during cluster restore
+func (e *Engine) SetDatabaseProgressCallback(cb DatabaseProgressCallback) {
+	e.dbProgressCallback = cb
+}
+
+// reportProgress safely calls the progress callback if set
+func (e *Engine) reportProgress(current, total int64, description string) {
+	if e.progressCallback != nil {
+		e.progressCallback(current, total, description)
+	}
+}
+
+// reportDatabaseProgress safely calls the database progress callback if set
+func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
+	if e.dbProgressCallback != nil {
+		e.dbProgressCallback(done, total, dbName)
+	}
 }
 
 // loggerAdapter adapts our logger to the progress.Logger interface
@@ -1040,6 +1078,8 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 			statusMsg := fmt.Sprintf("Restoring database %s (%d/%d)", dbName, idx+1, totalDBs)
 			e.progress.Update(statusMsg)
 			e.log.Info("Restoring database", "name", dbName, "file", dumpFile, "progress", dbProgress)
+			// Report database progress for TUI
+			e.reportDatabaseProgress(idx, totalDBs, dbName)
 			mu.Unlock()
 
 			// STEP 1: Drop existing database completely (clean slate)
@@ -1146,8 +1186,144 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	return nil
 }
 
-// extractArchive extracts a tar.gz archive
+// extractArchive extracts a tar.gz archive with progress reporting
 func (e *Engine) extractArchive(ctx context.Context, archivePath, destDir string) error {
+	// If progress callback is set, use Go's archive/tar for progress tracking
+	if e.progressCallback != nil {
+		return e.extractArchiveWithProgress(ctx, archivePath, destDir)
+	}
+
+	// Otherwise use fast shell tar (no progress)
+	return e.extractArchiveShell(ctx, archivePath, destDir)
+}
+
+// extractArchiveWithProgress extracts using Go's archive/tar with detailed progress reporting
+func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, destDir string) error {
+	// Get archive size for progress calculation
+	archiveInfo, err := os.Stat(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to stat archive: %w", err)
+	}
+	totalSize := archiveInfo.Size()
+
+	// Open the archive file
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to open archive: %w", err)
+	}
+	defer file.Close()
+
+	// Wrap with progress reader
+	progressReader := &progressReader{
+		reader:    file,
+		totalSize: totalSize,
+		callback:  e.progressCallback,
+		desc:      "Extracting archive",
+	}
+
+	// Create gzip reader
+	gzReader, err := gzip.NewReader(progressReader)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	// Create tar reader
+	tarReader := tar.NewReader(gzReader)
+
+	// Extract files
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break // End of archive
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		// Sanitize and validate path
+		targetPath := filepath.Join(destDir, header.Name)
+
+		// Security check: ensure path is within destDir (prevent path traversal)
+		if !strings.HasPrefix(filepath.Clean(targetPath), filepath.Clean(destDir)) {
+			e.log.Warn("Skipping potentially malicious path in archive", "path", header.Name)
+			continue
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
+			}
+		case tar.TypeReg:
+			// Ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory: %w", err)
+			}
+
+			// Create the file
+			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
+			}
+
+			// Copy file contents
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				outFile.Close()
+				return fmt.Errorf("failed to write file %s: %w", targetPath, err)
+			}
+			outFile.Close()
+		case tar.TypeSymlink:
+			// Handle symlinks (common in some archives)
+			if err := os.Symlink(header.Linkname, targetPath); err != nil {
+				// Ignore symlink errors (may already exist or not supported)
+				e.log.Debug("Could not create symlink", "path", targetPath, "target", header.Linkname)
+			}
+		}
+	}
+
+	// Final progress update
+	e.reportProgress(totalSize, totalSize, "Extraction complete")
+	return nil
+}
+
+// progressReader wraps an io.Reader to report read progress
+type progressReader struct {
+	reader      io.Reader
+	totalSize   int64
+	bytesRead   int64
+	callback    ProgressCallback
+	desc        string
+	lastReport  time.Time
+	reportEvery time.Duration
+}
+
+func (pr *progressReader) Read(p []byte) (n int, err error) {
+	n, err = pr.reader.Read(p)
+	pr.bytesRead += int64(n)
+
+	// Throttle progress reporting to every 100ms
+	if pr.reportEvery == 0 {
+		pr.reportEvery = 100 * time.Millisecond
+	}
+	if time.Since(pr.lastReport) > pr.reportEvery {
+		if pr.callback != nil {
+			pr.callback(pr.bytesRead, pr.totalSize, pr.desc)
+		}
+		pr.lastReport = time.Now()
+	}
+
+	return n, err
+}
+
+// extractArchiveShell extracts using shell tar command (faster but no progress)
+func (e *Engine) extractArchiveShell(ctx context.Context, archivePath, destDir string) error {
 	cmd := exec.CommandContext(ctx, "tar", "-xzf", archivePath, "-C", destDir)
 
 	// Stream stderr to avoid memory issues - tar can produce lots of output for large archives

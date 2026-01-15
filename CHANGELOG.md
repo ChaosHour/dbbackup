@@ -5,6 +5,36 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.35] - 2026-01-15 "TUI Detailed Progress"
+
+### Added - Enhanced TUI Progress Display
+- **Detailed progress bar in TUI restore** - schollz-style progress bar with:
+  - Byte progress display (e.g., `245 MB / 1.2 GB`)
+  - Transfer speed calculation (e.g., `45 MB/s`)
+  - ETA prediction for long operations
+  - Unicode block-based visual bar
+- **Real-time extraction progress** - Archive extraction now reports actual bytes processed
+- **Go-native tar extraction** - Uses Go's `archive/tar` + `compress/gzip` when progress callback is set
+- **New `DetailedProgress` component** in TUI package:
+  - `NewDetailedProgress(total, description)` - Byte-based progress
+  - `NewDetailedProgressItems(total, description)` - Item count progress
+  - `NewDetailedProgressSpinner(description)` - Indeterminate spinner
+  - `RenderProgressBar(width)` - Generate schollz-style output
+- **Progress callback API** in restore engine:
+  - `SetProgressCallback(func(current, total int64, description string))` 
+  - Allows TUI to receive real-time progress updates from restore operations
+- **Shared progress state** pattern for Bubble Tea integration
+
+### Changed
+- TUI restore execution now shows detailed byte progress during archive extraction
+- Cluster restore shows extraction progress instead of just spinner
+- Falls back to shell `tar` command when no progress callback is set (faster)
+
+### Technical Details
+- `progressReader` wrapper tracks bytes read through gzip/tar pipeline
+- Throttled progress updates (every 100ms) to avoid UI flooding
+- Thread-safe shared state pattern for cross-goroutine progress updates
+
 ## [3.42.34] - 2026-01-14 "Filesystem Abstraction"
 
 ### Added - spf13/afero for Filesystem Abstraction

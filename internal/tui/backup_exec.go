@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,6 +34,56 @@ type BackupExecutionModel struct {
 	startTime    time.Time
 	details      []string
 	spinnerFrame int
+
+	// Database count progress (for cluster backup)
+	dbTotal int
+	dbDone  int
+	dbName  string // Current database being backed up
+}
+
+// sharedBackupProgressState holds progress state that can be safely accessed from callbacks
+type sharedBackupProgressState struct {
+	mu        sync.Mutex
+	dbTotal   int
+	dbDone    int
+	dbName    string
+	hasUpdate bool
+}
+
+// Package-level shared progress state for backup operations
+var (
+	currentBackupProgressMu    sync.Mutex
+	currentBackupProgressState *sharedBackupProgressState
+)
+
+func setCurrentBackupProgress(state *sharedBackupProgressState) {
+	currentBackupProgressMu.Lock()
+	defer currentBackupProgressMu.Unlock()
+	currentBackupProgressState = state
+}
+
+func clearCurrentBackupProgress() {
+	currentBackupProgressMu.Lock()
+	defer currentBackupProgressMu.Unlock()
+	currentBackupProgressState = nil
+}
+
+func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, hasUpdate bool) {
+	currentBackupProgressMu.Lock()
+	defer currentBackupProgressMu.Unlock()
+
+	if currentBackupProgressState == nil {
+		return 0, 0, "", false
+	}
+
+	currentBackupProgressState.mu.Lock()
+	defer currentBackupProgressState.mu.Unlock()
+
+	hasUpdate = currentBackupProgressState.hasUpdate
+	currentBackupProgressState.hasUpdate = false
+
+	return currentBackupProgressState.dbTotal, currentBackupProgressState.dbDone,
+		currentBackupProgressState.dbName, hasUpdate
 }
 
 func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, backupType, dbName string, ratio int) BackupExecutionModel {
@@ -55,7 +106,6 @@ func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model,
 }
 
 func (m BackupExecutionModel) Init() tea.Cmd {
-	// TUI handles all display through View() - no progress callbacks needed
 	return tea.Batch(
 		executeBackupWithTUIProgress(m.ctx, m.config, m.logger, m.backupType, m.databaseName, m.ratio),
 		backupTickCmd(),
@@ -91,6 +141,11 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 
 		start := time.Now()
 
+		// Setup shared progress state for TUI polling
+		progressState := &sharedBackupProgressState{}
+		setCurrentBackupProgress(progressState)
+		defer clearCurrentBackupProgress()
+
 		dbClient, err := database.New(cfg, log)
 		if err != nil {
 			return backupCompleteMsg{
@@ -109,6 +164,16 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 
 		// Pass nil as indicator - TUI itself handles all display, no stdout printing
 		engine := backup.NewSilent(cfg, log, dbClient, nil)
+
+		// Set database progress callback for cluster backups
+		engine.SetDatabaseProgressCallback(func(done, total int, currentDB string) {
+			progressState.mu.Lock()
+			progressState.dbDone = done
+			progressState.dbTotal = total
+			progressState.dbName = currentDB
+			progressState.hasUpdate = true
+			progressState.mu.Unlock()
+		})
 
 		var backupErr error
 		switch backupType {
@@ -157,10 +222,21 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Increment spinner frame for smooth animation
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 
-			// Update status based on elapsed time to show progress
+			// Poll for database progress updates from callbacks
+			dbTotal, dbDone, dbName, hasUpdate := getCurrentBackupProgress()
+			if hasUpdate {
+				m.dbTotal = dbTotal
+				m.dbDone = dbDone
+				m.dbName = dbName
+			}
+
+			// Update status based on progress and elapsed time
 			elapsedSec := int(time.Since(m.startTime).Seconds())
 
-			if elapsedSec < 2 {
+			if m.dbTotal > 0 && m.dbDone > 0 {
+				// We have real progress from cluster backup
+				m.status = fmt.Sprintf("Backing up database: %s", m.dbName)
+			} else if elapsedSec < 2 {
 				m.status = "Initializing backup..."
 			} else if elapsedSec < 5 {
 				if m.backupType == "cluster" {
@@ -234,6 +310,34 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// renderDatabaseProgressBar renders a progress bar for database count progress
+func renderBackupDatabaseProgressBar(done, total int, dbName string, width int) string {
+	if total == 0 {
+		return ""
+	}
+
+	// Calculate progress percentage
+	percent := float64(done) / float64(total)
+	if percent > 1.0 {
+		percent = 1.0
+	}
+
+	// Calculate filled width
+	barWidth := width - 20 // Leave room for label and percentage
+	if barWidth < 10 {
+		barWidth = 10
+	}
+	filled := int(float64(barWidth) * percent)
+	if filled > barWidth {
+		filled = barWidth
+	}
+
+	// Build progress bar
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+
+	return fmt.Sprintf("  Database: [%s] %d/%d", bar, done, total)
+}
+
 func (m BackupExecutionModel) View() string {
 	var s strings.Builder
 	s.Grow(512) // Pre-allocate estimated capacity for better performance
@@ -255,12 +359,24 @@ func (m BackupExecutionModel) View() string {
 	s.WriteString(fmt.Sprintf("  %-10s %s\n", "Duration:", time.Since(m.startTime).Round(time.Second)))
 	s.WriteString("\n")
 
-	// Status with spinner
+	// Status display
 	if !m.done {
-		if m.cancelling {
-			s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
+		// Show database progress bar if we have progress data (cluster backup)
+		if m.dbTotal > 0 && m.dbDone > 0 {
+			// Show progress bar instead of spinner when we have real progress
+			progressBar := renderBackupDatabaseProgressBar(m.dbDone, m.dbTotal, m.dbName, 50)
+			s.WriteString(progressBar + "\n")
+			s.WriteString(fmt.Sprintf("  %s\n", m.status))
 		} else {
-			s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
+			// Show spinner during initial phases
+			if m.cancelling {
+				s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
+			} else {
+				s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
+			}
+		}
+
+		if !m.cancelling {
 			s.WriteString("\n  [KEY]  Press Ctrl+C or ESC to cancel\n")
 		}
 	} else {

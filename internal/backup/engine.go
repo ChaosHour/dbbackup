@@ -28,14 +28,22 @@ import (
 	"dbbackup/internal/swap"
 )
 
+// ProgressCallback is called with byte-level progress updates during backup operations
+type ProgressCallback func(current, total int64, description string)
+
+// DatabaseProgressCallback is called with database count progress during cluster backup
+type DatabaseProgressCallback func(done, total int, dbName string)
+
 // Engine handles backup operations
 type Engine struct {
-	cfg              *config.Config
-	log              logger.Logger
-	db               database.Database
-	progress         progress.Indicator
-	detailedReporter *progress.DetailedReporter
-	silent           bool // Silent mode for TUI
+	cfg                *config.Config
+	log                logger.Logger
+	db                 database.Database
+	progress           progress.Indicator
+	detailedReporter   *progress.DetailedReporter
+	silent             bool // Silent mode for TUI
+	progressCallback   ProgressCallback
+	dbProgressCallback DatabaseProgressCallback
 }
 
 // New creates a new backup engine
@@ -83,6 +91,30 @@ func NewSilent(cfg *config.Config, log logger.Logger, db database.Database, prog
 		progress:         progressIndicator,
 		detailedReporter: detailedReporter,
 		silent:           true, // Silent mode enabled
+	}
+}
+
+// SetProgressCallback sets a callback for detailed progress reporting (for TUI mode)
+func (e *Engine) SetProgressCallback(cb ProgressCallback) {
+	e.progressCallback = cb
+}
+
+// SetDatabaseProgressCallback sets a callback for database count progress during cluster backup
+func (e *Engine) SetDatabaseProgressCallback(cb DatabaseProgressCallback) {
+	e.dbProgressCallback = cb
+}
+
+// reportProgress reports progress to the callback if set
+func (e *Engine) reportProgress(current, total int64, description string) {
+	if e.progressCallback != nil {
+		e.progressCallback(current, total, description)
+	}
+}
+
+// reportDatabaseProgress reports database count progress to the callback if set
+func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
+	if e.dbProgressCallback != nil {
+		e.dbProgressCallback(done, total, dbName)
 	}
 }
 
@@ -465,6 +497,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			estimator.UpdateProgress(idx)
 			e.printf("   [%d/%d] Backing up database: %s\n", idx+1, len(databases), name)
 			quietProgress.Update(fmt.Sprintf("Backing up database %d/%d: %s", idx+1, len(databases), name))
+			// Report database progress to TUI callback
+			e.reportDatabaseProgress(idx+1, len(databases), name)
 			mu.Unlock()
 
 			// Check database size and warn if very large

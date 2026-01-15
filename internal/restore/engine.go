@@ -1937,6 +1937,8 @@ type OriginalSettings struct {
 }
 
 // boostPostgreSQLSettings boosts multiple PostgreSQL settings for large restores
+// NOTE: max_locks_per_transaction requires a PostgreSQL RESTART to take effect!
+// maintenance_work_mem can be changed with pg_reload_conf().
 func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int) (*OriginalSettings, error) {
 	connStr := e.buildConnString()
 	db, err := sql.Open("pgx", connStr)
@@ -1956,30 +1958,113 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	// Get current maintenance_work_mem
 	db.QueryRowContext(ctx, "SHOW maintenance_work_mem").Scan(&original.MaintenanceWorkMem)
 
-	// Boost max_locks_per_transaction (if not already high enough)
+	// CRITICAL: max_locks_per_transaction requires a PostgreSQL RESTART!
+	// pg_reload_conf() is NOT sufficient for this parameter.
+	needsRestart := false
 	if original.MaxLocks < lockBoostValue {
 		_, err = db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", lockBoostValue))
 		if err != nil {
-			e.log.Warn("Could not boost max_locks_per_transaction", "error", err)
+			e.log.Warn("Could not set max_locks_per_transaction", "error", err)
+		} else {
+			needsRestart = true
+			e.log.Warn("max_locks_per_transaction requires PostgreSQL restart to take effect",
+				"current", original.MaxLocks,
+				"target", lockBoostValue)
 		}
 	}
 
 	// Boost maintenance_work_mem to 2GB for faster index creation
+	// (this one CAN be applied via pg_reload_conf)
 	_, err = db.ExecContext(ctx, "ALTER SYSTEM SET maintenance_work_mem = '2GB'")
 	if err != nil {
 		e.log.Warn("Could not boost maintenance_work_mem", "error", err)
 	}
 
-	// Reload config to apply changes (no restart needed for these settings)
+	// Reload config to apply maintenance_work_mem
 	_, err = db.ExecContext(ctx, "SELECT pg_reload_conf()")
 	if err != nil {
 		return original, fmt.Errorf("failed to reload config: %w", err)
 	}
 
+	// If max_locks_per_transaction needs a restart, try to do it
+	if needsRestart {
+		if restarted := e.tryRestartPostgreSQL(ctx); restarted {
+			e.log.Info("PostgreSQL restarted successfully - max_locks_per_transaction now active")
+			// Wait for PostgreSQL to be ready
+			time.Sleep(3 * time.Second)
+		} else {
+			// Cannot restart - warn user loudly
+			e.log.Error("=" + strings.Repeat("=", 70))
+			e.log.Error("WARNING: max_locks_per_transaction change requires PostgreSQL restart!")
+			e.log.Error("Current value: " + strconv.Itoa(original.MaxLocks) + ", needed: " + strconv.Itoa(lockBoostValue))
+			e.log.Error("Restore may fail with 'out of shared memory' error on BLOB-heavy databases.")
+			e.log.Error("")
+			e.log.Error("To fix manually:")
+			e.log.Error("  1. sudo systemctl restart postgresql")
+			e.log.Error("  2. Or: sudo -u postgres pg_ctl restart -D $PGDATA")
+			e.log.Error("  3. Then re-run the restore")
+			e.log.Error("=" + strings.Repeat("=", 70))
+			// Continue anyway - might work for small restores
+		}
+	}
+
 	return original, nil
 }
 
+// tryRestartPostgreSQL attempts to restart PostgreSQL using various methods
+// Returns true if restart was successful
+func (e *Engine) tryRestartPostgreSQL(ctx context.Context) bool {
+	e.progress.Update("Attempting PostgreSQL restart for lock settings...")
+
+	// Method 1: systemctl (most common on modern Linux)
+	cmd := exec.CommandContext(ctx, "sudo", "systemctl", "restart", "postgresql")
+	if err := cmd.Run(); err == nil {
+		return true
+	}
+
+	// Method 2: systemctl with version suffix (e.g., postgresql-15)
+	for _, ver := range []string{"17", "16", "15", "14", "13", "12"} {
+		cmd = exec.CommandContext(ctx, "sudo", "systemctl", "restart", "postgresql-"+ver)
+		if err := cmd.Run(); err == nil {
+			return true
+		}
+	}
+
+	// Method 3: service command (older systems)
+	cmd = exec.CommandContext(ctx, "sudo", "service", "postgresql", "restart")
+	if err := cmd.Run(); err == nil {
+		return true
+	}
+
+	// Method 4: pg_ctl as postgres user
+	cmd = exec.CommandContext(ctx, "sudo", "-u", "postgres", "pg_ctl", "restart", "-D", "/var/lib/postgresql/data", "-m", "fast")
+	if err := cmd.Run(); err == nil {
+		return true
+	}
+
+	// Method 5: Try common PGDATA paths
+	pgdataPaths := []string{
+		"/var/lib/pgsql/data",
+		"/var/lib/pgsql/17/data",
+		"/var/lib/pgsql/16/data",
+		"/var/lib/pgsql/15/data",
+		"/var/lib/postgresql/17/main",
+		"/var/lib/postgresql/16/main",
+		"/var/lib/postgresql/15/main",
+	}
+	for _, pgdata := range pgdataPaths {
+		cmd = exec.CommandContext(ctx, "sudo", "-u", "postgres", "pg_ctl", "restart", "-D", pgdata, "-m", "fast")
+		if err := cmd.Run(); err == nil {
+			return true
+		}
+	}
+
+	return false
+}
+
 // resetPostgreSQLSettings restores original PostgreSQL settings
+// NOTE: max_locks_per_transaction changes are written but require restart to take effect.
+// We don't restart here since we're done with the restore.
 func (e *Engine) resetPostgreSQLSettings(ctx context.Context, original *OriginalSettings) error {
 	connStr := e.buildConnString()
 	db, err := sql.Open("pgx", connStr)
@@ -1988,25 +2073,28 @@ func (e *Engine) resetPostgreSQLSettings(ctx context.Context, original *Original
 	}
 	defer db.Close()
 
-	// Reset max_locks_per_transaction
+	// Reset max_locks_per_transaction (will take effect on next restart)
 	if original.MaxLocks == 64 { // Default
 		db.ExecContext(ctx, "ALTER SYSTEM RESET max_locks_per_transaction")
 	} else if original.MaxLocks > 0 {
 		db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", original.MaxLocks))
 	}
 
-	// Reset maintenance_work_mem
+	// Reset maintenance_work_mem (takes effect immediately with reload)
 	if original.MaintenanceWorkMem == "64MB" { // Default
 		db.ExecContext(ctx, "ALTER SYSTEM RESET maintenance_work_mem")
 	} else if original.MaintenanceWorkMem != "" {
 		db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET maintenance_work_mem = '%s'", original.MaintenanceWorkMem))
 	}
 
-	// Reload config
+	// Reload config (only maintenance_work_mem will take effect immediately)
 	_, err = db.ExecContext(ctx, "SELECT pg_reload_conf()")
 	if err != nil {
 		return fmt.Errorf("failed to reload config: %w", err)
 	}
+
+	e.log.Info("PostgreSQL settings reset queued",
+		"note", "max_locks_per_transaction will revert on next PostgreSQL restart")
 
 	return nil
 }

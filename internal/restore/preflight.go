@@ -201,10 +201,19 @@ func (e *Engine) checkPostgreSQL(ctx context.Context, result *PreflightResult) {
 		result.PostgreSQL.IsSuperuser = isSuperuser
 	}
 
-	// Add info/warnings
+	// CRITICAL: max_locks_per_transaction requires PostgreSQL RESTART to change!
+	// Warn users loudly about this - it's the #1 cause of "out of shared memory" errors
 	if result.PostgreSQL.MaxLocksPerTransaction < 256 {
-		e.log.Info("PostgreSQL max_locks_per_transaction is low - will auto-boost",
-			"current", result.PostgreSQL.MaxLocksPerTransaction)
+		e.log.Warn("PostgreSQL max_locks_per_transaction is LOW",
+			"current", result.PostgreSQL.MaxLocksPerTransaction,
+			"recommended", "256+",
+			"note", "REQUIRES PostgreSQL restart to change!")
+
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("max_locks_per_transaction=%d is low (recommend 256+). "+
+				"This setting requires PostgreSQL RESTART to change. "+
+				"BLOB-heavy databases may fail with 'out of shared memory' error.",
+				result.PostgreSQL.MaxLocksPerTransaction))
 	}
 
 	// Parse shared_buffers and warn if very low

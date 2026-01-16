@@ -937,11 +937,15 @@ func (e *Engine) createSampleBackup(ctx context.Context, databaseName, outputFil
 func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 	globalsFile := filepath.Join(tempDir, "globals.sql")
 
-	cmd := exec.CommandContext(ctx, "pg_dumpall", "--globals-only")
-	if e.cfg.Host != "localhost" {
-		cmd.Args = append(cmd.Args, "-h", e.cfg.Host, "-p", fmt.Sprintf("%d", e.cfg.Port))
+	// CRITICAL: Always pass port even for localhost - user may have non-standard port
+	cmd := exec.CommandContext(ctx, "pg_dumpall", "--globals-only",
+		"-p", fmt.Sprintf("%d", e.cfg.Port),
+		"-U", e.cfg.User)
+
+	// Only add -h flag for non-localhost to use Unix socket for peer auth
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		cmd.Args = append([]string{cmd.Args[0], "-h", e.cfg.Host}, cmd.Args[1:]...)
 	}
-	cmd.Args = append(cmd.Args, "-U", e.cfg.User)
 
 	cmd.Env = os.Environ()
 	if e.cfg.Password != "" {

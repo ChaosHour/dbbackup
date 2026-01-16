@@ -316,11 +316,12 @@ func (p *PostgreSQL) BuildBackupCommand(database, outputFile string, options Bac
 	cmd := []string{"pg_dump"}
 
 	// Connection parameters
-	if p.cfg.Host != "localhost" {
+	// CRITICAL: Always pass port even for localhost - user may have non-standard port
+	if p.cfg.Host != "localhost" && p.cfg.Host != "127.0.0.1" && p.cfg.Host != "" {
 		cmd = append(cmd, "-h", p.cfg.Host)
-		cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
 		cmd = append(cmd, "--no-password")
 	}
+	cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
 	cmd = append(cmd, "-U", p.cfg.User)
 
 	// Format and compression
@@ -380,11 +381,12 @@ func (p *PostgreSQL) BuildRestoreCommand(database, inputFile string, options Res
 	cmd := []string{"pg_restore"}
 
 	// Connection parameters
-	if p.cfg.Host != "localhost" {
+	// CRITICAL: Always pass port even for localhost - user may have non-standard port
+	if p.cfg.Host != "localhost" && p.cfg.Host != "127.0.0.1" && p.cfg.Host != "" {
 		cmd = append(cmd, "-h", p.cfg.Host)
-		cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
 		cmd = append(cmd, "--no-password")
 	}
+	cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
 	cmd = append(cmd, "-U", p.cfg.User)
 
 	// Parallel jobs (incompatible with --single-transaction per PostgreSQL docs)

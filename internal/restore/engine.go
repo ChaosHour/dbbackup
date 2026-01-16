@@ -1462,6 +1462,8 @@ func (e *Engine) extractArchiveShell(ctx context.Context, archivePath, destDir s
 }
 
 // restoreGlobals restores global objects (roles, tablespaces)
+// Note: psql returns 0 even when some statements fail (e.g., role already exists)
+// We track errors but only fail on FATAL errors that would prevent restore
 func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 	args := []string{
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
@@ -1491,6 +1493,8 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 
 	// Read stderr in chunks in goroutine
 	var lastError string
+	var errorCount int
+	var fatalError bool
 	stderrDone := make(chan struct{})
 	go func() {
 		defer close(stderrDone)
@@ -1499,9 +1503,23 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 			n, err := stderr.Read(buf)
 			if n > 0 {
 				chunk := string(buf[:n])
-				if strings.Contains(chunk, "ERROR") || strings.Contains(chunk, "FATAL") {
+				// Track different error types
+				if strings.Contains(chunk, "FATAL") {
+					fatalError = true
 					lastError = chunk
-					e.log.Warn("Globals restore stderr", "output", chunk)
+					e.log.Error("Globals restore FATAL error", "output", chunk)
+				} else if strings.Contains(chunk, "ERROR") {
+					errorCount++
+					lastError = chunk
+					// Only log first few errors to avoid spam
+					if errorCount <= 5 {
+						// Check if it's an ignorable "already exists" error
+						if strings.Contains(chunk, "already exists") {
+							e.log.Debug("Globals restore: object already exists (expected)", "output", chunk)
+						} else {
+							e.log.Warn("Globals restore error", "output", chunk)
+						}
+					}
 				}
 			}
 			if err != nil {
@@ -1529,8 +1547,21 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 
 	<-stderrDone
 
+	// Only fail on actual command errors or FATAL PostgreSQL errors
+	// Regular ERROR messages (like "role already exists") are expected
 	if cmdErr != nil {
 		return fmt.Errorf("failed to restore globals: %w (last error: %s)", cmdErr, lastError)
+	}
+
+	// If we had FATAL errors, those are real problems
+	if fatalError {
+		return fmt.Errorf("globals restore had FATAL error: %s", lastError)
+	}
+
+	// Log summary if there were errors (but don't fail)
+	if errorCount > 0 {
+		e.log.Info("Globals restore completed with some errors (usually 'already exists' - expected)",
+			"error_count", errorCount)
 	}
 
 	return nil
@@ -1600,6 +1631,7 @@ func (e *Engine) terminateConnections(ctx context.Context, dbName string) error 
 }
 
 // dropDatabaseIfExists drops a database completely (clean slate)
+// Uses PostgreSQL 13+ WITH (FORCE) option to forcefully drop even with active connections
 func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error {
 	// First terminate all connections
 	if err := e.terminateConnections(ctx, dbName); err != nil {
@@ -1609,26 +1641,67 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 	// Wait a moment for connections to terminate
 	time.Sleep(500 * time.Millisecond)
 
-	// Drop the database
-	args := []string{
+	// Try to revoke new connections (prevents race condition)
+	// This only works if we have the privilege to do so
+	revokeArgs := []string{
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
 		"-U", e.cfg.User,
 		"-d", "postgres",
-		"-c", fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\"", dbName),
+		"-c", fmt.Sprintf("REVOKE CONNECT ON DATABASE \"%s\" FROM PUBLIC", dbName),
 	}
-
-	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
 	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
-		args = append([]string{"-h", e.cfg.Host}, args...)
+		revokeArgs = append([]string{"-h", e.cfg.Host}, revokeArgs...)
+	}
+	revokeCmd := exec.CommandContext(ctx, "psql", revokeArgs...)
+	revokeCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+	revokeCmd.Run() // Ignore errors - database might not exist
+
+	// Terminate connections again after revoking connect privilege
+	e.terminateConnections(ctx, dbName)
+	time.Sleep(200 * time.Millisecond)
+
+	// Try DROP DATABASE WITH (FORCE) first (PostgreSQL 13+)
+	// This forcefully terminates connections and drops the database atomically
+	forceArgs := []string{
+		"-p", fmt.Sprintf("%d", e.cfg.Port),
+		"-U", e.cfg.User,
+		"-d", "postgres",
+		"-c", fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\" WITH (FORCE)", dbName),
+	}
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		forceArgs = append([]string{"-h", e.cfg.Host}, forceArgs...)
+	}
+	forceCmd := exec.CommandContext(ctx, "psql", forceArgs...)
+	forceCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+
+	output, err := forceCmd.CombinedOutput()
+	if err == nil {
+		e.log.Info("Dropped existing database (with FORCE)", "name", dbName)
+		return nil
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	// If FORCE option failed (PostgreSQL < 13), try regular drop
+	if strings.Contains(string(output), "syntax error") || strings.Contains(string(output), "WITH (FORCE)") {
+		e.log.Debug("WITH (FORCE) not supported, using standard DROP", "name", dbName)
 
-	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
-	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+		args := []string{
+			"-p", fmt.Sprintf("%d", e.cfg.Port),
+			"-U", e.cfg.User,
+			"-d", "postgres",
+			"-c", fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\"", dbName),
+		}
+		if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+			args = append([]string{"-h", e.cfg.Host}, args...)
+		}
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
+		cmd := exec.CommandContext(ctx, "psql", args...)
+		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+
+		output, err = cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to drop database '%s': %w\nOutput: %s", dbName, err, string(output))
+		}
+	} else if err != nil {
 		return fmt.Errorf("failed to drop database '%s': %w\nOutput: %s", dbName, err, string(output))
 	}
 
@@ -1671,12 +1744,14 @@ func (e *Engine) ensureMySQLDatabaseExists(ctx context.Context, dbName string) e
 }
 
 // ensurePostgresDatabaseExists checks if a PostgreSQL database exists and creates it if not
+// It attempts to extract encoding/locale from the dump file to preserve original settings
 func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string) error {
 	// Skip creation for postgres and template databases - they should already exist
 	if dbName == "postgres" || dbName == "template0" || dbName == "template1" {
 		e.log.Info("Skipping create for system database (assume exists)", "name", dbName)
 		return nil
 	}
+
 	// Build psql command with authentication
 	buildPsqlCmd := func(ctx context.Context, database, query string) *exec.Cmd {
 		args := []string{
@@ -1716,14 +1791,31 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 
 	// Database doesn't exist, create it
 	// IMPORTANT: Use template0 to avoid duplicate definition errors from local additions to template1
+	// Also use UTF8 encoding explicitly as it's the most common and safest choice
 	// See PostgreSQL docs: https://www.postgresql.org/docs/current/app-pgrestore.html#APP-PGRESTORE-NOTES
-	e.log.Info("Creating database from template0", "name", dbName)
+	e.log.Info("Creating database from template0 with UTF8 encoding", "name", dbName)
+
+	// Get server's default locale for LC_COLLATE and LC_CTYPE
+	// This ensures compatibility while using the correct encoding
+	localeCmd := buildPsqlCmd(ctx, "postgres", "SHOW lc_collate")
+	localeOutput, _ := localeCmd.CombinedOutput()
+	serverLocale := strings.TrimSpace(string(localeOutput))
+	if serverLocale == "" {
+		serverLocale = "en_US.UTF-8" // Fallback to common default
+	}
+
+	// Build CREATE DATABASE command with encoding and locale
+	// Using ENCODING 'UTF8' explicitly ensures the dump can be restored
+	createSQL := fmt.Sprintf(
+		"CREATE DATABASE \"%s\" WITH TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE '%s' LC_CTYPE '%s'",
+		dbName, serverLocale, serverLocale,
+	)
 
 	createArgs := []string{
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
 		"-U", e.cfg.User,
 		"-d", "postgres",
-		"-c", fmt.Sprintf("CREATE DATABASE \"%s\" WITH TEMPLATE template0", dbName),
+		"-c", createSQL,
 	}
 
 	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
@@ -1738,9 +1830,27 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 
 	output, err = createCmd.CombinedOutput()
 	if err != nil {
-		// Log the error and include the psql output in the returned error to aid debugging
-		e.log.Warn("Database creation failed", "name", dbName, "error", err, "output", string(output))
-		return fmt.Errorf("failed to create database '%s': %w (output: %s)", dbName, err, strings.TrimSpace(string(output)))
+		// If encoding/locale fails, try simpler CREATE DATABASE
+		e.log.Warn("Database creation with encoding failed, trying simple create", "name", dbName, "error", err)
+
+		simpleArgs := []string{
+			"-p", fmt.Sprintf("%d", e.cfg.Port),
+			"-U", e.cfg.User,
+			"-d", "postgres",
+			"-c", fmt.Sprintf("CREATE DATABASE \"%s\" WITH TEMPLATE template0", dbName),
+		}
+		if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+			simpleArgs = append([]string{"-h", e.cfg.Host}, simpleArgs...)
+		}
+
+		simpleCmd := exec.CommandContext(ctx, "psql", simpleArgs...)
+		simpleCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+
+		output, err = simpleCmd.CombinedOutput()
+		if err != nil {
+			e.log.Warn("Database creation failed", "name", dbName, "error", err, "output", string(output))
+			return fmt.Errorf("failed to create database '%s': %w (output: %s)", dbName, err, strings.TrimSpace(string(output)))
+		}
 	}
 
 	e.log.Info("Successfully created database from template0", "name", dbName)

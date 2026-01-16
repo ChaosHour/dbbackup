@@ -84,19 +84,13 @@ func findHbaFileViaPostgres() string {
 
 // parsePgHbaConf parses pg_hba.conf and returns the authentication method
 func parsePgHbaConf(path string, user string) AuthMethod {
-	// Try with sudo if we can't read directly
+	// Try to read the file directly - do NOT use sudo as it triggers password prompts
+	// If we can't read pg_hba.conf, we'll rely on connection attempts to determine auth
 	file, err := os.Open(path)
 	if err != nil {
-		// Try with sudo (with timeout)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		cmd := exec.CommandContext(ctx, "sudo", "cat", path)
-		output, err := cmd.Output()
-		if err != nil {
-			return AuthUnknown
-		}
-		return parseHbaContent(string(output), user)
+		// If we can't read the file, return unknown and let the connection determine auth
+		// This avoids sudo password prompts when running as postgres via su
+		return AuthUnknown
 	}
 	defer file.Close()
 

@@ -38,6 +38,10 @@ type DatabaseProgressCallback func(done, total int, dbName string)
 // Parameters: done count, total count, database name, elapsed time for current restore phase, avg duration per DB
 type DatabaseProgressWithTimingCallback func(done, total int, dbName string, phaseElapsed, avgPerDB time.Duration)
 
+// DatabaseProgressByBytesCallback is called with progress weighted by database sizes (bytes)
+// Parameters: bytes completed, total bytes, current database name, databases done count, total database count
+type DatabaseProgressByBytesCallback func(bytesDone, bytesTotal int64, dbName string, dbDone, dbTotal int)
+
 // Engine handles database restore operations
 type Engine struct {
 	cfg              *config.Config
@@ -49,9 +53,10 @@ type Engine struct {
 	debugLogPath     string // Path to save debug log on error
 
 	// TUI progress callback for detailed progress reporting
-	progressCallback         ProgressCallback
-	dbProgressCallback       DatabaseProgressCallback
-	dbProgressTimingCallback DatabaseProgressWithTimingCallback
+	progressCallback          ProgressCallback
+	dbProgressCallback        DatabaseProgressCallback
+	dbProgressTimingCallback  DatabaseProgressWithTimingCallback
+	dbProgressByBytesCallback DatabaseProgressByBytesCallback
 }
 
 // New creates a new restore engine
@@ -122,6 +127,11 @@ func (e *Engine) SetDatabaseProgressWithTimingCallback(cb DatabaseProgressWithTi
 	e.dbProgressTimingCallback = cb
 }
 
+// SetDatabaseProgressByBytesCallback sets a callback for progress weighted by database sizes
+func (e *Engine) SetDatabaseProgressByBytesCallback(cb DatabaseProgressByBytesCallback) {
+	e.dbProgressByBytesCallback = cb
+}
+
 // reportProgress safely calls the progress callback if set
 func (e *Engine) reportProgress(current, total int64, description string) {
 	if e.progressCallback != nil {
@@ -140,6 +150,13 @@ func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
 func (e *Engine) reportDatabaseProgressWithTiming(done, total int, dbName string, phaseElapsed, avgPerDB time.Duration) {
 	if e.dbProgressTimingCallback != nil {
 		e.dbProgressTimingCallback(done, total, dbName, phaseElapsed, avgPerDB)
+	}
+}
+
+// reportDatabaseProgressByBytes safely calls the bytes-weighted callback if set
+func (e *Engine) reportDatabaseProgressByBytes(bytesDone, bytesTotal int64, dbName string, dbDone, dbTotal int) {
+	if e.dbProgressByBytesCallback != nil {
+		e.dbProgressByBytesCallback(bytesDone, bytesTotal, dbName, dbDone, dbTotal)
 	}
 }
 
@@ -861,6 +878,25 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	// Create temporary extraction directory in configured WorkDir
 	workDir := e.cfg.GetEffectiveWorkDir()
 	tempDir := filepath.Join(workDir, fmt.Sprintf(".restore_%d", time.Now().Unix()))
+
+	// Check disk space for extraction (need ~3x archive size: compressed + extracted + working space)
+	if archiveInfo != nil {
+		requiredBytes := uint64(archiveInfo.Size()) * 3
+		extractionCheck := checks.CheckDiskSpace(workDir)
+		if extractionCheck.AvailableBytes < requiredBytes {
+			operation.Fail("Insufficient disk space for extraction")
+			return fmt.Errorf("insufficient disk space for extraction in %s: need %.1f GB, have %.1f GB (archive size: %.1f GB × 3)",
+				workDir,
+				float64(requiredBytes)/(1024*1024*1024),
+				float64(extractionCheck.AvailableBytes)/(1024*1024*1024),
+				float64(archiveInfo.Size())/(1024*1024*1024))
+		}
+		e.log.Info("Disk space check for extraction passed",
+			"workdir", workDir,
+			"required_gb", float64(requiredBytes)/(1024*1024*1024),
+			"available_gb", float64(extractionCheck.AvailableBytes)/(1024*1024*1024))
+	}
+
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		operation.Fail("Failed to create temporary directory")
 		return fmt.Errorf("failed to create temp directory in %s: %w", workDir, err)
@@ -1024,12 +1060,27 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	var restoreErrorsMu sync.Mutex
 	totalDBs := 0
 
-	// Count total databases
+	// Count total databases and calculate total bytes for weighted progress
+	var totalBytes int64
+	dbSizes := make(map[string]int64) // Map database name to dump file size
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			totalDBs++
+			dumpFile := filepath.Join(dumpsDir, entry.Name())
+			if info, err := os.Stat(dumpFile); err == nil {
+				dbName := entry.Name()
+				dbName = strings.TrimSuffix(dbName, ".dump")
+				dbName = strings.TrimSuffix(dbName, ".sql.gz")
+				dbSizes[dbName] = info.Size()
+				totalBytes += info.Size()
+			}
 		}
 	}
+	e.log.Info("Calculated total restore size", "databases", totalDBs, "total_bytes", totalBytes)
+
+	// Track bytes completed for weighted progress
+	var bytesCompleted int64
+	var bytesCompletedMu sync.Mutex
 
 	// Create ETA estimator for database restores
 	estimator := progress.NewETAEstimator("Restoring cluster", totalDBs)
@@ -1202,8 +1253,19 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 			completedDBTimes = append(completedDBTimes, dbRestoreDuration)
 			completedDBTimesMu.Unlock()
 
+			// Update bytes completed for weighted progress
+			dbSize := dbSizes[dbName]
+			bytesCompletedMu.Lock()
+			bytesCompleted += dbSize
+			currentBytesCompleted := bytesCompleted
+			currentSuccessCount := int(atomic.LoadInt32(&successCount)) + 1 // +1 because we're about to increment
+			bytesCompletedMu.Unlock()
+
+			// Report weighted progress (bytes-based)
+			e.reportDatabaseProgressByBytes(currentBytesCompleted, totalBytes, dbName, currentSuccessCount, totalDBs)
+
 			atomic.AddInt32(&successCount, 1)
-			
+
 			// Small delay to ensure PostgreSQL fully closes connections before next restore
 			time.Sleep(100 * time.Millisecond)
 		}(dbIndex, entry.Name())

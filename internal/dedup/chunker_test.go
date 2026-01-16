@@ -103,7 +103,7 @@ func TestChunker_ShiftedData(t *testing.T) {
 	// Test that shifted data still shares chunks (the key CDC benefit)
 	// Use deterministic random data for reproducible test results
 	rng := mathrand.New(mathrand.NewSource(42))
-	
+
 	original := make([]byte, 100*1024)
 	rng.Read(original)
 

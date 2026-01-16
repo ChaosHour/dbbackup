@@ -28,6 +28,7 @@ var (
 	restoreClean        bool
 	restoreCreate       bool
 	restoreJobs         int
+	restoreParallelDBs  int // Number of parallel database restores
 	restoreTarget       string
 	restoreVerbose      bool
 	restoreNoProgress   bool
@@ -289,6 +290,7 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreForce, "force", false, "Skip safety checks and confirmations")
 	restoreClusterCmd.Flags().BoolVar(&restoreCleanCluster, "clean-cluster", false, "Drop all existing user databases before restore (disaster recovery)")
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto)")
+	restoreClusterCmd.Flags().IntVar(&restoreParallelDBs, "parallel-dbs", 0, "Number of databases to restore in parallel (0 = use config default, 1 = sequential)")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
@@ -781,6 +783,12 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		for _, dbName := range existingDBs {
 			log.Warn("   - " + dbName)
 		}
+	}
+
+	// Override cluster parallelism if --parallel-dbs is specified
+	if restoreParallelDBs > 0 {
+		cfg.ClusterParallelism = restoreParallelDBs
+		log.Info("Using custom parallelism for database restores", "parallel_dbs", restoreParallelDBs)
 	}
 
 	// Create restore engine

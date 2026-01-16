@@ -159,6 +159,10 @@ type sharedProgressState struct {
 	overallPhase   int
 	extractionDone bool
 
+	// Weighted progress by database sizes (bytes)
+	dbBytesTotal int64 // Total bytes across all databases
+	dbBytesDone  int64 // Bytes completed (sum of finished DB sizes)
+
 	// Rolling window for speed calculation
 	speedSamples []restoreSpeedSample
 }
@@ -186,12 +190,12 @@ func clearCurrentRestoreProgress() {
 	currentRestoreProgressState = nil
 }
 
-func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration, currentDB string, overallPhase int, extractionDone bool) {
+func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration, currentDB string, overallPhase int, extractionDone bool, dbBytesTotal, dbBytesDone int64) {
 	currentRestoreProgressMu.Lock()
 	defer currentRestoreProgressMu.Unlock()
 
 	if currentRestoreProgressState == nil {
-		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false
+		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false, 0, 0
 	}
 
 	currentRestoreProgressState.mu.Lock()
@@ -205,7 +209,8 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 		currentRestoreProgressState.dbTotal, currentRestoreProgressState.dbDone, speed,
 		currentRestoreProgressState.dbPhaseElapsed, currentRestoreProgressState.dbAvgPerDB,
 		currentRestoreProgressState.currentDB, currentRestoreProgressState.overallPhase,
-		currentRestoreProgressState.extractionDone
+		currentRestoreProgressState.extractionDone,
+		currentRestoreProgressState.dbBytesTotal, currentRestoreProgressState.dbBytesDone
 }
 
 // calculateRollingSpeed calculates speed from recent samples (last 5 seconds)
@@ -359,6 +364,20 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.bytesDone = 0
 		})
 
+		// Set up weighted (bytes-based) progress callback for accurate cluster restore progress
+		engine.SetDatabaseProgressByBytesCallback(func(bytesDone, bytesTotal int64, dbName string, dbDone, dbTotal int) {
+			progressState.mu.Lock()
+			defer progressState.mu.Unlock()
+			progressState.dbBytesDone = bytesDone
+			progressState.dbBytesTotal = bytesTotal
+			progressState.dbDone = dbDone
+			progressState.dbTotal = dbTotal
+			progressState.currentDB = dbName
+			progressState.overallPhase = 3
+			progressState.extractionDone = true
+			progressState.hasUpdate = true
+		})
+
 		// Store progress state in a package-level variable for the ticker to access
 		// This is a workaround because tea messages can't be sent from callbacks
 		setCurrentRestoreProgress(progressState)
@@ -412,7 +431,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.elapsed = time.Since(m.startTime)
 
 			// Poll shared progress state for real-time updates
-			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed, dbPhaseElapsed, dbAvgPerDB, currentDB, overallPhase, extractionDone := getCurrentRestoreProgress()
+			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed, dbPhaseElapsed, dbAvgPerDB, currentDB, overallPhase, extractionDone, dbBytesTotal, dbBytesDone := getCurrentRestoreProgress()
 			if hasUpdate && bytesTotal > 0 && !extractionDone {
 				// Phase 1: Extraction
 				m.bytesTotal = bytesTotal
@@ -443,8 +462,16 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.status = "Finalizing..."
 				}
-				m.phase = fmt.Sprintf("Phase 3/3: Databases (%d/%d)", dbDone, dbTotal)
-				m.progress = int((dbDone * 100) / dbTotal)
+
+				// Use weighted progress by bytes if available, otherwise use count
+				if dbBytesTotal > 0 {
+					weightedPercent := int((dbBytesDone * 100) / dbBytesTotal)
+					m.phase = fmt.Sprintf("Phase 3/3: Databases (%d/%d) - %.1f%% by size", dbDone, dbTotal, float64(dbBytesDone*100)/float64(dbBytesTotal))
+					m.progress = weightedPercent
+				} else {
+					m.phase = fmt.Sprintf("Phase 3/3: Databases (%d/%d)", dbDone, dbTotal)
+					m.progress = int((dbDone * 100) / dbTotal)
+				}
 			} else if hasUpdate && extractionDone && dbTotal == 0 {
 				// Phase 2: Globals restore (brief phase between extraction and databases)
 				m.overallPhase = 2

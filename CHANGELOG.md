@@ -5,6 +5,26 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.49] - 2026-01-16 "Unified Cluster Backup Progress"
+
+### Added - Unified Progress Display for Cluster Backup
+- **Combined overall progress bar** for cluster backup showing all phases:
+  - Phase 1/3: Backing up Globals (0-15% of overall)
+  - Phase 2/3: Backing up Databases (15-90% of overall)
+  - Phase 3/3: Compressing Archive (90-100% of overall)
+- **Current database indicator** - Shows which database is currently being backed up
+- **Phase-aware progress tracking** - New fields in backup progress state:
+  - `overallPhase` - Current phase (1=globals, 2=databases, 3=compressing)
+  - `phaseDesc` - Human-readable phase description
+- **Dual progress bars** for cluster backup:
+  - Overall progress bar showing combined operation progress
+  - Database count progress bar showing individual database progress
+
+### Changed
+- Cluster backup TUI now shows unified progress display matching restore
+- Progress callbacks now include phase information
+- Better visual feedback during entire cluster backup operation
+
 ## [3.42.48] - 2026-01-15 "Unified Cluster Restore Progress"
 
 ### Added - Unified Progress Display for Cluster Restore

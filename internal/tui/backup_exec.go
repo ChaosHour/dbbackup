@@ -36,18 +36,22 @@ type BackupExecutionModel struct {
 	spinnerFrame int
 
 	// Database count progress (for cluster backup)
-	dbTotal int
-	dbDone  int
-	dbName  string // Current database being backed up
+	dbTotal      int
+	dbDone       int
+	dbName       string // Current database being backed up
+	overallPhase int    // 1=globals, 2=databases, 3=compressing
+	phaseDesc    string // Description of current phase
 }
 
 // sharedBackupProgressState holds progress state that can be safely accessed from callbacks
 type sharedBackupProgressState struct {
-	mu        sync.Mutex
-	dbTotal   int
-	dbDone    int
-	dbName    string
-	hasUpdate bool
+	mu           sync.Mutex
+	dbTotal      int
+	dbDone       int
+	dbName       string
+	overallPhase int    // 1=globals, 2=databases, 3=compressing
+	phaseDesc    string // Description of current phase
+	hasUpdate    bool
 }
 
 // Package-level shared progress state for backup operations
@@ -68,12 +72,12 @@ func clearCurrentBackupProgress() {
 	currentBackupProgressState = nil
 }
 
-func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, hasUpdate bool) {
+func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhase int, phaseDesc string, hasUpdate bool) {
 	currentBackupProgressMu.Lock()
 	defer currentBackupProgressMu.Unlock()
 
 	if currentBackupProgressState == nil {
-		return 0, 0, "", false
+		return 0, 0, "", 0, "", false
 	}
 
 	currentBackupProgressState.mu.Lock()
@@ -83,7 +87,8 @@ func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, hasUpdate b
 	currentBackupProgressState.hasUpdate = false
 
 	return currentBackupProgressState.dbTotal, currentBackupProgressState.dbDone,
-		currentBackupProgressState.dbName, hasUpdate
+		currentBackupProgressState.dbName, currentBackupProgressState.overallPhase,
+		currentBackupProgressState.phaseDesc, hasUpdate
 }
 
 func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, backupType, dbName string, ratio int) BackupExecutionModel {
@@ -171,6 +176,8 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 			progressState.dbDone = done
 			progressState.dbTotal = total
 			progressState.dbName = currentDB
+			progressState.overallPhase = 2 // Phase 2: Backing up databases
+			progressState.phaseDesc = fmt.Sprintf("Phase 2/3: Databases (%d/%d)", done, total)
 			progressState.hasUpdate = true
 			progressState.mu.Unlock()
 		})
@@ -223,11 +230,13 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 
 			// Poll for database progress updates from callbacks
-			dbTotal, dbDone, dbName, hasUpdate := getCurrentBackupProgress()
+			dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate := getCurrentBackupProgress()
 			if hasUpdate {
 				m.dbTotal = dbTotal
 				m.dbDone = dbDone
 				m.dbName = dbName
+				m.overallPhase = overallPhase
+				m.phaseDesc = phaseDesc
 			}
 
 			// Update status based on progress and elapsed time
@@ -361,19 +370,68 @@ func (m BackupExecutionModel) View() string {
 
 	// Status display
 	if !m.done {
-		// Show database progress bar if we have progress data (cluster backup)
-		if m.dbTotal > 0 && m.dbDone > 0 {
-			// Show progress bar instead of spinner when we have real progress
-			progressBar := renderBackupDatabaseProgressBar(m.dbDone, m.dbTotal, m.dbName, 50)
-			s.WriteString(progressBar + "\n")
-			s.WriteString(fmt.Sprintf("  %s\n", m.status))
-		} else {
-			// Show spinner during initial phases
-			if m.cancelling {
-				s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
-			} else {
-				s.WriteString(fmt.Sprintf("  %s %s\n", spinnerFrames[m.spinnerFrame], m.status))
+		// Unified progress display for cluster backup
+		if m.backupType == "cluster" {
+			// Calculate overall progress across all phases
+			// Phase 1: Globals (0-15%)
+			// Phase 2: Databases (15-90%)
+			// Phase 3: Compressing (90-100%)
+			overallProgress := 0
+			phaseLabel := "Starting..."
+
+			elapsedSec := int(time.Since(m.startTime).Seconds())
+
+			if m.overallPhase == 2 && m.dbTotal > 0 {
+				// Phase 2: Database backups - contributes 15-90%
+				dbPct := int((int64(m.dbDone) * 100) / int64(m.dbTotal))
+				overallProgress = 15 + (dbPct * 75 / 100)
+				phaseLabel = m.phaseDesc
+			} else if elapsedSec < 5 {
+				// Initial setup
+				overallProgress = 2
+				phaseLabel = "Phase 1/3: Initializing..."
+			} else if m.dbTotal == 0 {
+				// Phase 1: Globals backup (before databases start)
+				overallProgress = 10
+				phaseLabel = "Phase 1/3: Backing up Globals"
 			}
+
+			// Header with phase and overall progress
+			s.WriteString(infoStyle.Render("  ─── Cluster Backup Progress ──────────────────────────────"))
+			s.WriteString("\n\n")
+			s.WriteString(fmt.Sprintf("    %s\n\n", phaseLabel))
+
+			// Overall progress bar
+			s.WriteString("    Overall: ")
+			s.WriteString(renderProgressBar(overallProgress))
+			s.WriteString(fmt.Sprintf("  %d%%\n", overallProgress))
+
+			// Phase-specific details
+			if m.dbTotal > 0 && m.dbDone > 0 {
+				// Show current database being backed up
+				s.WriteString("\n")
+				spinner := spinnerFrames[m.spinnerFrame]
+				if m.dbName != "" && m.dbDone <= m.dbTotal {
+					s.WriteString(fmt.Sprintf("    Current: %s %s\n", spinner, m.dbName))
+				}
+				s.WriteString("\n")
+
+				// Database progress bar
+				progressBar := renderBackupDatabaseProgressBar(m.dbDone, m.dbTotal, m.dbName, 50)
+				s.WriteString(progressBar + "\n")
+			} else {
+				// Intermediate phase (globals)
+				spinner := spinnerFrames[m.spinnerFrame]
+				s.WriteString(fmt.Sprintf("\n    %s %s\n\n", spinner, m.status))
+			}
+
+			s.WriteString("\n")
+			s.WriteString(infoStyle.Render("  ───────────────────────────────────────────────────────────"))
+			s.WriteString("\n\n")
+		} else {
+			// Single/sample database backup - simpler display
+			spinner := spinnerFrames[m.spinnerFrame]
+			s.WriteString(fmt.Sprintf("  %s %s\n", spinner, m.status))
 		}
 
 		if !m.cancelling {

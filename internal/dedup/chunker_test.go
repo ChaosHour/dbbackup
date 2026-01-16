@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"io"
+	mathrand "math/rand"
 	"testing"
 )
 
@@ -100,12 +101,15 @@ func TestChunker_Deterministic(t *testing.T) {
 
 func TestChunker_ShiftedData(t *testing.T) {
 	// Test that shifted data still shares chunks (the key CDC benefit)
+	// Use deterministic random data for reproducible test results
+	rng := mathrand.New(mathrand.NewSource(42))
+	
 	original := make([]byte, 100*1024)
-	rand.Read(original)
+	rng.Read(original)
 
 	// Create shifted version (prepend some bytes)
 	prefix := make([]byte, 1000)
-	rand.Read(prefix)
+	rng.Read(prefix)
 	shifted := append(prefix, original...)
 
 	// Chunk both

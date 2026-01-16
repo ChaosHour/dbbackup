@@ -34,6 +34,10 @@ type ProgressCallback func(current, total int64, description string)
 // DatabaseProgressCallback is called with database count progress during cluster restore
 type DatabaseProgressCallback func(done, total int, dbName string)
 
+// DatabaseProgressWithTimingCallback is called with database progress including timing info
+// Parameters: done count, total count, database name, elapsed time for current restore phase, avg duration per DB
+type DatabaseProgressWithTimingCallback func(done, total int, dbName string, phaseElapsed, avgPerDB time.Duration)
+
 // Engine handles database restore operations
 type Engine struct {
 	cfg              *config.Config
@@ -45,8 +49,9 @@ type Engine struct {
 	debugLogPath     string // Path to save debug log on error
 
 	// TUI progress callback for detailed progress reporting
-	progressCallback   ProgressCallback
-	dbProgressCallback DatabaseProgressCallback
+	progressCallback          ProgressCallback
+	dbProgressCallback        DatabaseProgressCallback
+	dbProgressTimingCallback  DatabaseProgressWithTimingCallback
 }
 
 // New creates a new restore engine
@@ -112,6 +117,11 @@ func (e *Engine) SetDatabaseProgressCallback(cb DatabaseProgressCallback) {
 	e.dbProgressCallback = cb
 }
 
+// SetDatabaseProgressWithTimingCallback sets a callback for database progress with timing info
+func (e *Engine) SetDatabaseProgressWithTimingCallback(cb DatabaseProgressWithTimingCallback) {
+	e.dbProgressTimingCallback = cb
+}
+
 // reportProgress safely calls the progress callback if set
 func (e *Engine) reportProgress(current, total int64, description string) {
 	if e.progressCallback != nil {
@@ -123,6 +133,13 @@ func (e *Engine) reportProgress(current, total int64, description string) {
 func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
 	if e.dbProgressCallback != nil {
 		e.dbProgressCallback(done, total, dbName)
+	}
+}
+
+// reportDatabaseProgressWithTiming safely calls the timing-aware callback if set
+func (e *Engine) reportDatabaseProgressWithTiming(done, total int, dbName string, phaseElapsed, avgPerDB time.Duration) {
+	if e.dbProgressTimingCallback != nil {
+		e.dbProgressTimingCallback(done, total, dbName, phaseElapsed, avgPerDB)
 	}
 }
 
@@ -1037,6 +1054,11 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	var successCount, failCount int32
 	var mu sync.Mutex // Protect shared resources (progress, logger)
 
+	// Timing tracking for restore phase progress
+	restorePhaseStart := time.Now()
+	var completedDBTimes []time.Duration // Track duration for each completed DB restore
+	var completedDBTimesMu sync.Mutex
+
 	// Create semaphore to limit concurrency
 	semaphore := make(chan struct{}, parallelism)
 	var wg sync.WaitGroup
@@ -1062,6 +1084,9 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 				}
 			}()
 
+			// Track timing for this database restore
+			dbRestoreStart := time.Now()
+
 			// Update estimator progress (thread-safe)
 			mu.Lock()
 			estimator.UpdateProgress(idx)
@@ -1074,12 +1099,26 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 
 			dbProgress := 15 + int(float64(idx)/float64(totalDBs)*85.0)
 
+			// Calculate average time per DB and report progress with timing
+			completedDBTimesMu.Lock()
+			var avgPerDB time.Duration
+			if len(completedDBTimes) > 0 {
+				var totalDuration time.Duration
+				for _, d := range completedDBTimes {
+					totalDuration += d
+				}
+				avgPerDB = totalDuration / time.Duration(len(completedDBTimes))
+			}
+			phaseElapsed := time.Since(restorePhaseStart)
+			completedDBTimesMu.Unlock()
+
 			mu.Lock()
 			statusMsg := fmt.Sprintf("Restoring database %s (%d/%d)", dbName, idx+1, totalDBs)
 			e.progress.Update(statusMsg)
 			e.log.Info("Restoring database", "name", dbName, "file", dumpFile, "progress", dbProgress)
-			// Report database progress for TUI
+			// Report database progress for TUI (both callbacks)
 			e.reportDatabaseProgress(idx, totalDBs, dbName)
+			e.reportDatabaseProgressWithTiming(idx, totalDBs, dbName, phaseElapsed, avgPerDB)
 			mu.Unlock()
 
 			// STEP 1: Drop existing database completely (clean slate)
@@ -1143,6 +1182,12 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 				atomic.AddInt32(&failCount, 1)
 				return
 			}
+
+			// Track completed database restore duration for ETA calculation
+			dbRestoreDuration := time.Since(dbRestoreStart)
+			completedDBTimesMu.Lock()
+			completedDBTimes = append(completedDBTimes, dbRestoreDuration)
+			completedDBTimesMu.Unlock()
 
 			atomic.AddInt32(&successCount, 1)
 		}(dbIndex, entry.Name())

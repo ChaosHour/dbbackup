@@ -57,6 +57,10 @@ type RestoreExecutionModel struct {
 	dbTotal int
 	dbDone  int
 
+	// Timing info for database restore phase (ETA calculation)
+	dbPhaseElapsed time.Duration // Elapsed time since restore phase started
+	dbAvgPerDB     time.Duration // Average time per database restore
+
 	// Results
 	done       bool
 	cancelling bool // True when user has requested cancellation
@@ -136,6 +140,10 @@ type sharedProgressState struct {
 	dbTotal int
 	dbDone  int
 
+	// Timing info for database restore phase
+	dbPhaseElapsed time.Duration // Elapsed time since restore phase started
+	dbAvgPerDB     time.Duration // Average time per database restore
+
 	// Rolling window for speed calculation
 	speedSamples []restoreSpeedSample
 }
@@ -163,12 +171,12 @@ func clearCurrentRestoreProgress() {
 	currentRestoreProgressState = nil
 }
 
-func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64) {
+func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration) {
 	currentRestoreProgressMu.Lock()
 	defer currentRestoreProgressMu.Unlock()
 
 	if currentRestoreProgressState == nil {
-		return 0, 0, "", false, 0, 0, 0
+		return 0, 0, "", false, 0, 0, 0, 0, 0
 	}
 
 	currentRestoreProgressState.mu.Lock()
@@ -179,7 +187,8 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 
 	return currentRestoreProgressState.bytesTotal, currentRestoreProgressState.bytesDone,
 		currentRestoreProgressState.description, currentRestoreProgressState.hasUpdate,
-		currentRestoreProgressState.dbTotal, currentRestoreProgressState.dbDone, speed
+		currentRestoreProgressState.dbTotal, currentRestoreProgressState.dbDone, speed,
+		currentRestoreProgressState.dbPhaseElapsed, currentRestoreProgressState.dbAvgPerDB
 }
 
 // calculateRollingSpeed calculates speed from recent samples (last 5 seconds)
@@ -304,6 +313,21 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.bytesDone = 0
 		})
 
+		// Set up timing-aware database progress callback for cluster restore ETA
+		engine.SetDatabaseProgressWithTimingCallback(func(done, total int, dbName string, phaseElapsed, avgPerDB time.Duration) {
+			progressState.mu.Lock()
+			defer progressState.mu.Unlock()
+			progressState.dbDone = done
+			progressState.dbTotal = total
+			progressState.description = fmt.Sprintf("Restoring %s", dbName)
+			progressState.dbPhaseElapsed = phaseElapsed
+			progressState.dbAvgPerDB = avgPerDB
+			progressState.hasUpdate = true
+			// Clear byte progress when switching to db progress
+			progressState.bytesTotal = 0
+			progressState.bytesDone = 0
+		})
+
 		// Store progress state in a package-level variable for the ticker to access
 		// This is a workaround because tea messages can't be sent from callbacks
 		setCurrentRestoreProgress(progressState)
@@ -357,7 +381,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.elapsed = time.Since(m.startTime)
 
 			// Poll shared progress state for real-time updates
-			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed := getCurrentRestoreProgress()
+			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed, dbPhaseElapsed, dbAvgPerDB := getCurrentRestoreProgress()
 			if hasUpdate && bytesTotal > 0 {
 				m.bytesTotal = bytesTotal
 				m.bytesDone = bytesDone
@@ -370,9 +394,11 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.phase = "Extracting"
 				m.progress = int((bytesDone * 100) / bytesTotal)
 			} else if hasUpdate && dbTotal > 0 {
-				// Database count progress for cluster restore
+				// Database count progress for cluster restore with timing
 				m.dbTotal = dbTotal
 				m.dbDone = dbDone
+				m.dbPhaseElapsed = dbPhaseElapsed
+				m.dbAvgPerDB = dbAvgPerDB
 				m.showBytes = false
 				m.status = fmt.Sprintf("Restoring database %d of %d...", dbDone+1, dbTotal)
 				m.phase = "Restore"
@@ -549,13 +575,13 @@ func (m RestoreExecutionModel) View() string {
 			s.WriteString(renderDetailedProgressBarWithSpeed(m.bytesDone, m.bytesTotal, m.speed))
 			s.WriteString("\n\n")
 		} else if m.dbTotal > 0 {
-			// Database count progress for cluster restore
+			// Database count progress for cluster restore with timing
 			spinner := m.spinnerFrames[m.spinnerFrame]
 			s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
 			s.WriteString("\n")
 
-			// Show database progress bar
-			s.WriteString(renderDatabaseProgressBar(m.dbDone, m.dbTotal))
+			// Show database progress bar with timing and ETA
+			s.WriteString(renderDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.dbAvgPerDB))
 			s.WriteString("\n\n")
 		} else {
 			// Show status with rotating spinner (for phases without detailed progress)
@@ -674,6 +700,55 @@ func renderDatabaseProgressBar(done, total int) string {
 
 	// Count and percentage
 	s.WriteString(fmt.Sprintf("  %3d%%  %d / %d databases", percent, done, total))
+
+	return s.String()
+}
+
+// renderDatabaseProgressBarWithTiming renders a progress bar for database count with timing and ETA
+func renderDatabaseProgressBarWithTiming(done, total int, phaseElapsed, avgPerDB time.Duration) string {
+	var s strings.Builder
+
+	// Calculate percentage
+	percent := 0
+	if total > 0 {
+		percent = (done * 100) / total
+		if percent > 100 {
+			percent = 100
+		}
+	}
+
+	// Render progress bar
+	width := 30
+	filled := (percent * width) / 100
+	barFilled := strings.Repeat("█", filled)
+	barEmpty := strings.Repeat("░", width-filled)
+
+	s.WriteString(successStyle.Render("["))
+	s.WriteString(successStyle.Render(barFilled))
+	s.WriteString(infoStyle.Render(barEmpty))
+	s.WriteString(successStyle.Render("]"))
+
+	// Count and percentage
+	s.WriteString(fmt.Sprintf("  %3d%%  %d / %d databases", percent, done, total))
+
+	// Timing and ETA
+	if phaseElapsed > 0 {
+		s.WriteString(fmt.Sprintf("  [%s", FormatDurationShort(phaseElapsed)))
+
+		// Calculate ETA based on average time per database
+		if avgPerDB > 0 && done < total {
+			remainingDBs := total - done
+			eta := time.Duration(remainingDBs) * avgPerDB
+			s.WriteString(fmt.Sprintf(" / ETA: %s", FormatDurationShort(eta)))
+		} else if done > 0 && done < total {
+			// Fallback: estimate ETA from overall elapsed time
+			avgElapsed := phaseElapsed / time.Duration(done)
+			remainingDBs := total - done
+			eta := time.Duration(remainingDBs) * avgElapsed
+			s.WriteString(fmt.Sprintf(" / ETA: ~%s", FormatDurationShort(eta)))
+		}
+		s.WriteString("]")
+	}
 
 	return s.String()
 }

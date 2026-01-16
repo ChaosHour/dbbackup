@@ -442,16 +442,18 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 	var cmd []string
 
 	// For localhost, omit -h to use Unix socket (avoids Ident auth issues)
+	// But always include -p for port (in case of non-standard port)
 	hostArg := ""
+	portArg := fmt.Sprintf("-p %d", e.cfg.Port)
 	if e.cfg.Host != "localhost" && e.cfg.Host != "" {
-		hostArg = fmt.Sprintf("-h %s -p %d", e.cfg.Host, e.cfg.Port)
+		hostArg = fmt.Sprintf("-h %s", e.cfg.Host)
 	}
 
 	if compressed {
 		// Use ON_ERROR_STOP=1 to fail fast on first error (prevents millions of errors on truncated dumps)
-		psqlCmd := fmt.Sprintf("psql -U %s -d %s -v ON_ERROR_STOP=1", e.cfg.User, targetDB)
+		psqlCmd := fmt.Sprintf("psql %s -U %s -d %s -v ON_ERROR_STOP=1", portArg, e.cfg.User, targetDB)
 		if hostArg != "" {
-			psqlCmd = fmt.Sprintf("psql %s -U %s -d %s -v ON_ERROR_STOP=1", hostArg, e.cfg.User, targetDB)
+			psqlCmd = fmt.Sprintf("psql %s %s -U %s -d %s -v ON_ERROR_STOP=1", hostArg, portArg, e.cfg.User, targetDB)
 		}
 		// Set PGPASSWORD in the bash command for password-less auth
 		cmd = []string{
@@ -472,6 +474,7 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 		} else {
 			cmd = []string{
 				"psql",
+				"-p", fmt.Sprintf("%d", e.cfg.Port),
 				"-U", e.cfg.User,
 				"-d", targetDB,
 				"-v", "ON_ERROR_STOP=1",
@@ -1084,6 +1087,16 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 				}
 			}()
 
+			// Check for context cancellation before starting
+			if ctx.Err() != nil {
+				e.log.Warn("Context cancelled - skipping database restore", "file", filename)
+				atomic.AddInt32(&failCount, 1)
+				restoreErrorsMu.Lock()
+				restoreErrors = multierror.Append(restoreErrors, fmt.Errorf("%s: restore skipped (context cancelled)", strings.TrimSuffix(strings.TrimSuffix(filename, ".dump"), ".sql.gz")))
+				restoreErrorsMu.Unlock()
+				return
+			}
+
 			// Track timing for this database restore
 			dbRestoreStart := time.Now()
 
@@ -1200,6 +1213,24 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 
 	successCountFinal := int(atomic.LoadInt32(&successCount))
 	failCountFinal := int(atomic.LoadInt32(&failCount))
+
+	// SANITY CHECK: Verify all databases were accounted for
+	// This catches any goroutine that exited without updating counters
+	accountedFor := successCountFinal + failCountFinal
+	if accountedFor != totalDBs {
+		missingCount := totalDBs - accountedFor
+		e.log.Error("INTERNAL ERROR: Some database restore goroutines did not report status",
+			"expected", totalDBs,
+			"success", successCountFinal,
+			"failed", failCountFinal,
+			"unaccounted", missingCount)
+
+		// Treat unaccounted databases as failures
+		failCountFinal += missingCount
+		restoreErrorsMu.Lock()
+		restoreErrors = multierror.Append(restoreErrors, fmt.Errorf("%d database(s) did not complete (possible goroutine crash or deadlock)", missingCount))
+		restoreErrorsMu.Unlock()
+	}
 
 	// CRITICAL: Check if no databases were restored at all
 	if successCountFinal == 0 {
@@ -2049,28 +2080,65 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 			// Wait for PostgreSQL to be ready
 			time.Sleep(3 * time.Second)
 		} else {
-			// Cannot restart - warn user loudly
-			e.log.Error("=" + strings.Repeat("=", 70))
-			e.log.Error("WARNING: max_locks_per_transaction change requires PostgreSQL restart!")
-			e.log.Error("Current value: " + strconv.Itoa(original.MaxLocks) + ", needed: " + strconv.Itoa(lockBoostValue))
-			e.log.Error("Restore may fail with 'out of shared memory' error on BLOB-heavy databases.")
-			e.log.Error("")
-			e.log.Error("To fix manually:")
-			e.log.Error("  1. sudo systemctl restart postgresql")
-			e.log.Error("  2. Or: sudo -u postgres pg_ctl restart -D $PGDATA")
-			e.log.Error("  3. Then re-run the restore")
-			e.log.Error("=" + strings.Repeat("=", 70))
-			// Continue anyway - might work for small restores
+			// Cannot restart - warn user but continue
+			// The setting is written to postgresql.auto.conf and will take effect on next restart
+			e.log.Warn("=" + strings.Repeat("=", 70))
+			e.log.Warn("NOTE: max_locks_per_transaction change requires PostgreSQL restart")
+			e.log.Warn("Current value: " + strconv.Itoa(original.MaxLocks) + ", target: " + strconv.Itoa(lockBoostValue))
+			e.log.Warn("")
+			e.log.Warn("The setting has been saved to postgresql.auto.conf and will take")
+			e.log.Warn("effect on the next PostgreSQL restart. If restore fails with")
+			e.log.Warn("'out of shared memory' errors, ask your DBA to restart PostgreSQL.")
+			e.log.Warn("")
+			e.log.Warn("Continuing with restore - this may succeed if your databases")
+			e.log.Warn("don't have many large objects (BLOBs).")
+			e.log.Warn("=" + strings.Repeat("=", 70))
+			// Continue anyway - might work for small restores or DBs without BLOBs
 		}
 	}
 
 	return original, nil
 }
 
+// canRestartPostgreSQL checks if we have the ability to restart PostgreSQL
+// Returns false if running in a restricted environment (e.g., su postgres on enterprise systems)
+func (e *Engine) canRestartPostgreSQL() bool {
+	// Check if we're running as postgres user - if so, we likely can't restart
+	// because PostgreSQL is managed by init/systemd, not directly by pg_ctl
+	currentUser := os.Getenv("USER")
+	if currentUser == "" {
+		currentUser = os.Getenv("LOGNAME")
+	}
+
+	// If we're the postgres user, check if we have sudo access
+	if currentUser == "postgres" {
+		// Try a quick sudo check - if this fails, we can't restart
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "sudo", "-n", "true")
+		cmd.Stdin = nil
+		if err := cmd.Run(); err != nil {
+			e.log.Info("Running as postgres user without sudo access - cannot restart PostgreSQL",
+				"user", currentUser,
+				"hint", "Ask system administrator to restart PostgreSQL if needed")
+			return false
+		}
+	}
+
+	return true
+}
+
 // tryRestartPostgreSQL attempts to restart PostgreSQL using various methods
 // Returns true if restart was successful
 // IMPORTANT: Uses short timeouts and non-interactive sudo to avoid blocking on password prompts
+// NOTE: This function will return false immediately if running as postgres without sudo
 func (e *Engine) tryRestartPostgreSQL(ctx context.Context) bool {
+	// First check if we can even attempt a restart
+	if !e.canRestartPostgreSQL() {
+		e.log.Info("Skipping PostgreSQL restart attempt (no privileges)")
+		return false
+	}
+
 	e.progress.Update("Attempting PostgreSQL restart for lock settings...")
 
 	// Use short timeout for each restart attempt (don't block on sudo password prompts)

@@ -910,6 +910,16 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		return fmt.Errorf("failed to extract archive: %w", err)
 	}
 
+	// Check context validity after extraction (debugging context cancellation issues)
+	if ctx.Err() != nil {
+		e.log.Error("Context cancelled after extraction - this should not happen",
+			"context_error", ctx.Err(),
+			"extraction_completed", true)
+		operation.Fail("Context cancelled unexpectedly")
+		return fmt.Errorf("context cancelled after extraction completed: %w", ctx.Err())
+	}
+	e.log.Info("Extraction completed, context still valid")
+
 	// Check if user has superuser privileges (required for ownership restoration)
 	e.progress.Update("Checking privileges...")
 	isSuperuser, err := e.checkSuperuser(ctx)
@@ -1107,6 +1117,18 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 
 	var successCount, failCount int32
 	var mu sync.Mutex // Protect shared resources (progress, logger)
+
+	// CRITICAL: Check context before starting database restore loop
+	// This helps debug issues where context gets cancelled between extraction and restore
+	if ctx.Err() != nil {
+		e.log.Error("Context cancelled before database restore loop started",
+			"context_error", ctx.Err(),
+			"total_databases", totalDBs,
+			"parallelism", parallelism)
+		operation.Fail("Context cancelled before database restores could start")
+		return fmt.Errorf("context cancelled before database restore: %w", ctx.Err())
+	}
+	e.log.Info("Starting database restore loop", "databases", totalDBs, "parallelism", parallelism)
 
 	// Timing tracking for restore phase progress
 	restorePhaseStart := time.Now()

@@ -1201,6 +1201,17 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	successCountFinal := int(atomic.LoadInt32(&successCount))
 	failCountFinal := int(atomic.LoadInt32(&failCount))
 
+	// CRITICAL: Check if no databases were restored at all
+	if successCountFinal == 0 {
+		e.progress.Fail(fmt.Sprintf("Cluster restore FAILED: 0 of %d databases restored", totalDBs))
+		operation.Fail("No databases were restored")
+
+		if failCountFinal > 0 && restoreErrors != nil {
+			return fmt.Errorf("cluster restore failed: all %d database(s) failed:\n%s", failCountFinal, restoreErrors.Error())
+		}
+		return fmt.Errorf("cluster restore failed: no databases were restored (0 of %d total). Check PostgreSQL logs for details", totalDBs)
+	}
+
 	if failCountFinal > 0 {
 		// Format multi-error with detailed output
 		restoreErrors.ErrorFormat = func(errs []error) string {
@@ -2058,36 +2069,43 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 
 // tryRestartPostgreSQL attempts to restart PostgreSQL using various methods
 // Returns true if restart was successful
+// IMPORTANT: Uses short timeouts and non-interactive sudo to avoid blocking on password prompts
 func (e *Engine) tryRestartPostgreSQL(ctx context.Context) bool {
 	e.progress.Update("Attempting PostgreSQL restart for lock settings...")
 
-	// Method 1: systemctl (most common on modern Linux)
-	cmd := exec.CommandContext(ctx, "sudo", "systemctl", "restart", "postgresql")
-	if err := cmd.Run(); err == nil {
+	// Use short timeout for each restart attempt (don't block on sudo password prompts)
+	runWithTimeout := func(args ...string) bool {
+		cmdCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(cmdCtx, args[0], args[1:]...)
+		// Set stdin to /dev/null to prevent sudo from waiting for password
+		cmd.Stdin = nil
+		return cmd.Run() == nil
+	}
+
+	// Method 1: systemctl (most common on modern Linux) - use sudo -n for non-interactive
+	if runWithTimeout("sudo", "-n", "systemctl", "restart", "postgresql") {
 		return true
 	}
 
 	// Method 2: systemctl with version suffix (e.g., postgresql-15)
 	for _, ver := range []string{"17", "16", "15", "14", "13", "12"} {
-		cmd = exec.CommandContext(ctx, "sudo", "systemctl", "restart", "postgresql-"+ver)
-		if err := cmd.Run(); err == nil {
+		if runWithTimeout("sudo", "-n", "systemctl", "restart", "postgresql-"+ver) {
 			return true
 		}
 	}
 
 	// Method 3: service command (older systems)
-	cmd = exec.CommandContext(ctx, "sudo", "service", "postgresql", "restart")
-	if err := cmd.Run(); err == nil {
+	if runWithTimeout("sudo", "-n", "service", "postgresql", "restart") {
 		return true
 	}
 
-	// Method 4: pg_ctl as postgres user
-	cmd = exec.CommandContext(ctx, "sudo", "-u", "postgres", "pg_ctl", "restart", "-D", "/var/lib/postgresql/data", "-m", "fast")
-	if err := cmd.Run(); err == nil {
+	// Method 4: pg_ctl as postgres user (if we ARE postgres user, no sudo needed)
+	if runWithTimeout("pg_ctl", "restart", "-D", "/var/lib/postgresql/data", "-m", "fast") {
 		return true
 	}
 
-	// Method 5: Try common PGDATA paths
+	// Method 5: Try common PGDATA paths with pg_ctl directly (for postgres user)
 	pgdataPaths := []string{
 		"/var/lib/pgsql/data",
 		"/var/lib/pgsql/17/data",
@@ -2098,8 +2116,7 @@ func (e *Engine) tryRestartPostgreSQL(ctx context.Context) bool {
 		"/var/lib/postgresql/15/main",
 	}
 	for _, pgdata := range pgdataPaths {
-		cmd = exec.CommandContext(ctx, "sudo", "-u", "postgres", "pg_ctl", "restart", "-D", pgdata, "-m", "fast")
-		if err := cmd.Run(); err == nil {
+		if runWithTimeout("pg_ctl", "restart", "-D", pgdata, "-m", "fast") {
 			return true
 		}
 	}

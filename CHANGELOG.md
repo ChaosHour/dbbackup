@@ -5,6 +5,33 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.48] - 2026-01-15 "Unified Cluster Restore Progress"
+
+### Added - Unified Progress Display for Cluster Restore
+- **Combined overall progress bar** showing progress across all restore phases:
+  - Phase 1/3: Extracting Archive (0-60% of overall)
+  - Phase 2/3: Restoring Globals (60-65% of overall)
+  - Phase 3/3: Restoring Databases (65-100% of overall)
+- **Current database indicator** - Shows which database is currently being restored
+- **Phase-aware progress tracking** - New fields in progress state:
+  - `overallPhase` - Current phase (1=extraction, 2=globals, 3=databases)
+  - `currentDB` - Name of database currently being restored
+  - `extractionDone` - Boolean flag for phase transition
+- **Dual progress bars** for cluster restore:
+  - Overall progress bar showing combined operation progress
+  - Phase-specific progress bar (extraction bytes or database count)
+
+### Changed
+- Cluster restore TUI now shows unified progress display
+- Progress callbacks now set phase and current database information
+- Extraction completion triggers automatic transition to globals phase
+- Database restore phase shows current database name with spinner
+
+### Improved
+- Better visual feedback during entire cluster restore operation
+- Clear phase indicators help users understand restore progress
+- Overall progress percentage gives better time estimates
+
 ## [3.42.35] - 2026-01-15 "TUI Detailed Progress"
 
 ### Added - Enhanced TUI Progress Display

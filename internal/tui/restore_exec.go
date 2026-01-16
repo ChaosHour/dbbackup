@@ -57,9 +57,17 @@ type RestoreExecutionModel struct {
 	dbTotal int
 	dbDone  int
 
+	// Current database being restored (for detailed display)
+	currentDB string
+
 	// Timing info for database restore phase (ETA calculation)
 	dbPhaseElapsed time.Duration // Elapsed time since restore phase started
 	dbAvgPerDB     time.Duration // Average time per database restore
+
+	// Overall progress tracking for unified display
+	overallPhase   int // 1=Extracting, 2=Globals, 3=Databases
+	extractionDone bool
+	extractionTime time.Duration // How long extraction took (for ETA calc)
 
 	// Results
 	done       bool
@@ -140,9 +148,16 @@ type sharedProgressState struct {
 	dbTotal int
 	dbDone  int
 
+	// Current database being restored
+	currentDB string
+
 	// Timing info for database restore phase
 	dbPhaseElapsed time.Duration // Elapsed time since restore phase started
 	dbAvgPerDB     time.Duration // Average time per database restore
+
+	// Overall phase tracking (1=Extract, 2=Globals, 3=Databases)
+	overallPhase   int
+	extractionDone bool
 
 	// Rolling window for speed calculation
 	speedSamples []restoreSpeedSample
@@ -171,12 +186,12 @@ func clearCurrentRestoreProgress() {
 	currentRestoreProgressState = nil
 }
 
-func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration) {
+func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration, currentDB string, overallPhase int, extractionDone bool) {
 	currentRestoreProgressMu.Lock()
 	defer currentRestoreProgressMu.Unlock()
 
 	if currentRestoreProgressState == nil {
-		return 0, 0, "", false, 0, 0, 0, 0, 0
+		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false
 	}
 
 	currentRestoreProgressState.mu.Lock()
@@ -188,7 +203,9 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 	return currentRestoreProgressState.bytesTotal, currentRestoreProgressState.bytesDone,
 		currentRestoreProgressState.description, currentRestoreProgressState.hasUpdate,
 		currentRestoreProgressState.dbTotal, currentRestoreProgressState.dbDone, speed,
-		currentRestoreProgressState.dbPhaseElapsed, currentRestoreProgressState.dbAvgPerDB
+		currentRestoreProgressState.dbPhaseElapsed, currentRestoreProgressState.dbAvgPerDB,
+		currentRestoreProgressState.currentDB, currentRestoreProgressState.overallPhase,
+		currentRestoreProgressState.extractionDone
 }
 
 // calculateRollingSpeed calculates speed from recent samples (last 5 seconds)
@@ -288,6 +305,14 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.bytesTotal = total
 			progressState.description = description
 			progressState.hasUpdate = true
+			progressState.overallPhase = 1
+			progressState.extractionDone = false
+
+			// Check if extraction is complete
+			if current >= total && total > 0 {
+				progressState.extractionDone = true
+				progressState.overallPhase = 2
+			}
 
 			// Add speed sample for rolling window calculation
 			progressState.speedSamples = append(progressState.speedSamples, restoreSpeedSample{
@@ -307,6 +332,9 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.dbDone = done
 			progressState.dbTotal = total
 			progressState.description = fmt.Sprintf("Restoring %s", dbName)
+			progressState.currentDB = dbName
+			progressState.overallPhase = 3
+			progressState.extractionDone = true
 			progressState.hasUpdate = true
 			// Clear byte progress when switching to db progress
 			progressState.bytesTotal = 0
@@ -320,6 +348,9 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.dbDone = done
 			progressState.dbTotal = total
 			progressState.description = fmt.Sprintf("Restoring %s", dbName)
+			progressState.currentDB = dbName
+			progressState.overallPhase = 3
+			progressState.extractionDone = true
 			progressState.dbPhaseElapsed = phaseElapsed
 			progressState.dbAvgPerDB = avgPerDB
 			progressState.hasUpdate = true
@@ -381,28 +412,46 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.elapsed = time.Since(m.startTime)
 
 			// Poll shared progress state for real-time updates
-			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed, dbPhaseElapsed, dbAvgPerDB := getCurrentRestoreProgress()
-			if hasUpdate && bytesTotal > 0 {
+			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed, dbPhaseElapsed, dbAvgPerDB, currentDB, overallPhase, extractionDone := getCurrentRestoreProgress()
+			if hasUpdate && bytesTotal > 0 && !extractionDone {
+				// Phase 1: Extraction
 				m.bytesTotal = bytesTotal
 				m.bytesDone = bytesDone
 				m.description = description
 				m.showBytes = true
 				m.speed = speed
+				m.overallPhase = 1
+				m.extractionDone = false
 
 				// Update status to reflect actual progress
 				m.status = description
-				m.phase = "Extracting"
+				m.phase = "Phase 1/3: Extracting Archive"
 				m.progress = int((bytesDone * 100) / bytesTotal)
 			} else if hasUpdate && dbTotal > 0 {
-				// Database count progress for cluster restore with timing
+				// Phase 3: Database restores
 				m.dbTotal = dbTotal
 				m.dbDone = dbDone
 				m.dbPhaseElapsed = dbPhaseElapsed
 				m.dbAvgPerDB = dbAvgPerDB
+				m.currentDB = currentDB
+				m.overallPhase = overallPhase
+				m.extractionDone = extractionDone
 				m.showBytes = false
-				m.status = fmt.Sprintf("Restoring database %d of %d...", dbDone+1, dbTotal)
-				m.phase = "Restore"
+
+				if dbDone < dbTotal {
+					m.status = fmt.Sprintf("Restoring: %s", currentDB)
+				} else {
+					m.status = "Finalizing..."
+				}
+				m.phase = fmt.Sprintf("Phase 3/3: Databases (%d/%d)", dbDone, dbTotal)
 				m.progress = int((dbDone * 100) / dbTotal)
+			} else if hasUpdate && extractionDone && dbTotal == 0 {
+				// Phase 2: Globals restore (brief phase between extraction and databases)
+				m.overallPhase = 2
+				m.extractionDone = true
+				m.showBytes = false
+				m.status = "Restoring global objects (roles, tablespaces)..."
+				m.phase = "Phase 2/3: Restoring Globals"
 			} else {
 				// Fallback: Update status based on elapsed time to show progress
 				// This provides visual feedback even though we don't have real-time progress
@@ -610,36 +659,88 @@ func (m RestoreExecutionModel) View() string {
 		s.WriteString("\n\n")
 		s.WriteString(infoStyle.Render("  [KEYS]  Press Enter to continue"))
 	} else {
-		// Show progress
-		s.WriteString(fmt.Sprintf("Phase: %s\n", m.phase))
+		// Show unified progress for cluster restore
+		if m.restoreType == "restore-cluster" {
+			// Calculate overall progress across all phases
+			// Phase 1: Extraction (0-60%)
+			// Phase 2: Globals (60-65%)
+			// Phase 3: Databases (65-100%)
+			overallProgress := 0
+			phaseLabel := "Starting..."
 
-		// Show detailed progress bar when we have byte-level information
-		// In this case, hide the spinner for cleaner display
-		if m.showBytes && m.bytesTotal > 0 {
-			// Status line without spinner (progress bar provides activity indication)
-			s.WriteString(fmt.Sprintf("Status: %s\n", m.status))
-			s.WriteString("\n")
+			if m.showBytes && m.bytesTotal > 0 {
+				// Phase 1: Extraction - contributes 0-60%
+				extractPct := int((m.bytesDone * 100) / m.bytesTotal)
+				overallProgress = (extractPct * 60) / 100
+				phaseLabel = "Phase 1/3: Extracting Archive"
+			} else if m.extractionDone && m.dbTotal == 0 {
+				// Phase 2: Globals restore
+				overallProgress = 62
+				phaseLabel = "Phase 2/3: Restoring Globals"
+			} else if m.dbTotal > 0 {
+				// Phase 3: Database restores - contributes 65-100%
+				dbPct := int((int64(m.dbDone) * 100) / int64(m.dbTotal))
+				overallProgress = 65 + (dbPct * 35 / 100)
+				phaseLabel = fmt.Sprintf("Phase 3/3: Databases (%d/%d)", m.dbDone, m.dbTotal)
+			}
 
-			// Render schollz-style progress bar with bytes, rolling speed, ETA
-			s.WriteString(renderDetailedProgressBarWithSpeed(m.bytesDone, m.bytesTotal, m.speed))
+			// Header with phase and overall progress
+			s.WriteString(infoStyle.Render("  ─── Cluster Restore Progress ─────────────────────────────"))
 			s.WriteString("\n\n")
-		} else if m.dbTotal > 0 {
-			// Database count progress for cluster restore with timing
-			spinner := m.spinnerFrames[m.spinnerFrame]
-			s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
-			s.WriteString("\n")
+			s.WriteString(fmt.Sprintf("    %s\n\n", phaseLabel))
 
-			// Show database progress bar with timing and ETA
-			s.WriteString(renderDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.dbAvgPerDB))
+			// Overall progress bar
+			s.WriteString("    Overall: ")
+			s.WriteString(renderProgressBar(overallProgress))
+			s.WriteString(fmt.Sprintf("  %d%%\n", overallProgress))
+
+			// Phase-specific details
+			if m.showBytes && m.bytesTotal > 0 {
+				// Show extraction details
+				s.WriteString("\n")
+				s.WriteString(fmt.Sprintf("    %s\n", m.status))
+				s.WriteString("\n")
+				s.WriteString(renderDetailedProgressBarWithSpeed(m.bytesDone, m.bytesTotal, m.speed))
+				s.WriteString("\n")
+			} else if m.dbTotal > 0 {
+				// Show current database being restored
+				s.WriteString("\n")
+				spinner := m.spinnerFrames[m.spinnerFrame]
+				if m.currentDB != "" && m.dbDone < m.dbTotal {
+					s.WriteString(fmt.Sprintf("    Current: %s %s\n", spinner, m.currentDB))
+				} else if m.dbDone >= m.dbTotal {
+					s.WriteString(fmt.Sprintf("    %s Finalizing...\n", spinner))
+				}
+				s.WriteString("\n")
+
+				// Database progress bar with timing
+				s.WriteString(renderDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.dbAvgPerDB))
+				s.WriteString("\n")
+			} else {
+				// Intermediate phase (globals)
+				spinner := m.spinnerFrames[m.spinnerFrame]
+				s.WriteString(fmt.Sprintf("\n    %s %s\n\n", spinner, m.status))
+			}
+
+			s.WriteString("\n")
+			s.WriteString(infoStyle.Render("  ───────────────────────────────────────────────────────────"))
 			s.WriteString("\n\n")
 		} else {
-			// Show status with rotating spinner (for phases without detailed progress)
-			spinner := m.spinnerFrames[m.spinnerFrame]
-			s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
-			s.WriteString("\n")
+			// Single database restore - simpler display
+			s.WriteString(fmt.Sprintf("Phase: %s\n", m.phase))
 
-			if m.restoreType == "restore-single" {
-				// Fallback to simple progress bar for single database restore
+			// Show detailed progress bar when we have byte-level information
+			if m.showBytes && m.bytesTotal > 0 {
+				s.WriteString(fmt.Sprintf("Status: %s\n", m.status))
+				s.WriteString("\n")
+				s.WriteString(renderDetailedProgressBarWithSpeed(m.bytesDone, m.bytesTotal, m.speed))
+				s.WriteString("\n\n")
+			} else {
+				spinner := m.spinnerFrames[m.spinnerFrame]
+				s.WriteString(fmt.Sprintf("Status: %s %s\n", spinner, m.status))
+				s.WriteString("\n")
+
+				// Fallback to simple progress bar
 				progressBar := renderProgressBar(m.progress)
 				s.WriteString(progressBar)
 				s.WriteString(fmt.Sprintf("  %d%%\n", m.progress))

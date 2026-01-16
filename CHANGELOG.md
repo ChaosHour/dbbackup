@@ -5,6 +5,21 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.50] - 2026-01-16 "Ctrl+C Signal Handling Fix"
+
+### Fixed - Proper Ctrl+C/SIGINT Handling in TUI
+- **Added tea.InterruptMsg handling** - Bubbletea v1.3+ sends `InterruptMsg` for SIGINT signals
+  instead of a `KeyMsg` with "ctrl+c", causing cancellation to not work
+- **Fixed cluster restore cancellation** - Ctrl+C now properly cancels running restore operations
+- **Fixed cluster backup cancellation** - Ctrl+C now properly cancels running backup operations
+- **Added interrupt handling to main menu** - Proper cleanup on SIGINT from menu
+- **Orphaned process cleanup** - `cleanup.KillOrphanedProcesses()` called on all interrupt paths
+
+### Changed
+- All TUI execution views now handle both `tea.KeyMsg` ("ctrl+c") and `tea.InterruptMsg`
+- Context cancellation properly propagates to child processes via `exec.CommandContext`
+- No zombie pg_dump/pg_restore/gzip processes left behind on cancellation
+
 ## [3.42.49] - 2026-01-16 "Unified Cluster Backup Progress"
 
 ### Added - Unified Progress Display for Cluster Backup

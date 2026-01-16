@@ -188,6 +188,21 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.InterruptMsg:
+		// Handle Ctrl+C signal (SIGINT) - Bubbletea v1.3+ sends this
+		if m.cancel != nil {
+			m.cancel()
+		}
+
+		// Clean up any orphaned processes before exit
+		m.logger.Info("Cleaning up processes before exit (SIGINT)")
+		if err := cleanup.KillOrphanedProcesses(m.logger); err != nil {
+			m.logger.Warn("Failed to clean up all processes", "error", err)
+		}
+
+		m.quitting = true
+		return m, tea.Quit
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":

@@ -295,6 +295,20 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.InterruptMsg:
+		// Handle Ctrl+C signal (SIGINT) - Bubbletea v1.3+ sends this instead of KeyMsg for ctrl+c
+		if !m.done && !m.cancelling {
+			m.cancelling = true
+			m.status = "[STOP]  Cancelling backup... (please wait)"
+			if m.cancel != nil {
+				m.cancel()
+			}
+			return m, nil
+		} else if m.done {
+			return m.parent, tea.Quit
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "esc":

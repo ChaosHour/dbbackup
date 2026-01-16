@@ -1203,6 +1203,9 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 			completedDBTimesMu.Unlock()
 
 			atomic.AddInt32(&successCount, 1)
+			
+			// Small delay to ensure PostgreSQL fully closes connections before next restore
+			time.Sleep(100 * time.Millisecond)
 		}(dbIndex, entry.Name())
 
 		dbIndex++

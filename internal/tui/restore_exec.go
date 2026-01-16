@@ -544,22 +544,71 @@ func (m RestoreExecutionModel) View() string {
 	s.WriteString("\n")
 
 	if m.done {
-		// Show result
+		// Show result with comprehensive summary
 		if m.err != nil {
-			s.WriteString(errorStyle.Render("[FAIL] Restore Failed"))
+			s.WriteString(errorStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
+			s.WriteString("\n")
+			s.WriteString(errorStyle.Render("║              [FAIL] RESTORE FAILED                           ║"))
+			s.WriteString("\n")
+			s.WriteString(errorStyle.Render("╚══════════════════════════════════════════════════════════════╝"))
 			s.WriteString("\n\n")
-			s.WriteString(errorStyle.Render(fmt.Sprintf("Error: %v", m.err)))
+			s.WriteString(errorStyle.Render(fmt.Sprintf("  Error: %v", m.err)))
 			s.WriteString("\n")
 		} else {
-			s.WriteString(successStyle.Render("[OK] Restore Completed Successfully"))
+			s.WriteString(successStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
+			s.WriteString("\n")
+			s.WriteString(successStyle.Render("║           [OK] RESTORE COMPLETED SUCCESSFULLY                ║"))
+			s.WriteString("\n")
+			s.WriteString(successStyle.Render("╚══════════════════════════════════════════════════════════════╝"))
 			s.WriteString("\n\n")
-			s.WriteString(successStyle.Render(m.result))
+
+			// Summary section
+			s.WriteString(infoStyle.Render("  ─── Summary ───────────────────────────────────────────────"))
+			s.WriteString("\n\n")
+
+			// Archive info
+			s.WriteString(fmt.Sprintf("    Archive:       %s\n", m.archive.Name))
+			if m.archive.Size > 0 {
+				s.WriteString(fmt.Sprintf("    Archive Size:  %s\n", FormatBytes(m.archive.Size)))
+			}
+
+			// Restore type specific info
+			if m.restoreType == "restore-cluster" {
+				s.WriteString(fmt.Sprintf("    Type:          Cluster Restore\n"))
+				if m.dbTotal > 0 {
+					s.WriteString(fmt.Sprintf("    Databases:     %d restored\n", m.dbTotal))
+				}
+				if m.cleanClusterFirst && len(m.existingDBs) > 0 {
+					s.WriteString(fmt.Sprintf("    Cleaned:       %d existing database(s) dropped\n", len(m.existingDBs)))
+				}
+			} else {
+				s.WriteString(fmt.Sprintf("    Type:          Single Database Restore\n"))
+				s.WriteString(fmt.Sprintf("    Target DB:     %s\n", m.targetDB))
+			}
+
 			s.WriteString("\n")
 		}
 
-		s.WriteString(fmt.Sprintf("\nElapsed Time: %s\n", formatDuration(m.elapsed)))
+		// Timing section
+		s.WriteString(infoStyle.Render("  ─── Timing ────────────────────────────────────────────────"))
+		s.WriteString("\n\n")
+		s.WriteString(fmt.Sprintf("    Total Time:    %s\n", formatDuration(m.elapsed)))
+
+		// Calculate and show throughput if we have size info
+		if m.archive.Size > 0 && m.elapsed.Seconds() > 0 {
+			throughput := float64(m.archive.Size) / m.elapsed.Seconds()
+			s.WriteString(fmt.Sprintf("    Throughput:    %s/s (average)\n", FormatBytes(int64(throughput))))
+		}
+
+		if m.dbTotal > 0 && m.err == nil {
+			avgPerDB := m.elapsed / time.Duration(m.dbTotal)
+			s.WriteString(fmt.Sprintf("    Avg per DB:    %s\n", formatDuration(avgPerDB)))
+		}
+
 		s.WriteString("\n")
-		s.WriteString(infoStyle.Render("[KEYS]  Press Enter to continue"))
+		s.WriteString(infoStyle.Render("  ───────────────────────────────────────────────────────────"))
+		s.WriteString("\n\n")
+		s.WriteString(infoStyle.Render("  [KEYS]  Press Enter to continue"))
 	} else {
 		// Show progress
 		s.WriteString(fmt.Sprintf("Phase: %s\n", m.phase))

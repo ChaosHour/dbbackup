@@ -49,9 +49,9 @@ type Engine struct {
 	debugLogPath     string // Path to save debug log on error
 
 	// TUI progress callback for detailed progress reporting
-	progressCallback          ProgressCallback
-	dbProgressCallback        DatabaseProgressCallback
-	dbProgressTimingCallback  DatabaseProgressWithTimingCallback
+	progressCallback         ProgressCallback
+	dbProgressCallback       DatabaseProgressCallback
+	dbProgressTimingCallback DatabaseProgressWithTimingCallback
 }
 
 // New creates a new restore engine

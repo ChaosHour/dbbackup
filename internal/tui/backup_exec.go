@@ -380,22 +380,83 @@ func (m BackupExecutionModel) View() string {
 			s.WriteString("\n  [KEY]  Press Ctrl+C or ESC to cancel\n")
 		}
 	} else {
-		s.WriteString(fmt.Sprintf("  %s\n\n", m.status))
-
+		// Show completion summary with detailed stats
 		if m.err != nil {
-			s.WriteString(fmt.Sprintf("  [FAIL] Error: %v\n", m.err))
-		} else if m.result != "" {
-			// Parse and display result cleanly
-			lines := strings.Split(m.result, "\n")
-			for _, line := range lines {
-				line = strings.TrimSpace(line)
-				if line != "" {
-					s.WriteString("  " + line + "\n")
+			s.WriteString("\n")
+			s.WriteString(errorStyle.Render("  ╔══════════════════════════════════════════════════════════╗"))
+			s.WriteString("\n")
+			s.WriteString(errorStyle.Render("  ║              [FAIL] BACKUP FAILED                        ║"))
+			s.WriteString("\n")
+			s.WriteString(errorStyle.Render("  ╚══════════════════════════════════════════════════════════╝"))
+			s.WriteString("\n\n")
+			s.WriteString(errorStyle.Render(fmt.Sprintf("    Error: %v", m.err)))
+			s.WriteString("\n")
+		} else {
+			s.WriteString("\n")
+			s.WriteString(successStyle.Render("  ╔══════════════════════════════════════════════════════════╗"))
+			s.WriteString("\n")
+			s.WriteString(successStyle.Render("  ║           [OK] BACKUP COMPLETED SUCCESSFULLY             ║"))
+			s.WriteString("\n")
+			s.WriteString(successStyle.Render("  ╚══════════════════════════════════════════════════════════╝"))
+			s.WriteString("\n\n")
+
+			// Summary section
+			s.WriteString(infoStyle.Render("    ─── Summary ─────────────────────────────────────────────"))
+			s.WriteString("\n\n")
+
+			// Backup type specific info
+			switch m.backupType {
+			case "cluster":
+				s.WriteString("      Type:          Cluster Backup\n")
+				if m.dbTotal > 0 {
+					s.WriteString(fmt.Sprintf("      Databases:     %d backed up\n", m.dbTotal))
 				}
+			case "single":
+				s.WriteString("      Type:          Single Database Backup\n")
+				s.WriteString(fmt.Sprintf("      Database:      %s\n", m.databaseName))
+			case "sample":
+				s.WriteString("      Type:          Sample Backup\n")
+				s.WriteString(fmt.Sprintf("      Database:      %s\n", m.databaseName))
+				s.WriteString(fmt.Sprintf("      Sample Ratio:  %d\n", m.ratio))
 			}
+
+			s.WriteString("\n")
+
+			// Timing section
+			s.WriteString(infoStyle.Render("    ─── Timing ──────────────────────────────────────────────"))
+			s.WriteString("\n\n")
+
+			elapsed := time.Since(m.startTime)
+			s.WriteString(fmt.Sprintf("      Total Time:    %s\n", formatBackupDuration(elapsed)))
+
+			if m.backupType == "cluster" && m.dbTotal > 0 {
+				avgPerDB := elapsed / time.Duration(m.dbTotal)
+				s.WriteString(fmt.Sprintf("      Avg per DB:    %s\n", formatBackupDuration(avgPerDB)))
+			}
+
+			s.WriteString("\n")
+			s.WriteString(infoStyle.Render("    ─────────────────────────────────────────────────────────"))
+			s.WriteString("\n")
 		}
-		s.WriteString("\n  [KEY]  Press Enter or ESC to return to menu\n")
+
+		s.WriteString("\n")
+		s.WriteString("  [KEY]  Press Enter or ESC to return to menu\n")
 	}
 
 	return s.String()
+}
+
+// formatBackupDuration formats duration in human readable format
+func formatBackupDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	if d < time.Hour {
+		minutes := int(d.Minutes())
+		seconds := int(d.Seconds()) % 60
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
+	}
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	return fmt.Sprintf("%dh %dm", hours, minutes)
 }

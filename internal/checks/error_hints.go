@@ -68,8 +68,8 @@ func ClassifyError(errorMsg string) *ErrorClassification {
 			Type:     "critical",
 			Category: "locks",
 			Message:  errorMsg,
-			Hint:     "Lock table exhausted - typically caused by large objects (BLOBs) during restore",
-			Action:   "Option 1: Increase max_locks_per_transaction to 1024+ in postgresql.conf (requires restart). Option 2: Update dbbackup and retry - phased restore now auto-enabled for BLOB databases",
+			Hint:     "Lock table exhausted. Total capacity = max_locks_per_transaction × (max_connections + max_prepared_transactions). If you reduced VM size or max_connections, you need higher max_locks_per_transaction to compensate.",
+			Action:   "Fix: ALTER SYSTEM SET max_locks_per_transaction = 4096; then RESTART PostgreSQL. For smaller VMs with fewer connections, you need higher max_locks_per_transaction values.",
 			Severity: 2,
 		}
 	case "permission_denied":
@@ -142,8 +142,8 @@ func ClassifyError(errorMsg string) *ErrorClassification {
 			Type:     "critical",
 			Category: "locks",
 			Message:  errorMsg,
-			Hint:     "Lock table exhausted - typically caused by large objects (BLOBs) during restore",
-			Action:   "Option 1: Increase max_locks_per_transaction to 1024+ in postgresql.conf (requires restart). Option 2: Update dbbackup and retry - phased restore now auto-enabled for BLOB databases",
+			Hint:     "Lock table exhausted. Total capacity = max_locks_per_transaction × (max_connections + max_prepared_transactions). If you reduced VM size or max_connections, you need higher max_locks_per_transaction to compensate.",
+			Action:   "Fix: ALTER SYSTEM SET max_locks_per_transaction = 4096; then RESTART PostgreSQL. For smaller VMs with fewer connections, you need higher max_locks_per_transaction values.",
 			Severity: 2,
 		}
 	}

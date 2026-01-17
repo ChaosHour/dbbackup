@@ -2125,9 +2125,10 @@ func (e *Engine) quickValidateSQLDump(archivePath string, compressed bool) error
 	return nil
 }
 
-// boostLockCapacity temporarily increases max_locks_per_transaction to prevent OOM
-// during large restores with many BLOBs. Returns the original value for later reset.
-// Uses ALTER SYSTEM + pg_reload_conf() so no restart is needed.
+// boostLockCapacity checks and reports on max_locks_per_transaction capacity.
+// IMPORTANT: max_locks_per_transaction requires a PostgreSQL RESTART to change!
+// This function now calculates total lock capacity based on max_connections and
+// warns the user if capacity is insufficient for the restore.
 func (e *Engine) boostLockCapacity(ctx context.Context) (int, error) {
 	// Connect to PostgreSQL to run system commands
 	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
@@ -2145,7 +2146,7 @@ func (e *Engine) boostLockCapacity(ctx context.Context) (int, error) {
 	}
 	defer db.Close()
 
-	// Get current value
+	// Get current max_locks_per_transaction
 	var currentValue int
 	err = db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&currentValue)
 	if err != nil {
@@ -2158,22 +2159,56 @@ func (e *Engine) boostLockCapacity(ctx context.Context) (int, error) {
 		fmt.Sscanf(currentValueStr, "%d", &currentValue)
 	}
 
-	// Skip if already high enough
-	if currentValue >= 2048 {
-		e.log.Info("max_locks_per_transaction already sufficient", "value", currentValue)
-		return currentValue, nil
+	// Get max_connections to calculate total lock capacity
+	var maxConns int
+	if err := db.QueryRowContext(ctx, "SHOW max_connections").Scan(&maxConns); err != nil {
+		maxConns = 100 // default
 	}
 
-	// Boost to 2048 (enough for most BLOB-heavy databases)
-	_, err = db.ExecContext(ctx, "ALTER SYSTEM SET max_locks_per_transaction = 2048")
-	if err != nil {
-		return currentValue, fmt.Errorf("failed to set max_locks_per_transaction: %w", err)
+	// Get max_prepared_transactions
+	var maxPreparedTxns int
+	if err := db.QueryRowContext(ctx, "SHOW max_prepared_transactions").Scan(&maxPreparedTxns); err != nil {
+		maxPreparedTxns = 0
 	}
 
-	// Reload config without restart
-	_, err = db.ExecContext(ctx, "SELECT pg_reload_conf()")
-	if err != nil {
-		return currentValue, fmt.Errorf("failed to reload config: %w", err)
+	// Calculate total lock table capacity:
+	// Total locks = max_locks_per_transaction × (max_connections + max_prepared_transactions)
+	totalLockCapacity := currentValue * (maxConns + maxPreparedTxns)
+
+	e.log.Info("PostgreSQL lock table capacity",
+		"max_locks_per_transaction", currentValue,
+		"max_connections", maxConns,
+		"max_prepared_transactions", maxPreparedTxns,
+		"total_lock_capacity", totalLockCapacity)
+
+	// Minimum recommended total capacity for BLOB-heavy restores: 200,000 locks
+	minRecommendedCapacity := 200000
+	if totalLockCapacity < minRecommendedCapacity {
+		recommendedMaxLocks := minRecommendedCapacity / (maxConns + maxPreparedTxns)
+		if recommendedMaxLocks < 4096 {
+			recommendedMaxLocks = 4096
+		}
+
+		e.log.Warn("Lock table capacity may be insufficient for BLOB-heavy restores",
+			"current_total_capacity", totalLockCapacity,
+			"recommended_capacity", minRecommendedCapacity,
+			"current_max_locks", currentValue,
+			"recommended_max_locks", recommendedMaxLocks,
+			"note", "max_locks_per_transaction requires PostgreSQL RESTART to change")
+
+		// Write suggested fix to ALTER SYSTEM but warn about restart
+		_, err = db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", recommendedMaxLocks))
+		if err != nil {
+			e.log.Warn("Could not set recommended max_locks_per_transaction (needs superuser)", "error", err)
+		} else {
+			e.log.Warn("Wrote recommended max_locks_per_transaction to postgresql.auto.conf",
+				"value", recommendedMaxLocks,
+				"action", "RESTART PostgreSQL to apply: sudo systemctl restart postgresql")
+		}
+	} else {
+		e.log.Info("Lock table capacity is sufficient",
+			"total_capacity", totalLockCapacity,
+			"max_locks_per_transaction", currentValue)
 	}
 
 	return currentValue, nil

@@ -48,12 +48,14 @@ type LinuxChecks struct {
 
 // PostgreSQLChecks contains PostgreSQL configuration checks
 type PostgreSQLChecks struct {
-	MaxLocksPerTransaction int    // Current setting
-	MaintenanceWorkMem     string // Current setting
-	SharedBuffers          string // Current setting (info only)
-	MaxConnections         int    // Current setting
-	Version                string // PostgreSQL version
-	IsSuperuser            bool   // Can we modify settings?
+	MaxLocksPerTransaction   int    // Current setting
+	MaxPreparedTransactions  int    // Current setting (affects lock capacity)
+	TotalLockCapacity        int    // Calculated: max_locks × (max_connections + max_prepared)
+	MaintenanceWorkMem       string // Current setting
+	SharedBuffers            string // Current setting (info only)
+	MaxConnections           int    // Current setting
+	Version                  string // PostgreSQL version
+	IsSuperuser              bool   // Can we modify settings?
 }
 
 // ArchiveChecks contains analysis of the backup archive
@@ -201,6 +203,29 @@ func (e *Engine) checkPostgreSQL(ctx context.Context, result *PreflightResult) {
 		result.PostgreSQL.IsSuperuser = isSuperuser
 	}
 
+	// Check max_prepared_transactions for lock capacity calculation
+	var maxPreparedTxns string
+	if err := db.QueryRowContext(ctx, "SHOW max_prepared_transactions").Scan(&maxPreparedTxns); err == nil {
+		result.PostgreSQL.MaxPreparedTransactions, _ = strconv.Atoi(maxPreparedTxns)
+	}
+
+	// CRITICAL: Calculate TOTAL lock table capacity
+	// Formula: max_locks_per_transaction × (max_connections + max_prepared_transactions)
+	// This is THE key capacity metric for BLOB-heavy restores
+	maxConns := result.PostgreSQL.MaxConnections
+	if maxConns == 0 {
+		maxConns = 100 // default
+	}
+	maxPrepared := result.PostgreSQL.MaxPreparedTransactions
+	totalLockCapacity := result.PostgreSQL.MaxLocksPerTransaction * (maxConns + maxPrepared)
+	result.PostgreSQL.TotalLockCapacity = totalLockCapacity
+
+	e.log.Info("PostgreSQL lock table capacity",
+		"max_locks_per_transaction", result.PostgreSQL.MaxLocksPerTransaction,
+		"max_connections", maxConns,
+		"max_prepared_transactions", maxPrepared,
+		"total_lock_capacity", totalLockCapacity)
+
 	// CRITICAL: max_locks_per_transaction requires PostgreSQL RESTART to change!
 	// Warn users loudly about this - it's the #1 cause of "out of shared memory" errors
 	if result.PostgreSQL.MaxLocksPerTransaction < 256 {
@@ -215,6 +240,33 @@ func (e *Engine) checkPostgreSQL(ctx context.Context, result *PreflightResult) {
 				"BLOB-heavy databases may fail with 'out of shared memory' error. "+
 				"Fix: Edit postgresql.conf, set max_locks_per_transaction=2048, then restart PostgreSQL.",
 				result.PostgreSQL.MaxLocksPerTransaction))
+	}
+
+	// NEW: Check total lock capacity is sufficient for typical BLOB operations
+	// Minimum recommended: 200,000 for moderate BLOB databases
+	minRecommendedCapacity := 200000
+	if totalLockCapacity < minRecommendedCapacity {
+		recommendedMaxLocks := minRecommendedCapacity / (maxConns + maxPrepared)
+		if recommendedMaxLocks < 4096 {
+			recommendedMaxLocks = 4096
+		}
+
+		e.log.Warn("Total lock table capacity is LOW for BLOB-heavy restores",
+			"current_capacity", totalLockCapacity,
+			"recommended", minRecommendedCapacity,
+			"current_max_locks", result.PostgreSQL.MaxLocksPerTransaction,
+			"current_max_connections", maxConns,
+			"recommended_max_locks", recommendedMaxLocks,
+			"note", "VMs with fewer connections need higher max_locks_per_transaction")
+
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("Total lock capacity=%d is low (recommend %d+). "+
+				"Capacity = max_locks_per_transaction(%d) × max_connections(%d). "+
+				"If you reduced VM size/connections, increase max_locks_per_transaction to %d. "+
+				"Fix: ALTER SYSTEM SET max_locks_per_transaction = %d; then RESTART PostgreSQL.",
+				totalLockCapacity, minRecommendedCapacity,
+				result.PostgreSQL.MaxLocksPerTransaction, maxConns,
+				recommendedMaxLocks, recommendedMaxLocks))
 	}
 
 	// Parse shared_buffers and warn if very low
@@ -409,6 +461,13 @@ func (e *Engine) printPreflightSummary(result *PreflightResult) {
 		humanize.Comma(int64(result.PostgreSQL.MaxLocksPerTransaction)),
 		humanize.Comma(int64(result.Archive.RecommendedLockBoost))),
 		true)
+	printCheck("max_connections", humanize.Comma(int64(result.PostgreSQL.MaxConnections)), true)
+	// Show total lock capacity with warning if low
+	totalCapacityOK := result.PostgreSQL.TotalLockCapacity >= 200000
+	printCheck("Total Lock Capacity",
+		fmt.Sprintf("%s (max_locks × max_conns)",
+			humanize.Comma(int64(result.PostgreSQL.TotalLockCapacity))),
+		totalCapacityOK)
 	printCheck("maintenance_work_mem", fmt.Sprintf("%s → 2GB (auto-boost)",
 		result.PostgreSQL.MaintenanceWorkMem), true)
 	printInfo("shared_buffers", result.PostgreSQL.SharedBuffers)

@@ -334,10 +334,12 @@ func (s *Safety) checkPostgresDatabaseExists(ctx context.Context, dbName string)
 		"-tAc", fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname='%s'", dbName),
 	}
 
-	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
-	if s.cfg.Host != "localhost" && s.cfg.Host != "127.0.0.1" && s.cfg.Host != "" {
-		args = append([]string{"-h", s.cfg.Host}, args...)
+	// Always add -h flag for explicit host connection (required for password auth)
+	host := s.cfg.Host
+	if host == "" {
+		host = "localhost"
 	}
+	args = append([]string{"-h", host}, args...)
 
 	cmd := exec.CommandContext(ctx, "psql", args...)
 
@@ -346,9 +348,9 @@ func (s *Safety) checkPostgresDatabaseExists(ctx context.Context, dbName string)
 		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", s.cfg.Password))
 	}
 
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return false, fmt.Errorf("failed to check database existence: %w", err)
+		return false, fmt.Errorf("failed to check database existence: %w (output: %s)", err, strings.TrimSpace(string(output)))
 	}
 
 	return strings.TrimSpace(string(output)) == "1", nil
@@ -405,10 +407,13 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 		"-c", query,
 	}
 
-	// Only add -h flag if host is not localhost (to use Unix socket for peer auth)
-	if s.cfg.Host != "localhost" && s.cfg.Host != "127.0.0.1" && s.cfg.Host != "" {
-		args = append([]string{"-h", s.cfg.Host}, args...)
+	// Always add -h flag for explicit host connection (required for password auth)
+	// Empty or unset host defaults to localhost
+	host := s.cfg.Host
+	if host == "" {
+		host = "localhost"
 	}
+	args = append([]string{"-h", host}, args...)
 
 	cmd := exec.CommandContext(ctx, "psql", args...)
 
@@ -417,9 +422,10 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", s.cfg.Password))
 	}
 
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list databases: %w", err)
+		// Include psql output in error for debugging
+		return nil, fmt.Errorf("failed to list databases: %w (output: %s)", err, strings.TrimSpace(string(output)))
 	}
 
 	// Parse output

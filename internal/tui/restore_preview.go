@@ -55,6 +55,7 @@ type RestorePreviewModel struct {
 	cleanClusterFirst bool     // For cluster restore: drop all user databases first
 	existingDBCount   int      // Number of existing user databases
 	existingDBs       []string // List of existing user databases
+	existingDBError   string   // Error message if database listing failed
 	safetyChecks      []SafetyCheck
 	checking          bool
 	canProceed        bool
@@ -102,6 +103,7 @@ type safetyCheckCompleteMsg struct {
 	canProceed      bool
 	existingDBCount int
 	existingDBs     []string
+	existingDBError string
 }
 
 func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string) tea.Cmd {
@@ -221,10 +223,12 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 			check = SafetyCheck{Name: "Existing databases", Status: "checking", Critical: false}
 
 			// Get list of existing user databases (exclude templates and system DBs)
+			var existingDBError string
 			dbList, err := safety.ListUserDatabases(ctx)
 			if err != nil {
 				check.Status = "warning"
 				check.Message = fmt.Sprintf("Cannot list databases: %v", err)
+				existingDBError = err.Error()
 			} else {
 				existingDBCount = len(dbList)
 				existingDBs = dbList
@@ -238,6 +242,14 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 				}
 			}
 			checks = append(checks, check)
+
+			return safetyCheckCompleteMsg{
+				checks:          checks,
+				canProceed:      canProceed,
+				existingDBCount: existingDBCount,
+				existingDBs:     existingDBs,
+				existingDBError: existingDBError,
+			}
 		}
 
 		return safetyCheckCompleteMsg{
@@ -257,6 +269,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.canProceed = msg.canProceed
 		m.existingDBCount = msg.existingDBCount
 		m.existingDBs = msg.existingDBs
+		m.existingDBError = msg.existingDBError
 		// Auto-forward in auto-confirm mode
 		if m.config.TUIAutoConfirm {
 			return m.parent, tea.Quit
@@ -275,12 +288,17 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "c":
 			if m.mode == "restore-cluster" {
-				// Toggle cluster cleanup
-				m.cleanClusterFirst = !m.cleanClusterFirst
-				if m.cleanClusterFirst {
-					m.message = checkWarningStyle.Render(fmt.Sprintf("[WARN] Will drop %d existing database(s) before restore", m.existingDBCount))
+				// Prevent toggle if we couldn't detect existing databases
+				if m.existingDBError != "" {
+					m.message = checkWarningStyle.Render("[WARN] Cannot enable cleanup - database detection failed")
 				} else {
-					m.message = fmt.Sprintf("Clean cluster first: disabled")
+					// Toggle cluster cleanup
+					m.cleanClusterFirst = !m.cleanClusterFirst
+					if m.cleanClusterFirst {
+						m.message = checkWarningStyle.Render(fmt.Sprintf("[WARN] Will drop %d existing database(s) before restore", m.existingDBCount))
+					} else {
+						m.message = fmt.Sprintf("Clean cluster first: disabled")
+					}
 				}
 			} else {
 				// Toggle create if missing
@@ -382,7 +400,11 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString("\n")
 		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
 
-		if m.existingDBCount > 0 {
+		if m.existingDBError != "" {
+			// Show error when database listing failed
+			s.WriteString(checkWarningStyle.Render(fmt.Sprintf("  Existing Databases: Unable to detect (%s)\n", m.existingDBError)))
+			s.WriteString(infoStyle.Render("  (Cleanup option disabled - cannot verify database status)\n"))
+		} else if m.existingDBCount > 0 {
 			s.WriteString(fmt.Sprintf("  Existing Databases: %d found\n", m.existingDBCount))
 
 			// Show first few database names

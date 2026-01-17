@@ -288,17 +288,19 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "c":
 			if m.mode == "restore-cluster" {
-				// Prevent toggle if we couldn't detect existing databases
-				if m.existingDBError != "" {
-					m.message = checkWarningStyle.Render("[WARN] Cannot enable cleanup - database detection failed")
-				} else {
-					// Toggle cluster cleanup
-					m.cleanClusterFirst = !m.cleanClusterFirst
-					if m.cleanClusterFirst {
+				// Toggle cluster cleanup - databases will be re-detected at execution time
+				m.cleanClusterFirst = !m.cleanClusterFirst
+				if m.cleanClusterFirst {
+					if m.existingDBError != "" {
+						// Detection failed in preview - will re-detect at execution
+						m.message = checkWarningStyle.Render("[WARN] Will clean existing databases before restore (detection pending)")
+					} else if m.existingDBCount > 0 {
 						m.message = checkWarningStyle.Render(fmt.Sprintf("[WARN] Will drop %d existing database(s) before restore", m.existingDBCount))
 					} else {
-						m.message = fmt.Sprintf("Clean cluster first: disabled")
+						m.message = infoStyle.Render("[INFO] Cleanup enabled (no databases currently detected)")
 					}
+				} else {
+					m.message = fmt.Sprintf("Clean cluster first: disabled")
 				}
 			} else {
 				// Toggle create if missing
@@ -401,9 +403,10 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
 
 		if m.existingDBError != "" {
-			// Show error when database listing failed
-			s.WriteString(checkWarningStyle.Render(fmt.Sprintf("  Existing Databases: Unable to detect (%s)\n", m.existingDBError)))
-			s.WriteString(infoStyle.Render("  (Cleanup option disabled - cannot verify database status)\n"))
+			// Show warning when database listing failed - but still allow cleanup toggle
+			s.WriteString(checkWarningStyle.Render("  Existing Databases: Detection failed\n"))
+			s.WriteString(infoStyle.Render(fmt.Sprintf("    (%s)\n", m.existingDBError)))
+			s.WriteString(infoStyle.Render("    (Will re-detect at restore time)\n"))
 		} else if m.existingDBCount > 0 {
 			s.WriteString(fmt.Sprintf("  Existing Databases: %d found\n", m.existingDBCount))
 
@@ -417,16 +420,19 @@ func (m RestorePreviewModel) View() string {
 				}
 				s.WriteString(fmt.Sprintf("    - %s\n", db))
 			}
-
-			cleanIcon := "[N]"
-			cleanStyle := infoStyle
-			if m.cleanClusterFirst {
-				cleanIcon = "[Y]"
-				cleanStyle = checkWarningStyle
-			}
-			s.WriteString(cleanStyle.Render(fmt.Sprintf("  Clean All First: %s %v (press 'c' to toggle)\n", cleanIcon, m.cleanClusterFirst)))
 		} else {
 			s.WriteString("  Existing Databases: None (clean slate)\n")
+		}
+
+		// Always show cleanup toggle for cluster restore
+		cleanIcon := "[N]"
+		cleanStyle := infoStyle
+		if m.cleanClusterFirst {
+			cleanIcon := "[Y]"
+			cleanStyle = checkWarningStyle
+			s.WriteString(cleanStyle.Render(fmt.Sprintf("  Clean All First: %s enabled (press 'c' to toggle)\n", cleanIcon)))
+		} else {
+			s.WriteString(cleanStyle.Render(fmt.Sprintf("  Clean All First: %s disabled (press 'c' to toggle)\n", cleanIcon)))
 		}
 		s.WriteString("\n")
 	}
@@ -475,10 +481,18 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(infoStyle.Render("   All existing data in target database will be dropped!"))
 		s.WriteString("\n\n")
 	}
-	if m.cleanClusterFirst && m.existingDBCount > 0 {
+	if m.cleanClusterFirst {
 		s.WriteString(checkWarningStyle.Render("[DANGER] WARNING: Cluster cleanup enabled"))
 		s.WriteString("\n")
-		s.WriteString(checkWarningStyle.Render(fmt.Sprintf("   %d existing database(s) will be DROPPED before restore!", m.existingDBCount)))
+		if m.existingDBError != "" {
+			s.WriteString(checkWarningStyle.Render("   Existing databases will be DROPPED before restore!"))
+			s.WriteString("\n")
+			s.WriteString(infoStyle.Render("   (Database count will be detected at restore time)"))
+		} else if m.existingDBCount > 0 {
+			s.WriteString(checkWarningStyle.Render(fmt.Sprintf("   %d existing database(s) will be DROPPED before restore!", m.existingDBCount)))
+		} else {
+			s.WriteString(infoStyle.Render("   No databases currently detected - cleanup will verify at restore time"))
+		}
 		s.WriteString("\n")
 		s.WriteString(infoStyle.Render("   This ensures a clean disaster recovery scenario"))
 		s.WriteString("\n\n")

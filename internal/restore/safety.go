@@ -417,10 +417,14 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 
 	cmd := exec.CommandContext(ctx, "psql", args...)
 
-	// Set password if provided
+	// Set password - check config first, then environment
+	env := os.Environ()
 	if s.cfg.Password != "" {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", s.cfg.Password))
+		env = append(env, fmt.Sprintf("PGPASSWORD=%s", s.cfg.Password))
 	}
+	cmd.Env = env
+
+	s.log.Debug("Listing PostgreSQL databases", "host", host, "port", s.cfg.Port, "user", s.cfg.User)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -437,6 +441,8 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 			databases = append(databases, line)
 		}
 	}
+
+	s.log.Debug("Found user databases", "count", len(databases), "databases", databases, "raw_output", string(output))
 
 	return databases, nil
 }

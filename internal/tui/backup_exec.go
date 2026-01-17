@@ -455,64 +455,61 @@ func (m BackupExecutionModel) View() string {
 		// Show completion summary with detailed stats
 		if m.err != nil {
 			s.WriteString("\n")
-			s.WriteString(errorStyle.Render("  ╔══════════════════════════════════════════════════════════╗"))
+			s.WriteString(errorStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
 			s.WriteString("\n")
-			s.WriteString(errorStyle.Render("  ║              [FAIL] BACKUP FAILED                        ║"))
+			s.WriteString(errorStyle.Render("║              [FAIL] BACKUP FAILED                            ║"))
 			s.WriteString("\n")
-			s.WriteString(errorStyle.Render("  ╚══════════════════════════════════════════════════════════╝"))
+			s.WriteString(errorStyle.Render("╚══════════════════════════════════════════════════════════════╝"))
 			s.WriteString("\n\n")
-			s.WriteString(errorStyle.Render(fmt.Sprintf("    Error: %v", m.err)))
+			s.WriteString(errorStyle.Render(fmt.Sprintf("  Error: %v", m.err)))
 			s.WriteString("\n")
 		} else {
+			s.WriteString(successStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
 			s.WriteString("\n")
-			s.WriteString(successStyle.Render("  ╔══════════════════════════════════════════════════════════╗"))
+			s.WriteString(successStyle.Render("║           [OK] BACKUP COMPLETED SUCCESSFULLY                 ║"))
 			s.WriteString("\n")
-			s.WriteString(successStyle.Render("  ║           [OK] BACKUP COMPLETED SUCCESSFULLY             ║"))
-			s.WriteString("\n")
-			s.WriteString(successStyle.Render("  ╚══════════════════════════════════════════════════════════╝"))
+			s.WriteString(successStyle.Render("╚══════════════════════════════════════════════════════════════╝"))
 			s.WriteString("\n\n")
 
 			// Summary section
-			s.WriteString(infoStyle.Render("    ─── Summary ─────────────────────────────────────────────"))
+			s.WriteString(infoStyle.Render("  ─── Summary ───────────────────────────────────────────────"))
 			s.WriteString("\n\n")
 
 			// Backup type specific info
 			switch m.backupType {
 			case "cluster":
-				s.WriteString("      Type:          Cluster Backup\n")
+				s.WriteString("    Type:          Cluster Backup\n")
 				if m.dbTotal > 0 {
-					s.WriteString(fmt.Sprintf("      Databases:     %d backed up\n", m.dbTotal))
+					s.WriteString(fmt.Sprintf("    Databases:     %d backed up\n", m.dbTotal))
 				}
 			case "single":
-				s.WriteString("      Type:          Single Database Backup\n")
-				s.WriteString(fmt.Sprintf("      Database:      %s\n", m.databaseName))
+				s.WriteString("    Type:          Single Database Backup\n")
+				s.WriteString(fmt.Sprintf("    Database:      %s\n", m.databaseName))
 			case "sample":
-				s.WriteString("      Type:          Sample Backup\n")
-				s.WriteString(fmt.Sprintf("      Database:      %s\n", m.databaseName))
-				s.WriteString(fmt.Sprintf("      Sample Ratio:  %d\n", m.ratio))
+				s.WriteString("    Type:          Sample Backup\n")
+				s.WriteString(fmt.Sprintf("    Database:      %s\n", m.databaseName))
+				s.WriteString(fmt.Sprintf("    Sample Ratio:  %d\n", m.ratio))
 			}
 
-			s.WriteString("\n")
-
-			// Timing section
-			s.WriteString(infoStyle.Render("    ─── Timing ──────────────────────────────────────────────"))
-			s.WriteString("\n\n")
-
-			elapsed := time.Since(m.startTime)
-			s.WriteString(fmt.Sprintf("      Total Time:    %s\n", formatBackupDuration(elapsed)))
-
-			if m.backupType == "cluster" && m.dbTotal > 0 {
-				avgPerDB := elapsed / time.Duration(m.dbTotal)
-				s.WriteString(fmt.Sprintf("      Avg per DB:    %s\n", formatBackupDuration(avgPerDB)))
-			}
-
-			s.WriteString("\n")
-			s.WriteString(infoStyle.Render("    ─────────────────────────────────────────────────────────"))
 			s.WriteString("\n")
 		}
 
+		// Timing section (always shown, consistent with restore)
+		s.WriteString(infoStyle.Render("  ─── Timing ────────────────────────────────────────────────"))
+		s.WriteString("\n\n")
+
+		elapsed := time.Since(m.startTime)
+		s.WriteString(fmt.Sprintf("    Total Time:    %s\n", formatBackupDuration(elapsed)))
+
+		if m.backupType == "cluster" && m.dbTotal > 0 && m.err == nil {
+			avgPerDB := elapsed / time.Duration(m.dbTotal)
+			s.WriteString(fmt.Sprintf("    Avg per DB:    %s\n", formatBackupDuration(avgPerDB)))
+		}
+
 		s.WriteString("\n")
-		s.WriteString("  [KEY]  Press Enter or ESC to return to menu\n")
+		s.WriteString(infoStyle.Render("  ───────────────────────────────────────────────────────────"))
+		s.WriteString("\n\n")
+		s.WriteString(infoStyle.Render("  [KEYS]  Press Enter to continue"))
 	}
 
 	return s.String()

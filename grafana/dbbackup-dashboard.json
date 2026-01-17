@@ -94,7 +94,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_rpo_seconds{instance=~\"$instance\"} < 86400",
+          "expr": "dbbackup_rpo_seconds{instance=~\"$instance\"} < bool 604800",
           "legendFormat": "{{database}}",
           "range": true,
           "refId": "A"
@@ -717,19 +717,6 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_rpo_seconds{instance=~\"$instance\"} < 86400",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "Status"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
           "expr": "dbbackup_rpo_seconds{instance=~\"$instance\"}",
           "format": "table",
           "hide": false,
@@ -769,26 +756,30 @@
               "Time": true,
               "Time 1": true,
               "Time 2": true,
-              "Time 3": true,
               "__name__": true,
               "__name__ 1": true,
               "__name__ 2": true,
-              "__name__ 3": true,
               "instance 1": true,
               "instance 2": true,
-              "instance 3": true,
               "job": true,
               "job 1": true,
               "job 2": true,
-              "job 3": true
+              "engine 1": true,
+              "engine 2": true
             },
-            "indexByName": {},
+            "indexByName": {
+              "Database": 0,
+              "Instance": 1,
+              "Engine": 2,
+              "RPO": 3,
+              "Size": 4
+            },
             "renameByName": {
               "Value #RPO": "RPO",
               "Value #Size": "Size",
-              "Value #Status": "Status",
               "database": "Database",
-              "instance": "Instance"
+              "instance": "Instance",
+              "engine": "Engine"
             }
           }
         }
@@ -1275,7 +1266,7 @@
           "query": "label_values(dbbackup_rpo_seconds, instance)",
           "refId": "StandardVariableQuery"
         },
-        "refresh": 1,
+        "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
         "sort": 1,

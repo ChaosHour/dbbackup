@@ -454,7 +454,6 @@ func (m BackupExecutionModel) View() string {
 	} else {
 		// Show completion summary with detailed stats
 		if m.err != nil {
-			s.WriteString("\n")
 			s.WriteString(errorStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
 			s.WriteString("\n")
 			s.WriteString(errorStyle.Render("║              [FAIL] BACKUP FAILED                            ║"))

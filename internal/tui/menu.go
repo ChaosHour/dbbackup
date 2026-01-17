@@ -299,9 +299,13 @@ func (m *MenuModel) View() string {
 
 	var s string
 
+	// Product branding header
+	brandLine := fmt.Sprintf("dbbackup v%s • Enterprise Database Backup & Recovery", m.config.Version)
+	s += "\n" + infoStyle.Render(brandLine) + "\n"
+
 	// Header
-	header := titleStyle.Render("Database Backup Tool - Interactive Menu")
-	s += fmt.Sprintf("\n%s\n\n", header)
+	header := titleStyle.Render("Interactive Menu")
+	s += fmt.Sprintf("%s\n\n", header)
 
 	if len(m.dbTypes) > 0 {
 		options := make([]string, len(m.dbTypes))

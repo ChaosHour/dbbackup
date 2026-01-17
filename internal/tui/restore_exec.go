@@ -273,26 +273,42 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		defer dbClient.Close()
 
 		// STEP 1: Clean cluster if requested (drop all existing user databases)
-		if restoreType == "restore-cluster" && cleanClusterFirst && len(existingDBs) > 0 {
-			log.Info("Dropping existing user databases before cluster restore", "count", len(existingDBs))
-
-			// Drop databases using command-line psql (no connection required)
-			// This matches how cluster restore works - uses CLI tools, not database connections
-			droppedCount := 0
-			for _, dbName := range existingDBs {
-				// Create timeout context for each database drop (5 minutes per DB - large DBs take time)
-				dropCtx, dropCancel := context.WithTimeout(ctx, 5*time.Minute)
-				if err := dropDatabaseCLI(dropCtx, cfg, dbName); err != nil {
-					log.Warn("Failed to drop database", "name", dbName, "error", err)
-					// Continue with other databases
-				} else {
-					droppedCount++
-					log.Info("Dropped database", "name", dbName)
-				}
-				dropCancel() // Clean up context
+		if restoreType == "restore-cluster" && cleanClusterFirst {
+			// Re-detect databases at execution time to get current state
+			// The preview list may be stale or detection may have failed earlier
+			safety := restore.NewSafety(cfg, log)
+			currentDBs, err := safety.ListUserDatabases(ctx)
+			if err != nil {
+				log.Warn("Failed to list databases for cleanup, using preview list", "error", err)
+				currentDBs = existingDBs // Fall back to preview list
+			} else if len(currentDBs) > 0 {
+				log.Info("Re-detected user databases for cleanup", "count", len(currentDBs), "databases", currentDBs)
+				existingDBs = currentDBs // Update with fresh list
 			}
 
-			log.Info("Cluster cleanup completed", "dropped", droppedCount, "total", len(existingDBs))
+			if len(existingDBs) > 0 {
+				log.Info("Dropping existing user databases before cluster restore", "count", len(existingDBs))
+
+				// Drop databases using command-line psql (no connection required)
+				// This matches how cluster restore works - uses CLI tools, not database connections
+				droppedCount := 0
+				for _, dbName := range existingDBs {
+					// Create timeout context for each database drop (5 minutes per DB - large DBs take time)
+					dropCtx, dropCancel := context.WithTimeout(ctx, 5*time.Minute)
+					if err := dropDatabaseCLI(dropCtx, cfg, dbName); err != nil {
+						log.Warn("Failed to drop database", "name", dbName, "error", err)
+						// Continue with other databases
+					} else {
+						droppedCount++
+						log.Info("Dropped database", "name", dbName)
+					}
+					dropCancel() // Clean up context
+				}
+
+				log.Info("Cluster cleanup completed", "dropped", droppedCount, "total", len(existingDBs))
+			} else {
+				log.Info("No user databases to clean up")
+			}
 		}
 
 		// STEP 2: Create restore engine with silent progress (no stdout interference with TUI)

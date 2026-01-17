@@ -212,7 +212,8 @@ func (e *Engine) checkPostgreSQL(ctx context.Context, result *PreflightResult) {
 		result.Warnings = append(result.Warnings,
 			fmt.Sprintf("max_locks_per_transaction=%d is low (recommend 256+). "+
 				"This setting requires PostgreSQL RESTART to change. "+
-				"BLOB-heavy databases may fail with 'out of shared memory' error.",
+				"BLOB-heavy databases may fail with 'out of shared memory' error. "+
+				"Fix: Edit postgresql.conf, set max_locks_per_transaction=2048, then restart PostgreSQL.",
 				result.PostgreSQL.MaxLocksPerTransaction))
 	}
 
@@ -324,13 +325,56 @@ func (e *Engine) calculateRecommendations(result *PreflightResult) {
 	if result.Archive.TotalBlobCount > 50000 {
 		lockBoost = 16384
 	}
+	if result.Archive.TotalBlobCount > 100000 {
+		lockBoost = 32768
+	}
+	if result.Archive.TotalBlobCount > 200000 {
+		lockBoost = 65536
+	}
 
-	// Cap at reasonable maximum
-	if lockBoost > 16384 {
-		lockBoost = 16384
+	// For extreme cases, calculate actual requirement
+	// Rule of thumb: ~1 lock per BLOB, divided by max_connections (default 100)
+	// Add 50% safety margin
+	maxConns := result.PostgreSQL.MaxConnections
+	if maxConns == 0 {
+		maxConns = 100 // default
+	}
+	calculatedLocks := (result.Archive.TotalBlobCount / maxConns) * 3 / 2 // 1.5x safety margin
+	if calculatedLocks > lockBoost {
+		lockBoost = calculatedLocks
 	}
 
 	result.Archive.RecommendedLockBoost = lockBoost
+
+	// CRITICAL: Check if current max_locks_per_transaction is dangerously low for this BLOB count
+	currentLocks := result.PostgreSQL.MaxLocksPerTransaction
+	if currentLocks > 0 && result.Archive.TotalBlobCount > 0 {
+		// Estimate max BLOBs we can handle: locks * max_connections
+		maxSafeBLOBs := currentLocks * maxConns
+
+		if result.Archive.TotalBlobCount > maxSafeBLOBs {
+			severity := "WARNING"
+			if result.Archive.TotalBlobCount > maxSafeBLOBs*2 {
+				severity = "CRITICAL"
+				result.CanProceed = false
+			}
+
+			e.log.Error(fmt.Sprintf("%s: max_locks_per_transaction too low for BLOB count", severity),
+				"current_max_locks", currentLocks,
+				"total_blobs", result.Archive.TotalBlobCount,
+				"max_safe_blobs", maxSafeBLOBs,
+				"recommended_max_locks", lockBoost)
+
+			result.Errors = append(result.Errors,
+				fmt.Sprintf("%s: Archive contains %s BLOBs but max_locks_per_transaction=%d can only safely handle ~%s. "+
+					"Increase max_locks_per_transaction to %d in postgresql.conf and RESTART PostgreSQL.",
+					severity,
+					humanize.Comma(int64(result.Archive.TotalBlobCount)),
+					currentLocks,
+					humanize.Comma(int64(maxSafeBLOBs)),
+					lockBoost))
+		}
+	}
 
 	// Log recommendation
 	e.log.Info("Calculated recommended lock boost",
@@ -386,12 +430,37 @@ func (e *Engine) printPreflightSummary(result *PreflightResult) {
 		}
 	}
 
+	// Errors (blocking issues)
+	if len(result.Errors) > 0 {
+		fmt.Println("\n  ✗ ERRORS (must fix before proceeding):")
+		for _, e := range result.Errors {
+			fmt.Printf("    • %s\n", e)
+		}
+	}
+
 	// Warnings
 	if len(result.Warnings) > 0 {
 		fmt.Println("\n  ⚠ Warnings:")
 		for _, w := range result.Warnings {
 			fmt.Printf("    • %s\n", w)
 		}
+	}
+
+	// Final status
+	fmt.Println()
+	if !result.CanProceed {
+		fmt.Println("  ┌─────────────────────────────────────────────────────────┐")
+		fmt.Println("  │  ✗ PREFLIGHT FAILED - Cannot proceed with restore       │")
+		fmt.Println("  │    Fix the errors above and try again.                  │")
+		fmt.Println("  └─────────────────────────────────────────────────────────┘")
+	} else if len(result.Warnings) > 0 {
+		fmt.Println("  ┌─────────────────────────────────────────────────────────┐")
+		fmt.Println("  │  ⚠ PREFLIGHT PASSED WITH WARNINGS - Proceed with care   │")
+		fmt.Println("  └─────────────────────────────────────────────────────────┘")
+	} else {
+		fmt.Println("  ┌─────────────────────────────────────────────────────────┐")
+		fmt.Println("  │  ✓ PREFLIGHT PASSED - Ready to restore                  │")
+		fmt.Println("  └─────────────────────────────────────────────────────────┘")
 	}
 
 	fmt.Println(strings.Repeat("─", 60))

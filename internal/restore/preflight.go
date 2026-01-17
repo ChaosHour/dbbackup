@@ -48,14 +48,14 @@ type LinuxChecks struct {
 
 // PostgreSQLChecks contains PostgreSQL configuration checks
 type PostgreSQLChecks struct {
-	MaxLocksPerTransaction   int    // Current setting
-	MaxPreparedTransactions  int    // Current setting (affects lock capacity)
-	TotalLockCapacity        int    // Calculated: max_locks × (max_connections + max_prepared)
-	MaintenanceWorkMem       string // Current setting
-	SharedBuffers            string // Current setting (info only)
-	MaxConnections           int    // Current setting
-	Version                  string // PostgreSQL version
-	IsSuperuser              bool   // Can we modify settings?
+	MaxLocksPerTransaction  int    // Current setting
+	MaxPreparedTransactions int    // Current setting (affects lock capacity)
+	TotalLockCapacity       int    // Calculated: max_locks × (max_connections + max_prepared)
+	MaintenanceWorkMem      string // Current setting
+	SharedBuffers           string // Current setting (info only)
+	MaxConnections          int    // Current setting
+	Version                 string // PostgreSQL version
+	IsSuperuser             bool   // Can we modify settings?
 }
 
 // ArchiveChecks contains analysis of the backup archive

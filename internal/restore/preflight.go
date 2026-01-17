@@ -16,6 +16,57 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
+// CalculateOptimalParallel returns the recommended number of parallel workers
+// based on available system resources (CPU cores and RAM).
+// This is a standalone function that can be called from anywhere.
+// Returns 0 if resources cannot be detected.
+func CalculateOptimalParallel() int {
+	cpuCores := runtime.NumCPU()
+
+	vmem, err := mem.VirtualMemory()
+	if err != nil {
+		// Fallback: use half of CPU cores if memory detection fails
+		if cpuCores > 1 {
+			return cpuCores / 2
+		}
+		return 1
+	}
+
+	memAvailableGB := float64(vmem.Available) / (1024 * 1024 * 1024)
+
+	// Each pg_restore worker needs approximately 2-4GB of RAM
+	// Use conservative 3GB per worker to avoid OOM
+	const memPerWorkerGB = 3.0
+
+	// Calculate limits
+	maxByMem := int(memAvailableGB / memPerWorkerGB)
+	maxByCPU := cpuCores
+
+	// Use the minimum of memory and CPU limits
+	recommended := maxByMem
+	if maxByCPU < recommended {
+		recommended = maxByCPU
+	}
+
+	// Apply sensible bounds
+	if recommended < 1 {
+		recommended = 1
+	}
+	if recommended > 16 {
+		recommended = 16 // Cap at 16 to avoid diminishing returns
+	}
+
+	// If memory pressure is high (>80%), reduce parallelism
+	if vmem.UsedPercent > 80 && recommended > 1 {
+		recommended = recommended / 2
+		if recommended < 1 {
+			recommended = 1
+		}
+	}
+
+	return recommended
+}
+
 // PreflightResult contains all preflight check results
 type PreflightResult struct {
 	// Linux system checks
@@ -35,15 +86,17 @@ type PreflightResult struct {
 
 // LinuxChecks contains Linux kernel/system checks
 type LinuxChecks struct {
-	ShmMax         int64   // /proc/sys/kernel/shmmax
-	ShmAll         int64   // /proc/sys/kernel/shmall
-	MemTotal       uint64  // Total RAM in bytes
-	MemAvailable   uint64  // Available RAM in bytes
-	MemUsedPercent float64 // Memory usage percentage
-	ShmMaxOK       bool    // Is shmmax sufficient?
-	ShmAllOK       bool    // Is shmall sufficient?
-	MemAvailableOK bool    // Is available RAM sufficient?
-	IsLinux        bool    // Are we running on Linux?
+	ShmMax              int64   // /proc/sys/kernel/shmmax
+	ShmAll              int64   // /proc/sys/kernel/shmall
+	MemTotal            uint64  // Total RAM in bytes
+	MemAvailable        uint64  // Available RAM in bytes
+	MemUsedPercent      float64 // Memory usage percentage
+	CPUCores            int     // Number of CPU cores
+	RecommendedParallel int     // Auto-calculated optimal parallel count
+	ShmMaxOK            bool    // Is shmmax sufficient?
+	ShmAllOK            bool    // Is shmall sufficient?
+	MemAvailableOK      bool    // Is available RAM sufficient?
+	IsLinux             bool    // Are we running on Linux?
 }
 
 // PostgreSQLChecks contains PostgreSQL configuration checks
@@ -100,6 +153,7 @@ func (e *Engine) RunPreflightChecks(ctx context.Context, dumpsDir string, entrie
 // checkSystemResources uses gopsutil for cross-platform system checks
 func (e *Engine) checkSystemResources(result *PreflightResult) {
 	result.Linux.IsLinux = runtime.GOOS == "linux"
+	result.Linux.CPUCores = runtime.NumCPU()
 
 	// Get memory info (works on Linux, macOS, Windows, BSD)
 	if vmem, err := mem.VirtualMemory(); err == nil {
@@ -117,6 +171,9 @@ func (e *Engine) checkSystemResources(result *PreflightResult) {
 	} else {
 		e.log.Warn("Could not detect system memory", "error", err)
 	}
+
+	// Calculate recommended parallel based on resources
+	result.Linux.RecommendedParallel = e.calculateRecommendedParallel(result)
 
 	// Linux-specific kernel checks (shmmax, shmall)
 	if result.Linux.IsLinux {
@@ -434,6 +491,56 @@ func (e *Engine) calculateRecommendations(result *PreflightResult) {
 		"recommended_locks", lockBoost)
 }
 
+// calculateRecommendedParallel determines optimal parallelism based on system resources
+// Returns the recommended number of parallel workers for pg_restore
+func (e *Engine) calculateRecommendedParallel(result *PreflightResult) int {
+	cpuCores := result.Linux.CPUCores
+	if cpuCores == 0 {
+		cpuCores = runtime.NumCPU()
+	}
+
+	memAvailableGB := float64(result.Linux.MemAvailable) / (1024 * 1024 * 1024)
+
+	// Each pg_restore worker needs approximately 2-4GB of RAM
+	// Use conservative 3GB per worker to avoid OOM
+	const memPerWorkerGB = 3.0
+
+	// Calculate limits
+	maxByMem := int(memAvailableGB / memPerWorkerGB)
+	maxByCPU := cpuCores
+
+	// Use the minimum of memory and CPU limits
+	recommended := maxByMem
+	if maxByCPU < recommended {
+		recommended = maxByCPU
+	}
+
+	// Apply sensible bounds
+	if recommended < 1 {
+		recommended = 1
+	}
+	if recommended > 16 {
+		recommended = 16 // Cap at 16 to avoid diminishing returns
+	}
+
+	// If memory pressure is high (>80%), reduce parallelism
+	if result.Linux.MemUsedPercent > 80 && recommended > 1 {
+		recommended = recommended / 2
+		if recommended < 1 {
+			recommended = 1
+		}
+	}
+
+	e.log.Info("Calculated recommended parallel",
+		"cpu_cores", cpuCores,
+		"mem_available_gb", fmt.Sprintf("%.1f", memAvailableGB),
+		"max_by_mem", maxByMem,
+		"max_by_cpu", maxByCPU,
+		"recommended", recommended)
+
+	return recommended
+}
+
 // printPreflightSummary prints a nice summary of all checks
 func (e *Engine) printPreflightSummary(result *PreflightResult) {
 	fmt.Println()
@@ -446,6 +553,8 @@ func (e *Engine) printPreflightSummary(result *PreflightResult) {
 	printCheck("Total RAM", humanize.Bytes(result.Linux.MemTotal), true)
 	printCheck("Available RAM", humanize.Bytes(result.Linux.MemAvailable), result.Linux.MemAvailableOK || result.Linux.MemAvailable == 0)
 	printCheck("Memory Usage", fmt.Sprintf("%.1f%%", result.Linux.MemUsedPercent), result.Linux.MemUsedPercent < 85)
+	printCheck("CPU Cores", fmt.Sprintf("%d", result.Linux.CPUCores), true)
+	printCheck("Recommended Parallel", fmt.Sprintf("%d (auto-calculated)", result.Linux.RecommendedParallel), true)
 
 	// Linux-specific kernel checks
 	if result.Linux.IsLinux && result.Linux.ShmMax > 0 {

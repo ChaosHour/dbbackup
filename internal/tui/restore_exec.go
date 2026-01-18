@@ -659,7 +659,13 @@ func (m RestoreExecutionModel) View() string {
 			s.WriteString("\n")
 			s.WriteString(errorStyle.Render("╚══════════════════════════════════════════════════════════════╝"))
 			s.WriteString("\n\n")
-			s.WriteString(errorStyle.Render(fmt.Sprintf("  Error: %v", m.err)))
+
+			// Parse and display error in a clean, structured format
+			errStr := m.err.Error()
+			
+			// Extract key parts from the error message
+			errDisplay := formatRestoreError(errStr)
+			s.WriteString(errDisplay)
 			s.WriteString("\n")
 		} else {
 			s.WriteString(successStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
@@ -1004,4 +1010,189 @@ func dropDatabaseCLI(ctx context.Context, cfg *config.Config, dbName string) err
 	}
 
 	return nil
+}
+
+// formatRestoreError formats a restore error message for clean TUI display
+func formatRestoreError(errStr string) string {
+	var s strings.Builder
+	maxLineWidth := 60
+
+	// Common patterns to extract
+	patterns := []struct {
+		key     string
+		pattern string
+	}{
+		{"Error Type", "ERROR:"},
+		{"Hint", "HINT:"},
+		{"Last Error", "last error:"},
+		{"Total Errors", "total errors:"},
+	}
+
+	// First, try to extract a clean error summary
+	errLines := strings.Split(errStr, "\n")
+	
+	// Find the main error message (first line or first ERROR:)
+	mainError := ""
+	hint := ""
+	totalErrors := ""
+	dbsFailed := []string{}
+
+	for _, line := range errLines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Extract ERROR messages
+		if strings.Contains(line, "ERROR:") {
+			if mainError == "" {
+				// Get just the ERROR part
+				idx := strings.Index(line, "ERROR:")
+				if idx >= 0 {
+					mainError = strings.TrimSpace(line[idx:])
+					// Truncate if too long
+					if len(mainError) > maxLineWidth {
+						mainError = mainError[:maxLineWidth-3] + "..."
+					}
+				}
+			}
+		}
+
+		// Extract HINT
+		if strings.Contains(line, "HINT:") {
+			idx := strings.Index(line, "HINT:")
+			if idx >= 0 {
+				hint = strings.TrimSpace(line[idx+5:])
+				if len(hint) > maxLineWidth {
+					hint = hint[:maxLineWidth-3] + "..."
+				}
+			}
+		}
+
+		// Extract total errors count
+		if strings.Contains(line, "total errors:") {
+			idx := strings.Index(line, "total errors:")
+			if idx >= 0 {
+				totalErrors = strings.TrimSpace(line[idx+13:])
+				// Just extract the number
+				parts := strings.Fields(totalErrors)
+				if len(parts) > 0 {
+					totalErrors = parts[0]
+				}
+			}
+		}
+
+		// Extract failed database names (for cluster restore)
+		if strings.Contains(line, ": restore failed:") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) > 0 {
+				dbName := strings.TrimSpace(parts[0])
+				if dbName != "" && !strings.HasPrefix(dbName, "Error") {
+					dbsFailed = append(dbsFailed, dbName)
+				}
+			}
+		}
+	}
+
+	// If no structured error found, use the first line
+	if mainError == "" {
+		firstLine := errStr
+		if idx := strings.Index(errStr, "\n"); idx > 0 {
+			firstLine = errStr[:idx]
+		}
+		if len(firstLine) > maxLineWidth*2 {
+			firstLine = firstLine[:maxLineWidth*2-3] + "..."
+		}
+		mainError = firstLine
+	}
+
+	// Build structured error display
+	s.WriteString(infoStyle.Render("  ─── Error Details ─────────────────────────────────────────"))
+	s.WriteString("\n\n")
+
+	// Error type detection
+	errorType := "critical"
+	if strings.Contains(errStr, "out of shared memory") || strings.Contains(errStr, "max_locks_per_transaction") {
+		errorType = "critical"
+	} else if strings.Contains(errStr, "connection") {
+		errorType = "connection"
+	} else if strings.Contains(errStr, "permission") || strings.Contains(errStr, "access") {
+		errorType = "permission"
+	}
+
+	s.WriteString(fmt.Sprintf("    Type: %s\n", errorType))
+	s.WriteString(fmt.Sprintf("    Message: %s\n", mainError))
+
+	if hint != "" {
+		s.WriteString(fmt.Sprintf("    Hint: %s\n", hint))
+	}
+
+	if totalErrors != "" {
+		s.WriteString(fmt.Sprintf("    Total Errors: %s\n", totalErrors))
+	}
+
+	// Show failed databases (max 5)
+	if len(dbsFailed) > 0 {
+		s.WriteString("\n")
+		s.WriteString("    Failed Databases:\n")
+		for i, db := range dbsFailed {
+			if i >= 5 {
+				s.WriteString(fmt.Sprintf("      ... and %d more\n", len(dbsFailed)-5))
+				break
+			}
+			s.WriteString(fmt.Sprintf("      • %s\n", db))
+		}
+	}
+
+	s.WriteString("\n")
+	s.WriteString(infoStyle.Render("  ─── Diagnosis ─────────────────────────────────────────────"))
+	s.WriteString("\n\n")
+
+	// Provide specific recommendations based on error
+	if strings.Contains(errStr, "out of shared memory") || strings.Contains(errStr, "max_locks_per_transaction") {
+		s.WriteString(errorStyle.Render("    • Cannot access file: stat : no such file or directory\n"))
+		s.WriteString("\n")
+		s.WriteString(infoStyle.Render("  ─── [HINT] Recommendations ────────────────────────────────"))
+		s.WriteString("\n\n")
+		s.WriteString("    Lock table exhausted. Total capacity = max_locks_per_transaction\n")
+		s.WriteString("    × (max_connections + max_prepared_transactions).\n\n")
+		s.WriteString("    If you reduced VM size or max_connections, you need higher\n")
+		s.WriteString("    max_locks_per_transaction to compensate.\n\n")
+		s.WriteString(successStyle.Render("    FIX OPTIONS:\n"))
+		s.WriteString("    1. Use 'conservative' or 'large-db' profile in Settings\n")
+		s.WriteString("       (press 'l' for large-db, 'c' for conservative)\n\n")
+		s.WriteString("    2. Increase PostgreSQL locks:\n")
+		s.WriteString("       ALTER SYSTEM SET max_locks_per_transaction = 4096;\n")
+		s.WriteString("       Then RESTART PostgreSQL.\n\n")
+		s.WriteString("    3. Reduce parallel jobs:\n")
+		s.WriteString("       Set Cluster Parallelism = 1 in Settings\n")
+	} else if strings.Contains(errStr, "connection") || strings.Contains(errStr, "refused") {
+		s.WriteString("    • Database connection failed\n\n")
+		s.WriteString(infoStyle.Render("  ─── [HINT] Recommendations ────────────────────────────────"))
+		s.WriteString("\n\n")
+		s.WriteString("    1. Check database is running\n")
+		s.WriteString("    2. Verify host, port, and credentials in Settings\n")
+		s.WriteString("    3. Check firewall/network connectivity\n")
+	} else if strings.Contains(errStr, "permission") || strings.Contains(errStr, "denied") {
+		s.WriteString("    • Permission denied\n\n")
+		s.WriteString(infoStyle.Render("  ─── [HINT] Recommendations ────────────────────────────────"))
+		s.WriteString("\n\n")
+		s.WriteString("    1. Verify database user has sufficient privileges\n")
+		s.WriteString("    2. Grant CREATE/DROP DATABASE permissions if restoring cluster\n")
+		s.WriteString("    3. Check file system permissions on backup directory\n")
+	} else {
+		s.WriteString("    See error message above for details.\n\n")
+		s.WriteString(infoStyle.Render("  ─── [HINT] General Recommendations ────────────────────────"))
+		s.WriteString("\n\n")
+		s.WriteString("    1. Check the full error log for details\n")
+		s.WriteString("    2. Try restoring with 'conservative' profile (press 'c')\n")
+		s.WriteString("    3. For large databases, use 'large-db' profile (press 'l')\n")
+	}
+
+	s.WriteString("\n")
+
+	// Suppress the pattern variable since we don't use it but defined it
+	_ = patterns
+
+	return s.String()
 }

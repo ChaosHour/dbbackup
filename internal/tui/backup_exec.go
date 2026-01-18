@@ -13,6 +13,14 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
+	"path/filepath"
+)
+
+// Backup phase constants for consistency
+const (
+	backupPhaseGlobals     = 1
+	backupPhaseDatabases   = 2
+	backupPhaseCompressing = 3
 )
 
 // BackupExecutionModel handles backup execution with progress
@@ -31,27 +39,36 @@ type BackupExecutionModel struct {
 	cancelling   bool // True when user has requested cancellation
 	err          error
 	result       string
+	archivePath  string        // Path to created archive (for summary)
+	archiveSize  int64         // Size of created archive (for summary)
 	startTime    time.Time
+	elapsed      time.Duration // Final elapsed time
 	details      []string
 	spinnerFrame int
 
 	// Database count progress (for cluster backup)
-	dbTotal      int
-	dbDone       int
-	dbName       string // Current database being backed up
-	overallPhase int    // 1=globals, 2=databases, 3=compressing
-	phaseDesc    string // Description of current phase
+	dbTotal         int
+	dbDone          int
+	dbName          string        // Current database being backed up
+	overallPhase    int           // 1=globals, 2=databases, 3=compressing
+	phaseDesc       string        // Description of current phase
+	phase2StartTime time.Time     // When phase 2 (databases) started (for realtime ETA)
+	dbPhaseElapsed  time.Duration // Elapsed time since database backup phase started
+	dbAvgPerDB      time.Duration // Average time per database backup
 }
 
 // sharedBackupProgressState holds progress state that can be safely accessed from callbacks
 type sharedBackupProgressState struct {
-	mu           sync.Mutex
-	dbTotal      int
-	dbDone       int
-	dbName       string
-	overallPhase int    // 1=globals, 2=databases, 3=compressing
-	phaseDesc    string // Description of current phase
-	hasUpdate    bool
+	mu              sync.Mutex
+	dbTotal         int
+	dbDone          int
+	dbName          string
+	overallPhase    int           // 1=globals, 2=databases, 3=compressing
+	phaseDesc       string        // Description of current phase
+	hasUpdate       bool
+	phase2StartTime time.Time     // When phase 2 started (for realtime ETA calculation)
+	dbPhaseElapsed  time.Duration // Elapsed time since database backup phase started
+	dbAvgPerDB      time.Duration // Average time per database backup
 }
 
 // Package-level shared progress state for backup operations
@@ -72,12 +89,12 @@ func clearCurrentBackupProgress() {
 	currentBackupProgressState = nil
 }
 
-func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhase int, phaseDesc string, hasUpdate bool) {
+func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhase int, phaseDesc string, hasUpdate bool, dbPhaseElapsed, dbAvgPerDB time.Duration, phase2StartTime time.Time) {
 	currentBackupProgressMu.Lock()
 	defer currentBackupProgressMu.Unlock()
 
 	if currentBackupProgressState == nil {
-		return 0, 0, "", 0, "", false
+		return 0, 0, "", 0, "", false, 0, 0, time.Time{}
 	}
 
 	currentBackupProgressState.mu.Lock()
@@ -86,9 +103,17 @@ func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhas
 	hasUpdate = currentBackupProgressState.hasUpdate
 	currentBackupProgressState.hasUpdate = false
 
+	// Calculate realtime phase elapsed if we have a phase 2 start time
+	dbPhaseElapsed = currentBackupProgressState.dbPhaseElapsed
+	if !currentBackupProgressState.phase2StartTime.IsZero() {
+		dbPhaseElapsed = time.Since(currentBackupProgressState.phase2StartTime)
+	}
+
 	return currentBackupProgressState.dbTotal, currentBackupProgressState.dbDone,
 		currentBackupProgressState.dbName, currentBackupProgressState.overallPhase,
-		currentBackupProgressState.phaseDesc, hasUpdate
+		currentBackupProgressState.phaseDesc, hasUpdate,
+		dbPhaseElapsed, currentBackupProgressState.dbAvgPerDB,
+		currentBackupProgressState.phase2StartTime
 }
 
 func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, backupType, dbName string, ratio int) BackupExecutionModel {
@@ -132,8 +157,11 @@ type backupProgressMsg struct {
 }
 
 type backupCompleteMsg struct {
-	result string
-	err    error
+	result      string
+	err         error
+	archivePath string
+	archiveSize int64
+	elapsed     time.Duration
 }
 
 func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
@@ -176,9 +204,13 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 			progressState.dbDone = done
 			progressState.dbTotal = total
 			progressState.dbName = currentDB
-			progressState.overallPhase = 2 // Phase 2: Backing up databases
-			progressState.phaseDesc = fmt.Sprintf("Phase 2/3: Databases (%d/%d)", done, total)
+			progressState.overallPhase = backupPhaseDatabases
+			progressState.phaseDesc = fmt.Sprintf("Phase 2/3: Backing up Databases (%d/%d)", done, total)
 			progressState.hasUpdate = true
+			// Set phase 2 start time on first callback (for realtime ETA calculation)
+			if progressState.phase2StartTime.IsZero() {
+				progressState.phase2StartTime = time.Now()
+			}
 			progressState.mu.Unlock()
 		})
 
@@ -216,8 +248,9 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 		}
 
 		return backupCompleteMsg{
-			result: result,
-			err:    nil,
+			result:  result,
+			err:     nil,
+			elapsed: elapsed,
 		}
 	}
 }
@@ -230,13 +263,15 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 
 			// Poll for database progress updates from callbacks
-			dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate := getCurrentBackupProgress()
+			dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, dbPhaseElapsed, dbAvgPerDB, _ := getCurrentBackupProgress()
 			if hasUpdate {
 				m.dbTotal = dbTotal
 				m.dbDone = dbDone
 				m.dbName = dbName
 				m.overallPhase = overallPhase
 				m.phaseDesc = phaseDesc
+				m.dbPhaseElapsed = dbPhaseElapsed
+				m.dbAvgPerDB = dbAvgPerDB
 			}
 
 			// Update status based on progress and elapsed time
@@ -284,6 +319,7 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.done = true
 		m.err = msg.err
 		m.result = msg.result
+		m.elapsed = msg.elapsed
 		if m.err == nil {
 			m.status = "[OK] Backup completed successfully!"
 		} else {
@@ -361,14 +397,52 @@ func renderBackupDatabaseProgressBar(done, total int, dbName string, width int) 
 	return fmt.Sprintf("  Database: [%s] %d/%d", bar, done, total)
 }
 
+// renderBackupDatabaseProgressBarWithTiming renders database backup progress with ETA
+func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed, dbAvgPerDB time.Duration) string {
+	if total == 0 {
+		return ""
+	}
+
+	// Calculate progress percentage
+	percent := float64(done) / float64(total)
+	if percent > 1.0 {
+		percent = 1.0
+	}
+
+	// Build progress bar
+	barWidth := 50
+	filled := int(float64(barWidth) * percent)
+	if filled > barWidth {
+		filled = barWidth
+	}
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+
+	// Calculate ETA similar to restore
+	var etaStr string
+	if done > 0 && done < total {
+		avgPerDB := dbPhaseElapsed / time.Duration(done)
+		remaining := total - done
+		eta := avgPerDB * time.Duration(remaining)
+		etaStr = fmt.Sprintf(" | ETA: %s", formatDuration(eta))
+	} else if done == total {
+		etaStr = " | Complete"
+	}
+
+	return fmt.Sprintf("  Databases: [%s] %d/%d | Elapsed: %s%s\n",
+		bar, done, total, formatDuration(dbPhaseElapsed), etaStr)
+}
+
 func (m BackupExecutionModel) View() string {
 	var s strings.Builder
 	s.Grow(512) // Pre-allocate estimated capacity for better performance
 
 	// Clear screen with newlines and render header
 	s.WriteString("\n\n")
-	header := titleStyle.Render("[EXEC] Backup Execution")
-	s.WriteString(header)
+	header := "[EXEC] Backing up Database"
+	if m.backupType == "cluster" {
+		header = "[EXEC] Cluster Backup"
+	}
+	s.WriteString(titleStyle.Render(header))
 	s.WriteString("\n\n")
 
 	// Backup details - properly aligned
@@ -379,7 +453,6 @@ func (m BackupExecutionModel) View() string {
 	if m.ratio > 0 {
 		s.WriteString(fmt.Sprintf("  %-10s %d\n", "Sample:", m.ratio))
 	}
-	s.WriteString(fmt.Sprintf("  %-10s %s\n", "Duration:", time.Since(m.startTime).Round(time.Second)))
 	s.WriteString("\n")
 
 	// Status display
@@ -395,11 +468,15 @@ func (m BackupExecutionModel) View() string {
 
 			elapsedSec := int(time.Since(m.startTime).Seconds())
 
-			if m.overallPhase == 2 && m.dbTotal > 0 {
+			if m.overallPhase == backupPhaseDatabases && m.dbTotal > 0 {
 				// Phase 2: Database backups - contributes 15-90%
 				dbPct := int((int64(m.dbDone) * 100) / int64(m.dbTotal))
 				overallProgress = 15 + (dbPct * 75 / 100)
 				phaseLabel = m.phaseDesc
+			} else if m.overallPhase == backupPhaseCompressing {
+				// Phase 3: Compressing archive
+				overallProgress = 92
+				phaseLabel = "Phase 3/3: Compressing Archive"
 			} else if elapsedSec < 5 {
 				// Initial setup
 				overallProgress = 2
@@ -430,9 +507,9 @@ func (m BackupExecutionModel) View() string {
 				}
 				s.WriteString("\n")
 
-				// Database progress bar
-				progressBar := renderBackupDatabaseProgressBar(m.dbDone, m.dbTotal, m.dbName, 50)
-				s.WriteString(progressBar + "\n")
+				// Database progress bar with timing
+				s.WriteString(renderBackupDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.dbAvgPerDB))
+				s.WriteString("\n")
 			} else {
 				// Intermediate phase (globals)
 				spinner := spinnerFrames[m.spinnerFrame]
@@ -449,7 +526,10 @@ func (m BackupExecutionModel) View() string {
 		}
 
 		if !m.cancelling {
-			s.WriteString("\n  [KEY]  Press Ctrl+C or ESC to cancel\n")
+			// Elapsed time
+			s.WriteString(fmt.Sprintf("Elapsed: %s\n", formatDuration(time.Since(m.startTime))))
+			s.WriteString("\n")
+			s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C or ESC to cancel"))
 		}
 	} else {
 		// Show completion summary with detailed stats
@@ -474,6 +554,14 @@ func (m BackupExecutionModel) View() string {
 			s.WriteString(infoStyle.Render("  ─── Summary ───────────────────────────────────────────────"))
 			s.WriteString("\n\n")
 
+			// Archive info (if available)
+			if m.archivePath != "" {
+				s.WriteString(fmt.Sprintf("    Archive:       %s\n", filepath.Base(m.archivePath)))
+			}
+			if m.archiveSize > 0 {
+				s.WriteString(fmt.Sprintf("    Archive Size:  %s\n", FormatBytes(m.archiveSize)))
+			}
+
 			// Backup type specific info
 			switch m.backupType {
 			case "cluster":
@@ -497,12 +585,21 @@ func (m BackupExecutionModel) View() string {
 		s.WriteString(infoStyle.Render("  ─── Timing ────────────────────────────────────────────────"))
 		s.WriteString("\n\n")
 
-		elapsed := time.Since(m.startTime)
-		s.WriteString(fmt.Sprintf("    Total Time:    %s\n", formatBackupDuration(elapsed)))
+		elapsed := m.elapsed
+		if elapsed == 0 {
+			elapsed = time.Since(m.startTime)
+		}
+		s.WriteString(fmt.Sprintf("    Total Time:    %s\n", formatDuration(elapsed)))
+
+		// Calculate and show throughput if we have size info
+		if m.archiveSize > 0 && elapsed.Seconds() > 0 {
+			throughput := float64(m.archiveSize) / elapsed.Seconds()
+			s.WriteString(fmt.Sprintf("    Throughput:    %s/s (average)\n", FormatBytes(int64(throughput))))
+		}
 
 		if m.backupType == "cluster" && m.dbTotal > 0 && m.err == nil {
 			avgPerDB := elapsed / time.Duration(m.dbTotal)
-			s.WriteString(fmt.Sprintf("    Avg per DB:    %s\n", formatBackupDuration(avgPerDB)))
+			s.WriteString(fmt.Sprintf("    Avg per DB:    %s\n", formatDuration(avgPerDB)))
 		}
 
 		s.WriteString("\n")
@@ -512,19 +609,4 @@ func (m BackupExecutionModel) View() string {
 	}
 
 	return s.String()
-}
-
-// formatBackupDuration formats duration in human readable format
-func formatBackupDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%.1fs", d.Seconds())
-	}
-	if d < time.Hour {
-		minutes := int(d.Minutes())
-		seconds := int(d.Seconds()) % 60
-		return fmt.Sprintf("%dm %ds", minutes, seconds)
-	}
-	hours := int(d.Hours())
-	minutes := int(d.Minutes()) % 60
-	return fmt.Sprintf("%dh %dm", hours, minutes)
 }

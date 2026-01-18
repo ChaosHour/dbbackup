@@ -154,6 +154,7 @@ type sharedProgressState struct {
 	// Timing info for database restore phase
 	dbPhaseElapsed time.Duration // Elapsed time since restore phase started
 	dbAvgPerDB     time.Duration // Average time per database restore
+	phase3StartTime time.Time     // When phase 3 started (for realtime ETA calculation)
 
 	// Overall phase tracking (1=Extract, 2=Globals, 3=Databases)
 	overallPhase   int
@@ -190,12 +191,12 @@ func clearCurrentRestoreProgress() {
 	currentRestoreProgressState = nil
 }
 
-func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration, currentDB string, overallPhase int, extractionDone bool, dbBytesTotal, dbBytesDone int64) {
+func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration, currentDB string, overallPhase int, extractionDone bool, dbBytesTotal, dbBytesDone int64, phase3StartTime time.Time) {
 	currentRestoreProgressMu.Lock()
 	defer currentRestoreProgressMu.Unlock()
 
 	if currentRestoreProgressState == nil {
-		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false, 0, 0
+		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false, 0, 0, time.Time{}
 	}
 
 	currentRestoreProgressState.mu.Lock()
@@ -204,13 +205,20 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 	// Calculate rolling window speed
 	speed = calculateRollingSpeed(currentRestoreProgressState.speedSamples)
 
+	// Calculate realtime phase elapsed if we have a phase 3 start time
+	dbPhaseElapsed = currentRestoreProgressState.dbPhaseElapsed
+	if !currentRestoreProgressState.phase3StartTime.IsZero() {
+		dbPhaseElapsed = time.Since(currentRestoreProgressState.phase3StartTime)
+	}
+
 	return currentRestoreProgressState.bytesTotal, currentRestoreProgressState.bytesDone,
 		currentRestoreProgressState.description, currentRestoreProgressState.hasUpdate,
 		currentRestoreProgressState.dbTotal, currentRestoreProgressState.dbDone, speed,
-		currentRestoreProgressState.dbPhaseElapsed, currentRestoreProgressState.dbAvgPerDB,
+		dbPhaseElapsed, currentRestoreProgressState.dbAvgPerDB,
 		currentRestoreProgressState.currentDB, currentRestoreProgressState.overallPhase,
 		currentRestoreProgressState.extractionDone,
-		currentRestoreProgressState.dbBytesTotal, currentRestoreProgressState.dbBytesDone
+		currentRestoreProgressState.dbBytesTotal, currentRestoreProgressState.dbBytesDone,
+		currentRestoreProgressState.phase3StartTime
 }
 
 // calculateRollingSpeed calculates speed from recent samples (last 5 seconds)
@@ -357,6 +365,10 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.overallPhase = 3
 			progressState.extractionDone = true
 			progressState.hasUpdate = true
+			// Set phase 3 start time on first callback (for realtime ETA calculation)
+			if progressState.phase3StartTime.IsZero() {
+				progressState.phase3StartTime = time.Now()
+			}
 			// Clear byte progress when switching to db progress
 			progressState.bytesTotal = 0
 			progressState.bytesDone = 0
@@ -375,6 +387,10 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.dbPhaseElapsed = phaseElapsed
 			progressState.dbAvgPerDB = avgPerDB
 			progressState.hasUpdate = true
+			// Set phase 3 start time on first callback (for realtime ETA calculation)
+			if progressState.phase3StartTime.IsZero() {
+				progressState.phase3StartTime = time.Now()
+			}
 			// Clear byte progress when switching to db progress
 			progressState.bytesTotal = 0
 			progressState.bytesDone = 0
@@ -392,6 +408,10 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.overallPhase = 3
 			progressState.extractionDone = true
 			progressState.hasUpdate = true
+			// Set phase 3 start time on first callback (for realtime ETA calculation)
+			if progressState.phase3StartTime.IsZero() {
+				progressState.phase3StartTime = time.Now()
+			}
 		})
 
 		// Store progress state in a package-level variable for the ticker to access
@@ -447,7 +467,8 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.elapsed = time.Since(m.startTime)
 
 			// Poll shared progress state for real-time updates
-			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed, dbPhaseElapsed, dbAvgPerDB, currentDB, overallPhase, extractionDone, dbBytesTotal, dbBytesDone := getCurrentRestoreProgress()
+			// Note: dbPhaseElapsed is now calculated in realtime inside getCurrentRestoreProgress()
+			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed, dbPhaseElapsed, dbAvgPerDB, currentDB, overallPhase, extractionDone, dbBytesTotal, dbBytesDone, _ := getCurrentRestoreProgress()
 			if hasUpdate && bytesTotal > 0 && !extractionDone {
 				// Phase 1: Extraction
 				m.bytesTotal = bytesTotal

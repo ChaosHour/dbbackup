@@ -402,6 +402,17 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString("\n")
 		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
 
+		// Show Resource Profile and CPU Workload settings
+		profile := m.config.GetCurrentProfile()
+		if profile != nil {
+			s.WriteString(fmt.Sprintf("  Resource Profile: %s (Parallel:%d, Jobs:%d)\n",
+				profile.Name, profile.ClusterParallelism, profile.Jobs))
+		} else {
+			s.WriteString(fmt.Sprintf("  Resource Profile: %s\n", m.config.ResourceProfile))
+		}
+		s.WriteString(fmt.Sprintf("  CPU Workload: %s\n", m.config.CPUWorkloadType))
+		s.WriteString(fmt.Sprintf("  Cluster Parallelism: %d databases\n", m.config.ClusterParallelism))
+
 		if m.existingDBError != "" {
 			// Show warning when database listing failed - but still allow cleanup toggle
 			s.WriteString(checkWarningStyle.Render("  Existing Databases: Detection failed\n"))

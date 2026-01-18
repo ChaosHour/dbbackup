@@ -37,7 +37,8 @@ type Config struct {
 	CPUWorkloadType  string // "cpu-intensive", "io-intensive", "balanced"
 
 	// Resource profile for backup/restore operations
-	ResourceProfile string // "conservative", "balanced", "performance", "max-performance", "large-db"
+	ResourceProfile string // "conservative", "balanced", "performance", "max-performance"
+	LargeDBMode     bool   // Enable large database mode (reduces parallelism, increases max_locks)
 
 	// CPU detection
 	CPUDetector *cpu.Detector
@@ -209,6 +210,7 @@ func New() *Config {
 		AutoDetectCores:  getEnvBool("AUTO_DETECT_CORES", true),
 		CPUWorkloadType:  getEnvString("CPU_WORKLOAD_TYPE", "balanced"),
 		ResourceProfile:  defaultProfile,
+		LargeDBMode:      getEnvBool("LARGE_DB_MODE", false),
 
 		// CPU and memory detection
 		CPUDetector: cpuDetector,
@@ -430,7 +432,7 @@ func (c *Config) ApplyResourceProfile(profileName string) error {
 		return &ConfigError{
 			Field:   "resource_profile",
 			Value:   profileName,
-			Message: "unknown profile. Valid profiles: conservative, balanced, performance, max-performance, large-db",
+			Message: "unknown profile. Valid profiles: conservative, balanced, performance, max-performance",
 		}
 	}
 
@@ -457,8 +459,19 @@ func (c *Config) GetResourceProfileRecommendation(isLargeDB bool) (string, strin
 }
 
 // GetCurrentProfile returns the current resource profile details
+// If LargeDBMode is enabled, returns a modified profile with reduced parallelism
 func (c *Config) GetCurrentProfile() *cpu.ResourceProfile {
-	return cpu.GetProfileByName(c.ResourceProfile)
+	profile := cpu.GetProfileByName(c.ResourceProfile)
+	if profile == nil {
+		return nil
+	}
+
+	// Apply LargeDBMode modifier if enabled
+	if c.LargeDBMode {
+		return cpu.ApplyLargeDBMode(profile)
+	}
+
+	return profile
 }
 
 // GetCPUInfo returns CPU information, detecting if necessary

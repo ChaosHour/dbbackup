@@ -28,9 +28,11 @@ type LocalConfig struct {
 	DumpJobs    int
 
 	// Performance settings
-	CPUWorkload    string
-	MaxCores       int
-	ClusterTimeout int // Cluster operation timeout in minutes (default: 1440 = 24 hours)
+	CPUWorkload     string
+	MaxCores        int
+	ClusterTimeout  int  // Cluster operation timeout in minutes (default: 1440 = 24 hours)
+	ResourceProfile string
+	LargeDBMode     bool // Enable large database mode (reduces parallelism, increases locks)
 
 	// Security settings
 	RetentionDays int
@@ -126,6 +128,10 @@ func LoadLocalConfig() (*LocalConfig, error) {
 				if ct, err := strconv.Atoi(value); err == nil {
 					cfg.ClusterTimeout = ct
 				}
+			case "resource_profile":
+				cfg.ResourceProfile = value
+			case "large_db_mode":
+				cfg.LargeDBMode = value == "true" || value == "1"
 			}
 		case "security":
 			switch key {
@@ -207,6 +213,12 @@ func SaveLocalConfig(cfg *LocalConfig) error {
 	if cfg.ClusterTimeout != 0 {
 		sb.WriteString(fmt.Sprintf("cluster_timeout = %d\n", cfg.ClusterTimeout))
 	}
+	if cfg.ResourceProfile != "" {
+		sb.WriteString(fmt.Sprintf("resource_profile = %s\n", cfg.ResourceProfile))
+	}
+	if cfg.LargeDBMode {
+		sb.WriteString("large_db_mode = true\n")
+	}
 	sb.WriteString("\n")
 
 	// Security section
@@ -280,6 +292,14 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.ClusterTimeout != 0 {
 		cfg.ClusterTimeoutMinutes = local.ClusterTimeout
 	}
+	// Apply resource profile settings
+	if local.ResourceProfile != "" {
+		cfg.ResourceProfile = local.ResourceProfile
+	}
+	// LargeDBMode is a boolean - apply if true in config
+	if local.LargeDBMode {
+		cfg.LargeDBMode = true
+	}
 	if cfg.RetentionDays == 30 && local.RetentionDays != 0 {
 		cfg.RetentionDays = local.RetentionDays
 	}
@@ -294,22 +314,24 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 // ConfigFromConfig creates a LocalConfig from a Config
 func ConfigFromConfig(cfg *Config) *LocalConfig {
 	return &LocalConfig{
-		DBType:         cfg.DatabaseType,
-		Host:           cfg.Host,
-		Port:           cfg.Port,
-		User:           cfg.User,
-		Database:       cfg.Database,
-		SSLMode:        cfg.SSLMode,
-		BackupDir:      cfg.BackupDir,
-		WorkDir:        cfg.WorkDir,
-		Compression:    cfg.CompressionLevel,
-		Jobs:           cfg.Jobs,
-		DumpJobs:       cfg.DumpJobs,
-		CPUWorkload:    cfg.CPUWorkloadType,
-		MaxCores:       cfg.MaxCores,
-		ClusterTimeout: cfg.ClusterTimeoutMinutes,
-		RetentionDays:  cfg.RetentionDays,
-		MinBackups:     cfg.MinBackups,
-		MaxRetries:     cfg.MaxRetries,
+		DBType:          cfg.DatabaseType,
+		Host:            cfg.Host,
+		Port:            cfg.Port,
+		User:            cfg.User,
+		Database:        cfg.Database,
+		SSLMode:         cfg.SSLMode,
+		BackupDir:       cfg.BackupDir,
+		WorkDir:         cfg.WorkDir,
+		Compression:     cfg.CompressionLevel,
+		Jobs:            cfg.Jobs,
+		DumpJobs:        cfg.DumpJobs,
+		CPUWorkload:     cfg.CPUWorkloadType,
+		MaxCores:        cfg.MaxCores,
+		ClusterTimeout:  cfg.ClusterTimeoutMinutes,
+		ResourceProfile: cfg.ResourceProfile,
+		LargeDBMode:     cfg.LargeDBMode,
+		RetentionDays:   cfg.RetentionDays,
+		MinBackups:      cfg.MinBackups,
+		MaxRetries:      cfg.MaxRetries,
 	}
 }

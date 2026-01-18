@@ -410,6 +410,10 @@ func (m RestorePreviewModel) View() string {
 		} else {
 			s.WriteString(fmt.Sprintf("  Resource Profile: %s\n", m.config.ResourceProfile))
 		}
+		// Show Large DB Mode status
+		if m.config.LargeDBMode {
+			s.WriteString("  Large DB Mode: ON (reduced parallelism, high locks)\n")
+		}
 		s.WriteString(fmt.Sprintf("  CPU Workload: %s\n", m.config.CPUWorkloadType))
 		s.WriteString(fmt.Sprintf("  Cluster Parallelism: %d databases\n", m.config.ClusterParallelism))
 

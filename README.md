@@ -221,7 +221,7 @@ Configuration Settings
   Database User: postgres
   SSL Mode: prefer
 
-[KEYS]  ↑↓ navigate | Enter edit | 'l' large-db | 'c' conservative | 'p' recommend | 's' save | 'q' menu
+[KEYS]  ↑↓ navigate | Enter edit | 'l' toggle LargeDB | 'c' conservative | 'p' recommend | 's' save | 'q' menu
 ```
 
 **Resource Profiles for Large Databases:**
@@ -233,9 +233,11 @@ When restoring large databases on VMs with limited resources, use the resource p
 | conservative | 1 | 1 | Small VMs (<16GB RAM) |
 | balanced | 2 | 2-4 | Medium VMs (16-32GB RAM) |
 | performance | 4 | 4-8 | Large servers (32GB+ RAM) |
-| large-db | 1 | 2 | Large databases on any hardware |
+| max-performance | 8 | 8-16 | High-end servers (64GB+) |
 
-**Quick shortcuts:** Press `l` to apply large-db profile, `c` for conservative, `p` to show recommendation.
+**Large DB Mode:** Toggle with `l` key. Reduces parallelism by 50% and sets max_locks_per_transaction=8192 for complex databases with many tables/LOBs.
+
+**Quick shortcuts:** Press `l` to toggle Large DB Mode, `c` for conservative, `p` to show recommendation.
 
 **Database Status:**
 ```

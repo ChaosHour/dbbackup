@@ -1159,8 +1159,8 @@ func formatRestoreError(errStr string) string {
 		s.WriteString("    If you reduced VM size or max_connections, you need higher\n")
 		s.WriteString("    max_locks_per_transaction to compensate.\n\n")
 		s.WriteString(successStyle.Render("    FIX OPTIONS:\n"))
-		s.WriteString("    1. Use 'conservative' or 'large-db' profile in Settings\n")
-		s.WriteString("       (press 'l' for large-db, 'c' for conservative)\n\n")
+		s.WriteString("    1. Enable 'Large DB Mode' in Settings\n")
+		s.WriteString("       (press 'l' to toggle, reduces parallelism, increases locks)\n\n")
 		s.WriteString("    2. Increase PostgreSQL locks:\n")
 		s.WriteString("       ALTER SYSTEM SET max_locks_per_transaction = 4096;\n")
 		s.WriteString("       Then RESTART PostgreSQL.\n\n")
@@ -1186,7 +1186,7 @@ func formatRestoreError(errStr string) string {
 		s.WriteString("\n\n")
 		s.WriteString("    1. Check the full error log for details\n")
 		s.WriteString("    2. Try restoring with 'conservative' profile (press 'c')\n")
-		s.WriteString("    3. For large databases, use 'large-db' profile (press 'l')\n")
+		s.WriteString("    3. For complex databases, enable 'Large DB Mode' (press 'l')\n")
 	}
 
 	s.WriteString("\n")

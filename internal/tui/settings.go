@@ -113,7 +113,7 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				return c.ResourceProfile
 			},
 			Update: func(c *config.Config, v string) error {
-				profiles := []string{"conservative", "balanced", "performance", "max-performance", "large-db"}
+				profiles := []string{"conservative", "balanced", "performance", "max-performance"}
 				currentIdx := 0
 				for i, p := range profiles {
 					if c.ResourceProfile == p {
@@ -125,7 +125,23 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				return c.ApplyResourceProfile(profiles[nextIdx])
 			},
 			Type:        "selector",
-			Description: "Resource profile for backup/restore. Use 'conservative' or 'large-db' for large databases on small VMs.",
+			Description: "Resource profile for VM capacity. Toggle 'l' for Large DB Mode on any profile.",
+		},
+		{
+			Key:         "large_db_mode",
+			DisplayName: "Large DB Mode",
+			Value: func(c *config.Config) string {
+				if c.LargeDBMode {
+					return "ON (↓parallelism, ↑locks)"
+				}
+				return "OFF"
+			},
+			Update: func(c *config.Config, v string) error {
+				c.LargeDBMode = !c.LargeDBMode
+				return nil
+			},
+			Type:        "selector",
+			Description: "Enable for databases with many tables/LOBs. Reduces parallelism, increases max_locks_per_transaction.",
 		},
 		{
 			Key:         "cluster_parallelism",
@@ -574,8 +590,8 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.saveSettings()
 
 		case "l":
-			// Quick shortcut: Apply "large-db" profile for large databases
-			return m.applyLargeDBProfile()
+			// Quick shortcut: Toggle Large DB Mode
+			return m.toggleLargeDBMode()
 
 		case "c":
 			// Quick shortcut: Apply "conservative" profile for constrained VMs
@@ -590,13 +606,20 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// applyLargeDBProfile applies the large-db profile optimized for large databases
-func (m SettingsModel) applyLargeDBProfile() (tea.Model, tea.Cmd) {
-	if err := m.config.ApplyResourceProfile("large-db"); err != nil {
-		m.message = errorStyle.Render(fmt.Sprintf("[FAIL] %s", err.Error()))
-		return m, nil
+// toggleLargeDBMode toggles the Large DB Mode flag
+func (m SettingsModel) toggleLargeDBMode() (tea.Model, tea.Cmd) {
+	m.config.LargeDBMode = !m.config.LargeDBMode
+	if m.config.LargeDBMode {
+		profile := m.config.GetCurrentProfile()
+		m.message = successStyle.Render(fmt.Sprintf(
+			"[ON] Large DB Mode enabled: %s → Parallel=%d, Jobs=%d, MaxLocks=%d",
+			profile.Name, profile.ClusterParallelism, profile.Jobs, profile.MaxLocksPerTxn))
+	} else {
+		profile := m.config.GetCurrentProfile()
+		m.message = successStyle.Render(fmt.Sprintf(
+			"[OFF] Large DB Mode disabled: %s → Parallel=%d, Jobs=%d",
+			profile.Name, profile.ClusterParallelism, profile.Jobs))
 	}
-	m.message = successStyle.Render("[OK] Applied 'large-db' profile: Cluster=1, Jobs=2. Optimized for large DBs to avoid 'out of shared memory' errors.")
 	return m, nil
 }
 
@@ -613,14 +636,19 @@ func (m SettingsModel) applyConservativeProfile() (tea.Model, tea.Cmd) {
 // showProfileRecommendation displays the recommended profile based on system resources
 func (m SettingsModel) showProfileRecommendation() (tea.Model, tea.Cmd) {
 	profileName, reason := m.config.GetResourceProfileRecommendation(false)
-	largeDBProfile, largeDBReason := m.config.GetResourceProfileRecommendation(true)
+
+	var largeDBHint string
+	if m.config.LargeDBMode {
+		largeDBHint = "Large DB Mode: ON"
+	} else {
+		largeDBHint = "Large DB Mode: OFF (press 'l' to enable)"
+	}
 
 	m.message = infoStyle.Render(fmt.Sprintf(
-		"[RECOMMEND] Default: %s | For Large DBs: %s\n"+
+		"[RECOMMEND] Profile: %s | %s\n"+
 			"  → %s\n"+
-			"  → Large DB: %s\n"+
-			"  Press 'l' for large-db profile, 'c' for conservative",
-		profileName, largeDBProfile, reason, largeDBReason))
+			"  Press 'l' to toggle Large DB Mode, 'c' for conservative",
+		profileName, largeDBHint, reason))
 	return m, nil
 }
 
@@ -907,9 +935,9 @@ func (m SettingsModel) View() string {
 		} else {
 			// Show different help based on current selection
 			if m.cursor >= 0 && m.cursor < len(m.settings) && m.settings[m.cursor].Type == "path" {
-				footer = infoStyle.Render("\n[KEYS]  ↑↓ navigate | Enter edit | Tab dirs | 'l' large-db | 'c' conservative | 'p' recommend | 's' save | 'q' menu")
+				footer = infoStyle.Render("\n[KEYS]  ↑↓ navigate | Enter edit | Tab dirs | 'l' toggle LargeDB | 'c' conservative | 'p' recommend | 's' save | 'q' menu")
 			} else {
-				footer = infoStyle.Render("\n[KEYS]  ↑↓ navigate | Enter edit | 'l' large-db profile | 'c' conservative | 'p' recommend | 's' save | 'r' reset | 'q' menu")
+				footer = infoStyle.Render("\n[KEYS]  ↑↓ navigate | Enter edit | 'l' toggle LargeDB mode | 'c' conservative | 'p' recommend | 's' save | 'r' reset | 'q' menu")
 			}
 		}
 	}

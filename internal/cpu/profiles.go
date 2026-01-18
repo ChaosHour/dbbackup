@@ -90,32 +90,17 @@ var (
 		DumpJobs:            16,
 		MaintenanceWorkMem:  "2GB",
 		MaxLocksPerTxn:      512,
-		RecommendedForLarge: false, // Large DBs should use conservative
+		RecommendedForLarge: false, // Large DBs should use LargeDBMode
 		MinMemoryGB:         64,
 		MinCores:            16,
 	}
 
-	// ProfileLargeDB - Optimized specifically for large databases
-	ProfileLargeDB = ResourceProfile{
-		Name:                "large-db",
-		Description:         "Optimized for large databases with many tables/BLOBs. Prevents 'out of shared memory' errors.",
-		ClusterParallelism:  1,
-		Jobs:                2,
-		DumpJobs:            2,
-		MaintenanceWorkMem:  "1GB",
-		MaxLocksPerTxn:      8192,
-		RecommendedForLarge: true,
-		MinMemoryGB:         8,
-		MinCores:            2,
-	}
-
-	// AllProfiles contains all available profiles
+	// AllProfiles contains all available profiles (VM resource-based)
 	AllProfiles = []ResourceProfile{
 		ProfileConservative,
 		ProfileBalanced,
 		ProfilePerformance,
 		ProfileMaxPerformance,
-		ProfileLargeDB,
 	}
 )
 
@@ -127,6 +112,51 @@ func GetProfileByName(name string) *ResourceProfile {
 		}
 	}
 	return nil
+}
+
+// ApplyLargeDBMode modifies a profile for large database operations.
+// This is a modifier that reduces parallelism and increases max_locks_per_transaction
+// to prevent "out of shared memory" errors with large databases (many tables, LOBs, etc.).
+// It returns a new profile with adjusted settings, leaving the original unchanged.
+func ApplyLargeDBMode(profile *ResourceProfile) *ResourceProfile {
+	if profile == nil {
+		return nil
+	}
+
+	// Create a copy with adjusted settings
+	modified := *profile
+
+	// Add "(large-db)" suffix to indicate this is modified
+	modified.Name = profile.Name + " +large-db"
+	modified.Description = fmt.Sprintf("%s [LargeDBMode: reduced parallelism, high locks]", profile.Description)
+
+	// Reduce parallelism to avoid lock exhaustion
+	// Rule: halve parallelism, minimum 1
+	modified.ClusterParallelism = max(1, profile.ClusterParallelism/2)
+	modified.Jobs = max(1, profile.Jobs/2)
+	modified.DumpJobs = max(2, profile.DumpJobs/2)
+
+	// Force high max_locks_per_transaction for large schemas
+	modified.MaxLocksPerTxn = 8192
+
+	// Increase maintenance_work_mem for complex operations
+	// Keep or boost maintenance work mem
+	modified.MaintenanceWorkMem = "1GB"
+	if profile.MinMemoryGB >= 32 {
+		modified.MaintenanceWorkMem = "2GB"
+	}
+
+	modified.RecommendedForLarge = true
+
+	return &modified
+}
+
+// max returns the larger of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // DetectMemory detects system memory information
@@ -293,11 +323,11 @@ func RecommendProfile(cpuInfo *CPUInfo, memInfo *MemoryInfo, isLargeDB bool) *Re
 		memGB = memInfo.TotalGB
 	}
 
-	// Special case: large databases should always use conservative/large-db profile
+	// Special case: large databases should use conservative profile
+	// The caller should also enable LargeDBMode for increased MaxLocksPerTxn
 	if isLargeDB {
-		if memGB >= 32 && cores >= 8 {
-			return &ProfileLargeDB // Still conservative but with more memory for maintenance
-		}
+		// For large DBs, recommend conservative regardless of resources
+		// LargeDBMode flag will handle the lock settings separately
 		return &ProfileConservative
 	}
 
@@ -339,7 +369,7 @@ func RecommendProfileWithReason(cpuInfo *CPUInfo, memInfo *MemoryInfo, isLargeDB
 	profile := RecommendProfile(cpuInfo, memInfo, isLargeDB)
 
 	if isLargeDB {
-		reason.WriteString("Large database detected - using conservative settings to avoid 'out of shared memory' errors.")
+		reason.WriteString("Large database mode - using conservative settings. Enable LargeDBMode for higher max_locks.")
 	} else if profile.Name == "conservative" {
 		reason.WriteString("Limited resources detected - using conservative profile for stability.")
 	} else if profile.Name == "max-performance" {

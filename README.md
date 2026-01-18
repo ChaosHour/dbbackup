@@ -194,20 +194,48 @@ r: Restore | v: Verify | i: Info | d: Diagnose | D: Delete | R: Refresh | Esc: B
 ```
 Configuration Settings
 
+[SYSTEM] Detected Resources
+  CPU: 8 physical cores, 16 logical cores
+  Memory: 32GB total, 28GB available
+  Recommended Profile: balanced
+    → 8 cores and 32GB RAM supports moderate parallelism
+
+[CONFIG] Current Settings
+  Target DB: PostgreSQL (postgres)
+  Database: postgres@localhost:5432
+  Backup Dir: /var/backups/postgres
+  Compression: Level 6
+  Profile: balanced | Cluster: 2 parallel | Jobs: 4
+
 > Database Type: postgres
   CPU Workload Type: balanced
-  Backup Directory: /root/db_backups
-  Work Directory: /tmp
+  Resource Profile: balanced (P:2 J:4)
+  Cluster Parallelism: 2
+  Backup Directory: /var/backups/postgres
+  Work Directory: (system temp)
   Compression Level: 6
-  Parallel Jobs: 16
-  Dump Jobs: 8
+  Parallel Jobs: 4
+  Dump Jobs: 4
   Database Host: localhost
   Database Port: 5432
-  Database User: root
+  Database User: postgres
   SSL Mode: prefer
 
-s: Save | r: Reset | q: Menu
+[KEYS]  ↑↓ navigate | Enter edit | 'l' large-db | 'c' conservative | 'p' recommend | 's' save | 'q' menu
 ```
+
+**Resource Profiles for Large Databases:**
+
+When restoring large databases on VMs with limited resources, use the resource profile settings to prevent "out of shared memory" errors:
+
+| Profile | Cluster Parallel | Jobs | Best For |
+|---------|------------------|------|----------|
+| conservative | 1 | 1 | Small VMs (<16GB RAM) |
+| balanced | 2 | 2-4 | Medium VMs (16-32GB RAM) |
+| performance | 4 | 4-8 | Large servers (32GB+ RAM) |
+| large-db | 1 | 2 | Large databases on any hardware |
+
+**Quick shortcuts:** Press `l` to apply large-db profile, `c` for conservative, `p` to show recommendation.
 
 **Database Status:**
 ```

@@ -30,7 +30,7 @@ type LocalConfig struct {
 	// Performance settings
 	CPUWorkload     string
 	MaxCores        int
-	ClusterTimeout  int  // Cluster operation timeout in minutes (default: 1440 = 24 hours)
+	ClusterTimeout  int // Cluster operation timeout in minutes (default: 1440 = 24 hours)
 	ResourceProfile string
 	LargeDBMode     bool // Enable large database mode (reduces parallelism, increases locks)
 

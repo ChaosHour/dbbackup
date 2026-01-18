@@ -152,8 +152,8 @@ type sharedProgressState struct {
 	currentDB string
 
 	// Timing info for database restore phase
-	dbPhaseElapsed time.Duration // Elapsed time since restore phase started
-	dbAvgPerDB     time.Duration // Average time per database restore
+	dbPhaseElapsed  time.Duration // Elapsed time since restore phase started
+	dbAvgPerDB      time.Duration // Average time per database restore
 	phase3StartTime time.Time     // When phase 3 started (for realtime ETA calculation)
 
 	// Overall phase tracking (1=Extract, 2=Globals, 3=Databases)
@@ -1171,12 +1171,12 @@ func formatRestoreError(errStr string) string {
 
 	// Provide specific recommendations based on error
 	if strings.Contains(errStr, "out of shared memory") || strings.Contains(errStr, "max_locks_per_transaction") {
-		s.WriteString(errorStyle.Render("    • Cannot access file: stat : no such file or directory\n"))
+		s.WriteString(errorStyle.Render("    • PostgreSQL lock table exhausted\n"))
 		s.WriteString("\n")
 		s.WriteString(infoStyle.Render("  ─── [HINT] Recommendations ────────────────────────────────"))
 		s.WriteString("\n\n")
-		s.WriteString("    Lock table exhausted. Total capacity = max_locks_per_transaction\n")
-		s.WriteString("    × (max_connections + max_prepared_transactions).\n\n")
+		s.WriteString("    Lock capacity = max_locks_per_transaction\n")
+		s.WriteString("    × (max_connections + max_prepared_transactions)\n\n")
 		s.WriteString("    If you reduced VM size or max_connections, you need higher\n")
 		s.WriteString("    max_locks_per_transaction to compensate.\n\n")
 		s.WriteString(successStyle.Render("    FIX OPTIONS:\n"))

@@ -39,8 +39,8 @@ type BackupExecutionModel struct {
 	cancelling   bool // True when user has requested cancellation
 	err          error
 	result       string
-	archivePath  string        // Path to created archive (for summary)
-	archiveSize  int64         // Size of created archive (for summary)
+	archivePath  string // Path to created archive (for summary)
+	archiveSize  int64  // Size of created archive (for summary)
 	startTime    time.Time
 	elapsed      time.Duration // Final elapsed time
 	details      []string
@@ -63,8 +63,8 @@ type sharedBackupProgressState struct {
 	dbTotal         int
 	dbDone          int
 	dbName          string
-	overallPhase    int           // 1=globals, 2=databases, 3=compressing
-	phaseDesc       string        // Description of current phase
+	overallPhase    int    // 1=globals, 2=databases, 3=compressing
+	phaseDesc       string // Description of current phase
 	hasUpdate       bool
 	phase2StartTime time.Time     // When phase 2 started (for realtime ETA calculation)
 	dbPhaseElapsed  time.Duration // Elapsed time since database backup phase started

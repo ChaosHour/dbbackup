@@ -50,6 +50,7 @@ type Engine struct {
 	progress         progress.Indicator
 	detailedReporter *progress.DetailedReporter
 	dryRun           bool
+	silentMode       bool   // Suppress stdout output (for TUI mode)
 	debugLogPath     string // Path to save debug log on error
 
 	// TUI progress callback for detailed progress reporting
@@ -86,6 +87,7 @@ func NewSilent(cfg *config.Config, log logger.Logger, db database.Database) *Eng
 		progress:         progressIndicator,
 		detailedReporter: detailedReporter,
 		dryRun:           false,
+		silentMode:       true, // Suppress stdout for TUI
 	}
 }
 

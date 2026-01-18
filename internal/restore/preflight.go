@@ -542,7 +542,20 @@ func (e *Engine) calculateRecommendedParallel(result *PreflightResult) int {
 }
 
 // printPreflightSummary prints a nice summary of all checks
+// In silent mode (TUI), this is skipped and results are logged instead
 func (e *Engine) printPreflightSummary(result *PreflightResult) {
+	// In TUI/silent mode, don't print to stdout - it causes scrambled output
+	if e.silentMode {
+		// Log summary instead for debugging
+		e.log.Info("Preflight checks complete",
+			"can_proceed", result.CanProceed,
+			"warnings", len(result.Warnings),
+			"errors", len(result.Errors),
+			"total_blobs", result.Archive.TotalBlobCount,
+			"recommended_locks", result.Archive.RecommendedLockBoost)
+		return
+	}
+
 	fmt.Println()
 	fmt.Println(strings.Repeat("─", 60))
 	fmt.Println("                    PREFLIGHT CHECKS")

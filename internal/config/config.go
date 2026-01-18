@@ -36,9 +36,13 @@ type Config struct {
 	AutoDetectCores  bool
 	CPUWorkloadType  string // "cpu-intensive", "io-intensive", "balanced"
 
+	// Resource profile for backup/restore operations
+	ResourceProfile string // "conservative", "balanced", "performance", "max-performance", "large-db"
+
 	// CPU detection
 	CPUDetector *cpu.Detector
 	CPUInfo     *cpu.CPUInfo
+	MemoryInfo  *cpu.MemoryInfo // System memory information
 
 	// Sample backup options
 	SampleStrategy string // "ratio", "percent", "count"
@@ -178,6 +182,13 @@ func New() *Config {
 		sslMode = ""
 	}
 
+	// Detect memory information
+	memInfo, _ := cpu.DetectMemory()
+
+	// Determine recommended resource profile
+	recommendedProfile := cpu.RecommendProfile(cpuInfo, memInfo, false)
+	defaultProfile := getEnvString("RESOURCE_PROFILE", recommendedProfile.Name)
+
 	cfg := &Config{
 		// Database defaults
 		Host:         host,
@@ -197,10 +208,12 @@ func New() *Config {
 		MaxCores:         getEnvInt("MAX_CORES", getDefaultMaxCores(cpuInfo)),
 		AutoDetectCores:  getEnvBool("AUTO_DETECT_CORES", true),
 		CPUWorkloadType:  getEnvString("CPU_WORKLOAD_TYPE", "balanced"),
+		ResourceProfile:  defaultProfile,
 
-		// CPU detection
+		// CPU and memory detection
 		CPUDetector: cpuDetector,
 		CPUInfo:     cpuInfo,
+		MemoryInfo:  memInfo,
 
 		// Sample backup defaults
 		SampleStrategy: getEnvString("SAMPLE_STRATEGY", "ratio"),
@@ -407,6 +420,45 @@ func (c *Config) OptimizeForCPU() error {
 	}
 
 	return nil
+}
+
+// ApplyResourceProfile applies a resource profile to the configuration
+// This adjusts parallelism settings based on the chosen profile
+func (c *Config) ApplyResourceProfile(profileName string) error {
+	profile := cpu.GetProfileByName(profileName)
+	if profile == nil {
+		return &ConfigError{
+			Field:   "resource_profile",
+			Value:   profileName,
+			Message: "unknown profile. Valid profiles: conservative, balanced, performance, max-performance, large-db",
+		}
+	}
+
+	// Validate profile against current system
+	isValid, warnings := cpu.ValidateProfileForSystem(profile, c.CPUInfo, c.MemoryInfo)
+	if !isValid {
+		// Log warnings but don't block - user may know what they're doing
+		_ = warnings // In production, log these warnings
+	}
+
+	// Apply profile settings
+	c.ResourceProfile = profile.Name
+	c.ClusterParallelism = profile.ClusterParallelism
+	c.Jobs = profile.Jobs
+	c.DumpJobs = profile.DumpJobs
+
+	return nil
+}
+
+// GetResourceProfileRecommendation returns the recommended profile and reason
+func (c *Config) GetResourceProfileRecommendation(isLargeDB bool) (string, string) {
+	profile, reason := cpu.RecommendProfileWithReason(c.CPUInfo, c.MemoryInfo, isLargeDB)
+	return profile.Name, reason
+}
+
+// GetCurrentProfile returns the current resource profile details
+func (c *Config) GetCurrentProfile() *cpu.ResourceProfile {
+	return cpu.GetProfileByName(c.ResourceProfile)
 }
 
 // GetCPUInfo returns CPU information, detecting if necessary

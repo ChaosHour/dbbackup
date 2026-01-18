@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"dbbackup/internal/config"
+	"dbbackup/internal/cpu"
 	"dbbackup/internal/logger"
 )
 
@@ -100,6 +101,49 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			},
 			Type:        "selector",
 			Description: "CPU workload profile (press Enter to cycle: Balanced → CPU-Intensive → I/O-Intensive)",
+		},
+		{
+			Key:         "resource_profile",
+			DisplayName: "Resource Profile",
+			Value: func(c *config.Config) string {
+				profile := c.GetCurrentProfile()
+				if profile != nil {
+					return fmt.Sprintf("%s (P:%d J:%d)", profile.Name, profile.ClusterParallelism, profile.Jobs)
+				}
+				return c.ResourceProfile
+			},
+			Update: func(c *config.Config, v string) error {
+				profiles := []string{"conservative", "balanced", "performance", "max-performance", "large-db"}
+				currentIdx := 0
+				for i, p := range profiles {
+					if c.ResourceProfile == p {
+						currentIdx = i
+						break
+					}
+				}
+				nextIdx := (currentIdx + 1) % len(profiles)
+				return c.ApplyResourceProfile(profiles[nextIdx])
+			},
+			Type:        "selector",
+			Description: "Resource profile for backup/restore. Use 'conservative' or 'large-db' for large databases on small VMs.",
+		},
+		{
+			Key:         "cluster_parallelism",
+			DisplayName: "Cluster Parallelism",
+			Value:       func(c *config.Config) string { return fmt.Sprintf("%d", c.ClusterParallelism) },
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.Atoi(v)
+				if err != nil {
+					return fmt.Errorf("cluster parallelism must be a number")
+				}
+				if val < 1 {
+					return fmt.Errorf("cluster parallelism must be at least 1")
+				}
+				c.ClusterParallelism = val
+				return nil
+			},
+			Type:        "int",
+			Description: "Concurrent databases during cluster backup/restore (1=sequential, safer for large DBs)",
 		},
 		{
 			Key:         "backup_dir",
@@ -528,9 +572,55 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "s":
 			return m.saveSettings()
+
+		case "l":
+			// Quick shortcut: Apply "large-db" profile for large databases
+			return m.applyLargeDBProfile()
+
+		case "c":
+			// Quick shortcut: Apply "conservative" profile for constrained VMs
+			return m.applyConservativeProfile()
+
+		case "p":
+			// Show profile recommendation
+			return m.showProfileRecommendation()
 		}
 	}
 
+	return m, nil
+}
+
+// applyLargeDBProfile applies the large-db profile optimized for large databases
+func (m SettingsModel) applyLargeDBProfile() (tea.Model, tea.Cmd) {
+	if err := m.config.ApplyResourceProfile("large-db"); err != nil {
+		m.message = errorStyle.Render(fmt.Sprintf("[FAIL] %s", err.Error()))
+		return m, nil
+	}
+	m.message = successStyle.Render("[OK] Applied 'large-db' profile: Cluster=1, Jobs=2. Optimized for large DBs to avoid 'out of shared memory' errors.")
+	return m, nil
+}
+
+// applyConservativeProfile applies the conservative profile for constrained VMs
+func (m SettingsModel) applyConservativeProfile() (tea.Model, tea.Cmd) {
+	if err := m.config.ApplyResourceProfile("conservative"); err != nil {
+		m.message = errorStyle.Render(fmt.Sprintf("[FAIL] %s", err.Error()))
+		return m, nil
+	}
+	m.message = successStyle.Render("[OK] Applied 'conservative' profile: Cluster=1, Jobs=1. Safe for small VMs with limited memory.")
+	return m, nil
+}
+
+// showProfileRecommendation displays the recommended profile based on system resources
+func (m SettingsModel) showProfileRecommendation() (tea.Model, tea.Cmd) {
+	profileName, reason := m.config.GetResourceProfileRecommendation(false)
+	largeDBProfile, largeDBReason := m.config.GetResourceProfileRecommendation(true)
+
+	m.message = infoStyle.Render(fmt.Sprintf(
+		"[RECOMMEND] Default: %s | For Large DBs: %s\n"+
+			"  → %s\n"+
+			"  → Large DB: %s\n"+
+			"  Press 'l' for large-db profile, 'c' for conservative",
+		profileName, largeDBProfile, reason, largeDBReason))
 	return m, nil
 }
 
@@ -747,7 +837,32 @@ func (m SettingsModel) View() string {
 	// Current configuration summary
 	if !m.editing {
 		b.WriteString("\n")
-		b.WriteString(infoStyle.Render("[INFO] Current Configuration"))
+		b.WriteString(infoStyle.Render("[INFO] System Resources & Configuration"))
+		b.WriteString("\n")
+
+		// System resources
+		var sysInfo []string
+		if m.config.CPUInfo != nil {
+			sysInfo = append(sysInfo, fmt.Sprintf("CPU: %d cores (physical), %d logical",
+				m.config.CPUInfo.PhysicalCores, m.config.CPUInfo.LogicalCores))
+		}
+		if m.config.MemoryInfo != nil {
+			sysInfo = append(sysInfo, fmt.Sprintf("Memory: %dGB total, %dGB available",
+				m.config.MemoryInfo.TotalGB, m.config.MemoryInfo.AvailableGB))
+		}
+
+		// Recommended profile
+		recommendedProfile, reason := m.config.GetResourceProfileRecommendation(false)
+		sysInfo = append(sysInfo, fmt.Sprintf("Recommended Profile: %s", recommendedProfile))
+		sysInfo = append(sysInfo, fmt.Sprintf("  → %s", reason))
+
+		for _, line := range sysInfo {
+			b.WriteString(detailStyle.Render(fmt.Sprintf("  %s", line)))
+			b.WriteString("\n")
+		}
+
+		b.WriteString("\n")
+		b.WriteString(infoStyle.Render("[CONFIG] Current Settings"))
 		b.WriteString("\n")
 
 		summary := []string{
@@ -755,7 +870,17 @@ func (m SettingsModel) View() string {
 			fmt.Sprintf("Database: %s@%s:%d", m.config.User, m.config.Host, m.config.Port),
 			fmt.Sprintf("Backup Dir: %s", m.config.BackupDir),
 			fmt.Sprintf("Compression: Level %d", m.config.CompressionLevel),
-			fmt.Sprintf("Jobs: %d parallel, %d dump", m.config.Jobs, m.config.DumpJobs),
+			fmt.Sprintf("Profile: %s | Cluster: %d parallel | Jobs: %d", 
+				m.config.ResourceProfile, m.config.ClusterParallelism, m.config.Jobs),
+		}
+
+		// Show profile warnings if applicable
+		profile := m.config.GetCurrentProfile()
+		if profile != nil {
+			isValid, warnings := cpu.ValidateProfileForSystem(profile, m.config.CPUInfo, m.config.MemoryInfo)
+			if !isValid && len(warnings) > 0 {
+				summary = append(summary, fmt.Sprintf("⚠️  Warning: %s", warnings[0]))
+			}
 		}
 
 		if m.config.CloudEnabled {
@@ -782,9 +907,9 @@ func (m SettingsModel) View() string {
 		} else {
 			// Show different help based on current selection
 			if m.cursor >= 0 && m.cursor < len(m.settings) && m.settings[m.cursor].Type == "path" {
-				footer = infoStyle.Render("\n[KEYS]  Up/Down navigate | Enter edit | Tab browse directories | 's' save | 'r' reset | 'q' menu")
+				footer = infoStyle.Render("\n[KEYS]  ↑↓ navigate | Enter edit | Tab dirs | 'l' large-db | 'c' conservative | 'p' recommend | 's' save | 'q' menu")
 			} else {
-				footer = infoStyle.Render("\n[KEYS]  Up/Down navigate | Enter edit | 's' save | 'r' reset | 'q' menu | Tab=dirs on path fields only")
+				footer = infoStyle.Render("\n[KEYS]  ↑↓ navigate | Enter edit | 'l' large-db profile | 'c' conservative | 'p' recommend | 's' save | 'r' reset | 'q' menu")
 			}
 		}
 	}

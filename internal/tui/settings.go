@@ -870,7 +870,7 @@ func (m SettingsModel) View() string {
 			fmt.Sprintf("Database: %s@%s:%d", m.config.User, m.config.Host, m.config.Port),
 			fmt.Sprintf("Backup Dir: %s", m.config.BackupDir),
 			fmt.Sprintf("Compression: Level %d", m.config.CompressionLevel),
-			fmt.Sprintf("Profile: %s | Cluster: %d parallel | Jobs: %d", 
+			fmt.Sprintf("Profile: %s | Cluster: %d parallel | Jobs: %d",
 				m.config.ResourceProfile, m.config.ClusterParallelism, m.config.Jobs),
 		}
 

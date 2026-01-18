@@ -662,7 +662,7 @@ func (m RestoreExecutionModel) View() string {
 
 			// Parse and display error in a clean, structured format
 			errStr := m.err.Error()
-			
+
 			// Extract key parts from the error message
 			errDisplay := formatRestoreError(errStr)
 			s.WriteString(errDisplay)
@@ -1030,7 +1030,7 @@ func formatRestoreError(errStr string) string {
 
 	// First, try to extract a clean error summary
 	errLines := strings.Split(errStr, "\n")
-	
+
 	// Find the main error message (first line or first ERROR:)
 	mainError := ""
 	hint := ""

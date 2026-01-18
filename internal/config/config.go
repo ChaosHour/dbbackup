@@ -200,11 +200,11 @@ func New() *Config {
 		SSLMode:      sslMode,
 		Insecure:     getEnvBool("INSECURE", false),
 
-		// Backup defaults
+		// Backup defaults - use recommended profile's settings for small VMs
 		BackupDir:        backupDir,
 		CompressionLevel: getEnvInt("COMPRESS_LEVEL", 6),
-		Jobs:             getEnvInt("JOBS", getDefaultJobs(cpuInfo)),
-		DumpJobs:         getEnvInt("DUMP_JOBS", getDefaultDumpJobs(cpuInfo)),
+		Jobs:             getEnvInt("JOBS", recommendedProfile.Jobs),
+		DumpJobs:         getEnvInt("DUMP_JOBS", recommendedProfile.DumpJobs),
 		MaxCores:         getEnvInt("MAX_CORES", getDefaultMaxCores(cpuInfo)),
 		AutoDetectCores:  getEnvBool("AUTO_DETECT_CORES", true),
 		CPUWorkloadType:  getEnvString("CPU_WORKLOAD_TYPE", "balanced"),
@@ -233,8 +233,8 @@ func New() *Config {
 		// Timeouts - default 24 hours (1440 min) to handle very large databases with large objects
 		ClusterTimeoutMinutes: getEnvInt("CLUSTER_TIMEOUT_MIN", 1440),
 
-		// Cluster parallelism (default: 2 concurrent operations for faster cluster backup/restore)
-		ClusterParallelism: getEnvInt("CLUSTER_PARALLELISM", 2),
+		// Cluster parallelism - use recommended profile's setting for small VMs
+		ClusterParallelism: getEnvInt("CLUSTER_PARALLELISM", recommendedProfile.ClusterParallelism),
 
 		// Working directory for large operations (default: system temp)
 		WorkDir: getEnvString("WORK_DIR", ""),

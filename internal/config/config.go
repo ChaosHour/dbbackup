@@ -445,6 +445,12 @@ func (c *Config) ApplyResourceProfile(profileName string) error {
 
 	// Apply profile settings
 	c.ResourceProfile = profile.Name
+	
+	// If LargeDBMode is enabled, apply its modifiers
+	if c.LargeDBMode {
+		profile = cpu.ApplyLargeDBMode(profile)
+	}
+	
 	c.ClusterParallelism = profile.ClusterParallelism
 	c.Jobs = profile.Jobs
 	c.DumpJobs = profile.DumpJobs

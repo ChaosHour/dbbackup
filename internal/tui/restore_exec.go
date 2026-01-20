@@ -261,11 +261,9 @@ type restoreProgressChannel chan restoreProgressMsg
 
 func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool) tea.Cmd {
 	return func() tea.Msg {
-		// NO TIMEOUT for restore operations - a restore takes as long as it takes
-		// Large databases with large objects can take many hours
-		// Only manual cancellation (Ctrl+C) should stop the restore
-		ctx, cancel := context.WithCancel(parentCtx)
-		defer cancel()
+		// Use the parent context directly - it's already cancellable from the model
+		// DO NOT create a new context here as it breaks Ctrl+C cancellation
+		ctx := parentCtx
 
 		start := time.Now()
 

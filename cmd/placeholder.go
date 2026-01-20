@@ -66,6 +66,15 @@ TUI Automation Flags (for testing and CI/CD):
 		cfg.TUIVerbose, _ = cmd.Flags().GetBool("verbose-tui")
 		cfg.TUILogFile, _ = cmd.Flags().GetString("tui-log-file")
 
+		// Set conservative profile as default for TUI mode (safer for interactive users)
+		if cfg.ResourceProfile == "" || cfg.ResourceProfile == "balanced" {
+			cfg.ResourceProfile = "conservative"
+			cfg.LargeDBMode = true
+			if cfg.Debug {
+				log.Info("TUI mode: using conservative profile by default")
+			}
+		}
+
 		// Check authentication before starting TUI
 		if cfg.IsPostgreSQL() {
 			if mismatch, msg := auth.CheckAuthenticationMismatch(cfg); mismatch {

@@ -71,7 +71,12 @@ SQL-Befehle:
 
 VARIANTE C - Falls keine Config-Änderung möglich:
 -------------------------------------------
-• Restore mit --parallel=1 durchführen (reduziert Memory-Druck)
+• Restore mit --profile=conservative durchführen (reduziert Memory-Druck)
+  dbbackup restore cluster backup.tar.gz --profile=conservative --confirm
+
+• Oder TUI-Modus nutzen (verwendet automatisch conservative profile):
+  dbbackup interactive
+
 • Monitoring während Restore-Fenster deaktivieren
 
 ═══════════════════════════════════════════════════════════

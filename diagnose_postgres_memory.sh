@@ -114,14 +114,14 @@ if command -v psql &> /dev/null; then
         echo "Key Memory Settings:"
         echo "────────────────────────────────────────────────────────────"
         
-        # Get all relevant settings
-        SHARED_BUFFERS=$($PSQL_PREFIX psql -t -A -c "SHOW shared_buffers;" 2>/dev/null || echo "unknown")
-        WORK_MEM=$($PSQL_PREFIX psql -t -A -c "SHOW work_mem;" 2>/dev/null || echo "unknown")
-        MAINT_WORK_MEM=$($PSQL_PREFIX psql -t -A -c "SHOW maintenance_work_mem;" 2>/dev/null || echo "unknown")
-        EFFECTIVE_CACHE=$($PSQL_PREFIX psql -t -A -c "SHOW effective_cache_size;" 2>/dev/null || echo "unknown")
-        MAX_CONNECTIONS=$($PSQL_PREFIX psql -t -A -c "SHOW max_connections;" 2>/dev/null || echo "unknown")
-        MAX_LOCKS=$($PSQL_PREFIX psql -t -A -c "SHOW max_locks_per_transaction;" 2>/dev/null || echo "unknown")
-        MAX_PREPARED=$($PSQL_PREFIX psql -t -A -c "SHOW max_prepared_transactions;" 2>/dev/null || echo "unknown")
+        # Get all relevant settings (strip timing output)
+        SHARED_BUFFERS=$($PSQL_PREFIX psql -t -A -c "SHOW shared_buffers;" 2>/dev/null | head -1 || echo "unknown")
+        WORK_MEM=$($PSQL_PREFIX psql -t -A -c "SHOW work_mem;" 2>/dev/null | head -1 || echo "unknown")
+        MAINT_WORK_MEM=$($PSQL_PREFIX psql -t -A -c "SHOW maintenance_work_mem;" 2>/dev/null | head -1 || echo "unknown")
+        EFFECTIVE_CACHE=$($PSQL_PREFIX psql -t -A -c "SHOW effective_cache_size;" 2>/dev/null | head -1 || echo "unknown")
+        MAX_CONNECTIONS=$($PSQL_PREFIX psql -t -A -c "SHOW max_connections;" 2>/dev/null | head -1 || echo "unknown")
+        MAX_LOCKS=$($PSQL_PREFIX psql -t -A -c "SHOW max_locks_per_transaction;" 2>/dev/null | head -1 || echo "unknown")
+        MAX_PREPARED=$($PSQL_PREFIX psql -t -A -c "SHOW max_prepared_transactions;" 2>/dev/null | head -1 || echo "unknown")
         
         echo "shared_buffers:               $SHARED_BUFFERS"
         echo "work_mem:                     $WORK_MEM"
@@ -134,12 +134,15 @@ if command -v psql &> /dev/null; then
         
         # Calculate lock capacity
         if [ "$MAX_LOCKS" != "unknown" ] && [ "$MAX_CONNECTIONS" != "unknown" ] && [ "$MAX_PREPARED" != "unknown" ]; then
-            LOCK_CAPACITY=$((MAX_LOCKS * (MAX_CONNECTIONS + MAX_PREPARED)))
-            echo "Total Lock Capacity: $LOCK_CAPACITY locks"
+            # Ensure values are numeric
+            if [[ "$MAX_LOCKS" =~ ^[0-9]+$ ]] && [[ "$MAX_CONNECTIONS" =~ ^[0-9]+$ ]] && [[ "$MAX_PREPARED" =~ ^[0-9]+$ ]]; then
+                LOCK_CAPACITY=$((MAX_LOCKS * (MAX_CONNECTIONS + MAX_PREPARED)))
+                echo "Total Lock Capacity: $LOCK_CAPACITY locks"
             
-            if [ "$MAX_LOCKS" -lt 1000 ]; then
-                echo -e "${RED}⚠️  WARNING: max_locks_per_transaction is too low for large restores${NC}"
-                echo -e "${YELLOW}   Recommended: 4096 or higher${NC}"
+                if [ "$MAX_LOCKS" -lt 1000 ]; then
+                    echo -e "${RED}⚠️  WARNING: max_locks_per_transaction is too low for large restores${NC}"
+                    echo -e "${YELLOW}   Recommended: 4096 or higher${NC}"
+                fi
             fi
         fi
         echo
@@ -156,7 +159,7 @@ echo
 
 if [ "$PSQL_PREFIX" != "NONE" ] && command -v psql &> /dev/null; then
     # Active connections
-    ACTIVE_CONNS=$($PSQL_PREFIX psql -t -A -c "SELECT count(*) FROM pg_stat_activity;" 2>/dev/null || echo "0")
+    ACTIVE_CONNS=$($PSQL_PREFIX psql -t -A -c "SELECT count(*) FROM pg_stat_activity;" 2>/dev/null | head -1 || echo "0")
     echo "Active Connections: $ACTIVE_CONNS / $MAX_CONNECTIONS"
     echo
     
@@ -174,10 +177,10 @@ if [ "$PSQL_PREFIX" != "NONE" ] && command -v psql &> /dev/null; then
     echo
     
     # Total locks
-    TOTAL_LOCKS=$($PSQL_PREFIX psql -t -A -c "SELECT COUNT(*) FROM pg_locks;" 2>/dev/null || echo "0")
+    TOTAL_LOCKS=$($PSQL_PREFIX psql -t -A -c "SELECT COUNT(*) FROM pg_locks;" 2>/dev/null | head -1 || echo "0")
     echo "Total Active Locks: $TOTAL_LOCKS"
     
-    if [ "$LOCK_CAPACITY" != "" ] && [ "$TOTAL_LOCKS" -gt 0 ]; then
+    if [ ! -z "$LOCK_CAPACITY" ] && [ ! -z "$TOTAL_LOCKS" ] && [[ "$TOTAL_LOCKS" =~ ^[0-9]+$ ]] && [ "$TOTAL_LOCKS" -gt 0 ] 2>/dev/null; then
         LOCK_PERCENT=$((TOTAL_LOCKS * 100 / LOCK_CAPACITY))
         echo "Lock Usage: ${LOCK_PERCENT}%"
         
@@ -249,8 +252,8 @@ echo
 
 # Check for PostgreSQL temp files
 if [ "$PSQL_PREFIX" != "NONE" ] && command -v psql &> /dev/null; then
-    TEMP_FILES=$($PSQL_PREFIX psql -t -A -c "SELECT count(*) FROM pg_stat_database WHERE temp_files > 0;" 2>/dev/null || echo "0")
-    if [ "$TEMP_FILES" -gt 0 ]; then
+    TEMP_FILES=$($PSQL_PREFIX psql -t -A -c "SELECT count(*) FROM pg_stat_database WHERE temp_files > 0;" 2>/dev/null | head -1 || echo "0")
+    if [ ! -z "$TEMP_FILES" ] && [ "$TEMP_FILES" -gt 0 ] 2>/dev/null; then
         echo -e "${YELLOW}⚠️  Databases are using temporary files (work_mem may be too low)${NC}"
         $PSQL_PREFIX psql -c "SELECT datname, temp_files, pg_size_pretty(temp_bytes) as temp_size FROM pg_stat_database WHERE temp_files > 0;" 2>/dev/null
         echo
@@ -325,8 +328,8 @@ if [ ! -z "$MEM_PERCENT" ]; then
 fi
 
 # Lock recommendations
-if [ "$MAX_LOCKS" != "unknown" ] && [ "$MAX_LOCKS" != "" ]; then
-    if [ "$MAX_LOCKS" -lt 1000 ]; then
+if [ "$MAX_LOCKS" != "unknown" ] && [ ! -z "$MAX_LOCKS" ] && [[ "$MAX_LOCKS" =~ ^[0-9]+$ ]]; then
+    if [ "$MAX_LOCKS" -lt 1000 ] 2>/dev/null; then
         echo "2. ⚠️  Lock Configuration:"
         echo "   • max_locks_per_transaction is too low: $MAX_LOCKS"
         echo "   • Run: ./fix_postgres_locks.sh"

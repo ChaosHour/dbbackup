@@ -56,7 +56,7 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.42.35/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.42.74/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
@@ -239,6 +239,14 @@ When restoring large databases on VMs with limited resources, use the resource p
 
 **Quick shortcuts:** Press `l` to toggle Large DB Mode, `c` for conservative, `p` to show recommendation.
 
+**Troubleshooting Tools:**
+
+For PostgreSQL restore issues ("out of shared memory" errors), diagnostic scripts are available:
+- **diagnose_postgres_memory.sh** - Comprehensive system memory, PostgreSQL configuration, and resource analysis
+- **fix_postgres_locks.sh** - Automatically increase max_locks_per_transaction to 4096
+
+See [RESTORE_PROFILES.md](RESTORE_PROFILES.md) for detailed troubleshooting guidance.
+
 **Database Status:**
 ```
 Database Status & Health Check
@@ -277,6 +285,9 @@ dbbackup restore single backup.dump --target myapp_db --create --confirm
 
 # Restore cluster
 dbbackup restore cluster cluster_backup.tar.gz --confirm
+
+# Restore with resource profile (for resource-constrained servers)
+dbbackup restore cluster backup.tar.gz --profile=conservative --confirm
 
 # Restore with debug logging (saves detailed error report on failure)
 dbbackup restore cluster backup.tar.gz --save-debug-log /tmp/restore-debug.json --confirm
@@ -333,6 +344,7 @@ dbbackup backup single mydb --dry-run
 | `--backup-dir` | Backup directory | ~/db_backups |
 | `--compression` | Compression level (0-9) | 6 |
 | `--jobs` | Parallel jobs | 8 |
+| `--profile` | Resource profile (conservative/balanced/aggressive) | balanced |
 | `--cloud` | Cloud storage URI | - |
 | `--encrypt` | Enable encryption | false |
 | `--dry-run, -n` | Run preflight checks only | false |
@@ -888,6 +900,7 @@ Workload types:
 
 ## Documentation
 
+- [RESTORE_PROFILES.md](RESTORE_PROFILES.md) - Restore resource profiles & troubleshooting
 - [SYSTEMD.md](SYSTEMD.md) - Systemd installation & scheduling
 - [DOCKER.md](DOCKER.md) - Docker deployment
 - [CLOUD.md](CLOUD.md) - Cloud storage configuration

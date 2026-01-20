@@ -5,6 +5,85 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.74] - 2026-01-20 "Resource Profile System + Critical Ctrl+C Fix"
+
+### Critical Bug Fix
+- **Fixed Ctrl+C not working in TUI backup/restore** - Context cancellation was broken in TUI mode
+  - `executeBackupWithTUIProgress()` and `executeRestoreWithTUIProgress()` created new contexts with `WithCancel(parentCtx)`
+  - When user pressed Ctrl+C, `model.cancel()` was called on parent context but execution had separate context
+  - Fixed by using parent context directly instead of creating new one
+  - Ctrl+C/ESC/q now properly propagate cancellation to running operations
+  - Users can now interrupt long-running TUI operations
+
+### Added - Resource Profile System
+- **`--profile` flag for restore operations** with three presets:
+  - **Conservative** (`--profile=conservative`): Single-threaded (`--parallel=1`), minimal memory usage
+    - Best for resource-constrained servers, shared hosting, or when "out of shared memory" errors occur
+    - Automatically enables `LargeDBMode` for better resource management
+  - **Balanced** (default): Auto-detect resources, moderate parallelism
+    - Good default for most scenarios
+  - **Aggressive** (`--profile=aggressive`): Maximum parallelism, all available resources
+    - Best for dedicated database servers with ample resources
+  - **Potato** (`--profile=potato`): Easter egg 🥔, same as conservative
+- **Profile system applies to both CLI and TUI**:
+  - CLI: `dbbackup restore cluster backup.tar.gz --profile=conservative --confirm`
+  - TUI: Automatically uses conservative profile for safer interactive operation
+- **User overrides supported**: `--jobs` and `--parallel-dbs` flags override profile settings
+- **New `internal/config/profile.go`** module:
+  - `GetRestoreProfile(name)` - Returns profile settings
+  - `ApplyProfile(cfg, profile, jobs, parallelDBs)` - Applies profile with overrides
+  - `GetProfileDescription(name)` - Human-readable descriptions
+  - `ListProfiles()` - All available profiles
+
+### Added - PostgreSQL Diagnostic Tools
+- **`diagnose_postgres_memory.sh`** - Comprehensive memory and resource analysis script:
+  - System memory overview with usage percentages and warnings
+  - Top 15 memory consuming processes
+  - PostgreSQL-specific memory configuration analysis
+  - Current locks and connections monitoring
+  - Shared memory segments inspection
+  - Disk space and swap usage checks
+  - Identifies other resource consumers (Nessus, Elastic Agent, monitoring tools)
+  - Smart recommendations based on findings
+  - Detects temp file usage (indicator of low work_mem)
+- **`fix_postgres_locks.sh`** - PostgreSQL lock configuration helper:
+  - Automatically increases `max_locks_per_transaction` to 4096
+  - Shows current configuration before applying changes
+  - Calculates total lock capacity
+  - Provides restart commands for different PostgreSQL setups
+  - References diagnostic tool for comprehensive analysis
+
+### Added - Documentation
+- **`RESTORE_PROFILES.md`** - Complete profile guide with real-world scenarios:
+  - Profile comparison table
+  - When to use each profile
+  - Override examples
+  - Troubleshooting guide for "out of shared memory" errors
+  - Integration with diagnostic tools
+- **`email_infra_team.txt`** - Admin communication template (German):
+  - Analysis results template
+  - Problem identification section
+  - Three solution variants (temporary, permanent, workaround)
+  - Includes diagnostic tool references
+
+### Changed - TUI Improvements
+- **TUI mode defaults to conservative profile** for safer operation
+  - Interactive users benefit from stability over speed
+  - Prevents resource exhaustion on shared systems
+  - Can be overridden with environment variable: `export RESOURCE_PROFILE=balanced`
+
+### Fixed
+- Context cancellation in TUI backup operations (critical)
+- Context cancellation in TUI restore operations (critical)
+- Better error diagnostics for "out of shared memory" errors
+- Improved resource detection and management
+
+### Technical Details
+- Profile system respects explicit user flags (`--jobs`, `--parallel-dbs`)
+- Conservative profile sets `cfg.LargeDBMode = true` automatically
+- TUI profile selection logged when `Debug` mode enabled
+- All profiles support both single and cluster restore operations
+
 ## [3.42.50] - 2026-01-16 "Ctrl+C Signal Handling Fix"
 
 ### Fixed - Proper Ctrl+C/SIGINT Handling in TUI

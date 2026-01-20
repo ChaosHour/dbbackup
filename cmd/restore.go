@@ -13,6 +13,7 @@ import (
 
 	"dbbackup/internal/backup"
 	"dbbackup/internal/cloud"
+	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/pitr"
 	"dbbackup/internal/restore"
@@ -28,7 +29,8 @@ var (
 	restoreClean        bool
 	restoreCreate       bool
 	restoreJobs         int
-	restoreParallelDBs  int // Number of parallel database restores
+	restoreParallelDBs  int    // Number of parallel database restores
+	restoreProfile      string // Resource profile: conservative, balanced, aggressive
 	restoreTarget       string
 	restoreVerbose      bool
 	restoreNoProgress   bool
@@ -112,6 +114,9 @@ Examples:
   # Restore to different database
   dbbackup restore single mydb.dump.gz --target mydb_test --confirm
 
+  # Memory-constrained server (single-threaded, minimal memory)
+  dbbackup restore single mydb.dump.gz --profile=conservative --confirm
+
   # Clean target database before restore
   dbbackup restore single mydb.sql.gz --clean --confirm
 
@@ -143,6 +148,12 @@ Examples:
 
   # Restore full cluster
   dbbackup restore cluster cluster_backup_20240101_120000.tar.gz --confirm
+
+	# Memory-constrained server (conservative profile)
+	dbbackup restore cluster cluster_backup.tar.gz --profile=conservative --confirm
+
+	# Maximum performance (dedicated server)
+	dbbackup restore cluster cluster_backup.tar.gz --profile=aggressive --confirm
 
 	# Use parallel decompression
 	dbbackup restore cluster cluster_backup.tar.gz --jobs 4 --confirm
@@ -277,6 +288,7 @@ func init() {
 	restoreSingleCmd.Flags().BoolVar(&restoreClean, "clean", false, "Drop and recreate target database")
 	restoreSingleCmd.Flags().BoolVar(&restoreCreate, "create", false, "Create target database if it doesn't exist")
 	restoreSingleCmd.Flags().StringVar(&restoreTarget, "target", "", "Target database name (defaults to original)")
+	restoreSingleCmd.Flags().StringVar(&restoreProfile, "profile", "balanced", "Resource profile: conservative (--parallel=1, low memory), balanced, aggressive (max performance)")
 	restoreSingleCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
@@ -289,8 +301,9 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreDryRun, "dry-run", false, "Show what would be done without executing")
 	restoreClusterCmd.Flags().BoolVar(&restoreForce, "force", false, "Skip safety checks and confirmations")
 	restoreClusterCmd.Flags().BoolVar(&restoreCleanCluster, "clean-cluster", false, "Drop all existing user databases before restore (disaster recovery)")
-	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto)")
-	restoreClusterCmd.Flags().IntVar(&restoreParallelDBs, "parallel-dbs", 0, "Number of databases to restore in parallel (0 = use config default, 1 = sequential, -1 = auto-detect based on CPU/RAM)")
+	restoreClusterCmd.Flags().StringVar(&restoreProfile, "profile", "balanced", "Resource profile: conservative (--parallel=1, low memory), balanced, aggressive (max performance)")
+	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto, overrides profile)")
+	restoreClusterCmd.Flags().IntVar(&restoreParallelDBs, "parallel-dbs", 0, "Number of databases to restore in parallel (0 = use profile, 1 = sequential, -1 = auto-detect, overrides profile)")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
@@ -435,6 +448,16 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 // runRestoreSingle restores a single database
 func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	archivePath := args[0]
+
+	// Apply resource profile
+	if err := config.ApplyProfile(cfg, restoreProfile, restoreJobs, 0); err != nil {
+		log.Warn("Invalid profile, using balanced", "error", err)
+		restoreProfile = "balanced"
+		_ = config.ApplyProfile(cfg, restoreProfile, restoreJobs, 0)
+	}
+	if cfg.Debug && restoreProfile != "balanced" {
+		log.Info("Using restore profile", "profile", restoreProfile)
+	}
 
 	// Check if this is a cloud URI
 	var cleanupFunc func() error
@@ -642,6 +665,16 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 // runRestoreCluster restores a full cluster
 func runRestoreCluster(cmd *cobra.Command, args []string) error {
 	archivePath := args[0]
+
+	// Apply resource profile
+	if err := config.ApplyProfile(cfg, restoreProfile, restoreJobs, restoreParallelDBs); err != nil {
+		log.Warn("Invalid profile, using balanced", "error", err)
+		restoreProfile = "balanced"
+		_ = config.ApplyProfile(cfg, restoreProfile, restoreJobs, restoreParallelDBs)
+	}
+	if cfg.Debug || restoreProfile != "balanced" {
+		log.Info("Using restore profile", "profile", restoreProfile, "parallel_dbs", cfg.ClusterParallelism, "jobs", cfg.Jobs)
+	}
 
 	// Convert to absolute path
 	if !filepath.IsAbs(archivePath) {

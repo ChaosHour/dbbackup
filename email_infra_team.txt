@@ -1,0 +1,107 @@
+Betreff: PostgreSQL Restore Fehler - "out of shared memory" auf RST Server
+
+Hallo Infra-Team,
+
+wir haben auf dem RST PostgreSQL Server (PostgreSQL 17.4) wiederholt Restore-Fehler mit "out of shared memory" Meldungen.
+
+═══════════════════════════════════════════════════════════
+ANALYSE (Stand: 20.01.2026)
+═══════════════════════════════════════════════════════════
+
+Server-Specs:
+• RAM: 31 GB (aktuell 19.6 GB belegt = 63.9%)
+• PostgreSQL nutzt nur ~118 MB für eigene Prozesse
+• Swap: 4 GB (6.4% genutzt)
+
+Lock-Konfiguration:
+• max_locks_per_transaction: 4096 ✓ (bereits korrekt)
+• max_connections: 100
+• Lock Capacity: 409.600 ✓ (ausreichend)
+
+═══════════════════════════════════════════════════════════
+PROBLEM-IDENTIFIKATION
+═══════════════════════════════════════════════════════════
+
+1. MEMORY CONSUMER (nicht-PostgreSQL):
+   • Nessus Agent:      ~173 MB
+   • Elastic Agent:     ~300 MB (mehrere Komponenten)
+   • Icinga:            ~24 MB
+   • Weitere Monitoring: ~100+ MB
+
+2. WORK_MEM ZU NIEDRIG:
+   • Aktuell: 64 MB
+   • 4 Datenbanken nutzen Temp-Files (Indikator für zu wenig work_mem):
+     - prodkc:    201 MB temp files
+     - keycloak:   45 MB temp files
+     - d7030:       6 MB temp files
+     - pgbench_db:  2 MB temp files
+
+═══════════════════════════════════════════════════════════
+EMPFOHLENE MASSNAHMEN
+═══════════════════════════════════════════════════════════
+
+VARIANTE A - Temporär für große Restores:
+-------------------------------------------
+1. Monitoring-Agents stoppen (frei: ~500 MB):
+   sudo systemctl stop nessus-agent
+   sudo systemctl stop elastic-agent
+
+2. work_mem erhöhen:
+   sudo -u postgres psql -c "ALTER SYSTEM SET work_mem = '256MB';"
+   sudo systemctl restart postgresql
+
+3. Restore durchführen
+
+4. Agents wieder starten:
+   sudo systemctl start nessus-agent
+   sudo systemctl start elastic-agent
+
+
+VARIANTE B - Permanente Lösung:
+-------------------------------------------
+1. work_mem auf 256 MB erhöhen (statt 64 MB)
+2. maintenance_work_mem optional auf 4 GB erhöhen (statt 2 GB)
+3. Falls möglich: Monitoring auf dedizierten Server verschieben
+
+SQL-Befehle:
+   ALTER SYSTEM SET work_mem = '256MB';
+   ALTER SYSTEM SET maintenance_work_mem = '4GB';
+   -- Anschließend PostgreSQL restart
+
+
+VARIANTE C - Falls keine Config-Änderung möglich:
+-------------------------------------------
+• Restore mit --parallel=1 durchführen (reduziert Memory-Druck)
+• Monitoring während Restore-Fenster deaktivieren
+
+═══════════════════════════════════════════════════════════
+DETAIL-REPORT
+═══════════════════════════════════════════════════════════
+
+Vollständiger Diagnose-Report liegt bei bzw. kann jederzeit mit
+diesem Script generiert werden:
+
+  /path/to/diagnose_postgres_memory.sh
+
+Das Script analysiert:
+• System Memory Usage
+• PostgreSQL Konfiguration
+• Lock Usage
+• Temp File Usage
+• Blocking Queries
+• Shared Memory Segments
+
+═══════════════════════════════════════════════════════════
+
+Bevorzugt wäre Variante B (permanente work_mem Erhöhung), damit künftige
+große Restores ohne manuelle Eingriffe durchlaufen.
+
+Bitte um Rückmeldung, welche Variante ihr umsetzt bzw. ob ihr weitere
+Infos benötigt.
+
+Danke & Grüße
+[Dein Name]
+
+---
+Anhang: diagnose_postgres_memory.sh (falls nicht vorhanden)
+Error Log: /a01/dba/tmp/dbbackup-restore-debug-20260119-221730.json

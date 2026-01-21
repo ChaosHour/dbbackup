@@ -214,13 +214,26 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				if m.mode == "restore-single" && selected.Format.IsClusterBackup() {
-					m.message = errorStyle.Render("[FAIL] Please select a single database backup")
-					return m, nil
+					// Cluster backup selected in single restore mode - offer to select individual database
+					clusterSelector := NewClusterDatabaseSelector(m.config, m.logger, m, m.ctx, selected, "single", false)
+					return clusterSelector, clusterSelector.Init()
 				}
 
 				// Open restore preview
 				preview := NewRestorePreview(m.config, m.logger, m.parent, m.ctx, selected, m.mode)
 				return preview, preview.Init()
+			}
+		
+		case "s":
+			// Select single database from cluster (shortcut key)
+			if len(m.archives) > 0 && m.cursor < len(m.archives) {
+				selected := m.archives[m.cursor]
+				if selected.Format.IsClusterBackup() {
+					clusterSelector := NewClusterDatabaseSelector(m.config, m.logger, m, m.ctx, selected, "single", false)
+					return clusterSelector, clusterSelector.Init()
+				} else {
+					m.message = infoStyle.Render("💡 [s] only works with cluster backups")
+				}
 			}
 
 		case "i":
@@ -351,7 +364,7 @@ func (m ArchiveBrowserModel) View() string {
 	s.WriteString(infoStyle.Render(fmt.Sprintf("Total: %d archive(s) | Selected: %d/%d",
 		len(m.archives), m.cursor+1, len(m.archives))))
 	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("[KEY]  ↑/↓: Navigate | Enter: Select | d: Diagnose | f: Filter | i: Info | Esc: Back"))
+	s.WriteString(infoStyle.Render("[KEY]  ↑/↓: Navigate | Enter: Select | s: Single DB from Cluster | d: Diagnose | f: Filter | i: Info | Esc: Back"))
 
 	return s.String()
 }

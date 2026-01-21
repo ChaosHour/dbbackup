@@ -430,6 +430,9 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		var restoreErr error
 		if restoreType == "restore-cluster" {
 			restoreErr = engine.RestoreCluster(ctx, archive.Path)
+		} else if restoreType == "restore-cluster-single" {
+			// Restore single database from cluster backup
+			restoreErr = engine.RestoreSingleFromCluster(ctx, archive.Path, targetDB, targetDB, cleanFirst, createIfMissing)
 		} else {
 			restoreErr = engine.RestoreSingle(ctx, archive.Path, targetDB, cleanFirst, createIfMissing)
 		}
@@ -445,6 +448,8 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		result := fmt.Sprintf("Successfully restored from %s", archive.Name)
 		if restoreType == "restore-single" {
 			result = fmt.Sprintf("Successfully restored '%s' from %s", targetDB, archive.Name)
+		} else if restoreType == "restore-cluster-single" {
+			result = fmt.Sprintf("Successfully restored '%s' from cluster %s", targetDB, archive.Name)
 		} else if restoreType == "restore-cluster" && cleanClusterFirst {
 			result = fmt.Sprintf("Successfully restored cluster from %s (cleaned %d existing database(s) first)", archive.Name, len(existingDBs))
 		}
@@ -658,13 +663,15 @@ func (m RestoreExecutionModel) View() string {
 	title := "[EXEC] Restoring Database"
 	if m.restoreType == "restore-cluster" {
 		title = "[EXEC] Restoring Cluster"
+	} else if m.restoreType == "restore-cluster-single" {
+		title = "[EXEC] Restoring Single Database from Cluster"
 	}
 	s.WriteString(titleStyle.Render(title))
 	s.WriteString("\n\n")
 
 	// Archive info
 	s.WriteString(fmt.Sprintf("Archive: %s\n", m.archive.Name))
-	if m.restoreType == "restore-single" {
+	if m.restoreType == "restore-single" || m.restoreType == "restore-cluster-single" {
 		s.WriteString(fmt.Sprintf("Target: %s\n", m.targetDB))
 	}
 	s.WriteString("\n")

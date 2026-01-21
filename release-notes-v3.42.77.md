@@ -47,6 +47,22 @@ dbbackup restore cluster backup.tar.gz --databases "app1,app2,app3" --output-dir
 - Compatible with existing cluster restore workflow
 - Automatic format detection for extracted dumps
 
+### 🖥️ TUI Support (Interactive Mode)
+
+**New in this release**: Press **`s`** key when viewing a cluster backup to select individual databases!
+
+- Navigate cluster backups in TUI and press `s` for database selection
+- Interactive database picker with size information
+- Visual selection confirmation before restore
+- Seamless integration with existing TUI workflows
+
+**TUI Workflow:**
+1. Launch TUI: `dbbackup` (no arguments)
+2. Navigate to "Restore" → "Single Database"
+3. Select cluster backup archive
+4. Press `s` to show database list
+5. Select database and confirm restore
+
 ## 📦 Installation
 
 Download the binary for your platform below and make it executable:

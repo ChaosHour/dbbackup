@@ -190,7 +190,7 @@ func (s *Safety) validateSQLScriptGz(path string) error {
 	return fmt.Errorf("does not appear to contain SQL content")
 }
 
-// validateTarGz validates tar.gz archive
+// validateTarGz validates tar.gz archive with fast stream-based checks
 func (s *Safety) validateTarGz(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
@@ -205,11 +205,40 @@ func (s *Safety) validateTarGz(path string) error {
 		return fmt.Errorf("cannot read file header")
 	}
 
-	if buffer[0] == 0x1f && buffer[1] == 0x8b {
-		return nil // Valid gzip header
+	if buffer[0] != 0x1f || buffer[1] != 0x8b {
+		return fmt.Errorf("not a valid gzip file")
 	}
 
-	return fmt.Errorf("not a valid gzip file")
+	// Quick tar structure validation (stream-based, no full extraction)
+	// Reset to start and decompress first few KB to check tar header
+	file.Seek(0, 0)
+	gzReader, err := gzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("gzip corruption detected: %w", err)
+	}
+	defer gzReader.Close()
+
+	// Read first tar header to verify it's a valid tar archive
+	headerBuf := make([]byte, 512) // Tar header is 512 bytes
+	n, err = gzReader.Read(headerBuf)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to read tar header: %w", err)
+	}
+	if n < 512 {
+		return fmt.Errorf("archive too small or corrupted")
+	}
+
+	// Check tar magic ("ustar\0" at offset 257)
+	if len(headerBuf) >= 263 {
+		magic := string(headerBuf[257:262])
+		if magic != "ustar" {
+			s.log.Debug("No tar magic found, but may still be valid tar", "magic", magic)
+			// Don't fail - some tar implementations don't use magic
+		}
+	}
+
+	s.log.Debug("Cluster archive validation passed (stream-based check)")
+	return nil // Valid gzip + tar structure
 }
 
 // containsSQLKeywords checks if content contains SQL keywords
@@ -226,6 +255,42 @@ func containsSQLKeywords(content string) bool {
 	}
 
 	return false
+}
+
+// ValidateAndExtractCluster performs validation and pre-extraction for cluster restore
+// Returns path to extracted directory (in temp location) to avoid double-extraction
+// Caller must clean up the returned directory with os.RemoveAll() when done
+func (s *Safety) ValidateAndExtractCluster(ctx context.Context, archivePath string) (extractedDir string, err error) {
+	// First validate archive integrity (fast stream check)
+	if err := s.ValidateArchive(archivePath); err != nil {
+		return "", fmt.Errorf("archive validation failed: %w", err)
+	}
+
+	// Create temp directory for extraction in configured WorkDir
+	workDir := s.cfg.GetEffectiveWorkDir()
+	if workDir == "" {
+		workDir = s.cfg.BackupDir
+	}
+
+	tempDir, err := os.MkdirTemp(workDir, "dbbackup-cluster-extract-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp extraction directory in %s: %w", workDir, err)
+	}
+
+	// Extract using tar command (fastest method)
+	s.log.Info("Pre-extracting cluster archive for validation and restore",
+		"archive", archivePath,
+		"dest", tempDir)
+
+	cmd := exec.CommandContext(ctx, "tar", "-xzf", archivePath, "-C", tempDir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		os.RemoveAll(tempDir) // Cleanup on failure
+		return "", fmt.Errorf("extraction failed: %w: %s", err, string(output))
+	}
+
+	s.log.Info("Cluster archive extracted successfully", "location", tempDir)
+	return tempDir, nil
 }
 
 // CheckDiskSpace verifies sufficient disk space for restore

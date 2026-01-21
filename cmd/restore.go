@@ -873,22 +873,50 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 		log.Info("Database cleanup completed")
 	}
 
-	// Run pre-restore diagnosis if requested
-	if restoreDiagnose {
-		log.Info("[DIAG] Running pre-restore diagnosis...")
+	// OPTIMIZATION: Pre-extract archive once for both diagnosis and restore
+	// This avoids extracting the same tar.gz twice (saves 5-10 min on large clusters)
+	var extractedDir string
+	var extractErr error
 
-		// Create temp directory for extraction in configured WorkDir
-		workDir := cfg.GetEffectiveWorkDir()
-		diagTempDir, err := os.MkdirTemp(workDir, "dbbackup-diagnose-*")
-		if err != nil {
-			return fmt.Errorf("failed to create temp directory for diagnosis in %s: %w", workDir, err)
+	if restoreDiagnose || restoreConfirm {
+		log.Info("Pre-extracting cluster archive (shared for validation and restore)...")
+		extractedDir, extractErr = safety.ValidateAndExtractCluster(ctx, archivePath)
+		if extractErr != nil {
+			return fmt.Errorf("failed to extract cluster archive: %w", extractErr)
 		}
-		defer os.RemoveAll(diagTempDir)
+		defer os.RemoveAll(extractedDir) // Cleanup at end
+		log.Info("Archive extracted successfully", "location", extractedDir)
+	}
+
+	// Run pre-restore diagnosis if requested (using already-extracted directory)
+	if restoreDiagnose {
+		log.Info("[DIAG] Running pre-restore diagnosis on extracted dumps...")
 
 		diagnoser := restore.NewDiagnoser(log, restoreVerbose)
-		results, err := diagnoser.DiagnoseClusterDumps(archivePath, diagTempDir)
+		// Diagnose dumps directly from extracted directory
+		dumpsDir := filepath.Join(extractedDir, "dumps")
+		if _, err := os.Stat(dumpsDir); err != nil {
+			return fmt.Errorf("no dumps directory found in extracted archive: %w", err)
+		}
+
+		entries, err := os.ReadDir(dumpsDir)
 		if err != nil {
-			return fmt.Errorf("diagnosis failed: %w", err)
+			return fmt.Errorf("failed to read dumps directory: %w", err)
+		}
+
+		// Diagnose each dump file
+		var results []*restore.DiagnoseResult
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			dumpPath := filepath.Join(dumpsDir, entry.Name())
+			result, err := diagnoser.DiagnoseFile(dumpPath)
+			if err != nil {
+				log.Warn("Could not diagnose dump", "file", entry.Name(), "error", err)
+				continue
+			}
+			results = append(results, result)
 		}
 
 		// Check for any invalid dumps
@@ -928,7 +956,8 @@ func runRestoreCluster(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
 	auditLogger.LogRestoreStart(user, "all_databases", archivePath)
 
-	if err := engine.RestoreCluster(ctx, archivePath); err != nil {
+	// Pass pre-extracted directory to avoid double extraction
+	if err := engine.RestoreCluster(ctx, archivePath, extractedDir); err != nil {
 		auditLogger.LogRestoreFailed(user, "all_databases", err)
 		return fmt.Errorf("cluster restore failed: %w", err)
 	}

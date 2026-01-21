@@ -821,7 +821,9 @@ func (e *Engine) previewRestore(archivePath, targetDB string, format ArchiveForm
 }
 
 // RestoreCluster restores a full cluster from a tar.gz archive
-func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
+// If preExtractedPath is non-empty, uses that directory instead of extracting archivePath
+// This avoids double extraction when ValidateAndExtractCluster was already called
+func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtractedPath ...string) error {
 	operation := e.log.StartOperation("Cluster Restore")
 
 	// Validate and sanitize archive path
@@ -852,22 +854,32 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 		return fmt.Errorf("not a cluster archive: %s (detected format: %s)", archivePath, format)
 	}
 
-	// Check disk space before starting restore
-	e.log.Info("Checking disk space for restore")
-	archiveInfo, err := os.Stat(archivePath)
-	if err == nil {
-		spaceCheck := checks.CheckDiskSpaceForRestore(e.cfg.BackupDir, archiveInfo.Size())
+	// Check if we have a pre-extracted directory (optimization to avoid double extraction)
+	// This check must happen BEFORE disk space checks to avoid false failures
+	usingPreExtracted := len(preExtractedPath) > 0 && preExtractedPath[0] != ""
 
-		if spaceCheck.Critical {
-			operation.Fail("Insufficient disk space")
-			return fmt.Errorf("insufficient disk space for restore: %.1f%% used - need at least 4x archive size", spaceCheck.UsedPercent)
-		}
+	// Check disk space before starting restore (skip if using pre-extracted directory)
+	var archiveInfo os.FileInfo
+	var err error
+	if !usingPreExtracted {
+		e.log.Info("Checking disk space for restore")
+		archiveInfo, err = os.Stat(archivePath)
+		if err == nil {
+			spaceCheck := checks.CheckDiskSpaceForRestore(e.cfg.BackupDir, archiveInfo.Size())
 
-		if spaceCheck.Warning {
-			e.log.Warn("Low disk space - restore may fail",
-				"available_gb", float64(spaceCheck.AvailableBytes)/(1024*1024*1024),
-				"used_percent", spaceCheck.UsedPercent)
+			if spaceCheck.Critical {
+				operation.Fail("Insufficient disk space")
+				return fmt.Errorf("insufficient disk space for restore: %.1f%% used - need at least 4x archive size", spaceCheck.UsedPercent)
+			}
+
+			if spaceCheck.Warning {
+				e.log.Warn("Low disk space - restore may fail",
+					"available_gb", float64(spaceCheck.AvailableBytes)/(1024*1024*1024),
+					"used_percent", spaceCheck.UsedPercent)
+			}
 		}
+	} else {
+		e.log.Info("Skipping disk space check (using pre-extracted directory)")
 	}
 
 	if e.dryRun {
@@ -881,46 +893,56 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string) error {
 	workDir := e.cfg.GetEffectiveWorkDir()
 	tempDir := filepath.Join(workDir, fmt.Sprintf(".restore_%d", time.Now().Unix()))
 
-	// Check disk space for extraction (need ~3x archive size: compressed + extracted + working space)
-	if archiveInfo != nil {
-		requiredBytes := uint64(archiveInfo.Size()) * 3
-		extractionCheck := checks.CheckDiskSpace(workDir)
-		if extractionCheck.AvailableBytes < requiredBytes {
-			operation.Fail("Insufficient disk space for extraction")
-			return fmt.Errorf("insufficient disk space for extraction in %s: need %.1f GB, have %.1f GB (archive size: %.1f GB × 3)",
-				workDir,
-				float64(requiredBytes)/(1024*1024*1024),
-				float64(extractionCheck.AvailableBytes)/(1024*1024*1024),
-				float64(archiveInfo.Size())/(1024*1024*1024))
+	// Handle pre-extracted directory or extract archive
+	if usingPreExtracted {
+		tempDir = preExtractedPath[0]
+		// Note: Caller handles cleanup of pre-extracted directory
+		e.log.Info("Using pre-extracted cluster directory",
+			"path", tempDir,
+			"optimization", "skipping duplicate extraction")
+	} else {
+		// Check disk space for extraction (need ~3x archive size: compressed + extracted + working space)
+		if archiveInfo != nil {
+			requiredBytes := uint64(archiveInfo.Size()) * 3
+			extractionCheck := checks.CheckDiskSpace(workDir)
+			if extractionCheck.AvailableBytes < requiredBytes {
+				operation.Fail("Insufficient disk space for extraction")
+				return fmt.Errorf("insufficient disk space for extraction in %s: need %.1f GB, have %.1f GB (archive size: %.1f GB × 3)",
+					workDir,
+					float64(requiredBytes)/(1024*1024*1024),
+					float64(extractionCheck.AvailableBytes)/(1024*1024*1024),
+					float64(archiveInfo.Size())/(1024*1024*1024))
+			}
+			e.log.Info("Disk space check for extraction passed",
+				"workdir", workDir,
+				"required_gb", float64(requiredBytes)/(1024*1024*1024),
+				"available_gb", float64(extractionCheck.AvailableBytes)/(1024*1024*1024))
 		}
-		e.log.Info("Disk space check for extraction passed",
-			"workdir", workDir,
-			"required_gb", float64(requiredBytes)/(1024*1024*1024),
-			"available_gb", float64(extractionCheck.AvailableBytes)/(1024*1024*1024))
-	}
 
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
-		operation.Fail("Failed to create temporary directory")
-		return fmt.Errorf("failed to create temp directory in %s: %w", workDir, err)
-	}
-	defer os.RemoveAll(tempDir)
+		// Need to extract archive ourselves
+		if err := os.MkdirAll(tempDir, 0755); err != nil {
+			operation.Fail("Failed to create temporary directory")
+			return fmt.Errorf("failed to create temp directory in %s: %w", workDir, err)
+		}
+		defer os.RemoveAll(tempDir)
 
-	// Extract archive
-	e.log.Info("Extracting cluster archive", "archive", archivePath, "tempDir", tempDir)
-	if err := e.extractArchive(ctx, archivePath, tempDir); err != nil {
-		operation.Fail("Archive extraction failed")
-		return fmt.Errorf("failed to extract archive: %w", err)
-	}
+		// Extract archive
+		e.log.Info("Extracting cluster archive", "archive", archivePath, "tempDir", tempDir)
+		if err := e.extractArchive(ctx, archivePath, tempDir); err != nil {
+			operation.Fail("Archive extraction failed")
+			return fmt.Errorf("failed to extract archive: %w", err)
+		}
 
-	// Check context validity after extraction (debugging context cancellation issues)
-	if ctx.Err() != nil {
-		e.log.Error("Context cancelled after extraction - this should not happen",
-			"context_error", ctx.Err(),
-			"extraction_completed", true)
-		operation.Fail("Context cancelled unexpectedly")
-		return fmt.Errorf("context cancelled after extraction completed: %w", ctx.Err())
+		// Check context validity after extraction (debugging context cancellation issues)
+		if ctx.Err() != nil {
+			e.log.Error("Context cancelled after extraction - this should not happen",
+				"context_error", ctx.Err(),
+				"extraction_completed", true)
+			operation.Fail("Context cancelled unexpectedly")
+			return fmt.Errorf("context cancelled after extraction completed: %w", ctx.Err())
+		}
+		e.log.Info("Extraction completed, context still valid")
 	}
-	e.log.Info("Extraction completed, context still valid")
 
 	// Check if user has superuser privileges (required for ownership restoration)
 	e.progress.Update("Checking privileges...")

@@ -41,10 +41,10 @@ var (
 	restoreSaveDebugLog string // Path to save debug log on failure
 
 	// Single database extraction from cluster flags
-	restoreDatabase   string // Single database to extract/restore from cluster
-	restoreDatabases  string // Comma-separated list of databases to extract
-	restoreOutputDir  string // Extract to directory (no restore)
-	restoreListDBs    bool   // List databases in cluster backup
+	restoreDatabase  string // Single database to extract/restore from cluster
+	restoreDatabases string // Comma-separated list of databases to extract
+	restoreOutputDir string // Extract to directory (no restore)
+	restoreListDBs   bool   // List databases in cluster backup
 
 	// Diagnose flags
 	diagnoseJSON     bool
@@ -746,7 +746,7 @@ func runListDatabases(archivePath string) error {
 		fmt.Printf("  - %-30s (%s)\n", db.Name, sizeStr)
 		totalSize += db.Size
 	}
-	
+
 	fmt.Printf("\nTotal: %s across %d database(s)\n", formatSize(totalSize), len(databases))
 	return nil
 }

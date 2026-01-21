@@ -57,7 +57,7 @@ func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.
 		// Look for files in dumps/ directory
 		if !header.FileInfo().IsDir() && strings.HasPrefix(header.Name, "dumps/") {
 			filename := filepath.Base(header.Name)
-			
+
 			// Extract database name from filename (remove .dump, .dump.gz, .sql, .sql.gz)
 			dbName := filename
 			dbName = strings.TrimSuffix(dbName, ".dump.gz")
@@ -106,7 +106,7 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 	defer gz.Close()
 
 	tarReader := tar.NewReader(gz)
-	
+
 	// Create output directory if needed
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return "", fmt.Errorf("cannot create output directory: %w", err)
@@ -222,7 +222,7 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 	defer gz.Close()
 
 	tarReader := tar.NewReader(gz)
-	
+
 	// Create output directory if needed
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("cannot create output directory: %w", err)
@@ -286,7 +286,7 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 		// Check if this is one of the databases we're looking for
 		if strings.HasPrefix(header.Name, "dumps/") && !header.FileInfo().IsDir() {
 			filename := filepath.Base(header.Name)
-			
+
 			// Extract database name
 			dbName := filename
 			dbName = strings.TrimSuffix(dbName, ".dump.gz")

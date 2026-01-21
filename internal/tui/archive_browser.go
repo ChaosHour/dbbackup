@@ -223,7 +223,7 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				preview := NewRestorePreview(m.config, m.logger, m.parent, m.ctx, selected, m.mode)
 				return preview, preview.Init()
 			}
-		
+
 		case "s":
 			// Select single database from cluster (shortcut key)
 			if len(m.archives) > 0 && m.cursor < len(m.archives) {

@@ -1378,7 +1378,7 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 	heartbeatTicker := time.NewTicker(5 * time.Second)
 	defer heartbeatTicker.Stop()
 	defer cancelHeartbeat()
-	
+
 	go func() {
 		for {
 			select {
@@ -1625,11 +1625,11 @@ func formatDuration(d time.Duration) string {
 	if d < time.Second {
 		return "0s"
 	}
-	
+
 	hours := int(d.Hours())
 	minutes := int(d.Minutes()) % 60
 	seconds := int(d.Seconds()) % 60
-	
+
 	if hours > 0 {
 		return fmt.Sprintf("%dh %dm", hours, minutes)
 	}
@@ -1638,4 +1638,3 @@ func formatDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%ds", seconds)
 }
-

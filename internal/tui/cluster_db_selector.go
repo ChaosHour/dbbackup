@@ -14,19 +14,19 @@ import (
 
 // ClusterDatabaseSelectorModel for selecting databases from a cluster backup
 type ClusterDatabaseSelectorModel struct {
-	config       *config.Config
-	logger       logger.Logger
-	parent       tea.Model
-	ctx          context.Context
-	archive      ArchiveInfo
-	databases    []restore.DatabaseInfo
-	cursor       int
-	selected     map[int]bool // Track multiple selections
-	loading      bool
-	err          error
-	title        string
-	mode         string // "single" or "multiple"
-	extractOnly  bool   // If true, extract without restoring
+	config      *config.Config
+	logger      logger.Logger
+	parent      tea.Model
+	ctx         context.Context
+	archive     ArchiveInfo
+	databases   []restore.DatabaseInfo
+	cursor      int
+	selected    map[int]bool // Track multiple selections
+	loading     bool
+	err         error
+	title       string
+	mode        string // "single" or "multiple"
+	extractOnly bool   // If true, extract without restoring
 }
 
 func NewClusterDatabaseSelector(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, mode string, extractOnly bool) ClusterDatabaseSelectorModel {

@@ -298,7 +298,7 @@ func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetD
 	heartbeatTicker := time.NewTicker(5 * time.Second)
 	defer heartbeatTicker.Stop()
 	defer cancelHeartbeat()
-	
+
 	go func() {
 		for {
 			select {
@@ -1368,7 +1368,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 					case <-heartbeatTicker.C:
 						elapsed := time.Since(dbRestoreStart)
 						mu.Lock()
-						statusMsg := fmt.Sprintf("Restoring %s (%d/%d) - elapsed: %s", 
+						statusMsg := fmt.Sprintf("Restoring %s (%d/%d) - elapsed: %s",
 							dbName, idx+1, totalDBs, formatDuration(elapsed))
 						e.progress.Update(statusMsg)
 						mu.Unlock()
@@ -1659,7 +1659,7 @@ func (e *Engine) extractArchiveShell(ctx context.Context, archivePath, destDir s
 	heartbeatTicker := time.NewTicker(5 * time.Second)
 	defer heartbeatTicker.Stop()
 	defer cancelHeartbeat()
-	
+
 	go func() {
 		for {
 			select {
@@ -2259,11 +2259,11 @@ func formatDuration(d time.Duration) string {
 	if d < time.Second {
 		return "0s"
 	}
-	
+
 	hours := int(d.Hours())
 	minutes := int(d.Minutes()) % 60
 	seconds := int(d.Seconds()) % 60
-	
+
 	if hours > 0 {
 		return fmt.Sprintf("%dh %dm", hours, minutes)
 	}

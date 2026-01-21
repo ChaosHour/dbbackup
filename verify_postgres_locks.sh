@@ -10,30 +10,34 @@ echo
 
 echo "📊 Current Running Configuration:"
 echo "────────────────────────────────────────────────────────────"
-sudo -u postgres psql -c "SHOW max_locks_per_transaction;" 2>/dev/null || psql -c "SHOW max_locks_per_transaction;"
-sudo -u postgres psql -c "SHOW max_connections;" 2>/dev/null || psql -c "SHOW max_connections;"
-sudo -u postgres psql -c "SHOW max_prepared_transactions;" 2>/dev/null || psql -c "SHOW max_prepared_transactions;"
+
+# Get values without timing info (-t = tuples only, -A = unaligned, -q = quiet)
+LOCKS=$(sudo -u postgres psql -t -A -q -c "SHOW max_locks_per_transaction;" 2>/dev/null | xargs)
+CONNS=$(sudo -u postgres psql -t -A -q -c "SHOW max_connections;" 2>/dev/null | xargs)
+PREPARED=$(sudo -u postgres psql -t -A -q -c "SHOW max_prepared_transactions;" 2>/dev/null | xargs)
+
+if [ -z "$LOCKS" ]; then
+    LOCKS=$(psql -t -A -q -c "SHOW max_locks_per_transaction;" 2>/dev/null | xargs)
+    CONNS=$(psql -t -A -q -c "SHOW max_connections;" 2>/dev/null | xargs)
+    PREPARED=$(psql -t -A -q -c "SHOW max_prepared_transactions;" 2>/dev/null | xargs)
+fi
+
+echo "  max_locks_per_transaction: $LOCKS"
+echo "  max_connections: $CONNS"
+echo "  max_prepared_transactions: $PREPARED"
 
 echo
 echo "📊 Calculated Lock Capacity:"
 echo "────────────────────────────────────────────────────────────"
 
-LOCKS=$(sudo -u postgres psql -t -c "SHOW max_locks_per_transaction;" 2>/dev/null | xargs)
-CONNS=$(sudo -u postgres psql -t -c "SHOW max_connections;" 2>/dev/null | xargs)
-PREPARED=$(sudo -u postgres psql -t -c "SHOW max_prepared_transactions;" 2>/dev/null | xargs)
-
-if [ -z "$LOCKS" ]; then
-    LOCKS=$(psql -t -c "SHOW max_locks_per_transaction;" | xargs)
-    CONNS=$(psql -t -c "SHOW max_connections;" | xargs)
-    PREPARED=$(psql -t -c "SHOW max_prepared_transactions;" | xargs)
+# Calculate capacity (protect against empty values)
+if [ -n "$LOCKS" ] && [ -n "$CONNS" ] && [ -n "$PREPARED" ]; then
+    CAPACITY=$((LOCKS * (CONNS + PREPARED)))
+else
+    echo "❌ ERROR: Could not retrieve PostgreSQL settings"
+    exit 1
 fi
 
-CAPACITY=$((LOCKS * (CONNS + PREPARED)))
-
-echo "  max_locks_per_transaction: $LOCKS"
-echo "  max_connections: $CONNS"
-echo "  max_prepared_transactions: $PREPARED"
-echo
 echo "  Total Lock Capacity: $CAPACITY locks"
 echo "  Formula: $LOCKS × ($CONNS + $PREPARED) = $CAPACITY"
 echo

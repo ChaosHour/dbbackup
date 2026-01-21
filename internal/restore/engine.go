@@ -292,6 +292,25 @@ func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetD
 
 	cmd := e.db.BuildRestoreCommand(targetDB, archivePath, opts)
 
+	// Start heartbeat ticker for restore progress
+	restoreStart := time.Now()
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+	heartbeatTicker := time.NewTicker(5 * time.Second)
+	defer heartbeatTicker.Stop()
+	defer cancelHeartbeat()
+	
+	go func() {
+		for {
+			select {
+			case <-heartbeatTicker.C:
+				elapsed := time.Since(restoreStart)
+				e.progress.Update(fmt.Sprintf("Restoring %s... (elapsed: %s)", targetDB, formatDuration(elapsed)))
+			case <-heartbeatCtx.Done():
+				return
+			}
+		}
+	}()
+
 	if compressed {
 		// For compressed dumps, decompress first
 		return e.executeRestoreWithDecompression(ctx, archivePath, cmd)
@@ -1634,6 +1653,25 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 
 // extractArchiveShell extracts using shell tar command (faster but no progress)
 func (e *Engine) extractArchiveShell(ctx context.Context, archivePath, destDir string) error {
+	// Start heartbeat ticker for extraction progress
+	extractionStart := time.Now()
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+	heartbeatTicker := time.NewTicker(5 * time.Second)
+	defer heartbeatTicker.Stop()
+	defer cancelHeartbeat()
+	
+	go func() {
+		for {
+			select {
+			case <-heartbeatTicker.C:
+				elapsed := time.Since(extractionStart)
+				e.progress.Update(fmt.Sprintf("Extracting archive... (elapsed: %s)", formatDuration(elapsed)))
+			case <-heartbeatCtx.Done():
+				return
+			}
+		}
+	}()
+
 	cmd := exec.CommandContext(ctx, "tar", "-xzf", archivePath, "-C", destDir)
 
 	// Stream stderr to avoid memory issues - tar can produce lots of output for large archives

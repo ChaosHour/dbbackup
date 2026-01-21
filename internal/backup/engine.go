@@ -1372,6 +1372,27 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 	// NO GO BUFFERING - pg_dump writes directly to disk
 	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
 
+	// Start heartbeat ticker for backup progress
+	backupStart := time.Now()
+	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+	heartbeatTicker := time.NewTicker(5 * time.Second)
+	defer heartbeatTicker.Stop()
+	defer cancelHeartbeat()
+	
+	go func() {
+		for {
+			select {
+			case <-heartbeatTicker.C:
+				elapsed := time.Since(backupStart)
+				if e.progress != nil {
+					e.progress.Update(fmt.Sprintf("Backing up database... (elapsed: %s)", formatDuration(elapsed)))
+				}
+			case <-heartbeatCtx.Done():
+				return
+			}
+		}
+	}()
+
 	// Set environment variables for database tools
 	cmd.Env = os.Environ()
 	if e.cfg.Password != "" {
@@ -1598,3 +1619,23 @@ func formatBytes(bytes int64) string {
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
+
+// formatDuration formats a duration to human readable format (e.g., "3m 45s", "1h 23m", "45s")
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return "0s"
+	}
+	
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+	
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
+}
+

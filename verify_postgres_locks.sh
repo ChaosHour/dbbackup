@@ -11,15 +11,15 @@ echo
 echo "📊 Current Running Configuration:"
 echo "────────────────────────────────────────────────────────────"
 
-# Get values without timing info - disable .psqlrc and strip to first number
-LOCKS=$(sudo -u postgres psql --no-psqlrc -t -A -c "SHOW max_locks_per_transaction;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
-CONNS=$(sudo -u postgres psql --no-psqlrc -t -A -c "SHOW max_connections;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
-PREPARED=$(sudo -u postgres psql --no-psqlrc -t -A -c "SHOW max_prepared_transactions;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
+# Get values - extract ONLY digits, remove all non-numeric chars
+LOCKS=$(sudo -u postgres psql --no-psqlrc -t -A -c "SHOW max_locks_per_transaction;" 2>/dev/null | tr -cd '0-9' | head -c 10)
+CONNS=$(sudo -u postgres psql --no-psqlrc -t -A -c "SHOW max_connections;" 2>/dev/null | tr -cd '0-9' | head -c 10)
+PREPARED=$(sudo -u postgres psql --no-psqlrc -t -A -c "SHOW max_prepared_transactions;" 2>/dev/null | tr -cd '0-9' | head -c 10)
 
 if [ -z "$LOCKS" ]; then
-    LOCKS=$(psql --no-psqlrc -t -A -c "SHOW max_locks_per_transaction;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
-    CONNS=$(psql --no-psqlrc -t -A -c "SHOW max_connections;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
-    PREPARED=$(psql --no-psqlrc -t -A -c "SHOW max_prepared_transactions;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
+    LOCKS=$(psql --no-psqlrc -t -A -c "SHOW max_locks_per_transaction;" 2>/dev/null | tr -cd '0-9' | head -c 10)
+    CONNS=$(psql --no-psqlrc -t -A -c "SHOW max_connections;" 2>/dev/null | tr -cd '0-9' | head -c 10)
+    PREPARED=$(psql --no-psqlrc -t -A -c "SHOW max_prepared_transactions;" 2>/dev/null | tr -cd '0-9' | head -c 10)
 fi
 
 echo "  max_locks_per_transaction: $LOCKS"

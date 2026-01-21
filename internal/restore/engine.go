@@ -1506,9 +1506,9 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 	n, err = pr.reader.Read(p)
 	pr.bytesRead += int64(n)
 
-	// Throttle progress reporting to every 100ms
+	// Throttle progress reporting to every 50ms for smoother updates
 	if pr.reportEvery == 0 {
-		pr.reportEvery = 100 * time.Millisecond
+		pr.reportEvery = 50 * time.Millisecond
 	}
 	if time.Since(pr.lastReport) > pr.reportEvery {
 		if pr.callback != nil {

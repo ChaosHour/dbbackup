@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Single Database Extraction from Cluster Backups
+- **Extract and restore individual databases from cluster backups** - selective restore without full cluster restoration
+  - **List databases**: `dbbackup restore cluster backup.tar.gz --list-databases`
+    - Shows all databases in cluster backup with sizes
+    - Fast scan without full extraction
+  - **Extract single database**: `dbbackup restore cluster backup.tar.gz --database myapp --output-dir /tmp/extract`
+    - Extracts only the specified database dump
+    - No restore, just file extraction
+  - **Restore single database from cluster**: `dbbackup restore cluster backup.tar.gz --database myapp --confirm`
+    - Extracts and restores only one database
+    - Much faster than full cluster restore when you only need one database
+  - **Rename on restore**: `dbbackup restore cluster backup.tar.gz --database myapp --target myapp_test --confirm`
+    - Restore with different database name (useful for testing)
+  - **Extract multiple databases**: `dbbackup restore cluster backup.tar.gz --databases "app1,app2,app3" --output-dir /tmp/extract`
+    - Comma-separated list of databases to extract
+  - **Benefits**:
+    - Faster restores (extract only what you need)
+    - Less disk space usage during restore
+    - Easy database migration/copying
+    - Better testing workflow
+    - Selective disaster recovery
+
 ### Performance - Cluster Restore Optimization
 - **Eliminated duplicate archive extraction in cluster restore** - saves 30-50% time on large restores
   - Previously: Archive was extracted twice (once in preflight validation, once in actual restore)

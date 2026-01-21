@@ -820,6 +820,95 @@ func (e *Engine) previewRestore(archivePath, targetDB string, format ArchiveForm
 	return nil
 }
 
+// RestoreSingleFromCluster extracts and restores a single database from a cluster backup
+func (e *Engine) RestoreSingleFromCluster(ctx context.Context, clusterArchivePath, dbName, targetDB string, cleanFirst, createIfMissing bool) error {
+	operation := e.log.StartOperation("Single Database Restore from Cluster")
+
+	// Validate and sanitize archive path
+	validArchivePath, pathErr := security.ValidateArchivePath(clusterArchivePath)
+	if pathErr != nil {
+		operation.Fail(fmt.Sprintf("Invalid archive path: %v", pathErr))
+		return fmt.Errorf("invalid archive path: %w", pathErr)
+	}
+	clusterArchivePath = validArchivePath
+
+	// Validate archive exists
+	if _, err := os.Stat(clusterArchivePath); os.IsNotExist(err) {
+		operation.Fail("Archive not found")
+		return fmt.Errorf("archive not found: %s", clusterArchivePath)
+	}
+
+	// Verify it's a cluster archive
+	format := DetectArchiveFormat(clusterArchivePath)
+	if format != FormatClusterTarGz {
+		operation.Fail("Not a cluster archive")
+		return fmt.Errorf("not a cluster archive: %s (format: %s)", clusterArchivePath, format)
+	}
+
+	// Create temporary directory for extraction
+	workDir := e.cfg.GetEffectiveWorkDir()
+	tempDir := filepath.Join(workDir, fmt.Sprintf(".extract_%d", time.Now().Unix()))
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		operation.Fail("Failed to create temporary directory")
+		return fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Extract the specific database from cluster archive
+	e.log.Info("Extracting database from cluster backup", "database", dbName, "cluster", filepath.Base(clusterArchivePath))
+	e.progress.Start(fmt.Sprintf("Extracting '%s' from cluster backup", dbName))
+
+	extractedPath, err := ExtractDatabaseFromCluster(ctx, clusterArchivePath, dbName, tempDir, e.log, e.progress)
+	if err != nil {
+		e.progress.Fail(fmt.Sprintf("Extraction failed: %v", err))
+		operation.Fail(fmt.Sprintf("Extraction failed: %v", err))
+		return fmt.Errorf("failed to extract database: %w", err)
+	}
+
+	e.progress.Update(fmt.Sprintf("Extracted: %s", filepath.Base(extractedPath)))
+	e.log.Info("Database extracted successfully", "path", extractedPath)
+
+	// Now restore the extracted database file
+	e.progress.Update("Restoring database...")
+
+	// Create database if requested and it doesn't exist
+	if createIfMissing {
+		e.log.Info("Checking if target database exists", "database", targetDB)
+		if err := e.ensureDatabaseExists(ctx, targetDB); err != nil {
+			operation.Fail(fmt.Sprintf("Failed to create database: %v", err))
+			return fmt.Errorf("failed to create database '%s': %w", targetDB, err)
+		}
+	}
+
+	// Detect format of extracted file
+	extractedFormat := DetectArchiveFormat(extractedPath)
+	e.log.Info("Restoring extracted database", "format", extractedFormat, "target", targetDB)
+
+	// Restore based on format
+	var restoreErr error
+	switch extractedFormat {
+	case FormatPostgreSQLDump, FormatPostgreSQLDumpGz:
+		restoreErr = e.restorePostgreSQLDump(ctx, extractedPath, targetDB, extractedFormat == FormatPostgreSQLDumpGz, cleanFirst)
+	case FormatPostgreSQLSQL, FormatPostgreSQLSQLGz:
+		restoreErr = e.restorePostgreSQLSQL(ctx, extractedPath, targetDB, extractedFormat == FormatPostgreSQLSQLGz)
+	case FormatMySQLSQL, FormatMySQLSQLGz:
+		restoreErr = e.restoreMySQLSQL(ctx, extractedPath, targetDB, extractedFormat == FormatMySQLSQLGz)
+	default:
+		operation.Fail("Unsupported extracted format")
+		return fmt.Errorf("unsupported extracted format: %s", extractedFormat)
+	}
+
+	if restoreErr != nil {
+		e.progress.Fail(fmt.Sprintf("Restore failed: %v", restoreErr))
+		operation.Fail(fmt.Sprintf("Restore failed: %v", restoreErr))
+		return restoreErr
+	}
+
+	e.progress.Complete(fmt.Sprintf("Database '%s' restored from cluster backup", targetDB))
+	operation.Complete(fmt.Sprintf("Restored '%s' from cluster as '%s'", dbName, targetDB))
+	return nil
+}
+
 // RestoreCluster restores a full cluster from a tar.gz archive
 // If preExtractedPath is non-empty, uses that directory instead of extracting archivePath
 // This avoids double extraction when ValidateAndExtractCluster was already called

@@ -16,6 +16,7 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/pitr"
+	"dbbackup/internal/progress"
 	"dbbackup/internal/restore"
 	"dbbackup/internal/security"
 
@@ -38,6 +39,12 @@ var (
 	restoreCleanCluster bool
 	restoreDiagnose     bool   // Run diagnosis before restore
 	restoreSaveDebugLog string // Path to save debug log on failure
+
+	// Single database extraction from cluster flags
+	restoreDatabase   string // Single database to extract/restore from cluster
+	restoreDatabases  string // Comma-separated list of databases to extract
+	restoreOutputDir  string // Extract to directory (no restore)
+	restoreListDBs    bool   // List databases in cluster backup
 
 	// Diagnose flags
 	diagnoseJSON     bool
@@ -136,6 +143,11 @@ var restoreClusterCmd = &cobra.Command{
 This command restores all databases that were backed up together
 in a cluster backup operation.
 
+Single Database Extraction:
+  Use --list-databases to see available databases
+  Use --database to extract/restore a specific database
+  Use --output-dir to extract without restoring
+
 Safety features:
   - Dry-run by default (use --confirm to execute)
   - Archive validation and listing
@@ -143,6 +155,21 @@ Safety features:
   - Sequential database restoration
 
 Examples:
+  # List databases in cluster backup
+  dbbackup restore cluster backup.tar.gz --list-databases
+
+  # Extract single database (no restore)
+  dbbackup restore cluster backup.tar.gz --database myapp --output-dir /tmp/extract
+
+  # Restore single database from cluster
+  dbbackup restore cluster backup.tar.gz --database myapp --confirm
+
+  # Restore single database with different name
+  dbbackup restore cluster backup.tar.gz --database myapp --target myapp_test --confirm
+
+  # Extract multiple databases
+  dbbackup restore cluster backup.tar.gz --databases "app1,app2,app3" --output-dir /tmp/extract
+
   # Preview cluster restore
   dbbackup restore cluster cluster_backup_20240101_120000.tar.gz
 
@@ -297,6 +324,10 @@ func init() {
 	restoreSingleCmd.Flags().StringVar(&restoreSaveDebugLog, "save-debug-log", "", "Save detailed error report to file on failure (e.g., /tmp/restore-debug.json)")
 
 	// Cluster restore flags
+	restoreClusterCmd.Flags().BoolVar(&restoreListDBs, "list-databases", false, "List databases in cluster backup and exit")
+	restoreClusterCmd.Flags().StringVar(&restoreDatabase, "database", "", "Extract/restore single database from cluster")
+	restoreClusterCmd.Flags().StringVar(&restoreDatabases, "databases", "", "Extract multiple databases (comma-separated)")
+	restoreClusterCmd.Flags().StringVar(&restoreOutputDir, "output-dir", "", "Extract to directory without restoring (requires --database or --databases)")
 	restoreClusterCmd.Flags().BoolVar(&restoreConfirm, "confirm", false, "Confirm and execute restore (required)")
 	restoreClusterCmd.Flags().BoolVar(&restoreDryRun, "dry-run", false, "Show what would be done without executing")
 	restoreClusterCmd.Flags().BoolVar(&restoreForce, "force", false, "Skip safety checks and confirmations")
@@ -311,6 +342,8 @@ func init() {
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
 	restoreClusterCmd.Flags().BoolVar(&restoreDiagnose, "diagnose", false, "Run deep diagnosis on all dumps before restore")
 	restoreClusterCmd.Flags().StringVar(&restoreSaveDebugLog, "save-debug-log", "", "Save detailed error report to file on failure (e.g., /tmp/restore-debug.json)")
+	restoreClusterCmd.Flags().BoolVar(&restoreClean, "clean", false, "Drop and recreate target database (for single DB restore)")
+	restoreClusterCmd.Flags().BoolVar(&restoreCreate, "create", false, "Create target database if it doesn't exist (for single DB restore)")
 
 	// PITR restore flags
 	restorePITRCmd.Flags().StringVar(&pitrBaseBackup, "base-backup", "", "Path to base backup file (.tar.gz) (required)")
@@ -665,6 +698,193 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 // runRestoreCluster restores a full cluster
 func runRestoreCluster(cmd *cobra.Command, args []string) error {
 	archivePath := args[0]
+
+	// Convert to absolute path
+	if !filepath.IsAbs(archivePath) {
+		absPath, err := filepath.Abs(archivePath)
+		if err != nil {
+			return fmt.Errorf("invalid archive path: %w", err)
+		}
+		archivePath = absPath
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(archivePath); err != nil {
+		return fmt.Errorf("archive not found: %s", archivePath)
+	}
+
+	// Handle --list-databases flag
+	if restoreListDBs {
+		return runListDatabases(archivePath)
+	}
+
+	// Handle single/multiple database extraction
+	if restoreDatabase != "" || restoreDatabases != "" {
+		return runExtractDatabases(archivePath)
+	}
+
+	// Otherwise proceed with full cluster restore
+	return runFullClusterRestore(archivePath)
+}
+
+// runListDatabases lists all databases in a cluster backup
+func runListDatabases(archivePath string) error {
+	ctx := context.Background()
+
+	log.Info("Scanning cluster backup", "archive", filepath.Base(archivePath))
+	fmt.Println()
+
+	databases, err := restore.ListDatabasesInCluster(ctx, archivePath, log)
+	if err != nil {
+		return fmt.Errorf("failed to list databases: %w", err)
+	}
+
+	fmt.Printf("📦 Databases in cluster backup:\n")
+	var totalSize int64
+	for _, db := range databases {
+		sizeStr := formatSize(db.Size)
+		fmt.Printf("  - %-30s (%s)\n", db.Name, sizeStr)
+		totalSize += db.Size
+	}
+	
+	fmt.Printf("\nTotal: %s across %d database(s)\n", formatSize(totalSize), len(databases))
+	return nil
+}
+
+// runExtractDatabases extracts single or multiple databases from cluster backup
+func runExtractDatabases(archivePath string) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	go func() {
+		<-sigChan
+		log.Warn("Extraction interrupted by user")
+		cancel()
+	}()
+
+	// Single database extraction
+	if restoreDatabase != "" {
+		return handleSingleDatabaseExtraction(ctx, archivePath, restoreDatabase)
+	}
+
+	// Multiple database extraction
+	if restoreDatabases != "" {
+		return handleMultipleDatabaseExtraction(ctx, archivePath, restoreDatabases)
+	}
+
+	return nil
+}
+
+// handleSingleDatabaseExtraction handles single database extraction or restore
+func handleSingleDatabaseExtraction(ctx context.Context, archivePath, dbName string) error {
+	// Extract-only mode (no restore)
+	if restoreOutputDir != "" {
+		return extractSingleDatabase(ctx, archivePath, dbName, restoreOutputDir)
+	}
+
+	// Restore mode
+	if !restoreConfirm {
+		fmt.Println("\n[DRY-RUN] DRY-RUN MODE - No changes will be made")
+		fmt.Printf("\nWould extract and restore:\n")
+		fmt.Printf("  Database: %s\n", dbName)
+		fmt.Printf("  From: %s\n", archivePath)
+		targetDB := restoreTarget
+		if targetDB == "" {
+			targetDB = dbName
+		}
+		fmt.Printf("  Target: %s\n", targetDB)
+		if restoreClean {
+			fmt.Printf("  Clean: true (drop and recreate)\n")
+		}
+		if restoreCreate {
+			fmt.Printf("  Create: true (create if missing)\n")
+		}
+		fmt.Println("\nTo execute this restore, add --confirm flag")
+		return nil
+	}
+
+	// Create database instance
+	db, err := database.New(cfg, log)
+	if err != nil {
+		return fmt.Errorf("failed to create database instance: %w", err)
+	}
+	defer db.Close()
+
+	// Create restore engine
+	engine := restore.New(cfg, log, db)
+
+	// Determine target database name
+	targetDB := restoreTarget
+	if targetDB == "" {
+		targetDB = dbName
+	}
+
+	log.Info("Restoring single database from cluster", "database", dbName, "target", targetDB)
+
+	// Restore single database from cluster
+	if err := engine.RestoreSingleFromCluster(ctx, archivePath, dbName, targetDB, restoreClean, restoreCreate); err != nil {
+		return fmt.Errorf("restore failed: %w", err)
+	}
+
+	fmt.Printf("\n✅ Successfully restored '%s' as '%s'\n", dbName, targetDB)
+	return nil
+}
+
+// extractSingleDatabase extracts a single database without restoring
+func extractSingleDatabase(ctx context.Context, archivePath, dbName, outputDir string) error {
+	log.Info("Extracting database", "database", dbName, "output", outputDir)
+
+	// Create progress indicator
+	prog := progress.NewIndicator(!restoreNoProgress, "dots")
+
+	extractedPath, err := restore.ExtractDatabaseFromCluster(ctx, archivePath, dbName, outputDir, log, prog)
+	if err != nil {
+		return fmt.Errorf("extraction failed: %w", err)
+	}
+
+	fmt.Printf("\n✅ Extracted: %s\n", extractedPath)
+	fmt.Printf("   Database: %s\n", dbName)
+	fmt.Printf("   Location: %s\n", outputDir)
+	return nil
+}
+
+// handleMultipleDatabaseExtraction handles multiple database extraction
+func handleMultipleDatabaseExtraction(ctx context.Context, archivePath, databases string) error {
+	if restoreOutputDir == "" {
+		return fmt.Errorf("--output-dir required when using --databases")
+	}
+
+	// Parse database list
+	dbNames := strings.Split(databases, ",")
+	for i := range dbNames {
+		dbNames[i] = strings.TrimSpace(dbNames[i])
+	}
+
+	log.Info("Extracting multiple databases", "count", len(dbNames), "output", restoreOutputDir)
+
+	// Create progress indicator
+	prog := progress.NewIndicator(!restoreNoProgress, "dots")
+
+	extractedPaths, err := restore.ExtractMultipleDatabasesFromCluster(ctx, archivePath, dbNames, restoreOutputDir, log, prog)
+	if err != nil {
+		return fmt.Errorf("extraction failed: %w", err)
+	}
+
+	fmt.Printf("\n✅ Extracted %d database(s):\n", len(extractedPaths))
+	for dbName, path := range extractedPaths {
+		fmt.Printf("   - %s → %s\n", dbName, filepath.Base(path))
+	}
+	fmt.Printf("   Location: %s\n", restoreOutputDir)
+	return nil
+}
+
+// runFullClusterRestore performs a full cluster restore
+func runFullClusterRestore(archivePath string) error {
 
 	// Apply resource profile
 	if err := config.ApplyProfile(cfg, restoreProfile, restoreJobs, restoreParallelDBs); err != nil {

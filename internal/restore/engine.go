@@ -1340,6 +1340,25 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			preserveOwnership := isSuperuser
 			isCompressedSQL := strings.HasSuffix(dumpFile, ".sql.gz")
 
+			// Start heartbeat ticker to show progress during long-running restore
+			heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
+			heartbeatTicker := time.NewTicker(5 * time.Second)
+			go func() {
+				for {
+					select {
+					case <-heartbeatTicker.C:
+						elapsed := time.Since(dbRestoreStart)
+						mu.Lock()
+						statusMsg := fmt.Sprintf("Restoring %s (%d/%d) - elapsed: %s", 
+							dbName, idx+1, totalDBs, formatDuration(elapsed))
+						e.progress.Update(statusMsg)
+						mu.Unlock()
+					case <-heartbeatCtx.Done():
+						return
+					}
+				}
+			}()
+
 			var restoreErr error
 			if isCompressedSQL {
 				mu.Lock()
@@ -1352,6 +1371,10 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 				mu.Unlock()
 				restoreErr = e.restorePostgreSQLDumpWithOwnership(ctx, dumpFile, dbName, false, preserveOwnership)
 			}
+
+			// Stop heartbeat ticker
+			heartbeatTicker.Stop()
+			cancelHeartbeat()
 
 			if restoreErr != nil {
 				mu.Lock()
@@ -2191,6 +2214,25 @@ func FormatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// formatDuration formats a duration to human readable format (e.g., "3m 45s", "1h 23m", "45s")
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return "0s"
+	}
+	
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	seconds := int(d.Seconds()) % 60
+	
+	if hours > 0 {
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm %ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
 }
 
 // quickValidateSQLDump performs a fast validation of SQL dump files

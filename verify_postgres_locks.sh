@@ -11,15 +11,15 @@ echo
 echo "📊 Current Running Configuration:"
 echo "────────────────────────────────────────────────────────────"
 
-# Get values without timing info - strip everything after first space
-LOCKS=$(sudo -u postgres psql -t -A -q -c "SHOW max_locks_per_transaction;" 2>/dev/null | awk '{print $1}' | xargs)
-CONNS=$(sudo -u postgres psql -t -A -q -c "SHOW max_connections;" 2>/dev/null | awk '{print $1}' | xargs)
-PREPARED=$(sudo -u postgres psql -t -A -q -c "SHOW max_prepared_transactions;" 2>/dev/null | awk '{print $1}' | xargs)
+# Get values without timing info - disable .psqlrc and strip to first number
+LOCKS=$(sudo -u postgres psql --no-psqlrc -t -A -c "SHOW max_locks_per_transaction;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
+CONNS=$(sudo -u postgres psql --no-psqlrc -t -A -c "SHOW max_connections;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
+PREPARED=$(sudo -u postgres psql --no-psqlrc -t -A -c "SHOW max_prepared_transactions;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
 
 if [ -z "$LOCKS" ]; then
-    LOCKS=$(psql -t -A -q -c "SHOW max_locks_per_transaction;" 2>/dev/null | awk '{print $1}' | xargs)
-    CONNS=$(psql -t -A -q -c "SHOW max_connections;" 2>/dev/null | awk '{print $1}' | xargs)
-    PREPARED=$(psql -t -A -q -c "SHOW max_prepared_transactions;" 2>/dev/null | awk '{print $1}' | xargs)
+    LOCKS=$(psql --no-psqlrc -t -A -c "SHOW max_locks_per_transaction;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
+    CONNS=$(psql --no-psqlrc -t -A -c "SHOW max_connections;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
+    PREPARED=$(psql --no-psqlrc -t -A -c "SHOW max_prepared_transactions;" 2>/dev/null | grep -o '[0-9]\+' | head -1)
 fi
 
 echo "  max_locks_per_transaction: $LOCKS"

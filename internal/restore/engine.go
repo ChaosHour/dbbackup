@@ -1175,7 +1175,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	// 🛡️ LARGE DATABASE GUARD - Bulletproof protection for large database restores
 	e.progress.Update("Analyzing database characteristics...")
 	guard := NewLargeDBGuard(e.cfg, e.log)
-	
+
 	// Build list of dump files for analysis
 	var dumpFilePaths []string
 	for _, entry := range entries {
@@ -1183,14 +1183,14 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			dumpFilePaths = append(dumpFilePaths, filepath.Join(dumpsDir, entry.Name()))
 		}
 	}
-	
+
 	// Determine optimal restore strategy
 	strategy := guard.DetermineStrategy(ctx, archivePath, dumpFilePaths)
-	
+
 	// Apply strategy (override config if needed)
 	if strategy.UseConservative {
 		guard.ApplyStrategy(strategy, e.cfg)
-		guard.WarnUser(strategy)
+		guard.WarnUser(strategy, e.silentMode)
 	}
 
 	// Calculate optimal lock boost based on BLOB count

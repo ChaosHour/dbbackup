@@ -52,7 +52,7 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 		strategy.Reason = fmt.Sprintf("Database contains %d large objects (BLOBs)", blobCount)
 		strategy.Jobs = 1
 		strategy.ParallelDBs = 1
-		
+
 		if blobCount > 10000 {
 			strategy.ExpectedTime = "8-12 hours for very large BLOB database"
 		} else if blobCount > 1000 {
@@ -60,8 +60,8 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 		} else {
 			strategy.ExpectedTime = "2-4 hours"
 		}
-		
-		g.log.Warn("🛡️  Large DB Guard: Forcing conservative mode", 
+
+		g.log.Warn("🛡️  Large DB Guard: Forcing conservative mode",
 			"blob_count", blobCount,
 			"reason", strategy.Reason)
 		return strategy
@@ -75,7 +75,7 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 		strategy.Jobs = 1
 		strategy.ParallelDBs = 1
 		strategy.ExpectedTime = "6-10 hours for very large database"
-		
+
 		g.log.Warn("🛡️  Large DB Guard: Forcing conservative mode",
 			"total_size_gb", totalSize/(1024*1024*1024),
 			"reason", strategy.Reason)
@@ -89,7 +89,7 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 		strategy.Reason = fmt.Sprintf("PostgreSQL lock capacity too low: %d (need 200,000+)", lockCapacity)
 		strategy.Jobs = 1
 		strategy.ParallelDBs = 1
-		
+
 		g.log.Warn("🛡️  Large DB Guard: Forcing conservative mode",
 			"lock_capacity", lockCapacity,
 			"reason", strategy.Reason)
@@ -103,7 +103,7 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 		strategy.Reason = fmt.Sprintf("Largest database: %s (%s)", largestDump.name, FormatBytes(largestDump.size))
 		strategy.Jobs = 1
 		strategy.ParallelDBs = 1
-		
+
 		g.log.Warn("🛡️  Large DB Guard: Forcing conservative mode",
 			"largest_db", largestDump.name,
 			"size_gb", largestDump.size/(1024*1024*1024),
@@ -120,7 +120,7 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 // detectLargeObjects checks dump files for BLOBs/large objects
 func (g *LargeDBGuard) detectLargeObjects(ctx context.Context, dumpFiles []string) (bool, int) {
 	totalBlobCount := 0
-	
+
 	for _, dumpFile := range dumpFiles {
 		// Skip if not a custom format dump
 		if !strings.HasSuffix(dumpFile, ".dump") {
@@ -139,9 +139,9 @@ func (g *LargeDBGuard) detectLargeObjects(ctx context.Context, dumpFiles []strin
 
 		// Count BLOB entries
 		for _, line := range strings.Split(string(output), "\n") {
-			if strings.Contains(line, "BLOB") || 
-			   strings.Contains(line, "LARGE OBJECT") ||
-			   strings.Contains(line, " BLOBS ") {
+			if strings.Contains(line, "BLOB") ||
+				strings.Contains(line, "LARGE OBJECT") ||
+				strings.Contains(line, " BLOBS ") {
 				totalBlobCount++
 			}
 		}
@@ -199,9 +199,15 @@ func (g *LargeDBGuard) checkLockCapacity(ctx context.Context) int {
 }
 
 // findLargestDump finds the largest individual dump file
-func (g *LargeDBGuard) findLargestDump(dumpFiles []string) struct{ name string; size int64 } {
-	var largest struct{ name string; size int64 }
-	
+func (g *LargeDBGuard) findLargestDump(dumpFiles []string) struct {
+	name string
+	size int64
+} {
+	var largest struct {
+		name string
+		size int64
+	}
+
 	for _, file := range dumpFiles {
 		if info, err := os.Stat(file); err == nil {
 			if info.Size() > largest.size {
@@ -210,7 +216,7 @@ func (g *LargeDBGuard) findLargestDump(dumpFiles []string) struct{ name string; 
 			}
 		}
 	}
-	
+
 	return largest
 }
 
@@ -236,8 +242,20 @@ func (g *LargeDBGuard) ApplyStrategy(strategy *RestoreStrategy, cfg *config.Conf
 }
 
 // WarnUser displays prominent warning about single-threaded restore
-func (g *LargeDBGuard) WarnUser(strategy *RestoreStrategy) {
+// In silent mode (TUI), this is skipped to prevent scrambled output
+func (g *LargeDBGuard) WarnUser(strategy *RestoreStrategy, silentMode bool) {
 	if !strategy.UseConservative {
+		return
+	}
+
+	// In TUI/silent mode, don't print to stdout - it causes scrambled output
+	if silentMode {
+		// Log the warning instead for debugging
+		g.log.Info("Large Database Protection Active",
+			"reason", strategy.Reason,
+			"jobs", strategy.Jobs,
+			"parallel_dbs", strategy.ParallelDBs,
+			"expected_time", strategy.ExpectedTime)
 		return
 	}
 

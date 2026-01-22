@@ -1172,6 +1172,27 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 		e.log.Warn("Preflight checks failed", "error", preflightErr)
 	}
 
+	// 🛡️ LARGE DATABASE GUARD - Bulletproof protection for large database restores
+	e.progress.Update("Analyzing database characteristics...")
+	guard := NewLargeDBGuard(e.cfg, e.log)
+	
+	// Build list of dump files for analysis
+	var dumpFilePaths []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			dumpFilePaths = append(dumpFilePaths, filepath.Join(dumpsDir, entry.Name()))
+		}
+	}
+	
+	// Determine optimal restore strategy
+	strategy := guard.DetermineStrategy(ctx, archivePath, dumpFilePaths)
+	
+	// Apply strategy (override config if needed)
+	if strategy.UseConservative {
+		guard.ApplyStrategy(strategy, e.cfg)
+		guard.WarnUser(strategy)
+	}
+
 	// Calculate optimal lock boost based on BLOB count
 	lockBoostValue := 2048 // Default
 	if preflight != nil && preflight.Archive.RecommendedLockBoost > 0 {

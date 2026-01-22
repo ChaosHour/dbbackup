@@ -1203,21 +1203,49 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	e.progress.Update("Tuning PostgreSQL for large restore...")
 	originalSettings, tuneErr := e.boostPostgreSQLSettings(ctx, lockBoostValue)
 	if tuneErr != nil {
-		e.log.Warn("Could not boost PostgreSQL settings - restore may fail on BLOB-heavy databases",
-			"error", tuneErr)
-	} else {
-		e.log.Info("Boosted PostgreSQL settings for restore",
-			"max_locks_per_transaction", fmt.Sprintf("%d → %d", originalSettings.MaxLocks, lockBoostValue),
-			"maintenance_work_mem", fmt.Sprintf("%s → 2GB", originalSettings.MaintenanceWorkMem))
-		// Ensure we reset settings when done (even on failure)
-		defer func() {
-			if resetErr := e.resetPostgreSQLSettings(ctx, originalSettings); resetErr != nil {
-				e.log.Warn("Could not reset PostgreSQL settings", "error", resetErr)
-			} else {
-				e.log.Info("Reset PostgreSQL settings to original values")
-			}
-		}()
+		e.log.Error("Could not boost PostgreSQL settings", "error", tuneErr)
+		operation.Fail("PostgreSQL tuning failed")
+		return fmt.Errorf("failed to boost PostgreSQL settings: %w", tuneErr)
 	}
+	
+	// CRITICAL: Verify locks were actually increased
+	// Even in conservative mode (--jobs=1), a single massive database can exhaust locks
+	// If boost failed (couldn't restart PostgreSQL), we MUST abort
+	if originalSettings.MaxLocks < lockBoostValue {
+		e.log.Error("PostgreSQL lock boost FAILED - restart required but not possible",
+			"current_locks", originalSettings.MaxLocks,
+			"required_locks", lockBoostValue,
+			"conservative_mode", strategy.UseConservative,
+			"note", "Even single-threaded restore can fail with massive databases")
+		operation.Fail(fmt.Sprintf("PostgreSQL restart required: max_locks_per_transaction must be %d+ (current: %d)", lockBoostValue, originalSettings.MaxLocks))
+		
+		// Provide clear instructions
+		e.log.Error("=" + strings.Repeat("=", 70))
+		e.log.Error("RESTORE ABORTED - Action Required:")
+		e.log.Error("1. ALTER SYSTEM has saved max_locks_per_transaction=%d to postgresql.auto.conf", lockBoostValue)
+		e.log.Error("2. Restart PostgreSQL to activate the new setting:")
+		e.log.Error("   sudo systemctl restart postgresql")
+		e.log.Error("3. Retry the restore - it will then complete successfully")
+		e.log.Error("=" + strings.Repeat("=", 70))
+		
+		return fmt.Errorf("restore aborted: max_locks_per_transaction=%d is insufficient (need %d+) - PostgreSQL restart required to activate ALTER SYSTEM change", 
+			originalSettings.MaxLocks, lockBoostValue)
+	}
+	
+	e.log.Info("PostgreSQL tuning verified - locks sufficient for restore",
+		"max_locks_per_transaction", originalSettings.MaxLocks,
+		"target_locks", lockBoostValue,
+		"maintenance_work_mem", "2GB",
+		"conservative_mode", strategy.UseConservative)
+		
+	// Ensure we reset settings when done (even on failure)
+	defer func() {
+		if resetErr := e.resetPostgreSQLSettings(ctx, originalSettings); resetErr != nil {
+			e.log.Warn("Could not reset PostgreSQL settings", "error", resetErr)
+		} else {
+			e.log.Info("Reset PostgreSQL settings to original values")
+		}
+	}()
 
 	var restoreErrors *multierror.Error
 	var restoreErrorsMu sync.Mutex
@@ -2525,21 +2553,22 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 			e.log.Info("PostgreSQL restarted successfully - max_locks_per_transaction now active")
 			// Wait for PostgreSQL to be ready
 			time.Sleep(3 * time.Second)
+			// Update original.MaxLocks to reflect the new value after restart
+			var newMaxLocksStr string
+			if err := db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&newMaxLocksStr); err == nil {
+				original.MaxLocks, _ = strconv.Atoi(newMaxLocksStr)
+				e.log.Info("Verified new max_locks_per_transaction after restart", "value", original.MaxLocks)
+			}
 		} else {
-			// Cannot restart - warn user but continue
-			// The setting is written to postgresql.auto.conf and will take effect on next restart
-			e.log.Warn("=" + strings.Repeat("=", 70))
-			e.log.Warn("NOTE: max_locks_per_transaction change requires PostgreSQL restart")
-			e.log.Warn("Current value: " + strconv.Itoa(original.MaxLocks) + ", target: " + strconv.Itoa(lockBoostValue))
-			e.log.Warn("")
-			e.log.Warn("The setting has been saved to postgresql.auto.conf and will take")
-			e.log.Warn("effect on the next PostgreSQL restart. If restore fails with")
-			e.log.Warn("'out of shared memory' errors, ask your DBA to restart PostgreSQL.")
-			e.log.Warn("")
-			e.log.Warn("Continuing with restore - this may succeed if your databases")
-			e.log.Warn("don't have many large objects (BLOBs).")
-			e.log.Warn("=" + strings.Repeat("=", 70))
-			// Continue anyway - might work for small restores or DBs without BLOBs
+			// Cannot restart - this is now a CRITICAL failure
+			// We tried to boost locks but can't apply them without restart
+			e.log.Error("CRITICAL: max_locks_per_transaction boost requires PostgreSQL restart")
+			e.log.Error("Current value: "+strconv.Itoa(original.MaxLocks)+", required: "+strconv.Itoa(lockBoostValue))
+			e.log.Error("The setting has been saved to postgresql.auto.conf but is NOT ACTIVE")
+			e.log.Error("Restore will ABORT to prevent 'out of shared memory' failure")
+			e.log.Error("Action required: Ask DBA to restart PostgreSQL, then retry restore")
+			// Return original settings so caller can check and abort
+			return original, nil
 		}
 	}
 

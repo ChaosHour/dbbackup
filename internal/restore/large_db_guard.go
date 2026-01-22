@@ -83,18 +83,31 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 	}
 
 	// 3. Check PostgreSQL lock configuration
-	lockCapacity := g.checkLockCapacity(ctx)
-	if lockCapacity < 200000 {
+	// CRITICAL: ALWAYS force conservative mode unless locks are 4096+
+	// Parallel restore exhausts locks even with 2048 and high connection count
+	// This is the PRIMARY protection - lock exhaustion is the #1 failure mode
+	maxLocks, maxConns := g.checkLockConfiguration(ctx)
+	lockCapacity := maxLocks * maxConns
+	
+	if maxLocks < 4096 {
 		strategy.UseConservative = true
-		strategy.Reason = fmt.Sprintf("PostgreSQL lock capacity too low: %d (need 200,000+)", lockCapacity)
+		strategy.Reason = fmt.Sprintf("PostgreSQL max_locks_per_transaction=%d (need 4096+ for parallel restore)", maxLocks)
 		strategy.Jobs = 1
 		strategy.ParallelDBs = 1
 
-		g.log.Warn("🛡️  Large DB Guard: Forcing conservative mode",
-			"lock_capacity", lockCapacity,
+		g.log.Warn("🛡️  Large DB Guard: FORCING conservative mode - lock protection",
+			"max_locks_per_transaction", maxLocks,
+			"max_connections", maxConns,
+			"total_capacity", lockCapacity,
+			"required_locks", 4096,
 			"reason", strategy.Reason)
 		return strategy
 	}
+	
+	g.log.Info("✅ Large DB Guard: Lock configuration OK for parallel restore",
+		"max_locks_per_transaction", maxLocks,
+		"max_connections", maxConns,
+		"total_capacity", lockCapacity)
 
 	// 4. Check individual dump file sizes
 	largestDump := g.findLargestDump(dumpFiles)
@@ -163,39 +176,41 @@ func (g *LargeDBGuard) estimateTotalSize(dumpFiles []string) int64 {
 
 // checkLockCapacity gets PostgreSQL lock table capacity
 func (g *LargeDBGuard) checkLockCapacity(ctx context.Context) int {
+	maxLocks, maxConns := g.checkLockConfiguration(ctx)
+	maxPrepared := 0 // We don't use prepared transactions in restore
+
+	// Calculate total lock capacity
+	capacity := maxLocks * (maxConns + maxPrepared)
+	return capacity
+}
+
+// checkLockConfiguration returns max_locks_per_transaction and max_connections
+func (g *LargeDBGuard) checkLockConfiguration(ctx context.Context) (int, int) {
 	// Build connection string
 	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
 		g.cfg.Host, g.cfg.Port, g.cfg.User, g.cfg.Password)
 
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {
-		return 0
+		return 64, 100 // PostgreSQL defaults
 	}
 	defer db.Close()
 
-	var maxLocks, maxConns, maxPrepared int
+	var maxLocks, maxConns int
 
 	// Get max_locks_per_transaction
 	err = db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&maxLocks)
 	if err != nil {
-		return 0
+		maxLocks = 64 // PostgreSQL default
 	}
 
 	// Get max_connections
 	err = db.QueryRowContext(ctx, "SHOW max_connections").Scan(&maxConns)
 	if err != nil {
-		maxConns = 100 // default
+		maxConns = 100 // PostgreSQL default
 	}
 
-	// Get max_prepared_transactions
-	err = db.QueryRowContext(ctx, "SHOW max_prepared_transactions").Scan(&maxPrepared)
-	if err != nil {
-		maxPrepared = 0 // default
-	}
-
-	// Calculate total lock capacity
-	capacity := maxLocks * (maxConns + maxPrepared)
-	return capacity
+	return maxLocks, maxConns
 }
 
 // findLargestDump finds the largest individual dump file

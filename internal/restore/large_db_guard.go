@@ -94,7 +94,7 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 	// This is the PRIMARY protection - lock exhaustion is the #1 failure mode
 	maxLocks, maxConns := g.checkLockConfiguration(ctx)
 	lockCapacity := maxLocks * maxConns
-	
+
 	if g.cfg.DebugLocks {
 		g.log.Info("🔍 [LOCK-DEBUG] PostgreSQL lock configuration detected",
 			"max_locks_per_transaction", maxLocks,
@@ -103,7 +103,7 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 			"threshold_required", 4096,
 			"below_threshold", maxLocks < 4096)
 	}
-	
+
 	if maxLocks < 4096 {
 		strategy.UseConservative = true
 		strategy.Reason = fmt.Sprintf("PostgreSQL max_locks_per_transaction=%d (need 4096+ for parallel restore)", maxLocks)
@@ -116,7 +116,7 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 			"total_capacity", lockCapacity,
 			"required_locks", 4096,
 			"reason", strategy.Reason)
-		
+
 		if g.cfg.DebugLocks {
 			g.log.Info("🔍 [LOCK-DEBUG] Guard decision: CONSERVATIVE mode",
 				"jobs", 1,
@@ -125,12 +125,12 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 		}
 		return strategy
 	}
-	
+
 	g.log.Info("✅ Large DB Guard: Lock configuration OK for parallel restore",
 		"max_locks_per_transaction", maxLocks,
 		"max_connections", maxConns,
 		"total_capacity", lockCapacity)
-	
+
 	if g.cfg.DebugLocks {
 		g.log.Info("🔍 [LOCK-DEBUG] Lock check PASSED - parallel restore allowed",
 			"max_locks", maxLocks,
@@ -156,13 +156,13 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 	// All checks passed - safe to use default profile
 	strategy.Reason = "No large database risks detected"
 	g.log.Info("✅ Large DB Guard: Safe to use default profile")
-	
+
 	if g.cfg.DebugLocks {
 		g.log.Info("🔍 [LOCK-DEBUG] Final strategy: Default profile (no restrictions)",
 			"use_conservative", false,
 			"reason", strategy.Reason)
 	}
-	
+
 	return strategy
 }
 
@@ -228,7 +228,7 @@ func (g *LargeDBGuard) checkLockConfiguration(ctx context.Context) (int, int) {
 			"port", g.cfg.Port,
 			"user", g.cfg.User)
 	}
-	
+
 	// Build connection string
 	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
 		g.cfg.Host, g.cfg.Port, g.cfg.User, g.cfg.Password)

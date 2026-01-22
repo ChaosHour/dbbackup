@@ -39,6 +39,7 @@ var (
 	restoreCleanCluster bool
 	restoreDiagnose     bool   // Run diagnosis before restore
 	restoreSaveDebugLog string // Path to save debug log on failure
+	restoreDebugLocks   bool   // Enable detailed lock debugging
 
 	// Single database extraction from cluster flags
 	restoreDatabase  string // Single database to extract/restore from cluster
@@ -322,6 +323,7 @@ func init() {
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
 	restoreSingleCmd.Flags().BoolVar(&restoreDiagnose, "diagnose", false, "Run deep diagnosis before restore to detect corruption/truncation")
 	restoreSingleCmd.Flags().StringVar(&restoreSaveDebugLog, "save-debug-log", "", "Save detailed error report to file on failure (e.g., /tmp/restore-debug.json)")
+	restoreSingleCmd.Flags().BoolVar(&restoreDebugLocks, "debug-locks", false, "Enable detailed lock debugging (captures PostgreSQL config, Guard decisions, boost attempts)")
 
 	// Cluster restore flags
 	restoreClusterCmd.Flags().BoolVar(&restoreListDBs, "list-databases", false, "List databases in cluster backup and exit")
@@ -342,6 +344,7 @@ func init() {
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
 	restoreClusterCmd.Flags().BoolVar(&restoreDiagnose, "diagnose", false, "Run deep diagnosis on all dumps before restore")
 	restoreClusterCmd.Flags().StringVar(&restoreSaveDebugLog, "save-debug-log", "", "Save detailed error report to file on failure (e.g., /tmp/restore-debug.json)")
+	restoreClusterCmd.Flags().BoolVar(&restoreDebugLocks, "debug-locks", false, "Enable detailed lock debugging (captures PostgreSQL config, Guard decisions, boost attempts)")
 	restoreClusterCmd.Flags().BoolVar(&restoreClean, "clean", false, "Drop and recreate target database (for single DB restore)")
 	restoreClusterCmd.Flags().BoolVar(&restoreCreate, "create", false, "Create target database if it doesn't exist (for single DB restore)")
 
@@ -628,6 +631,12 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	if restoreSaveDebugLog != "" {
 		engine.SetDebugLogPath(restoreSaveDebugLog)
 		log.Info("Debug logging enabled", "output", restoreSaveDebugLog)
+	}
+
+	// Enable lock debugging if requested (single restore)
+	if restoreDebugLocks {
+		cfg.DebugLocks = true
+		log.Info("🔍 Lock debugging enabled - will capture PostgreSQL lock config, Guard decisions, boost attempts")
 	}
 
 	// Setup signal handling
@@ -1056,6 +1065,12 @@ func runFullClusterRestore(archivePath string) error {
 	if restoreSaveDebugLog != "" {
 		engine.SetDebugLogPath(restoreSaveDebugLog)
 		log.Info("Debug logging enabled", "output", restoreSaveDebugLog)
+	}
+
+	// Enable lock debugging if requested (cluster restore)
+	if restoreDebugLocks {
+		cfg.DebugLocks = true
+		log.Info("🔍 Lock debugging enabled - will capture PostgreSQL lock config, Guard decisions, boost attempts")
 	}
 
 	// Setup signal handling

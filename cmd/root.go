@@ -134,6 +134,7 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	rootCmd.PersistentFlags().StringVar(&cfg.BackupDir, "backup-dir", cfg.BackupDir, "Backup directory")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoColor, "no-color", cfg.NoColor, "Disable colored output")
 	rootCmd.PersistentFlags().BoolVar(&cfg.Debug, "debug", cfg.Debug, "Enable debug logging")
+	rootCmd.PersistentFlags().BoolVar(&cfg.DebugLocks, "debug-locks", cfg.DebugLocks, "Enable detailed lock debugging (captures PostgreSQL lock configuration, Large DB Guard decisions, boost attempts)")
 	rootCmd.PersistentFlags().IntVar(&cfg.Jobs, "jobs", cfg.Jobs, "Number of parallel jobs")
 	rootCmd.PersistentFlags().IntVar(&cfg.DumpJobs, "dump-jobs", cfg.DumpJobs, "Number of parallel dump jobs")
 	rootCmd.PersistentFlags().IntVar(&cfg.MaxCores, "max-cores", cfg.MaxCores, "Maximum CPU cores to use")

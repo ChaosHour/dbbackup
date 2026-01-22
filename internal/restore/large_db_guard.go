@@ -45,6 +45,12 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 		ParallelDBs:     0, // Will use profile default
 	}
 
+	if g.cfg.DebugLocks {
+		g.log.Info("🔍 [LOCK-DEBUG] Large DB Guard: Starting strategy analysis",
+			"archive", archivePath,
+			"dump_count", len(dumpFiles))
+	}
+
 	// 1. Check for large objects (BLOBs)
 	hasLargeObjects, blobCount := g.detectLargeObjects(ctx, dumpFiles)
 	if hasLargeObjects {
@@ -89,6 +95,15 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 	maxLocks, maxConns := g.checkLockConfiguration(ctx)
 	lockCapacity := maxLocks * maxConns
 	
+	if g.cfg.DebugLocks {
+		g.log.Info("🔍 [LOCK-DEBUG] PostgreSQL lock configuration detected",
+			"max_locks_per_transaction", maxLocks,
+			"max_connections", maxConns,
+			"calculated_capacity", lockCapacity,
+			"threshold_required", 4096,
+			"below_threshold", maxLocks < 4096)
+	}
+	
 	if maxLocks < 4096 {
 		strategy.UseConservative = true
 		strategy.Reason = fmt.Sprintf("PostgreSQL max_locks_per_transaction=%d (need 4096+ for parallel restore)", maxLocks)
@@ -101,6 +116,13 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 			"total_capacity", lockCapacity,
 			"required_locks", 4096,
 			"reason", strategy.Reason)
+		
+		if g.cfg.DebugLocks {
+			g.log.Info("🔍 [LOCK-DEBUG] Guard decision: CONSERVATIVE mode",
+				"jobs", 1,
+				"parallel_dbs", 1,
+				"reason", "Lock threshold not met (max_locks < 4096)")
+		}
 		return strategy
 	}
 	
@@ -108,6 +130,13 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 		"max_locks_per_transaction", maxLocks,
 		"max_connections", maxConns,
 		"total_capacity", lockCapacity)
+	
+	if g.cfg.DebugLocks {
+		g.log.Info("🔍 [LOCK-DEBUG] Lock check PASSED - parallel restore allowed",
+			"max_locks", maxLocks,
+			"threshold", 4096,
+			"verdict", "PASS")
+	}
 
 	// 4. Check individual dump file sizes
 	largestDump := g.findLargestDump(dumpFiles)
@@ -127,6 +156,13 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 	// All checks passed - safe to use default profile
 	strategy.Reason = "No large database risks detected"
 	g.log.Info("✅ Large DB Guard: Safe to use default profile")
+	
+	if g.cfg.DebugLocks {
+		g.log.Info("🔍 [LOCK-DEBUG] Final strategy: Default profile (no restrictions)",
+			"use_conservative", false,
+			"reason", strategy.Reason)
+	}
+	
 	return strategy
 }
 
@@ -186,12 +222,25 @@ func (g *LargeDBGuard) checkLockCapacity(ctx context.Context) int {
 
 // checkLockConfiguration returns max_locks_per_transaction and max_connections
 func (g *LargeDBGuard) checkLockConfiguration(ctx context.Context) (int, int) {
+	if g.cfg.DebugLocks {
+		g.log.Info("🔍 [LOCK-DEBUG] Querying PostgreSQL for lock configuration",
+			"host", g.cfg.Host,
+			"port", g.cfg.Port,
+			"user", g.cfg.User)
+	}
+	
 	// Build connection string
 	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
 		g.cfg.Host, g.cfg.Port, g.cfg.User, g.cfg.Password)
 
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {
+		if g.cfg.DebugLocks {
+			g.log.Warn("🔍 [LOCK-DEBUG] Failed to connect to PostgreSQL, using defaults",
+				"error", err,
+				"default_max_locks", 64,
+				"default_max_connections", 100)
+		}
 		return 64, 100 // PostgreSQL defaults
 	}
 	defer db.Close()
@@ -201,13 +250,30 @@ func (g *LargeDBGuard) checkLockConfiguration(ctx context.Context) (int, int) {
 	// Get max_locks_per_transaction
 	err = db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&maxLocks)
 	if err != nil {
+		if g.cfg.DebugLocks {
+			g.log.Warn("🔍 [LOCK-DEBUG] Failed to query max_locks_per_transaction",
+				"error", err,
+				"using_default", 64)
+		}
 		maxLocks = 64 // PostgreSQL default
 	}
 
 	// Get max_connections
 	err = db.QueryRowContext(ctx, "SHOW max_connections").Scan(&maxConns)
 	if err != nil {
+		if g.cfg.DebugLocks {
+			g.log.Warn("🔍 [LOCK-DEBUG] Failed to query max_connections",
+				"error", err,
+				"using_default", 100)
+		}
 		maxConns = 100 // PostgreSQL default
+	}
+
+	if g.cfg.DebugLocks {
+		g.log.Info("🔍 [LOCK-DEBUG] Successfully retrieved PostgreSQL lock settings",
+			"max_locks_per_transaction", maxLocks,
+			"max_connections", maxConns,
+			"total_capacity", maxLocks*maxConns)
 	}
 
 	return maxLocks, maxConns

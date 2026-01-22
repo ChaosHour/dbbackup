@@ -1201,11 +1201,32 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 
 	// AUTO-TUNE: Boost PostgreSQL settings for large restores
 	e.progress.Update("Tuning PostgreSQL for large restore...")
+	
+	if e.cfg.DebugLocks {
+		e.log.Info("🔍 [LOCK-DEBUG] Attempting to boost PostgreSQL lock settings",
+			"target_max_locks", lockBoostValue,
+			"conservative_mode", strategy.UseConservative)
+	}
+	
 	originalSettings, tuneErr := e.boostPostgreSQLSettings(ctx, lockBoostValue)
 	if tuneErr != nil {
 		e.log.Error("Could not boost PostgreSQL settings", "error", tuneErr)
+		
+		if e.cfg.DebugLocks {
+			e.log.Error("🔍 [LOCK-DEBUG] Lock boost attempt FAILED",
+				"error", tuneErr,
+				"phase", "boostPostgreSQLSettings")
+		}
+		
 		operation.Fail("PostgreSQL tuning failed")
 		return fmt.Errorf("failed to boost PostgreSQL settings: %w", tuneErr)
+	}
+	
+	if e.cfg.DebugLocks {
+		e.log.Info("🔍 [LOCK-DEBUG] Lock boost function returned",
+			"original_max_locks", originalSettings.MaxLocks,
+			"target_max_locks", lockBoostValue,
+			"boost_successful", originalSettings.MaxLocks >= lockBoostValue)
 	}
 	
 	// CRITICAL: Verify locks were actually increased
@@ -1217,6 +1238,15 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			"required_locks", lockBoostValue,
 			"conservative_mode", strategy.UseConservative,
 			"note", "Even single-threaded restore can fail with massive databases")
+		
+		if e.cfg.DebugLocks {
+			e.log.Error("🔍 [LOCK-DEBUG] CRITICAL: Lock verification FAILED",
+				"actual_locks", originalSettings.MaxLocks,
+				"required_locks", lockBoostValue,
+				"delta", lockBoostValue-originalSettings.MaxLocks,
+				"verdict", "ABORT RESTORE")
+		}
+		
 		operation.Fail(fmt.Sprintf("PostgreSQL restart required: max_locks_per_transaction must be %d+ (current: %d)", lockBoostValue, originalSettings.MaxLocks))
 		
 		// Provide clear instructions
@@ -1237,6 +1267,13 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 		"target_locks", lockBoostValue,
 		"maintenance_work_mem", "2GB",
 		"conservative_mode", strategy.UseConservative)
+	
+	if e.cfg.DebugLocks {
+		e.log.Info("🔍 [LOCK-DEBUG] Lock verification PASSED",
+			"actual_locks", originalSettings.MaxLocks,
+			"required_locks", lockBoostValue,
+			"verdict", "PROCEED WITH RESTORE")
+	}
 		
 	// Ensure we reset settings when done (even on failure)
 	defer func() {
@@ -2501,9 +2538,18 @@ type OriginalSettings struct {
 // NOTE: max_locks_per_transaction requires a PostgreSQL RESTART to take effect!
 // maintenance_work_mem can be changed with pg_reload_conf().
 func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int) (*OriginalSettings, error) {
+	if e.cfg.DebugLocks {
+		e.log.Info("🔍 [LOCK-DEBUG] boostPostgreSQLSettings: Starting lock boost procedure",
+			"target_lock_value", lockBoostValue)
+	}
+	
 	connStr := e.buildConnString()
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {
+		if e.cfg.DebugLocks {
+			e.log.Error("🔍 [LOCK-DEBUG] Failed to connect to PostgreSQL",
+				"error", err)
+		}
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 	defer db.Close()
@@ -2515,6 +2561,13 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	if err := db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&maxLocksStr); err == nil {
 		original.MaxLocks, _ = strconv.Atoi(maxLocksStr)
 	}
+	
+	if e.cfg.DebugLocks {
+		e.log.Info("🔍 [LOCK-DEBUG] Current PostgreSQL lock configuration",
+			"current_max_locks", original.MaxLocks,
+			"target_max_locks", lockBoostValue,
+			"boost_required", original.MaxLocks < lockBoostValue)
+	}
 
 	// Get current maintenance_work_mem
 	db.QueryRowContext(ctx, "SHOW maintenance_work_mem").Scan(&original.MaintenanceWorkMem)
@@ -2523,14 +2576,31 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	// pg_reload_conf() is NOT sufficient for this parameter.
 	needsRestart := false
 	if original.MaxLocks < lockBoostValue {
+		if e.cfg.DebugLocks {
+			e.log.Info("🔍 [LOCK-DEBUG] Executing ALTER SYSTEM to boost locks",
+				"from", original.MaxLocks,
+				"to", lockBoostValue)
+		}
+		
 		_, err = db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", lockBoostValue))
 		if err != nil {
 			e.log.Warn("Could not set max_locks_per_transaction", "error", err)
+			
+			if e.cfg.DebugLocks {
+				e.log.Error("🔍 [LOCK-DEBUG] ALTER SYSTEM failed",
+					"error", err)
+			}
 		} else {
 			needsRestart = true
 			e.log.Warn("max_locks_per_transaction requires PostgreSQL restart to take effect",
 				"current", original.MaxLocks,
 				"target", lockBoostValue)
+			
+			if e.cfg.DebugLocks {
+				e.log.Info("🔍 [LOCK-DEBUG] ALTER SYSTEM succeeded - restart required",
+					"setting_saved_to", "postgresql.auto.conf",
+					"active_after", "PostgreSQL restart")
+			}
 		}
 	}
 
@@ -2549,8 +2619,17 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 
 	// If max_locks_per_transaction needs a restart, try to do it
 	if needsRestart {
+		if e.cfg.DebugLocks {
+			e.log.Info("🔍 [LOCK-DEBUG] Attempting PostgreSQL restart to activate new lock setting")
+		}
+		
 		if restarted := e.tryRestartPostgreSQL(ctx); restarted {
 			e.log.Info("PostgreSQL restarted successfully - max_locks_per_transaction now active")
+			
+			if e.cfg.DebugLocks {
+				e.log.Info("🔍 [LOCK-DEBUG] PostgreSQL restart SUCCEEDED")
+			}
+			
 			// Wait for PostgreSQL to be ready
 			time.Sleep(3 * time.Second)
 			// Update original.MaxLocks to reflect the new value after restart
@@ -2558,6 +2637,13 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 			if err := db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&newMaxLocksStr); err == nil {
 				original.MaxLocks, _ = strconv.Atoi(newMaxLocksStr)
 				e.log.Info("Verified new max_locks_per_transaction after restart", "value", original.MaxLocks)
+				
+				if e.cfg.DebugLocks {
+					e.log.Info("🔍 [LOCK-DEBUG] Post-restart verification",
+						"new_max_locks", original.MaxLocks,
+						"target_was", lockBoostValue,
+						"verification", "PASS")
+				}
 			}
 		} else {
 			// Cannot restart - this is now a CRITICAL failure
@@ -2567,9 +2653,26 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 			e.log.Error("The setting has been saved to postgresql.auto.conf but is NOT ACTIVE")
 			e.log.Error("Restore will ABORT to prevent 'out of shared memory' failure")
 			e.log.Error("Action required: Ask DBA to restart PostgreSQL, then retry restore")
+			
+			if e.cfg.DebugLocks {
+				e.log.Error("🔍 [LOCK-DEBUG] PostgreSQL restart FAILED",
+					"current_locks", original.MaxLocks,
+					"required_locks", lockBoostValue,
+					"setting_saved", true,
+					"setting_active", false,
+					"verdict", "ABORT - Manual restart required")
+			}
+			
 			// Return original settings so caller can check and abort
 			return original, nil
 		}
+	}
+
+	if e.cfg.DebugLocks {
+		e.log.Info("🔍 [LOCK-DEBUG] boostPostgreSQLSettings: Complete",
+			"final_max_locks", original.MaxLocks,
+			"target_was", lockBoostValue,
+			"boost_successful", original.MaxLocks >= lockBoostValue)
 	}
 
 	return original, nil

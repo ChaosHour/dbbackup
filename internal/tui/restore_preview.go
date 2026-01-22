@@ -61,6 +61,7 @@ type RestorePreviewModel struct {
 	canProceed        bool
 	message           string
 	saveDebugLog      bool   // Save detailed error report on failure
+	debugLocks        bool   // Enable detailed lock debugging
 	workDir           string // Custom work directory for extraction
 }
 
@@ -317,6 +318,15 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.message = "Debug log: disabled"
 			}
 
+		case "l":
+			// Toggle lock debugging
+			m.debugLocks = !m.debugLocks
+			if m.debugLocks {
+				m.message = infoStyle.Render("🔍 [LOCK-DEBUG] Lock debugging: ENABLED (captures PostgreSQL lock config, Guard decisions, boost attempts)")
+			} else {
+				m.message = "Lock debugging: disabled"
+			}
+
 		case "w":
 			// Toggle/set work directory
 			if m.workDir == "" {
@@ -346,7 +356,10 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Proceed to restore execution
+			// Proceed to restore execution (enable lock debugging in Config)
+			if m.debugLocks {
+				m.config.DebugLocks = true
+			}
 			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.ctx, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs, m.saveDebugLog, m.workDir)
 			return exec, exec.Init()
 		}
@@ -546,6 +559,20 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(infoStyle.Render(fmt.Sprintf("    Saves detailed error report to %s on failure", m.config.GetEffectiveWorkDir())))
 		s.WriteString("\n")
 	}
+
+	// Lock debugging option
+	lockDebugIcon := "[-]"
+	lockDebugStyle := infoStyle
+	if m.debugLocks {
+		lockDebugIcon = "[🔍]"
+		lockDebugStyle = checkPassedStyle
+	}
+	s.WriteString(lockDebugStyle.Render(fmt.Sprintf("  %s Lock Debug: %v (press 'l' to toggle)", lockDebugIcon, m.debugLocks)))
+	s.WriteString("\n")
+	if m.debugLocks {
+		s.WriteString(infoStyle.Render("    Captures PostgreSQL lock config, Guard decisions, boost attempts"))
+		s.WriteString("\n")
+	}
 	s.WriteString("\n")
 
 	// Message
@@ -561,10 +588,10 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(successStyle.Render("[OK] Ready to restore"))
 		s.WriteString("\n")
 		if m.mode == "restore-single" {
-			s.WriteString(infoStyle.Render("t: Clean-first | c: Create | w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
+			s.WriteString(infoStyle.Render("t: Clean-first | c: Create | w: WorkDir | d: Debug | l: LockDebug | Enter: Proceed | Esc: Cancel"))
 		} else if m.mode == "restore-cluster" {
 			if m.existingDBCount > 0 {
-				s.WriteString(infoStyle.Render("c: Cleanup | w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
+				s.WriteString(infoStyle.Render("c: Cleanup | w: WorkDir | d: Debug | l: LockDebug | Enter: Proceed | Esc: Cancel"))
 			} else {
 				s.WriteString(infoStyle.Render("w: WorkDir | d: Debug | Enter: Proceed | Esc: Cancel"))
 			}

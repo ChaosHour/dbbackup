@@ -50,10 +50,11 @@ type Config struct {
 	SampleValue    int
 
 	// Output options
-	NoColor   bool
-	Debug     bool
-	LogLevel  string
-	LogFormat string
+	NoColor    bool
+	Debug      bool
+	DebugLocks bool // Extended lock debugging (captures lock detection, Guard decisions, boost attempts)
+	LogLevel   string
+	LogFormat  string
 
 	// Config persistence
 	NoSaveConfig bool

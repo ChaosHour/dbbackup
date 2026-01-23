@@ -328,19 +328,24 @@ create_swap() {
     avail_gb=$(df -BG / | tail -1 | awk '{print $4}' | tr -d 'G')
     
     # Auto-detect optimal swap size based on available space
+    # Use 80% of available space, leave 1GB minimum for system
     if [ "$size" = "auto" ]; then
         if [ "$avail_gb" -ge 40 ]; then
-            size="16G"
+            size="32G"
         elif [ "$avail_gb" -ge 20 ]; then
+            size="16G"
+        elif [ "$avail_gb" -ge 12 ]; then
             size="8G"
-        elif [ "$avail_gb" -ge 10 ]; then
-            size="4G"
         elif [ "$avail_gb" -ge 6 ]; then
-            size="2G"
+            size="4G"
+        elif [ "$avail_gb" -ge 4 ]; then
+            size="3G"  # 4GB available → 3GB swap
         elif [ "$avail_gb" -ge 3 ]; then
+            size="2G"  # 3GB available → 2GB swap
+        elif [ "$avail_gb" -ge 2 ]; then
             size="1G"
         else
-            log_error "Not enough disk space for swap (only ${avail_gb}GB available, need at least 3GB)"
+            log_error "Not enough disk space for swap (only ${avail_gb}GB available, need at least 2GB)"
             return 1
         fi
         log_info "Auto-detected swap size: $size (based on ${avail_gb}GB available)"

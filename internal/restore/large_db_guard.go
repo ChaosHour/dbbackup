@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"dbbackup/internal/config"
@@ -525,4 +526,120 @@ func (g *LargeDBGuard) RevertPostgresSettings() []string {
 		"ALTER SYSTEM RESET max_parallel_maintenance_workers;",
 		"SELECT pg_reload_conf();",
 	}
+}
+
+// TmpfsRecommendation holds info about available tmpfs storage
+type TmpfsRecommendation struct {
+	Available    bool   // Is tmpfs available
+	Path         string // Best tmpfs path (/dev/shm, /tmp, etc)
+	FreeBytes    uint64 // Free space on tmpfs
+	Recommended  bool   // Is tmpfs recommended for this restore
+	Reason       string // Why or why not
+}
+
+// CheckTmpfsAvailable checks for available tmpfs storage (no root needed)
+// This can significantly speed up large restores by using RAM for temp files
+func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
+	rec := &TmpfsRecommendation{}
+	
+	// Check common tmpfs locations
+	tmpfsPaths := []string{"/dev/shm", "/run/shm", "/tmp", "/run"}
+	
+	for _, path := range tmpfsPaths {
+		info, err := os.Stat(path)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		
+		// Check if it's tmpfs by reading /proc/mounts
+		if !g.isTmpfs(path) {
+			continue
+		}
+		
+		// Check available space
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(path, &stat); err != nil {
+			continue
+		}
+		
+		freeBytes := stat.Bavail * uint64(stat.Bsize)
+		
+		// Check if we can write
+		testFile := filepath.Join(path, ".dbbackup_test")
+		f, err := os.Create(testFile)
+		if err != nil {
+			continue
+		}
+		f.Close()
+		os.Remove(testFile)
+		
+		// Found usable tmpfs
+		if freeBytes > rec.FreeBytes {
+			rec.Available = true
+			rec.Path = path
+			rec.FreeBytes = freeBytes
+		}
+	}
+	
+	// Determine recommendation
+	if !rec.Available {
+		rec.Reason = "No writable tmpfs found"
+		return rec
+	}
+	
+	freeGB := rec.FreeBytes / (1024 * 1024 * 1024)
+	if freeGB >= 4 {
+		rec.Recommended = true
+		rec.Reason = fmt.Sprintf("Use %s (%dGB free) for faster restore temp files", rec.Path, freeGB)
+	} else if freeGB >= 1 {
+		rec.Recommended = true
+		rec.Reason = fmt.Sprintf("Use %s (%dGB free) - limited but usable for temp files", rec.Path, freeGB)
+	} else {
+		rec.Recommended = false
+		rec.Reason = fmt.Sprintf("tmpfs at %s has only %dMB free - not enough", rec.Path, rec.FreeBytes/(1024*1024))
+	}
+	
+	return rec
+}
+
+// isTmpfs checks if a path is on tmpfs
+func (g *LargeDBGuard) isTmpfs(path string) bool {
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return false
+	}
+	
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		
+		mountPoint := fields[1]
+		fsType := fields[2]
+		
+		if mountPoint == path && (fsType == "tmpfs" || fsType == "devtmpfs") {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// GetOptimalTempDir returns the best temp directory for restore operations
+// Prefers tmpfs if available and has enough space, otherwise falls back to workDir
+func (g *LargeDBGuard) GetOptimalTempDir(workDir string, requiredGB int) (string, string) {
+	tmpfs := g.CheckTmpfsAvailable()
+	
+	if tmpfs.Recommended && tmpfs.FreeBytes >= uint64(requiredGB)*1024*1024*1024 {
+		g.log.Info("Using tmpfs for faster restore",
+			"path", tmpfs.Path,
+			"free_gb", tmpfs.FreeBytes/(1024*1024*1024))
+		return tmpfs.Path, "tmpfs (RAM-backed, fast)"
+	}
+	
+	g.log.Info("Using disk-based temp directory",
+		"path", workDir,
+		"reason", tmpfs.Reason)
+	return workDir, "disk (slower but larger capacity)"
 }

@@ -291,7 +291,7 @@ run_full_diagnosis() {
     
     # Check swap
     if (( $(echo "$DIAG_SWAP_TOTAL_GB < $MIN_SWAP_GB" | bc -l) )); then
-        log_warn "CREATE SWAP: Run with --swap ${DEFAULT_SWAP_SIZE}"
+        log_warn "CREATE SWAP: Run with --swap auto (or --swap 2G for limited disk space)"
         needs_fix=1
     fi
     
@@ -319,9 +319,36 @@ run_full_diagnosis() {
 # FIX FUNCTIONS
 #==============================================================================
 create_swap() {
-    local size="${1:-$DEFAULT_SWAP_SIZE}"
+    local size="${1:-auto}"
     
-    log_section "CREATING SWAP: $size"
+    log_section "CREATING SWAP"
+    
+    # Get available disk space
+    local avail_gb
+    avail_gb=$(df -BG / | tail -1 | awk '{print $4}' | tr -d 'G')
+    
+    # Auto-detect optimal swap size based on available space
+    if [ "$size" = "auto" ]; then
+        if [ "$avail_gb" -ge 40 ]; then
+            size="16G"
+        elif [ "$avail_gb" -ge 20 ]; then
+            size="8G"
+        elif [ "$avail_gb" -ge 10 ]; then
+            size="4G"
+        elif [ "$avail_gb" -ge 6 ]; then
+            size="2G"
+        elif [ "$avail_gb" -ge 3 ]; then
+            size="1G"
+        else
+            log_error "Not enough disk space for swap (only ${avail_gb}GB available, need at least 3GB)"
+            return 1
+        fi
+        log_info "Auto-detected swap size: $size (based on ${avail_gb}GB available)"
+    fi
+    
+    echo "  Requested: $size"
+    echo "  Available: ${avail_gb}GB"
+    echo
     
     if [ -f "$SWAP_FILE" ]; then
         log_warn "Swap file already exists: $SWAP_FILE"
@@ -337,17 +364,22 @@ create_swap() {
         rm -f "$SWAP_FILE"
     fi
     
-    # Check disk space
+    # Check disk space - need swap + 2GB buffer
     local size_gb="${size//[!0-9]/}"
-    local avail_gb
-    avail_gb=$(df -BG / | tail -1 | awk '{print $4}' | tr -d 'G')
     
-    if [ "$avail_gb" -lt $((size_gb + 10)) ]; then
-        log_error "Not enough disk space for ${size} swap (only ${avail_gb}GB available)"
-        return 1
+    if [ "$avail_gb" -lt $((size_gb + 2)) ]; then
+        # Try smaller size
+        local new_size=$((avail_gb - 2))
+        if [ "$new_size" -lt 1 ]; then
+            log_error "Not enough disk space for swap (only ${avail_gb}GB available)"
+            return 1
+        fi
+        log_warn "Reducing swap to ${new_size}G (not enough space for ${size})"
+        size="${new_size}G"
+        size_gb="$new_size"
     fi
     
-    echo "  Creating swap file..."
+    echo "  Creating ${size} swap file..."
     
     # Use fallocate if available (faster), otherwise dd
     if command -v fallocate &>/dev/null; then
@@ -498,7 +530,7 @@ apply_all_fixes() {
         exit 1
     fi
     
-    create_swap "$DEFAULT_SWAP_SIZE"
+    create_swap "auto"  # Auto-detect based on available space
     tune_postgresql
     enable_oom_protection
     
@@ -540,8 +572,8 @@ show_help() {
     echo
     echo "Options:"
     echo "  (no options)      Run diagnostics only"
-    echo "  --fix             Apply all recommended fixes"
-    echo "  --swap SIZE       Create swap file (e.g., --swap 32G)"
+    echo "  --fix             Apply all recommended fixes (auto-detects swap size)"
+    echo "  --swap SIZE       Create swap file (e.g., --swap 2G, --swap auto)"
     echo "  --tune-pg         Tune PostgreSQL for low-memory restore"
     echo "  --oom-protect     Enable OOM killer protection"
     echo "  --reset-pg        Reset PostgreSQL to default settings"
@@ -549,8 +581,9 @@ show_help() {
     echo
     echo "Examples:"
     echo "  $0                    # Diagnose system"
-    echo "  sudo $0 --fix         # Apply all fixes"
-    echo "  sudo $0 --swap 32G    # Create 32GB swap"
+    echo "  sudo $0 --fix         # Apply all fixes (auto swap size)"
+    echo "  sudo $0 --swap auto   # Auto-detect swap size based on disk"
+    echo "  sudo $0 --swap 2G     # Create 2GB swap (for low disk space)"
     echo
 }
 
@@ -564,10 +597,11 @@ main() {
             ;;
         --swap)
             if [ -z "${2:-}" ]; then
-                log_error "Swap size required (e.g., --swap 32G)"
-                exit 1
+                # Default to auto if no size given
+                create_swap "auto"
+            else
+                create_swap "$2"
             fi
-            create_swap "$2"
             ;;
         --tune-pg)
             tune_postgresql

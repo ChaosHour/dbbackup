@@ -83,43 +83,95 @@ gb_to_bytes() {
 
 get_pg_setting() {
     local sql="$1"
-    # When running as root, use sudo -u postgres with local socket (most reliable)
-    if [ "$EUID" -eq 0 ]; then
-        sudo -u postgres psql --no-psqlrc -t -A -c "$sql" 2>/dev/null || echo "N/A"
-    else
-        # Try multiple connection methods for non-root users
-        PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
-        psql --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
-        echo "N/A"
+    # Try to connect and get setting
+    su - postgres -c "psql -t -A -c \"$sql\"" 2>/dev/null || \
+    sudo -u postgres psql -t -A -c "$sql" 2>/dev/null || \
+    psql -U postgres -t -A -c "$sql" 2>/dev/null || \
+    echo "N/A"
+}
+
+# Find PostgreSQL data directory
+find_pg_data_dir() {
+    # Common locations
+    local dirs=(
+        "/var/lib/pgsql/data"
+        "/var/lib/pgsql/15/data"
+        "/var/lib/pgsql/14/data"
+        "/var/lib/pgsql/13/data"
+        "/var/lib/pgsql/16/data"
+        "/var/lib/postgresql/15/main"
+        "/var/lib/postgresql/14/main"
+        "/var/lib/postgresql/13/main"
+        "/var/lib/postgresql/16/main"
+        "/usr/local/pgsql/data"
+    )
+    
+    for dir in "${dirs[@]}"; do
+        if [ -f "$dir/postgresql.conf" ]; then
+            echo "$dir"
+            return 0
+        fi
+    done
+    
+    # Try to get from running postgres
+    local datadir
+    datadir=$(su - postgres -c "psql -t -A -c \"SHOW data_directory;\"" 2>/dev/null || \
+              sudo -u postgres psql -t -A -c "SHOW data_directory;" 2>/dev/null || \
+              echo "")
+    
+    if [ -n "$datadir" ] && [ -f "$datadir/postgresql.conf" ]; then
+        echo "$datadir"
+        return 0
     fi
+    
+    return 1
+}
+
+# Write settings directly to postgresql.auto.conf (no psql needed!)
+set_pg_setting_direct() {
+    local setting="$1"
+    local value="$2"
+    local datadir
+    
+    datadir=$(find_pg_data_dir)
+    if [ -z "$datadir" ]; then
+        log_error "Cannot find PostgreSQL data directory"
+        return 1
+    fi
+    
+    local autoconf="$datadir/postgresql.auto.conf"
+    
+    # Remove existing setting if present
+    if [ -f "$autoconf" ]; then
+        grep -v "^$setting = " "$autoconf" > "$autoconf.tmp" 2>/dev/null || true
+        mv "$autoconf.tmp" "$autoconf"
+    fi
+    
+    # Add new setting
+    echo "$setting = '$value'" >> "$autoconf"
+    
+    # Fix ownership
+    chown postgres:postgres "$autoconf" 2>/dev/null || true
+    
+    return 0
 }
 
 set_pg_setting() {
     local setting="$1"
     local value="$2"
     
-    # When running as root, use sudo -u postgres (most reliable for ALTER SYSTEM)
-    if [ "$EUID" -eq 0 ]; then
-        if sudo -u postgres psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
-            return 0
-        fi
-    fi
-    
-    # Try with env vars (for remote/docker)
-    if PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+    # Method 1: Direct file write (most reliable, no connection needed!)
+    if set_pg_setting_direct "$setting" "$value"; then
         return 0
     fi
     
-    # Try direct psql (if already postgres user)
-    if psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+    # Method 2: Try psql with su
+    if su - postgres -c "psql -c \"ALTER SYSTEM SET $setting = '$value';\"" 2>/dev/null; then
         return 0
     fi
     
-    # Try with explicit sockets
-    if psql -h /var/run/postgresql -U postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
-        return 0
-    fi
-    if psql -h /tmp -U postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+    # Method 3: Try sudo -u postgres
+    if sudo -u postgres psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
         return 0
     fi
     
@@ -127,16 +179,15 @@ set_pg_setting() {
 }
 
 reload_pg() {
-    if [ "$EUID" -eq 0 ]; then
-        sudo -u postgres psql -c "SELECT pg_reload_conf();" 2>/dev/null || \
-        sudo systemctl reload postgresql 2>/dev/null || \
-        sudo service postgresql reload 2>/dev/null || \
-        true
-    else
-        PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres -c "SELECT pg_reload_conf();" 2>/dev/null || \
-        psql -c "SELECT pg_reload_conf();" 2>/dev/null || \
-        true
-    fi
+    # Try multiple reload methods
+    su - postgres -c "psql -c 'SELECT pg_reload_conf();'" 2>/dev/null || \
+    sudo -u postgres psql -c "SELECT pg_reload_conf();" 2>/dev/null || \
+    systemctl reload postgresql 2>/dev/null || \
+    systemctl reload postgresql-15 2>/dev/null || \
+    systemctl reload postgresql-14 2>/dev/null || \
+    service postgresql reload 2>/dev/null || \
+    pg_ctl reload -D "$(find_pg_data_dir)" 2>/dev/null || \
+    true
 }
 
 #==============================================================================

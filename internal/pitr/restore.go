@@ -1,8 +1,10 @@
 package pitr
 
 import (
+	"archive/tar"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -246,19 +248,81 @@ func (ro *RestoreOrchestrator) extractTarGzBackup(ctx context.Context, source, d
 	return nil
 }
 
-// extractTarBackup extracts a .tar backup
+// extractTarBackup extracts a .tar backup using in-process tar
 func (ro *RestoreOrchestrator) extractTarBackup(ctx context.Context, source, dest string) error {
-	ro.log.Info("Extracting tar backup...")
+	ro.log.Info("Extracting tar backup (in-process)...")
 
-	cmd := exec.CommandContext(ctx, "tar", "-xf", source, "-C", dest)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Open the tar file
+	f, err := os.Open(source)
+	if err != nil {
+		return fmt.Errorf("cannot open tar file: %w", err)
+	}
+	defer f.Close()
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("tar extraction failed: %w", err)
+	tr := tar.NewReader(f)
+	fileCount := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("tar read error: %w", err)
+		}
+
+		target := filepath.Join(dest, header.Name)
+
+		// Security check - prevent path traversal
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(dest)) {
+			ro.log.Warn("Skipping unsafe path in tar", "path", header.Name)
+			continue
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", target, err)
+			}
+
+		case tar.TypeReg:
+			// Ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory: %w", err)
+			}
+
+			outFile, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", target, err)
+			}
+
+			if _, err := io.Copy(outFile, tr); err != nil {
+				outFile.Close()
+				return fmt.Errorf("failed to write file %s: %w", target, err)
+			}
+			outFile.Close()
+			fileCount++
+
+		case tar.TypeSymlink:
+			if err := os.Symlink(header.Linkname, target); err != nil && !os.IsExist(err) {
+				ro.log.Debug("Symlink creation failed (may already exist)", "target", target)
+			}
+
+		case tar.TypeLink:
+			linkTarget := filepath.Join(dest, header.Linkname)
+			if err := os.Link(linkTarget, target); err != nil && !os.IsExist(err) {
+				ro.log.Debug("Hard link creation failed", "target", target, "error", err)
+			}
+		}
 	}
 
-	ro.log.Info("[OK] Base backup extracted successfully")
+	ro.log.Info("[OK] Base backup extracted successfully", "files", fileCount)
 	return nil
 }
 

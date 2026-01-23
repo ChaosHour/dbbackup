@@ -11,12 +11,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"dbbackup/internal/logger"
+
+	"github.com/klauspost/pgzip"
 )
 
 // LargeRestoreChecker provides systematic verification for large database restores
@@ -816,30 +817,54 @@ func (c *LargeRestoreChecker) verifyPgDumpDirectory(ctx context.Context, path st
 	return nil
 }
 
-// verifyGzip verifies a gzipped backup file
+// verifyGzip verifies a gzipped backup file using in-process pgzip (no shell)
 func (c *LargeRestoreChecker) verifyGzip(ctx context.Context, path string, result *BackupFileCheck) error {
-	// Use gzip -t to test integrity
-	cmd := exec.CommandContext(ctx, "gzip", "-t", path)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("gzip integrity check failed: %w", err)
+	// Open the gzip file
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("cannot open gzip file: %w", err)
+	}
+	defer f.Close()
+
+	// Get compressed size from file info
+	fi, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("cannot stat gzip file: %w", err)
+	}
+	compressedSize := fi.Size()
+
+	// Create pgzip reader to verify integrity
+	gzr, err := pgzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("gzip integrity check failed: invalid gzip header: %w", err)
+	}
+	defer gzr.Close()
+
+	// Read through entire file to verify integrity and calculate uncompressed size
+	var uncompressedSize int64
+	buf := make([]byte, 1024*1024) // 1MB buffer
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		n, err := gzr.Read(buf)
+		uncompressedSize += int64(n)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("gzip integrity check failed: %w", err)
+		}
 	}
 
-	// Get uncompressed size
-	cmd = exec.CommandContext(ctx, "gzip", "-l", path)
-	output, err := cmd.Output()
-	if err == nil {
-		lines := strings.Split(string(output), "\n")
-		if len(lines) >= 2 {
-			fields := strings.Fields(lines[1])
-			if len(fields) >= 2 {
-				if uncompressed, err := strconv.ParseInt(fields[1], 10, 64); err == nil {
-					c.log.Info("📦 Compressed backup verified",
-						"compressed", result.SizeBytes,
-						"uncompressed", uncompressed,
-						"ratio", fmt.Sprintf("%.1f%%", float64(result.SizeBytes)*100/float64(uncompressed)))
-				}
-			}
-		}
+	if uncompressedSize > 0 {
+		c.log.Info("📦 Compressed backup verified (in-process)",
+			"compressed", compressedSize,
+			"uncompressed", uncompressedSize,
+			"ratio", fmt.Sprintf("%.1f%%", float64(compressedSize)*100/float64(uncompressedSize)))
 	}
 
 	return nil

@@ -166,6 +166,50 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 	return nil
 }
 
+// ListTarGzContents lists the contents of a tar.gz archive without extracting
+// Returns a slice of file paths in the archive
+// Uses parallel gzip decompression for 2-4x faster listing on multi-core systems
+func ListTarGzContents(ctx context.Context, archivePath string) ([]string, error) {
+	// Open the archive
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open archive: %w", err)
+	}
+	defer file.Close()
+
+	// Create parallel gzip reader
+	gzReader, err := pgzip.NewReaderN(file, 1<<20, runtime.NumCPU())
+	if err != nil {
+		return nil, fmt.Errorf("cannot create gzip reader: %w", err)
+	}
+	defer gzReader.Close()
+
+	// Create tar reader
+	tarReader := tar.NewReader(gzReader)
+
+	var files []string
+	for {
+		// Check for cancellation
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("tar read error: %w", err)
+		}
+
+		files = append(files, header.Name)
+	}
+
+	return files, nil
+}
+
 // ExtractTarGzFast is a convenience wrapper that chooses the best extraction method
 // Uses parallel gzip if available, falls back to system tar if needed
 func ExtractTarGzFast(ctx context.Context, archivePath, destDir string, progressCb ProgressCallback) error {
@@ -175,9 +219,9 @@ func ExtractTarGzFast(ctx context.Context, archivePath, destDir string, progress
 
 // CreateProgress reports archive creation progress
 type CreateProgress struct {
-	CurrentFile string
+	CurrentFile  string
 	BytesWritten int64
-	FilesCount  int
+	FilesCount   int
 }
 
 // CreateProgressCallback is called during archive creation

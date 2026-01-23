@@ -118,7 +118,7 @@ jobs:
           PGUSER: postgres
           PGPASSWORD: postgres
         run: |
-          ./dbbackup verify-locks --host postgres | tee verify-locks.out
+          ./dbbackup verify-locks --host postgres --db-type postgres --no-config --allow-root | tee verify-locks.out
           grep -q 'max_locks_per_transaction' verify-locks.out
 
   lint:

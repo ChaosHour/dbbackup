@@ -46,18 +46,19 @@ type ProgressCallback func(bytesTransferred, totalBytes int64)
 
 // Config contains common configuration for cloud backends
 type Config struct {
-	Provider    string // "s3", "minio", "azure", "gcs", "b2"
-	Bucket      string // Bucket or container name
-	Region      string // Region (for S3)
-	Endpoint    string // Custom endpoint (for MinIO, S3-compatible)
-	AccessKey   string // Access key or account ID
-	SecretKey   string // Secret key or access token
-	UseSSL      bool   // Use SSL/TLS (default: true)
-	PathStyle   bool   // Use path-style addressing (for MinIO)
-	Prefix      string // Prefix for all operations (e.g., "backups/")
-	Timeout     int    // Timeout in seconds (default: 300)
-	MaxRetries  int    // Maximum retry attempts (default: 3)
-	Concurrency int    // Upload/download concurrency (default: 5)
+	Provider       string // "s3", "minio", "azure", "gcs", "b2"
+	Bucket         string // Bucket or container name
+	Region         string // Region (for S3)
+	Endpoint       string // Custom endpoint (for MinIO, S3-compatible)
+	AccessKey      string // Access key or account ID
+	SecretKey      string // Secret key or access token
+	UseSSL         bool   // Use SSL/TLS (default: true)
+	PathStyle      bool   // Use path-style addressing (for MinIO)
+	Prefix         string // Prefix for all operations (e.g., "backups/")
+	Timeout        int    // Timeout in seconds (default: 300)
+	MaxRetries     int    // Maximum retry attempts (default: 3)
+	Concurrency    int    // Upload/download concurrency (default: 5)
+	BandwidthLimit int64  // Maximum upload/download bandwidth in bytes/sec (0 = unlimited)
 }
 
 // NewBackend creates a new cloud storage backend based on the provider

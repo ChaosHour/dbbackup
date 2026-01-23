@@ -30,7 +30,12 @@ Configuration via flags or environment variables:
   --cloud-region        DBBACKUP_CLOUD_REGION
   --cloud-endpoint      DBBACKUP_CLOUD_ENDPOINT
   --cloud-access-key    DBBACKUP_CLOUD_ACCESS_KEY (or AWS_ACCESS_KEY_ID)
-  --cloud-secret-key    DBBACKUP_CLOUD_SECRET_KEY (or AWS_SECRET_ACCESS_KEY)`,
+  --cloud-secret-key    DBBACKUP_CLOUD_SECRET_KEY (or AWS_SECRET_ACCESS_KEY)
+  --bandwidth-limit     DBBACKUP_BANDWIDTH_LIMIT
+
+Bandwidth Limiting:
+  Limit upload/download speed to avoid saturating network during business hours.
+  Examples: 10MB/s, 50MiB/s, 100Mbps, unlimited`,
 }
 
 var cloudUploadCmd = &cobra.Command{
@@ -103,15 +108,16 @@ Examples:
 }
 
 var (
-	cloudProvider  string
-	cloudBucket    string
-	cloudRegion    string
-	cloudEndpoint  string
-	cloudAccessKey string
-	cloudSecretKey string
-	cloudPrefix    string
-	cloudVerbose   bool
-	cloudConfirm   bool
+	cloudProvider       string
+	cloudBucket         string
+	cloudRegion         string
+	cloudEndpoint       string
+	cloudAccessKey      string
+	cloudSecretKey      string
+	cloudPrefix         string
+	cloudVerbose        bool
+	cloudConfirm        bool
+	cloudBandwidthLimit string
 )
 
 func init() {
@@ -127,6 +133,7 @@ func init() {
 		cmd.Flags().StringVar(&cloudAccessKey, "cloud-access-key", getEnv("DBBACKUP_CLOUD_ACCESS_KEY", getEnv("AWS_ACCESS_KEY_ID", "")), "Access key")
 		cmd.Flags().StringVar(&cloudSecretKey, "cloud-secret-key", getEnv("DBBACKUP_CLOUD_SECRET_KEY", getEnv("AWS_SECRET_ACCESS_KEY", "")), "Secret key")
 		cmd.Flags().StringVar(&cloudPrefix, "cloud-prefix", getEnv("DBBACKUP_CLOUD_PREFIX", ""), "Key prefix")
+		cmd.Flags().StringVar(&cloudBandwidthLimit, "bandwidth-limit", getEnv("DBBACKUP_BANDWIDTH_LIMIT", ""), "Bandwidth limit (e.g., 10MB/s, 100Mbps, 50MiB/s)")
 		cmd.Flags().BoolVarP(&cloudVerbose, "verbose", "v", false, "Verbose output")
 	}
 
@@ -141,22 +148,38 @@ func getEnv(key, defaultValue string) string {
 }
 
 func getCloudBackend() (cloud.Backend, error) {
+	// Parse bandwidth limit
+	var bandwidthLimit int64
+	if cloudBandwidthLimit != "" {
+		var err error
+		bandwidthLimit, err = cloud.ParseBandwidth(cloudBandwidthLimit)
+		if err != nil {
+			return nil, fmt.Errorf("invalid bandwidth limit: %w", err)
+		}
+	}
+
 	cfg := &cloud.Config{
-		Provider:   cloudProvider,
-		Bucket:     cloudBucket,
-		Region:     cloudRegion,
-		Endpoint:   cloudEndpoint,
-		AccessKey:  cloudAccessKey,
-		SecretKey:  cloudSecretKey,
-		Prefix:     cloudPrefix,
-		UseSSL:     true,
-		PathStyle:  cloudProvider == "minio",
-		Timeout:    300,
-		MaxRetries: 3,
+		Provider:       cloudProvider,
+		Bucket:         cloudBucket,
+		Region:         cloudRegion,
+		Endpoint:       cloudEndpoint,
+		AccessKey:      cloudAccessKey,
+		SecretKey:      cloudSecretKey,
+		Prefix:         cloudPrefix,
+		UseSSL:         true,
+		PathStyle:      cloudProvider == "minio",
+		Timeout:        300,
+		MaxRetries:     3,
+		BandwidthLimit: bandwidthLimit,
 	}
 
 	if cfg.Bucket == "" {
 		return nil, fmt.Errorf("bucket name is required (use --cloud-bucket or DBBACKUP_CLOUD_BUCKET)")
+	}
+
+	// Log bandwidth limit if set
+	if bandwidthLimit > 0 {
+		fmt.Printf("📊 Bandwidth limit: %s\n", cloud.FormatBandwidth(bandwidthLimit))
 	}
 
 	backend, err := cloud.NewBackend(cfg)

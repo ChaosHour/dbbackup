@@ -162,7 +162,12 @@ func (a *AzureBackend) uploadSimple(ctx context.Context, file *os.File, blobName
 		blockBlobClient := a.client.ServiceClient().NewContainerClient(a.containerName).NewBlockBlobClient(blobName)
 
 		// Wrap reader with progress tracking
-		reader := NewProgressReader(file, fileSize, progress)
+		var reader io.Reader = NewProgressReader(file, fileSize, progress)
+
+		// Apply bandwidth throttling if configured
+		if a.config.BandwidthLimit > 0 {
+			reader = NewThrottledReader(ctx, reader, a.config.BandwidthLimit)
+		}
 
 		// Calculate MD5 hash for integrity
 		hash := sha256.New()
@@ -204,6 +209,13 @@ func (a *AzureBackend) uploadBlocks(ctx context.Context, file *os.File, blobName
 	hash := sha256.New()
 	var totalUploaded int64
 
+	// Calculate throttle delay per byte if bandwidth limited
+	var throttleDelay time.Duration
+	if a.config.BandwidthLimit > 0 {
+		// Calculate nanoseconds per byte
+		throttleDelay = time.Duration(float64(time.Second) / float64(a.config.BandwidthLimit) * float64(blockSize))
+	}
+
 	for i := int64(0); i < numBlocks; i++ {
 		blockID := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("block-%08d", i)))
 		blockIDs = append(blockIDs, blockID)
@@ -224,6 +236,15 @@ func (a *AzureBackend) uploadBlocks(ctx context.Context, file *os.File, blobName
 
 		// Update hash
 		hash.Write(blockData)
+
+		// Apply throttling between blocks if configured
+		if a.config.BandwidthLimit > 0 && i > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(throttleDelay):
+			}
+		}
 
 		// Upload block
 		reader := bytes.NewReader(blockData)

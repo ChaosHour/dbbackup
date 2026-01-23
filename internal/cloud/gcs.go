@@ -121,7 +121,12 @@ func (g *GCSBackend) Upload(ctx context.Context, localPath, remotePath string, p
 
 		// Wrap reader with progress tracking and hash calculation
 		hash := sha256.New()
-		reader := NewProgressReader(io.TeeReader(file, hash), fileSize, progress)
+		var reader io.Reader = NewProgressReader(io.TeeReader(file, hash), fileSize, progress)
+
+		// Apply bandwidth throttling if configured
+		if g.config.BandwidthLimit > 0 {
+			reader = NewThrottledReader(ctx, reader, g.config.BandwidthLimit)
+		}
 
 		// Upload with progress tracking
 		_, err = io.Copy(writer, reader)

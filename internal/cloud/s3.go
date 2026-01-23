@@ -138,6 +138,11 @@ func (s *S3Backend) uploadSimple(ctx context.Context, file *os.File, key string,
 			reader = NewProgressReader(file, fileSize, progress)
 		}
 
+		// Apply bandwidth throttling if configured
+		if s.config.BandwidthLimit > 0 {
+			reader = NewThrottledReader(ctx, reader, s.config.BandwidthLimit)
+		}
+
 		// Upload to S3
 		_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 			Bucket: aws.String(s.bucket),
@@ -163,13 +168,21 @@ func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key stri
 			return fmt.Errorf("failed to reset file position: %w", err)
 		}
 
+		// Calculate concurrency based on bandwidth limit
+		// If limited, reduce concurrency to make throttling more effective
+		concurrency := 10
+		if s.config.BandwidthLimit > 0 {
+			// With bandwidth limiting, use fewer concurrent parts
+			concurrency = 3
+		}
+
 		// Create uploader with custom options
 		uploader := manager.NewUploader(s.client, func(u *manager.Uploader) {
 			// Part size: 10MB
 			u.PartSize = 10 * 1024 * 1024
 
-			// Upload up to 10 parts concurrently
-			u.Concurrency = 10
+			// Adjust concurrency
+			u.Concurrency = concurrency
 
 			// Leave parts on failure for debugging
 			u.LeavePartsOnError = false
@@ -179,6 +192,11 @@ func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key stri
 		var reader io.Reader = file
 		if progress != nil {
 			reader = NewProgressReader(file, fileSize, progress)
+		}
+
+		// Apply bandwidth throttling if configured
+		if s.config.BandwidthLimit > 0 {
+			reader = NewThrottledReader(ctx, reader, s.config.BandwidthLimit)
 		}
 
 		// Upload with multipart

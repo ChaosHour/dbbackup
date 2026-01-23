@@ -5,6 +5,29 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.97] - 2025-01-23
+
+### Added - Bandwidth Throttling for Cloud Uploads
+- **New `--bandwidth-limit` flag for cloud operations** - prevent network saturation during business hours
+  - Works with S3, GCS, Azure Blob Storage, MinIO, Backblaze B2
+  - Supports human-readable formats:
+    - `10MB/s`, `50MiB/s` - megabytes per second
+    - `100KB/s`, `500KiB/s` - kilobytes per second  
+    - `1GB/s` - gigabytes per second
+    - `100Mbps` - megabits per second (for network-minded users)
+    - `unlimited` or `0` - no limit (default)
+  - Environment variable: `DBBACKUP_BANDWIDTH_LIMIT`
+  - **Example usage**:
+    ```bash
+    # Limit upload to 10 MB/s during business hours
+    dbbackup cloud upload backup.dump --bandwidth-limit 10MB/s
+    
+    # Environment variable for all operations
+    export DBBACKUP_BANDWIDTH_LIMIT=50MiB/s
+    ```
+  - **Implementation**: Token-bucket style throttling with 100ms windows for smooth rate limiting
+  - **DBA requested feature**: Avoid saturating production network during scheduled backups
+
 ## [3.42.96] - 2025-02-01
 
 ### Changed - Complete Elimination of Shell tar/gzip Dependencies

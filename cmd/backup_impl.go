@@ -130,6 +130,10 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Update config from environment
 	cfg.UpdateFromEnvironment()
 
+	// IMPORTANT: Set the database name from positional argument
+	// This overrides the default 'postgres' when using MySQL
+	cfg.Database = databaseName
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("configuration error: %w", err)
@@ -311,6 +315,9 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 func runSampleBackup(ctx context.Context, databaseName string) error {
 	// Update config from environment
 	cfg.UpdateFromEnvironment()
+
+	// IMPORTANT: Set the database name from positional argument
+	cfg.Database = databaseName
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {

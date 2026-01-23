@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite" // Pure Go SQLite driver (no CGO required)
 )
 
 // SQLiteCatalog implements Catalog interface with SQLite storage
@@ -28,7 +28,7 @@ func NewSQLiteCatalog(dbPath string) (*SQLiteCatalog, error) {
 		return nil, fmt.Errorf("failed to create catalog directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL&_foreign_keys=ON")
+	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_foreign_keys=ON")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open catalog database: %w", err)
 	}

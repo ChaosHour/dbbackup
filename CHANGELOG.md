@@ -5,6 +5,19 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.98] - 2025-01-23
+
+### Fixed - Critical Bug Fixes for v3.42.97
+- **Fixed CGO/SQLite build issue** - binaries now work when compiled with `CGO_ENABLED=0`
+  - Switched from `github.com/mattn/go-sqlite3` (requires CGO) to `modernc.org/sqlite` (pure Go)
+  - All cross-compiled binaries now work correctly on all platforms
+  - No more "Binary was compiled with 'CGO_ENABLED=0', go-sqlite3 requires cgo to work" errors
+
+- **Fixed MySQL positional database argument being ignored**
+  - `dbbackup backup single <dbname> --db-type mysql` now correctly uses `<dbname>`
+  - Previously defaulted to 'postgres' regardless of positional argument
+  - Also fixed in `backup sample` command
+
 ## [3.42.97] - 2025-01-23
 
 ### Added - Bandwidth Throttling for Cloud Uploads

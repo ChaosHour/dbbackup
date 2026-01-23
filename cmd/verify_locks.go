@@ -21,7 +21,25 @@ var verifyLocksCmd = &cobra.Command{
 
 func runVerifyLocks(ctx context.Context) error {
 	p := checks.NewPreflightChecker(cfg, log)
-	chk := p.checkPostgresLocks(ctx)
+	res, err := p.RunAllChecks(ctx, cfg.Database)
+	if err != nil {
+		return err
+	}
+
+	// Find the Postgres lock check in the preflight results
+	var chk checks.PreflightCheck
+	found := false
+	for _, c := range res.Checks {
+		if c.Name == "PostgreSQL lock configuration" {
+			chk = c
+			found = true
+			break
+		}
+	}
+	if !found {
+		fmt.Println("No PostgreSQL lock check available (skipped)")
+		return nil
+	}
 
 	fmt.Printf("%s\n", chk.Name)
 	fmt.Printf("Status: %s\n", chk.Status.String())
@@ -34,7 +52,6 @@ func runVerifyLocks(ctx context.Context) error {
 	if chk.Status == checks.StatusFailed {
 		os.Exit(2)
 	}
-
 	if chk.Status == checks.StatusWarning {
 		os.Exit(0)
 	}

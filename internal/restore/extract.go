@@ -2,7 +2,6 @@ package restore
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +12,8 @@ import (
 
 	"dbbackup/internal/logger"
 	"dbbackup/internal/progress"
+
+	"github.com/klauspost/pgzip"
 )
 
 // DatabaseInfo represents metadata about a database in a cluster backup
@@ -30,7 +31,7 @@ func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.
 	}
 	defer file.Close()
 
-	gz, err := gzip.NewReader(file)
+	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		return nil, fmt.Errorf("not a valid gzip archive: %w", err)
 	}
@@ -99,7 +100,7 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 	}
 	archiveSize := stat.Size()
 
-	gz, err := gzip.NewReader(file)
+	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		return "", fmt.Errorf("not a valid gzip archive: %w", err)
 	}
@@ -215,7 +216,7 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 	}
 	archiveSize := stat.Size()
 
-	gz, err := gzip.NewReader(file)
+	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		return nil, fmt.Errorf("not a valid gzip archive: %w", err)
 	}

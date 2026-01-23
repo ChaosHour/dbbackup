@@ -3,7 +3,6 @@ package restore
 import (
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,6 +16,8 @@ import (
 
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
+
+	"github.com/klauspost/pgzip"
 )
 
 // DiagnoseResult contains the results of a dump file diagnosis
@@ -182,7 +183,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 	defer file.Close()
 
 	// Verify gzip integrity
-	gz, err := gzip.NewReader(file)
+	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		result.IsValid = false
 		result.IsCorrupted = true
@@ -235,7 +236,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 
 	// Verify full gzip stream integrity by reading to end
 	file.Seek(0, 0)
-	gz, _ = gzip.NewReader(file)
+	gz, _ = pgzip.NewReader(file)
 
 	var totalRead int64
 	buf := make([]byte, 32*1024)
@@ -269,7 +270,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *DiagnoseResult) {
 	var reader io.Reader
 	var file *os.File
-	var gz *gzip.Reader
+	var gz *pgzip.Reader
 	var err error
 
 	file, err = os.Open(filePath)
@@ -281,7 +282,7 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 	defer file.Close()
 
 	if compressed {
-		gz, err = gzip.NewReader(file)
+		gz, err = pgzip.NewReader(file)
 		if err != nil {
 			result.IsValid = false
 			result.IsCorrupted = true

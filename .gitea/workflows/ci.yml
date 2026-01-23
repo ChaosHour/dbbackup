@@ -92,7 +92,7 @@ jobs:
           psql -h postgres -c "CREATE TABLE test_table (id SERIAL PRIMARY KEY, name TEXT);"
           psql -h postgres -c "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
           # Run backup
-          ./dbbackup backup --engine postgres --host postgres --user postgres --password postgres --database testdb --output /tmp/pg_backup.sql.gz
+          ./dbbackup backup single --db-type postgres --host postgres --user postgres --password postgres --database testdb --output /tmp/pg_backup.sql.gz
           # Verify backup file exists
           ls -la /tmp/pg_backup.sql.gz
 
@@ -106,7 +106,7 @@ jobs:
           mysql -h mysql -u root -pmysql testdb -e "CREATE TABLE test_table (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));"
           mysql -h mysql -u root -pmysql testdb -e "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
           # Run backup
-          ./dbbackup backup --engine mysql --host mysql --user root --password mysql --database testdb --output /tmp/mysql_backup.sql.gz
+          ./dbbackup backup single --db-type mysql --host mysql --user root --password mysql --database testdb --output /tmp/mysql_backup.sql.gz
           # Verify backup file exists
           ls -la /tmp/mysql_backup.sql.gz
 

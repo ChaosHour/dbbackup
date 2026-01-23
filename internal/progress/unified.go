@@ -28,6 +28,28 @@ var PhaseWeights = map[Phase]int{
 	PhaseVerifying:  5,
 }
 
+// ProgressSnapshot is a mutex-free copy of progress state for safe reading
+type ProgressSnapshot struct {
+	Operation      string
+	ArchiveFile    string
+	Phase          Phase
+	ExtractBytes   int64
+	ExtractTotal   int64
+	DatabasesDone  int
+	DatabasesTotal int
+	CurrentDB      string
+	CurrentDBBytes int64
+	CurrentDBTotal int64
+	DatabaseSizes  map[string]int64
+	VerifyDone     int
+	VerifyTotal    int
+	StartTime      time.Time
+	PhaseStartTime time.Time
+	LastUpdateTime time.Time
+	DatabaseTimes  []time.Duration
+	Errors         []string
+}
+
 // UnifiedClusterProgress combines all progress states into one cohesive structure
 // This replaces multiple separate callbacks with a single comprehensive view
 type UnifiedClusterProgress struct {
@@ -282,22 +304,41 @@ func (p *UnifiedClusterProgress) GetETA() time.Duration {
 }
 
 // GetSnapshot returns a copy of current state (thread-safe)
-func (p *UnifiedClusterProgress) GetSnapshot() UnifiedClusterProgress {
+// Returns a ProgressSnapshot without the mutex to avoid copy-lock issues
+func (p *UnifiedClusterProgress) GetSnapshot() ProgressSnapshot {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	snapshot := *p
 	// Deep copy slices/maps
-	snapshot.DatabaseTimes = make([]time.Duration, len(p.DatabaseTimes))
-	copy(snapshot.DatabaseTimes, p.DatabaseTimes)
-	snapshot.DatabaseSizes = make(map[string]int64)
+	dbTimes := make([]time.Duration, len(p.DatabaseTimes))
+	copy(dbTimes, p.DatabaseTimes)
+	dbSizes := make(map[string]int64)
 	for k, v := range p.DatabaseSizes {
-		snapshot.DatabaseSizes[k] = v
+		dbSizes[k] = v
 	}
-	snapshot.Errors = make([]string, len(p.Errors))
-	copy(snapshot.Errors, p.Errors)
+	errors := make([]string, len(p.Errors))
+	copy(errors, p.Errors)
 
-	return snapshot
+	return ProgressSnapshot{
+		Operation:      p.Operation,
+		ArchiveFile:    p.ArchiveFile,
+		Phase:          p.Phase,
+		ExtractBytes:   p.ExtractBytes,
+		ExtractTotal:   p.ExtractTotal,
+		DatabasesDone:  p.DatabasesDone,
+		DatabasesTotal: p.DatabasesTotal,
+		CurrentDB:      p.CurrentDB,
+		CurrentDBBytes: p.CurrentDBBytes,
+		CurrentDBTotal: p.CurrentDBTotal,
+		DatabaseSizes:  dbSizes,
+		VerifyDone:     p.VerifyDone,
+		VerifyTotal:    p.VerifyTotal,
+		StartTime:      p.StartTime,
+		PhaseStartTime: p.PhaseStartTime,
+		LastUpdateTime: p.LastUpdateTime,
+		DatabaseTimes:  dbTimes,
+		Errors:         errors,
+	}
 }
 
 // FormatStatus returns a formatted status string

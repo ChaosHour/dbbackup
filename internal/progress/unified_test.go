@@ -16,7 +16,7 @@ func TestUnifiedClusterProgress(t *testing.T) {
 	// Extraction phase (20% of total)
 	p.SetPhase(PhaseExtracting)
 	p.SetExtractProgress(500, 1000) // 50% of extraction = 10% overall
-	
+
 	percent := p.GetOverallPercent()
 	if percent != 10 {
 		t.Errorf("Expected 10%% during extraction, got %d%%", percent)
@@ -52,7 +52,7 @@ func TestUnifiedClusterProgress(t *testing.T) {
 
 	// Complete first database
 	p.CompleteDatabase(time.Second)
-	
+
 	// Start and complete remaining
 	for i := 2; i <= 4; i++ {
 		p.StartDatabase("db"+string(rune('0'+i)), 1000)
@@ -68,7 +68,7 @@ func TestUnifiedClusterProgress(t *testing.T) {
 	// Verification phase
 	p.SetPhase(PhaseVerifying)
 	p.SetVerifyProgress(2, 4) // 50% of verification = 2.5% overall
-	
+
 	// Expect: 95% + 2.5% ≈ 97%
 	percent = p.GetOverallPercent()
 	if percent < 96 || percent > 98 {
@@ -85,41 +85,41 @@ func TestUnifiedClusterProgress(t *testing.T) {
 
 func TestUnifiedProgressFormatting(t *testing.T) {
 	p := NewUnifiedClusterProgress("restore", "/backup/test.tar.gz")
-	
+
 	p.SetPhase(PhaseDatabases)
 	p.SetDatabasesTotal(10, nil)
-	p.StartDatabase("orders_db", 3*1024*1024*1024) // 3GB
+	p.StartDatabase("orders_db", 3*1024*1024*1024)   // 3GB
 	p.UpdateDatabaseProgress(1 * 1024 * 1024 * 1024) // 1GB done
-	
+
 	status := p.FormatStatus()
-	
+
 	// Should contain key info
 	if status == "" {
 		t.Error("FormatStatus returned empty string")
 	}
-	
+
 	bar := p.FormatBar(40)
 	if len(bar) == 0 {
 		t.Error("FormatBar returned empty string")
 	}
-	
+
 	t.Logf("Status: %s", status)
 	t.Logf("Bar: %s", bar)
 }
 
 func TestUnifiedProgressETA(t *testing.T) {
 	p := NewUnifiedClusterProgress("restore", "/backup/test.tar.gz")
-	
+
 	// Simulate some time passing with progress
 	p.SetPhase(PhaseExtracting)
 	p.SetExtractProgress(200, 1000) // 20% extraction = 4% overall
-	
+
 	// ETA should be positive when there's work remaining
 	eta := p.GetETA()
 	if eta < 0 {
 		t.Errorf("ETA should not be negative, got %v", eta)
 	}
-	
+
 	elapsed := p.GetElapsed()
 	if elapsed < 0 {
 		t.Errorf("Elapsed should not be negative, got %v", elapsed)
@@ -128,9 +128,9 @@ func TestUnifiedProgressETA(t *testing.T) {
 
 func TestUnifiedProgressThreadSafety(t *testing.T) {
 	p := NewUnifiedClusterProgress("backup", "/test.tar.gz")
-	
+
 	done := make(chan bool, 10)
-	
+
 	// Concurrent writers
 	for i := 0; i < 5; i++ {
 		go func(id int) {
@@ -141,7 +141,7 @@ func TestUnifiedProgressThreadSafety(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	// Concurrent readers
 	for i := 0; i < 5; i++ {
 		go func() {
@@ -153,7 +153,7 @@ func TestUnifiedProgressThreadSafety(t *testing.T) {
 			done <- true
 		}()
 	}
-	
+
 	// Wait for all goroutines
 	for i := 0; i < 10; i++ {
 		<-done

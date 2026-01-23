@@ -188,7 +188,7 @@ func (g *LargeDBGuard) detectLargeObjects(ctx context.Context, dumpFiles []strin
 			}
 			continue
 		}
-		
+
 		totalBlobCount += count
 	}
 
@@ -559,22 +559,22 @@ func (g *LargeDBGuard) RevertMySQLSettings() []string {
 func (g *LargeDBGuard) StreamCountBLOBs(ctx context.Context, dumpFile string) (int, error) {
 	// pg_restore -l outputs text listing, one line per object
 	cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
-	
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return 0, err
 	}
-	
+
 	if err := cmd.Start(); err != nil {
 		return 0, err
 	}
-	
+
 	// Stream through output line by line - never load full output into memory
 	count := 0
 	scanner := bufio.NewScanner(stdout)
 	// Set larger buffer for long lines (some BLOB entries can be verbose)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if strings.Contains(line, "BLOB") ||
@@ -583,12 +583,12 @@ func (g *LargeDBGuard) StreamCountBLOBs(ctx context.Context, dumpFile string) (i
 			count++
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		cmd.Wait()
 		return count, err
 	}
-	
+
 	return count, cmd.Wait()
 }
 
@@ -596,35 +596,35 @@ func (g *LargeDBGuard) StreamCountBLOBs(ctx context.Context, dumpFile string) (i
 // Returns: blobCount, estimatedObjects, error
 func (g *LargeDBGuard) StreamAnalyzeDump(ctx context.Context, dumpFile string) (blobCount, totalObjects int, err error) {
 	cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
-	
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return 0, 0, err
 	}
-	
+
 	if err := cmd.Start(); err != nil {
 		return 0, 0, err
 	}
-	
+
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-	
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		totalObjects++
-		
+
 		if strings.Contains(line, "BLOB") ||
 			strings.Contains(line, "LARGE OBJECT") ||
 			strings.Contains(line, " BLOBS ") {
 			blobCount++
 		}
 	}
-	
+
 	if err := scanner.Err(); err != nil {
 		cmd.Wait()
 		return blobCount, totalObjects, err
 	}
-	
+
 	return blobCount, totalObjects, cmd.Wait()
 }
 

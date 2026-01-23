@@ -42,6 +42,15 @@ type SafetyCheck struct {
 }
 
 // RestorePreviewModel shows restore preview and safety checks
+// WorkDirMode represents which work directory source is selected
+type WorkDirMode int
+
+const (
+	WorkDirSystemTemp WorkDirMode = iota // Use system temp (/tmp)
+	WorkDirConfig                         // Use config.WorkDir
+	WorkDirBackup                         // Use config.BackupDir
+)
+
 type RestorePreviewModel struct {
 	config            *config.Config
 	logger            logger.Logger
@@ -62,7 +71,8 @@ type RestorePreviewModel struct {
 	message           string
 	saveDebugLog      bool   // Save detailed error report on failure
 	debugLocks        bool   // Enable detailed lock debugging
-	workDir           string // Custom work directory for extraction
+	workDir           string // Resolved work directory path
+	workDirMode       WorkDirMode // Which source is selected
 }
 
 // NewRestorePreview creates a new restore preview
@@ -328,15 +338,28 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "w":
-			// Toggle/set work directory
-			if m.workDir == "" {
-				// Set to backup directory as default alternative
+			// 3-way toggle: System Temp → Config WorkDir → Backup Dir → System Temp
+			switch m.workDirMode {
+			case WorkDirSystemTemp:
+				// Try config WorkDir next (if set)
+				if m.config.WorkDir != "" {
+					m.workDirMode = WorkDirConfig
+					m.workDir = m.config.WorkDir
+					m.message = infoStyle.Render(fmt.Sprintf("[1/3 CONFIG] Work directory: %s", m.workDir))
+				} else {
+					// Skip to backup dir if no config WorkDir
+					m.workDirMode = WorkDirBackup
+					m.workDir = m.config.BackupDir
+					m.message = infoStyle.Render(fmt.Sprintf("[2/3 BACKUP] Work directory: %s", m.workDir))
+				}
+			case WorkDirConfig:
+				m.workDirMode = WorkDirBackup
 				m.workDir = m.config.BackupDir
-				m.message = infoStyle.Render(fmt.Sprintf("[DIR] Work directory set to: %s", m.workDir))
-			} else {
-				// Clear work directory (use system temp)
+				m.message = infoStyle.Render(fmt.Sprintf("[2/3 BACKUP] Work directory: %s", m.workDir))
+			case WorkDirBackup:
+				m.workDirMode = WorkDirSystemTemp
 				m.workDir = ""
-				m.message = "Work directory: using system temp"
+				m.message = infoStyle.Render("[3/3 SYSTEM] Work directory: /tmp (system temp)")
 			}
 
 		case "enter", " ":
@@ -530,19 +553,33 @@ func (m RestorePreviewModel) View() string {
 	s.WriteString(archiveHeaderStyle.Render("[OPTIONS] Advanced"))
 	s.WriteString("\n")
 
-	// Work directory option
-	workDirIcon := "[-]"
+	// Work directory option - show current mode clearly
+	var workDirIcon, workDirSource, workDirValue string
 	workDirStyle := infoStyle
-	workDirValue := "(system temp)"
-	if m.workDir != "" {
-		workDirIcon = "[+]"
+
+	switch m.workDirMode {
+	case WorkDirSystemTemp:
+		workDirIcon = "[SYS]"
+		workDirSource = "SYSTEM TEMP"
+		workDirValue = "/tmp"
+	case WorkDirConfig:
+		workDirIcon = "[CFG]"
+		workDirSource = "CONFIG"
+		workDirValue = m.config.WorkDir
 		workDirStyle = checkPassedStyle
-		workDirValue = m.workDir
+	case WorkDirBackup:
+		workDirIcon = "[BKP]"
+		workDirSource = "BACKUP DIR"
+		workDirValue = m.config.BackupDir
+		workDirStyle = checkPassedStyle
 	}
-	s.WriteString(workDirStyle.Render(fmt.Sprintf("  %s Work Dir: %s (press 'w' to toggle)", workDirIcon, workDirValue)))
+
+	s.WriteString(workDirStyle.Render(fmt.Sprintf("  %s Work Dir [%s]: %s", workDirIcon, workDirSource, workDirValue)))
 	s.WriteString("\n")
-	if m.workDir == "" {
-		s.WriteString(infoStyle.Render("    [WARN] Large archives need more space than /tmp may have"))
+	s.WriteString(infoStyle.Render("      Press 'w' to cycle: SYSTEM → CONFIG → BACKUP → SYSTEM"))
+	s.WriteString("\n")
+	if m.workDirMode == WorkDirSystemTemp {
+		s.WriteString(checkWarningStyle.Render("      ⚠ WARN: Large archives need more space than /tmp may have!"))
 		s.WriteString("\n")
 	}
 

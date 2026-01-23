@@ -33,7 +33,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# Platform configurations
+# Platform configurations - Linux & macOS only
 # Format: "GOOS/GOARCH:binary_suffix:description"
 PLATFORMS=(
     "linux/amd64::Linux 64-bit (Intel/AMD)"
@@ -41,11 +41,6 @@ PLATFORMS=(
     "linux/arm:_armv7:Linux 32-bit (ARMv7)"
     "darwin/amd64::macOS 64-bit (Intel)"
     "darwin/arm64::macOS 64-bit (Apple Silicon)"
-    "windows/amd64:.exe:Windows 64-bit (Intel/AMD)"
-    "windows/arm64:.exe:Windows 64-bit (ARM)"
-    "freebsd/amd64::FreeBSD 64-bit (Intel/AMD)"
-    "openbsd/amd64::OpenBSD 64-bit (Intel/AMD)"
-    "netbsd/amd64::NetBSD 64-bit (Intel/AMD)"
 )
 
 echo -e "${BOLD}${BLUE}🔨 Cross-Platform Build Script for ${APP_NAME}${NC}"

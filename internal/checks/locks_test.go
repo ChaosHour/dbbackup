@@ -5,12 +5,12 @@ import (
 )
 
 func TestDetermineLockRecommendation(t *testing.T) {
-	tests := []struct{
-		locks int64
-		conns int64
+	tests := []struct {
+		locks    int64
+		conns    int64
 		prepared int64
 		exStatus CheckStatus
-		exRec lockRecommendation
+		exRec    lockRecommendation
 	}{
 		{locks: 1024, conns: 100, prepared: 0, exStatus: StatusFailed, exRec: recIncrease},
 		{locks: 4096, conns: 200, prepared: 0, exStatus: StatusWarning, exRec: recIncrease},
@@ -31,10 +31,10 @@ func TestDetermineLockRecommendation(t *testing.T) {
 
 func TestParseNumeric(t *testing.T) {
 	cases := map[string]int64{
-		"4096": 4096,
-		"  4096\n": 4096,
+		"4096":           4096,
+		"  4096\n":       4096,
 		"4096 (default)": 4096,
-		"unknown": 0, // should error
+		"unknown":        0, // should error
 	}
 
 	for in, want := range cases {

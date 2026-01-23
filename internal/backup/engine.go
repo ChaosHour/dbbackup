@@ -20,6 +20,7 @@ import (
 	"dbbackup/internal/cloud"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/metrics"
@@ -960,117 +961,26 @@ func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 	return os.WriteFile(globalsFile, output, 0644)
 }
 
-// createArchive creates a compressed tar archive
+// createArchive creates a compressed tar archive using parallel gzip compression
+// Uses in-process pgzip for 2-4x faster compression on multi-core systems
 func (e *Engine) createArchive(ctx context.Context, sourceDir, outputFile string) error {
-	// Use pigz for faster parallel compression if available, otherwise use standard gzip
-	compressCmd := "tar"
-	compressArgs := []string{"-czf", outputFile, "-C", sourceDir, "."}
+	e.log.Debug("Creating archive with parallel compression",
+		"source", sourceDir,
+		"output", outputFile,
+		"compression", e.cfg.CompressionLevel)
 
-	// Check if pigz is available for faster parallel compression
-	if _, err := exec.LookPath("pigz"); err == nil {
-		// Use pigz with number of cores for parallel compression
-		compressArgs = []string{"-cf", "-", "-C", sourceDir, "."}
-		cmd := exec.CommandContext(ctx, "tar", compressArgs...)
-
-		// Create output file
-		outFile, err := os.Create(outputFile)
-		if err != nil {
-			// Fallback to regular tar
-			goto regularTar
+	// Use in-process parallel compression with pgzip
+	err := fs.CreateTarGzParallel(ctx, sourceDir, outputFile, e.cfg.CompressionLevel, func(progress fs.CreateProgress) {
+		// Optional: log progress for large archives
+		if progress.FilesCount%100 == 0 && progress.FilesCount > 0 {
+			e.log.Debug("Archive progress", "files", progress.FilesCount, "bytes", progress.BytesWritten)
 		}
-		defer outFile.Close()
+	})
 
-		// Pipe to pigz for parallel compression
-		pigzCmd := exec.CommandContext(ctx, "pigz", "-p", strconv.Itoa(e.cfg.Jobs))
-
-		tarOut, err := cmd.StdoutPipe()
-		if err != nil {
-			outFile.Close()
-			// Fallback to regular tar
-			goto regularTar
-		}
-		pigzCmd.Stdin = tarOut
-		pigzCmd.Stdout = outFile
-
-		// Start both commands
-		if err := pigzCmd.Start(); err != nil {
-			outFile.Close()
-			goto regularTar
-		}
-		if err := cmd.Start(); err != nil {
-			pigzCmd.Process.Kill()
-			outFile.Close()
-			goto regularTar
-		}
-
-		// Wait for tar with proper context handling
-		tarDone := make(chan error, 1)
-		go func() {
-			tarDone <- cmd.Wait()
-		}()
-
-		var tarErr error
-		select {
-		case tarErr = <-tarDone:
-			// tar completed
-		case <-ctx.Done():
-			e.log.Warn("Archive creation cancelled - killing processes")
-			cmd.Process.Kill()
-			pigzCmd.Process.Kill()
-			<-tarDone
-			return ctx.Err()
-		}
-
-		if tarErr != nil {
-			pigzCmd.Process.Kill()
-			return fmt.Errorf("tar failed: %w", tarErr)
-		}
-
-		// Wait for pigz with proper context handling
-		pigzDone := make(chan error, 1)
-		go func() {
-			pigzDone <- pigzCmd.Wait()
-		}()
-
-		var pigzErr error
-		select {
-		case pigzErr = <-pigzDone:
-		case <-ctx.Done():
-			pigzCmd.Process.Kill()
-			<-pigzDone
-			return ctx.Err()
-		}
-
-		if pigzErr != nil {
-			return fmt.Errorf("pigz compression failed: %w", pigzErr)
-		}
-		return nil
+	if err != nil {
+		return fmt.Errorf("parallel archive creation failed: %w", err)
 	}
 
-regularTar:
-	// Standard tar with gzip (fallback)
-	cmd := exec.CommandContext(ctx, compressCmd, compressArgs...)
-
-	// Stream stderr to avoid memory issues
-	// Use io.Copy to ensure goroutine completes when pipe closes
-	stderr, err := cmd.StderrPipe()
-	if err == nil {
-		go func() {
-			scanner := bufio.NewScanner(stderr)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if line != "" {
-					e.log.Debug("Archive creation", "output", line)
-				}
-			}
-			// Scanner will exit when stderr pipe closes after cmd.Wait()
-		}()
-	}
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("tar failed: %w", err)
-	}
-	// cmd.Run() calls Wait() which closes stderr pipe, terminating the goroutine
 	return nil
 }
 

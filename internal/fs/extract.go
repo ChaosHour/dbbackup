@@ -154,6 +154,140 @@ func ExtractTarGzFast(ctx context.Context, archivePath, destDir string, progress
 	return ExtractTarGzParallel(ctx, archivePath, destDir, progressCb)
 }
 
+// CreateProgress reports archive creation progress
+type CreateProgress struct {
+	CurrentFile string
+	BytesWritten int64
+	FilesCount  int
+}
+
+// CreateProgressCallback is called during archive creation
+type CreateProgressCallback func(progress CreateProgress)
+
+// CreateTarGzParallel creates a tar.gz archive using parallel gzip compression
+// This is 2-4x faster than standard gzip on multi-core systems
+// Uses pgzip which compresses in parallel using multiple goroutines
+func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, compressionLevel int, progressCb CreateProgressCallback) error {
+	// Create output file
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("cannot create archive: %w", err)
+	}
+	defer outFile.Close()
+
+	// Create parallel gzip writer
+	// Uses all available CPU cores for compression
+	gzWriter, err := pgzip.NewWriterLevel(outFile, compressionLevel)
+	if err != nil {
+		return fmt.Errorf("cannot create gzip writer: %w", err)
+	}
+	// Set block size and concurrency for parallel compression
+	if err := gzWriter.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
+		// Non-fatal, continue with defaults
+	}
+	defer gzWriter.Close()
+
+	// Create tar writer
+	tarWriter := tar.NewWriter(gzWriter)
+	defer tarWriter.Close()
+
+	var bytesWritten int64
+	var filesCount int
+
+	// Walk the source directory
+	err = filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+		// Check for cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if err != nil {
+			return err
+		}
+
+		// Get relative path
+		relPath, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return err
+		}
+
+		// Skip the root directory itself
+		if relPath == "." {
+			return nil
+		}
+
+		// Create tar header
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return fmt.Errorf("cannot create header for %s: %w", relPath, err)
+		}
+
+		// Use relative path in archive
+		header.Name = relPath
+
+		// Handle symlinks
+		if info.Mode()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("cannot read symlink %s: %w", path, err)
+			}
+			header.Linkname = link
+		}
+
+		// Write header
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return fmt.Errorf("cannot write header for %s: %w", relPath, err)
+		}
+
+		// If it's a regular file, write its contents
+		if info.Mode().IsRegular() {
+			file, err := os.Open(path)
+			if err != nil {
+				return fmt.Errorf("cannot open %s: %w", path, err)
+			}
+			defer file.Close()
+
+			written, err := io.Copy(tarWriter, file)
+			if err != nil {
+				return fmt.Errorf("cannot write %s: %w", path, err)
+			}
+			bytesWritten += written
+		}
+
+		filesCount++
+
+		// Report progress
+		if progressCb != nil {
+			progressCb(CreateProgress{
+				CurrentFile:  relPath,
+				BytesWritten: bytesWritten,
+				FilesCount:   filesCount,
+			})
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		// Clean up partial file on error
+		outFile.Close()
+		os.Remove(outputPath)
+		return err
+	}
+
+	// Explicitly close tar and gzip to flush all data
+	if err := tarWriter.Close(); err != nil {
+		return fmt.Errorf("cannot close tar writer: %w", err)
+	}
+	if err := gzWriter.Close(); err != nil {
+		return fmt.Errorf("cannot close gzip writer: %w", err)
+	}
+
+	return nil
+}
+
 // EstimateCompressionRatio samples the archive to estimate uncompressed size
 // Returns a multiplier (e.g., 3.0 means uncompressed is ~3x the compressed size)
 func EstimateCompressionRatio(archivePath string) (float64, error) {

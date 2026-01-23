@@ -596,7 +596,7 @@ func runDedupList(cmd *cobra.Command, args []string) error {
 func runDedupStats(cmd *cobra.Command, args []string) error {
 	basePath := getDedupDir()
 
-	index, err := dedup.NewChunkIndex(basePath)
+	index, err := dedup.NewChunkIndexAt(getIndexDBPath())
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}
@@ -642,7 +642,7 @@ func runDedupStats(cmd *cobra.Command, args []string) error {
 func runDedupGC(cmd *cobra.Command, args []string) error {
 	basePath := getDedupDir()
 
-	index, err := dedup.NewChunkIndex(basePath)
+	index, err := dedup.NewChunkIndexAt(getIndexDBPath())
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}
@@ -702,7 +702,7 @@ func runDedupDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to open manifest store: %w", err)
 	}
 
-	index, err := dedup.NewChunkIndex(basePath)
+	index, err := dedup.NewChunkIndexAt(getIndexDBPath())
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}

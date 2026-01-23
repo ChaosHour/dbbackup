@@ -392,7 +392,7 @@ func (g *LargeDBGuard) CheckSystemMemory(backupSizeBytes int64) *MemoryCheck {
 
 	if check.TotalRAMGB < minMemoryGB {
 		check.Critical = true
-		check.Recommendation = fmt.Sprintf("CRITICAL: Only %.1fGB RAM. Need at least %.1fGB for restore.", 
+		check.Recommendation = fmt.Sprintf("CRITICAL: Only %.1fGB RAM. Need at least %.1fGB for restore.",
 			check.TotalRAMGB, minMemoryGB)
 		return check
 	}
@@ -402,7 +402,7 @@ func (g *LargeDBGuard) CheckSystemMemory(backupSizeBytes int64) *MemoryCheck {
 		check.NeedsMoreSwap = true
 		check.Recommendation = fmt.Sprintf(
 			"WARNING: Restoring ~%.0fGB database with only %.1fGB swap. "+
-			"Create 32GB swap: fallocate -l 32G /swapfile_emergency && mkswap /swapfile_emergency && swapon /swapfile_emergency",
+				"Create 32GB swap: fallocate -l 32G /swapfile_emergency && mkswap /swapfile_emergency && swapon /swapfile_emergency",
 			estimatedUncompressedGB, check.SwapTotalGB)
 	}
 
@@ -411,7 +411,7 @@ func (g *LargeDBGuard) CheckSystemMemory(backupSizeBytes int64) *MemoryCheck {
 		check.LowMemory = true
 		check.Recommendation = fmt.Sprintf(
 			"WARNING: Only %.1fGB available RAM. Stop other services before restore. "+
-			"Use: work_mem=64MB, maintenance_work_mem=256MB",
+				"Use: work_mem=64MB, maintenance_work_mem=256MB",
 			check.AvailableRAMGB)
 	}
 
@@ -433,17 +433,17 @@ func (g *LargeDBGuard) CheckSystemMemory(backupSizeBytes int64) *MemoryCheck {
 
 // MemoryCheck contains system memory analysis results
 type MemoryCheck struct {
-	BackupSizeGB     float64
-	TotalRAMGB       float64
-	AvailableRAMGB   float64
-	SwapTotalGB      float64
-	SwapFreeGB       float64
-	EstimatedHours   float64
-	Critical         bool
-	LowMemory        bool
-	NeedsMoreSwap    bool
-	Warning          string
-	Recommendation   string
+	BackupSizeGB   float64
+	TotalRAMGB     float64
+	AvailableRAMGB float64
+	SwapTotalGB    float64
+	SwapFreeGB     float64
+	EstimatedHours float64
+	Critical       bool
+	LowMemory      bool
+	NeedsMoreSwap  bool
+	Warning        string
+	Recommendation string
 }
 
 // memInfo holds parsed /proc/meminfo data

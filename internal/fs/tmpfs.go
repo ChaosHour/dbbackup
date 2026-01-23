@@ -36,7 +36,8 @@ func NewTmpfsManager(log logger.Logger) *TmpfsManager {
 }
 
 // Detect finds all available tmpfs mounts that we can use
-// This works without root - just reads /proc/mounts
+// This works without root - dynamically reads /proc/mounts
+// No hardcoded paths - discovers all tmpfs/devtmpfs mounts on the system
 func (m *TmpfsManager) Detect() ([]TmpfsInfo, error) {
 	m.available = nil
 
@@ -56,7 +57,7 @@ func (m *TmpfsManager) Detect() ([]TmpfsInfo, error) {
 		fsType := fields[2]
 		mountPoint := fields[1]
 
-		// Look for tmpfs and devtmpfs mounts
+		// Dynamically discover all tmpfs and devtmpfs mounts (RAM-backed)
 		if fsType == "tmpfs" || fsType == "devtmpfs" {
 			info := m.checkMount(mountPoint)
 			if info != nil {
@@ -69,6 +70,7 @@ func (m *TmpfsManager) Detect() ([]TmpfsInfo, error) {
 }
 
 // checkMount checks a single mount point for usability
+// No hardcoded paths - recommends based on space and writability only
 func (m *TmpfsManager) checkMount(mountPoint string) *TmpfsInfo {
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(mountPoint, &stat); err != nil {
@@ -93,24 +95,18 @@ func (m *TmpfsManager) checkMount(mountPoint string) *TmpfsInfo {
 	// Recommend if:
 	// 1. At least 1GB free
 	// 2. We can write
-	// 3. It's /dev/shm, /run/shm, or /tmp
+	// No hardcoded path preferences - any writable tmpfs with enough space is good
 	minFree := uint64(1 * 1024 * 1024 * 1024) // 1GB
-	goodPaths := []string{"/dev/shm", "/run/shm", "/tmp", "/run"}
 
 	if info.FreeBytes >= minFree && info.Writable {
-		for _, good := range goodPaths {
-			if mountPoint == good || strings.HasPrefix(mountPoint, good+"/") {
-				info.Recommended = true
-				break
-			}
-		}
+		info.Recommended = true
 	}
 
 	return info
 }
 
 // GetBestTmpfs returns the best available tmpfs for temp files
-// Prefers /dev/shm, then /run/shm, then /tmp if on tmpfs
+// Returns the writable tmpfs with the most free space (no hardcoded path preferences)
 func (m *TmpfsManager) GetBestTmpfs(minFreeGB int) *TmpfsInfo {
 	if m.available == nil {
 		m.Detect()
@@ -118,27 +114,18 @@ func (m *TmpfsManager) GetBestTmpfs(minFreeGB int) *TmpfsInfo {
 
 	minFreeBytes := uint64(minFreeGB) * 1024 * 1024 * 1024
 
-	// Priority order
-	priority := []string{"/dev/shm", "/run/shm", "/tmp", "/run"}
-
-	for _, preferred := range priority {
-		for _, info := range m.available {
-			if info.MountPoint == preferred &&
-				info.Writable &&
-				info.FreeBytes >= minFreeBytes {
-				return &info
+	// Find the writable tmpfs with the most free space
+	var best *TmpfsInfo
+	for i := range m.available {
+		info := &m.available[i]
+		if info.Writable && info.FreeBytes >= minFreeBytes {
+			if best == nil || info.FreeBytes > best.FreeBytes {
+				best = info
 			}
 		}
 	}
 
-	// Fallback: any writable tmpfs with enough space
-	for _, info := range m.available {
-		if info.Writable && info.FreeBytes >= minFreeBytes {
-			return &info
-		}
-	}
-
-	return nil
+	return best
 }
 
 // GetTempDir returns a temp directory on tmpfs if available

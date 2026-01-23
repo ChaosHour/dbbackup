@@ -539,20 +539,16 @@ type TmpfsRecommendation struct {
 
 // CheckTmpfsAvailable checks for available tmpfs storage (no root needed)
 // This can significantly speed up large restores by using RAM for temp files
+// Dynamically discovers ALL tmpfs mounts from /proc/mounts - no hardcoded paths
 func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 	rec := &TmpfsRecommendation{}
 	
-	// Check common tmpfs locations
-	tmpfsPaths := []string{"/dev/shm", "/run/shm", "/tmp", "/run"}
+	// Discover all tmpfs mounts dynamically from /proc/mounts
+	tmpfsMounts := g.discoverTmpfsMounts()
 	
-	for _, path := range tmpfsPaths {
+	for _, path := range tmpfsMounts {
 		info, err := os.Stat(path)
 		if err != nil || !info.IsDir() {
-			continue
-		}
-		
-		// Check if it's tmpfs by reading /proc/mounts
-		if !g.isTmpfs(path) {
 			continue
 		}
 		
@@ -564,6 +560,11 @@ func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 		
 		freeBytes := stat.Bavail * uint64(stat.Bsize)
 		
+		// Skip if less than 512MB free
+		if freeBytes < 512*1024*1024 {
+			continue
+		}
+		
 		// Check if we can write
 		testFile := filepath.Join(path, ".dbbackup_test")
 		f, err := os.Create(testFile)
@@ -573,7 +574,7 @@ func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 		f.Close()
 		os.Remove(testFile)
 		
-		// Found usable tmpfs
+		// Found usable tmpfs - prefer the one with most free space
 		if freeBytes > rec.FreeBytes {
 			rec.Available = true
 			rec.Path = path
@@ -602,11 +603,14 @@ func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 	return rec
 }
 
-// isTmpfs checks if a path is on tmpfs
-func (g *LargeDBGuard) isTmpfs(path string) bool {
+// discoverTmpfsMounts reads /proc/mounts and returns all tmpfs mount points
+// No hardcoded paths - discovers everything dynamically
+func (g *LargeDBGuard) discoverTmpfsMounts() []string {
+	var mounts []string
+	
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
-		return false
+		return mounts
 	}
 	
 	for _, line := range strings.Split(string(data), "\n") {
@@ -618,12 +622,13 @@ func (g *LargeDBGuard) isTmpfs(path string) bool {
 		mountPoint := fields[1]
 		fsType := fields[2]
 		
-		if mountPoint == path && (fsType == "tmpfs" || fsType == "devtmpfs") {
-			return true
+		// Include tmpfs and devtmpfs (RAM-backed filesystems)
+		if fsType == "tmpfs" || fsType == "devtmpfs" {
+			mounts = append(mounts, mountPoint)
 		}
 	}
 	
-	return false
+	return mounts
 }
 
 // GetOptimalTempDir returns the best temp directory for restore operations

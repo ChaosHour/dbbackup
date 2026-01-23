@@ -106,9 +106,9 @@ jobs:
           # Create test data
           mysql -h mysql -u root -pmysql testdb -e "CREATE TABLE test_table (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));"
           mysql -h mysql -u root -pmysql testdb -e "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
-          # Run backup - database name is positional argument, port 3306 for MySQL
+          # Run backup - positional arg is db to backup, --database is connection db
           mkdir -p /tmp/mysql_backups
-          ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --password mysql --backup-dir /tmp/mysql_backups --no-config --allow-root
+          ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --password mysql --database testdb --backup-dir /tmp/mysql_backups --no-config --allow-root
           # Verify backup file exists
           ls -la /tmp/mysql_backups/
 

@@ -907,16 +907,30 @@ Workload types:
 
 ## Documentation
 
-- [RESTORE_PROFILES.md](RESTORE_PROFILES.md) - Restore resource profiles & troubleshooting
-- [SYSTEMD.md](SYSTEMD.md) - Systemd installation & scheduling
-- [DOCKER.md](DOCKER.md) - Docker deployment
-- [CLOUD.md](CLOUD.md) - Cloud storage configuration
-- [PITR.md](PITR.md) - Point-in-Time Recovery
-- [AZURE.md](AZURE.md) - Azure Blob Storage
-- [GCS.md](GCS.md) - Google Cloud Storage
+**Quick Start:**
+- [QUICK.md](QUICK.md) - Real-world examples cheat sheet
+
+**Guides:**
+- [docs/PITR.md](docs/PITR.md) - Point-in-Time Recovery (PostgreSQL)
+- [docs/MYSQL_PITR.md](docs/MYSQL_PITR.md) - Point-in-Time Recovery (MySQL)
+- [docs/ENGINES.md](docs/ENGINES.md) - Database engine configuration
+- [docs/RESTORE_PROFILES.md](docs/RESTORE_PROFILES.md) - Restore resource profiles
+
+**Cloud Storage:**
+- [docs/CLOUD.md](docs/CLOUD.md) - Cloud storage overview
+- [docs/AZURE.md](docs/AZURE.md) - Azure Blob Storage
+- [docs/GCS.md](docs/GCS.md) - Google Cloud Storage
+
+**Deployment:**
+- [docs/DOCKER.md](docs/DOCKER.md) - Docker deployment
+- [docs/SYSTEMD.md](docs/SYSTEMD.md) - Systemd installation & scheduling
+
+**Reference:**
 - [SECURITY.md](SECURITY.md) - Security considerations
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
 - [CHANGELOG.md](CHANGELOG.md) - Version history
+- [docs/LOCK_DEBUGGING.md](docs/LOCK_DEBUGGING.md) - Lock troubleshooting
+- [docs/LEGAL_DOCUMENTATION.md](docs/LEGAL_DOCUMENTATION.md) - Legal & compliance
 
 ## License
 

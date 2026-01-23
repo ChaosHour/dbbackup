@@ -116,18 +116,53 @@ diagnose() {
 create_swap() {
     local SWAP_FILE="/swapfile_dbbackup"
     
-    echo -e "${CYAN}━━━ CREATING SWAP ━━━${NC}"
+    echo -e "${CYAN}━━━ SWAP CHECK ━━━${NC}"
     
-    # Get available disk space
+    # Check existing swap
+    local current_swap_gb=$(free -g | awk '/^Swap:/ {print $2}')
+    current_swap_gb=${current_swap_gb:-0}
+    
+    echo "  Current swap: ${current_swap_gb}GB"
+    swapon --show 2>/dev/null || true
+    echo
+    
+    # If already have 4GB+ swap, we're good
+    if [ "$current_swap_gb" -ge 4 ]; then
+        log_ok "Sufficient swap already configured (${current_swap_gb}GB)"
+        return 0
+    fi
+    
+    # Check if our swap file already exists
+    if [ -f "$SWAP_FILE" ]; then
+        if swapon --show | grep -q "$SWAP_FILE"; then
+            log_ok "Our swap file already active: $SWAP_FILE"
+            return 0
+        else
+            # File exists but not active - activate it
+            log_info "Activating existing swap file..."
+            swapon "$SWAP_FILE" 2>/dev/null && log_ok "Swap activated" && return 0
+        fi
+    fi
+    
+    # Need to create swap
     local avail_gb=$(df -BG / | tail -1 | awk '{print $4}' | tr -d 'G')
     
-    # Auto-detect size
+    # Calculate how much MORE swap we need (target: 8GB total)
+    local target_swap=8
+    local need_swap=$((target_swap - current_swap_gb))
+    
+    if [ "$need_swap" -le 0 ]; then
+        log_ok "Swap is sufficient"
+        return 0
+    fi
+    
+    # Auto-detect size based on available disk AND what we need
     local size
-    if [ "$avail_gb" -ge 40 ]; then
+    if [ "$avail_gb" -ge 40 ] && [ "$need_swap" -ge 16 ]; then
         size="32G"
-    elif [ "$avail_gb" -ge 20 ]; then
+    elif [ "$avail_gb" -ge 20 ] && [ "$need_swap" -ge 8 ]; then
         size="16G"
-    elif [ "$avail_gb" -ge 12 ]; then
+    elif [ "$avail_gb" -ge 12 ] && [ "$need_swap" -ge 4 ]; then
         size="8G"
     elif [ "$avail_gb" -ge 6 ]; then
         size="4G"
@@ -142,13 +177,7 @@ create_swap() {
         return 1
     fi
     
-    log_info "Auto-detected swap size: $size (${avail_gb}GB disk available)"
-    
-    if [ -f "$SWAP_FILE" ]; then
-        log_warn "Swap file already exists"
-        swapon --show
-        return 0
-    fi
+    log_info "Creating additional swap: $size (current: ${current_swap_gb}GB, disk: ${avail_gb}GB)"
     
     echo "  Creating ${size} swap file..."
     
@@ -169,7 +198,9 @@ create_swap() {
         log_ok "Added to /etc/fstab"
     fi
     
-    log_ok "Swap created: $size"
+    # Show result
+    local new_swap_gb=$(free -g | awk '/^Swap:/ {print $2}')
+    log_ok "Swap now: ${new_swap_gb}GB (was ${current_swap_gb}GB)"
     swapon --show
 }
 

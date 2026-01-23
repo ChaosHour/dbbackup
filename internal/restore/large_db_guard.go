@@ -499,14 +499,28 @@ func getMemInfo() (*memInfo, error) {
 }
 
 // TunePostgresForRestore returns SQL commands to tune PostgreSQL for low-memory restore
-func (g *LargeDBGuard) TunePostgresForRestore() []string {
+// lockBoost should be calculated based on BLOB count (use preflight.Archive.RecommendedLockBoost)
+func (g *LargeDBGuard) TunePostgresForRestore(lockBoost int) []string {
+	// Use incremental lock values, never go straight to max
+	// Minimum 2048, scale based on actual need
+	if lockBoost < 2048 {
+		lockBoost = 2048
+	}
+	// Cap at 65536 - higher values use too much shared memory
+	if lockBoost > 65536 {
+		lockBoost = 65536
+	}
+
 	return []string{
 		"ALTER SYSTEM SET work_mem = '64MB';",
 		"ALTER SYSTEM SET maintenance_work_mem = '256MB';",
 		"ALTER SYSTEM SET max_parallel_workers = 0;",
 		"ALTER SYSTEM SET max_parallel_workers_per_gather = 0;",
 		"ALTER SYSTEM SET max_parallel_maintenance_workers = 0;",
-		"ALTER SYSTEM SET max_locks_per_transaction = 65536;",
+		fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d;", lockBoost),
+		"-- Checkpoint tuning for large restores:",
+		"ALTER SYSTEM SET checkpoint_timeout = '30min';",
+		"ALTER SYSTEM SET checkpoint_completion_target = 0.9;",
 		"SELECT pg_reload_conf();",
 	}
 }
@@ -519,6 +533,8 @@ func (g *LargeDBGuard) RevertPostgresSettings() []string {
 		"ALTER SYSTEM RESET max_parallel_workers;",
 		"ALTER SYSTEM RESET max_parallel_workers_per_gather;",
 		"ALTER SYSTEM RESET max_parallel_maintenance_workers;",
+		"ALTER SYSTEM RESET checkpoint_timeout;",
+		"ALTER SYSTEM RESET checkpoint_completion_target;",
 		"SELECT pg_reload_conf();",
 	}
 }

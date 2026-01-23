@@ -130,6 +130,7 @@ func (m *TmpfsManager) GetBestTmpfs(minFreeGB int) *TmpfsInfo {
 
 // GetTempDir returns a temp directory on tmpfs if available
 // Falls back to os.TempDir() if no suitable tmpfs found
+// Uses secure permissions (0700) to prevent other users from reading sensitive data
 func (m *TmpfsManager) GetTempDir(subdir string, minFreeGB int) (string, bool) {
 	best := m.GetBestTmpfs(minFreeGB)
 	if best == nil {
@@ -137,12 +138,15 @@ func (m *TmpfsManager) GetTempDir(subdir string, minFreeGB int) (string, bool) {
 		return filepath.Join(os.TempDir(), subdir), false
 	}
 
-	// Create subdir on tmpfs
+	// Create subdir on tmpfs with secure permissions (0700 = owner-only)
 	dir := filepath.Join(best.MountPoint, subdir)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		// Fallback if we can't create
 		return filepath.Join(os.TempDir(), subdir), false
 	}
+
+	// Ensure permissions are correct even if dir already existed
+	os.Chmod(dir, 0700)
 
 	return dir, true
 }
@@ -278,4 +282,39 @@ func GetMemoryStatus() (*MemoryStatus, error) {
 	}
 
 	return status, nil
+}
+
+// SecureMkdirTemp creates a temporary directory with secure permissions (0700)
+// This prevents other users from reading sensitive database dump contents
+// Uses the specified baseDir, or os.TempDir() if empty
+func SecureMkdirTemp(baseDir, pattern string) (string, error) {
+	if baseDir == "" {
+		baseDir = os.TempDir()
+	}
+
+	// Use os.MkdirTemp for unique naming
+	dir, err := os.MkdirTemp(baseDir, pattern)
+	if err != nil {
+		return "", err
+	}
+
+	// Ensure secure permissions (0700 = owner read/write/execute only)
+	if err := os.Chmod(dir, 0700); err != nil {
+		// Try to clean up if we can't secure it
+		os.Remove(dir)
+		return "", fmt.Errorf("cannot set secure permissions: %w", err)
+	}
+
+	return dir, nil
+}
+
+// SecureWriteFile writes content to a file with secure permissions (0600)
+// This prevents other users from reading sensitive data
+func SecureWriteFile(filename string, data []byte) error {
+	// Write with restrictive permissions
+	if err := os.WriteFile(filename, data, 0600); err != nil {
+		return err
+	}
+	// Ensure permissions are correct
+	return os.Chmod(filename, 0600)
 }

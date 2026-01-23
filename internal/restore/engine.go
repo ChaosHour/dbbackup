@@ -1421,8 +1421,23 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			continue
 		}
 
+		// Check context before acquiring semaphore to prevent goroutine leak
+		if ctx.Err() != nil {
+			e.log.Warn("Context cancelled - stopping database restore scheduling")
+			break
+		}
+
 		wg.Add(1)
-		semaphore <- struct{}{} // Acquire
+
+		// Acquire semaphore with context awareness to prevent goroutine leak
+		select {
+		case semaphore <- struct{}{}:
+			// Acquired, proceed
+		case <-ctx.Done():
+			wg.Done()
+			e.log.Warn("Context cancelled while waiting for semaphore", "file", entry.Name())
+			continue
+		}
 
 		go func(idx int, filename string) {
 			defer wg.Done()

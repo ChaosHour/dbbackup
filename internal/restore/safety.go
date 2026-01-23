@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"dbbackup/internal/config"
+	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 )
 
@@ -272,7 +273,9 @@ func (s *Safety) ValidateAndExtractCluster(ctx context.Context, archivePath stri
 		workDir = s.cfg.BackupDir
 	}
 
-	tempDir, err := os.MkdirTemp(workDir, "dbbackup-cluster-extract-*")
+	// Use secure temp directory (0700 permissions) to prevent other users
+	// from reading sensitive database dump contents
+	tempDir, err := fs.SecureMkdirTemp(workDir, "dbbackup-cluster-extract-*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp extraction directory in %s: %w", workDir, err)
 	}

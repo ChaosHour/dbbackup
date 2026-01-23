@@ -3,6 +3,7 @@
 # Mirror: GitHub (github.com/PlusOne/dbbackup)
 name: CI/CD
 
+
 on:
   push:
     branches: [main, master, develop]
@@ -58,18 +59,15 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git init
           git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "${GITHUB_SHA}"
+          # Prefer fetching the branch (works when workflow was triggered by branch push).
+          # Fallback to the specific SHA when the event references a commit directly (tags or specific refs).
+          if [[ "${GITHUB_REF}" == refs/heads/* ]]; then
+            BRANCH=${GITHUB_REF#refs/heads/}
+            git fetch --depth=1 origin "${BRANCH}" || git fetch --depth=1 origin "${GITHUB_SHA}"
+          else
+            git fetch --depth=1 origin "${GITHUB_SHA}"
+          fi
           git checkout FETCH_HEAD
-
-      - name: Download dependencies (required for some linters)
-        run: |
-          # Ensure modules are cached before running linters to avoid network flakiness
-          go mod download
-
-      - name: Ensure build succeeds (fast fail for typecheck errors)
-        run: |
-          # This surfaces compiler/typecheck problems that some linters can miss when run in isolation
-          go build ./...
 
       - name: Install and run golangci-lint
         run: |
@@ -95,6 +93,54 @@ jobs:
           TOKEN: ${{ github.token }}
         run: |
           apt-get update && apt-get install -y -qq git ca-certificates postgresql-client
+  integration-verify-locks:
+    name: Integration — verify-locks
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/main'
+    container:
+      image: golang:1.24-bookworm
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+    steps:
+      - name: Checkout code
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          apt-get update && apt-get install -y -qq git ca-certificates postgresql-client
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
+          if [[ "${GITHUB_REF}" == refs/heads/* ]]; then
+            BRANCH=${GITHUB_REF#refs/heads/}
+            git fetch --depth=1 origin "${BRANCH}" || git fetch --depth=1 origin "${GITHUB_SHA}"
+          else
+            git fetch --depth=1 origin "${GITHUB_SHA}"
+          fi
+          git checkout FETCH_HEAD
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 20); do
+            pg_isready -h 127.0.0.1 -p 5432 && break || sleep 1
+          done
+
+      - name: Build dbbackup
+        run: go build -o dbbackup .
+
+      - name: Run verify-locks (smoke)
+        env:
+          PGHOST: 127.0.0.1
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          ./dbbackup verify-locks | tee verify-locks.out
+          grep -q 'max_locks_per_transaction' verify-locks.out
+
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git init
           git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"

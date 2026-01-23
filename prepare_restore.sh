@@ -83,43 +83,60 @@ gb_to_bytes() {
 
 get_pg_setting() {
     local sql="$1"
-    # Try multiple connection methods
-    PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
-    sudo -u postgres psql --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
-    psql --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
-    echo "N/A"
+    # When running as root, use sudo -u postgres with local socket (most reliable)
+    if [ "$EUID" -eq 0 ]; then
+        sudo -u postgres psql --no-psqlrc -t -A -c "$sql" 2>/dev/null || echo "N/A"
+    else
+        # Try multiple connection methods for non-root users
+        PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
+        psql --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
+        echo "N/A"
+    fi
 }
 
 set_pg_setting() {
     local setting="$1"
     local value="$2"
     
-    # Try with env vars first (most common for remote/docker)
+    # When running as root, use sudo -u postgres (most reliable for ALTER SYSTEM)
+    if [ "$EUID" -eq 0 ]; then
+        if sudo -u postgres psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    
+    # Try with env vars (for remote/docker)
     if PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
         return 0
-    # Try sudo to postgres user (local unix socket)
-    elif sudo -u postgres psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
-        return 0
-    # Try direct psql (if already postgres user)
-    elif psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
-        return 0
-    # Try with explicit socket
-    elif psql -h /var/run/postgresql -U postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
-        return 0
-    elif psql -h /tmp -U postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
-        return 0
-    else
-        return 1
     fi
+    
+    # Try direct psql (if already postgres user)
+    if psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+        return 0
+    fi
+    
+    # Try with explicit sockets
+    if psql -h /var/run/postgresql -U postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+        return 0
+    fi
+    if psql -h /tmp -U postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+        return 0
+    fi
+    
+    return 1
 }
 
 reload_pg() {
-    PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres -c "SELECT pg_reload_conf();" 2>/dev/null || \
-    sudo -u postgres psql -c "SELECT pg_reload_conf();" 2>/dev/null || \
-    psql -c "SELECT pg_reload_conf();" 2>/dev/null || \
-    sudo systemctl reload postgresql 2>/dev/null || \
-    sudo service postgresql reload 2>/dev/null || \
-    true
+    if [ "$EUID" -eq 0 ]; then
+        sudo -u postgres psql -c "SELECT pg_reload_conf();" 2>/dev/null || \
+        sudo systemctl reload postgresql 2>/dev/null || \
+        sudo service postgresql reload 2>/dev/null || \
+        true
+    else
+        PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres -c "SELECT pg_reload_conf();" 2>/dev/null || \
+        psql -c "SELECT pg_reload_conf();" 2>/dev/null || \
+        true
+    fi
 }
 
 #==============================================================================

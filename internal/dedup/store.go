@@ -118,10 +118,22 @@ func (s *ChunkStore) Put(chunk *Chunk) (isNew bool, err error) {
 	}
 
 	path := s.chunkPath(chunk.Hash)
+	chunkDir := filepath.Dir(path)
 
-	// Create prefix directory
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	// Create prefix directory with verification for CIFS/NFS
+	// Network filesystems can return success from MkdirAll before
+	// the directory is actually visible for writes
+	if err := os.MkdirAll(chunkDir, 0700); err != nil {
 		return false, fmt.Errorf("failed to create chunk directory: %w", err)
+	}
+
+	// Verify directory exists (CIFS workaround)
+	for i := 0; i < 5; i++ {
+		if _, err := os.Stat(chunkDir); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+		os.MkdirAll(chunkDir, 0700) // retry mkdir
 	}
 
 	// Prepare data
@@ -145,16 +157,19 @@ func (s *ChunkStore) Put(chunk *Chunk) (isNew bool, err error) {
 
 	// Write atomically (write to temp, then rename)
 	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
-		return false, fmt.Errorf("failed to write chunk: %w", err)
+	
+	// Write with retry for CIFS/NFS directory visibility lag
+	var writeErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if writeErr = os.WriteFile(tmpPath, data, 0600); writeErr == nil {
+			break
+		}
+		// Directory might not be visible yet on network FS
+		time.Sleep(20 * time.Millisecond)
+		os.MkdirAll(chunkDir, 0700)
 	}
-
-	// Ensure shard directory exists before rename (CIFS/SMB compatibility)
-	// Network filesystems can have stale directory caches that cause
-	// "no such file or directory" errors on rename even when the dir exists
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		os.Remove(tmpPath)
-		return false, fmt.Errorf("failed to ensure chunk directory: %w", err)
+	if writeErr != nil {
+		return false, fmt.Errorf("failed to write chunk: %w", writeErr)
 	}
 
 	// Rename with retry for CIFS/SMB flakiness

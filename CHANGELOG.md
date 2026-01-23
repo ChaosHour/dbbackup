@@ -58,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Reduces preflight validation time from minutes to seconds on large archives
   - Falls back to full extraction only when necessary (with `--diagnose`)
 
+### Added - PostgreSQL lock verification (CLI + preflight)
+- **`dbbackup verify-locks`** — new CLI command that probes PostgreSQL GUCs (`max_locks_per_transaction`, `max_connections`, `max_prepared_transactions`) and prints total lock capacity plus actionable restore guidance.
+- **Integrated into preflight checks** — preflight now warns/fails when lock settings are insufficient and provides exact remediation commands and recommended restore flags (e.g. `--jobs 1 --parallel-dbs 1`).
+- **Implemented in Go (replaces `verify_postgres_locks.sh`)** with robust parsing, sudo/`psql` fallback and unit-tested decision logic.
+- **Files:** `cmd/verify_locks.go`, `internal/checks/locks.go`, `internal/checks/locks_test.go`, `internal/checks/preflight.go`.
+- **Why:** Prevents repeated parallel-restore failures by surfacing lock-capacity issues early and providing bulletproof guidance.
+
 ## [3.42.74] - 2026-01-20 "Resource Profile System + Critical Ctrl+C Fix"
 
 ### Critical Bug Fix

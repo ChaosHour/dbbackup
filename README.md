@@ -295,6 +295,12 @@ dbbackup restore cluster backup.tar.gz --save-debug-log /tmp/restore-debug.json 
 # Diagnose backup before restore
 dbbackup restore diagnose backup.dump.gz --deep
 
+# Check PostgreSQL lock configuration (preflight for large restores)
+# - warns/fails when `max_locks_per_transaction` is insufficient and prints exact remediation
+# - safe to run before a restore to determine whether single-threaded restore is required
+# Example:
+# dbbackup verify-locks
+
 # Cloud backup
 dbbackup backup single mydb --cloud s3://my-bucket/backups/
 
@@ -314,6 +320,7 @@ dbbackup backup single mydb --dry-run
 | `restore pitr` | Point-in-Time Recovery |
 | `restore diagnose` | Diagnose backup file integrity |
 | `verify-backup` | Verify backup integrity |
+| `verify-locks` | Check PostgreSQL lock settings and get restore guidance |
 | `cleanup` | Remove old backups |
 | `status` | Check connection status |
 | `preflight` | Run pre-backup checks |

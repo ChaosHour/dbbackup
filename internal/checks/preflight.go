@@ -120,6 +120,17 @@ func (p *PreflightChecker) RunAllChecks(ctx context.Context, dbName string) (*Pr
 		result.FailureCount++
 	}
 
+	// Postgres lock configuration check (provides explicit restore guidance)
+	locksCheck := p.checkPostgresLocks(ctx)
+	result.Checks = append(result.Checks, locksCheck)
+	if locksCheck.Status == StatusFailed {
+		result.AllPassed = false
+		result.FailureCount++
+	} else if locksCheck.Status == StatusWarning {
+		result.HasWarnings = true
+		result.WarningCount++
+	}
+
 	// Extract database info if connection succeeded
 	if dbCheck.Status == StatusPassed && p.db != nil {
 		version, _ := p.db.GetVersion(ctx)

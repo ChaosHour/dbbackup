@@ -16,17 +16,26 @@
 #   ./prepare_restore.sh --tune-pg      # Tune PostgreSQL only
 #   ./prepare_restore.sh --oom-protect  # Enable OOM protection only
 #
+# PostgreSQL connection (via environment variables):
+#   PGHOST=localhost PGUSER=postgres PGPASSWORD=secret ./prepare_restore.sh --tune-pg
+#
 
 set -euo pipefail
 
 #==============================================================================
 # CONFIGURATION
 #==============================================================================
-VERSION="1.0.0"
+VERSION="1.1.0"
 SWAP_FILE="/swapfile_dbbackup"
 DEFAULT_SWAP_SIZE="16G"
 MIN_SWAP_GB=8
 MIN_AVAILABLE_RAM_GB=4
+
+# PostgreSQL connection defaults (can be overridden via environment)
+export PGHOST="${PGHOST:-localhost}"
+export PGUSER="${PGUSER:-postgres}"
+export PGPASSWORD="${PGPASSWORD:-postgres}"
+export PGPORT="${PGPORT:-5432}"
 
 # PostgreSQL tuning for large restores (low memory mode)
 PG_WORK_MEM="64MB"
@@ -74,6 +83,8 @@ gb_to_bytes() {
 
 get_pg_setting() {
     local sql="$1"
+    # Try multiple connection methods
+    PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
     sudo -u postgres psql --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
     psql --no-psqlrc -t -A -c "$sql" 2>/dev/null || \
     echo "N/A"
@@ -82,9 +93,20 @@ get_pg_setting() {
 set_pg_setting() {
     local setting="$1"
     local value="$2"
-    if sudo -u postgres psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+    
+    # Try with env vars first (most common for remote/docker)
+    if PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
         return 0
+    # Try sudo to postgres user (local unix socket)
+    elif sudo -u postgres psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+        return 0
+    # Try direct psql (if already postgres user)
     elif psql -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+        return 0
+    # Try with explicit socket
+    elif psql -h /var/run/postgresql -U postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
+        return 0
+    elif psql -h /tmp -U postgres -c "ALTER SYSTEM SET $setting = '$value';" 2>/dev/null; then
         return 0
     else
         return 1
@@ -92,9 +114,11 @@ set_pg_setting() {
 }
 
 reload_pg() {
+    PGPASSWORD="${PGPASSWORD:-postgres}" psql -h "${PGHOST:-localhost}" -U "${PGUSER:-postgres}" -d postgres -c "SELECT pg_reload_conf();" 2>/dev/null || \
     sudo -u postgres psql -c "SELECT pg_reload_conf();" 2>/dev/null || \
     psql -c "SELECT pg_reload_conf();" 2>/dev/null || \
     sudo systemctl reload postgresql 2>/dev/null || \
+    sudo service postgresql reload 2>/dev/null || \
     true
 }
 
@@ -584,11 +608,20 @@ show_help() {
     echo "  --reset-pg        Reset PostgreSQL to default settings"
     echo "  --help            Show this help"
     echo
+    echo "PostgreSQL Connection (via environment variables):"
+    echo "  PGHOST            PostgreSQL host (default: localhost)"
+    echo "  PGPORT            PostgreSQL port (default: 5432)"
+    echo "  PGUSER            PostgreSQL user (default: postgres)"
+    echo "  PGPASSWORD        PostgreSQL password (default: postgres)"
+    echo
     echo "Examples:"
     echo "  $0                    # Diagnose system"
     echo "  sudo $0 --fix         # Apply all fixes (auto swap size)"
     echo "  sudo $0 --swap auto   # Auto-detect swap size based on disk"
     echo "  sudo $0 --swap 2G     # Create 2GB swap (for low disk space)"
+    echo
+    echo "  # With PostgreSQL connection:"
+    echo "  PGHOST=db.example.com PGPASSWORD=secret sudo $0 --tune-pg"
     echo
 }
 

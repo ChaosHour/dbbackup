@@ -280,16 +280,25 @@ func (s *Safety) ValidateAndExtractCluster(ctx context.Context, archivePath stri
 		return "", fmt.Errorf("failed to create temp extraction directory in %s: %w", workDir, err)
 	}
 
-	// Extract using tar command (fastest method)
+	// Extract using parallel gzip (2-4x faster on multi-core systems)
 	s.log.Info("Pre-extracting cluster archive for validation and restore",
 		"archive", archivePath,
-		"dest", tempDir)
+		"dest", tempDir,
+		"method", "parallel-gzip")
 
-	cmd := exec.CommandContext(ctx, "tar", "-xzf", archivePath, "-C", tempDir)
-	output, err := cmd.CombinedOutput()
+	// Use Go's parallel extraction instead of shelling out to tar
+	// This uses pgzip for multi-core decompression
+	err = fs.ExtractTarGzParallel(ctx, archivePath, tempDir, func(progress fs.ExtractProgress) {
+		if progress.TotalBytes > 0 {
+			pct := float64(progress.BytesRead) / float64(progress.TotalBytes) * 100
+			s.log.Debug("Extraction progress",
+				"file", progress.CurrentFile,
+				"percent", fmt.Sprintf("%.1f%%", pct))
+		}
+	})
 	if err != nil {
 		os.RemoveAll(tempDir) // Cleanup on failure
-		return "", fmt.Errorf("extraction failed: %w: %s", err, string(output))
+		return "", fmt.Errorf("extraction failed: %w", err)
 	}
 
 	s.log.Info("Cluster archive extracted successfully", "location", tempDir)

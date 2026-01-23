@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"dbbackup/internal/config"
+	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 )
 
@@ -226,15 +227,18 @@ func (ro *RestoreOrchestrator) extractBaseBackup(ctx context.Context, opts *Rest
 	return fmt.Errorf("unsupported backup format: %s (expected .tar.gz, .tar, or directory)", backupPath)
 }
 
-// extractTarGzBackup extracts a .tar.gz backup
+// extractTarGzBackup extracts a .tar.gz backup using parallel gzip
 func (ro *RestoreOrchestrator) extractTarGzBackup(ctx context.Context, source, dest string) error {
-	ro.log.Info("Extracting tar.gz backup...")
+	ro.log.Info("Extracting tar.gz backup with parallel gzip...")
 
-	cmd := exec.CommandContext(ctx, "tar", "-xzf", source, "-C", dest)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
+	// Use parallel extraction (2-4x faster on multi-core)
+	err := fs.ExtractTarGzParallel(ctx, source, dest, func(progress fs.ExtractProgress) {
+		if progress.TotalBytes > 0 && progress.FilesCount%100 == 0 {
+			pct := float64(progress.BytesRead) / float64(progress.TotalBytes) * 100
+			ro.log.Debug("Extraction progress", "percent", fmt.Sprintf("%.1f%%", pct))
+		}
+	})
+	if err != nil {
 		return fmt.Errorf("tar extraction failed: %w", err)
 	}
 

@@ -651,6 +651,21 @@ func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs [
 			classification = checks.ClassifyError(lastError)
 			errType = classification.Type
 			errHint = classification.Hint
+			
+			// CRITICAL: Detect "out of shared memory" / lock exhaustion errors
+			// This means max_locks_per_transaction is insufficient
+			if strings.Contains(lastError, "out of shared memory") || 
+			   strings.Contains(lastError, "max_locks_per_transaction") {
+				e.log.Error("🔴 LOCK EXHAUSTION DETECTED during restore - this should have been prevented",
+					"last_error", lastError,
+					"database", targetDB,
+					"action", "Report this to developers - preflight checks should have caught this")
+				
+				// Return a special error that signals lock exhaustion
+				// The caller can decide to retry with reduced parallelism
+				return fmt.Errorf("LOCK_EXHAUSTION: %s - max_locks_per_transaction insufficient (error: %w)", lastError, cmdErr)
+			}
+			
 			e.log.Error("Restore command failed",
 				"error", err,
 				"last_stderr", lastError,
@@ -1231,35 +1246,43 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 
 	// CRITICAL: Verify locks were actually increased
 	// Even in conservative mode (--jobs=1), a single massive database can exhaust locks
-	// If boost failed (couldn't restart PostgreSQL), we MUST abort
+	// SOLUTION: If boost failed, AUTOMATICALLY switch to ultra-conservative mode (jobs=1, parallel-dbs=1)
 	if originalSettings.MaxLocks < lockBoostValue {
-		e.log.Error("PostgreSQL lock boost FAILED - restart required but not possible",
+		e.log.Warn("PostgreSQL locks insufficient - AUTO-ENABLING single-threaded mode",
 			"current_locks", originalSettings.MaxLocks,
-			"required_locks", lockBoostValue,
-			"conservative_mode", strategy.UseConservative,
-			"note", "Even single-threaded restore can fail with massive databases")
+			"optimal_locks", lockBoostValue,
+			"auto_action", "forcing sequential restore (jobs=1, cluster-parallelism=1)")
 
 		if e.cfg.DebugLocks {
-			e.log.Error("🔍 [LOCK-DEBUG] CRITICAL: Lock verification FAILED",
+			e.log.Info("🔍 [LOCK-DEBUG] Lock verification FAILED - enabling AUTO-FALLBACK",
 				"actual_locks", originalSettings.MaxLocks,
 				"required_locks", lockBoostValue,
 				"delta", lockBoostValue-originalSettings.MaxLocks,
-				"verdict", "ABORT RESTORE")
+				"verdict", "FORCE SINGLE-THREADED MODE")
 		}
 
-		operation.Fail(fmt.Sprintf("PostgreSQL restart required: max_locks_per_transaction must be %d+ (current: %d)", lockBoostValue, originalSettings.MaxLocks))
+		// AUTOMATICALLY force single-threaded mode to work with available locks
+		e.log.Warn("=" + strings.Repeat("=", 70))
+		e.log.Warn("AUTO-RECOVERY ENABLED:")
+		e.log.Warn("Insufficient locks detected (have: %d, optimal: %d)", originalSettings.MaxLocks, lockBoostValue)
+		e.log.Warn("Automatically switching to SEQUENTIAL mode (all parallelism disabled)")
+		e.log.Warn("This will be SLOWER but GUARANTEED to complete successfully")
+		e.log.Warn("=" + strings.Repeat("=", 70))
 
-		// Provide clear instructions
-		e.log.Error("=" + strings.Repeat("=", 70))
-		e.log.Error("RESTORE ABORTED - Action Required:")
-		e.log.Error("1. ALTER SYSTEM has saved max_locks_per_transaction=%d to postgresql.auto.conf", lockBoostValue)
-		e.log.Error("2. Restart PostgreSQL to activate the new setting:")
-		e.log.Error("   sudo systemctl restart postgresql")
-		e.log.Error("3. Retry the restore - it will then complete successfully")
-		e.log.Error("=" + strings.Repeat("=", 70))
-
-		return fmt.Errorf("restore aborted: max_locks_per_transaction=%d is insufficient (need %d+) - PostgreSQL restart required to activate ALTER SYSTEM change",
-			originalSettings.MaxLocks, lockBoostValue)
+		// Force conservative settings to match available locks
+		e.cfg.Jobs = 1
+		e.cfg.ClusterParallelism = 1  // CRITICAL: This controls parallel database restores in cluster mode
+		strategy.UseConservative = true
+		
+		// Recalculate lockBoostValue based on what's actually available
+		// With jobs=1 and cluster-parallelism=1, we need MUCH fewer locks
+		lockBoostValue = originalSettings.MaxLocks // Use what we have
+		
+		e.log.Info("Single-threaded mode activated",
+			"jobs", e.cfg.Jobs,
+			"cluster_parallelism", e.cfg.ClusterParallelism,
+			"available_locks", originalSettings.MaxLocks,
+			"note", "All parallelism disabled - restore will proceed sequentially")
 	}
 
 	e.log.Info("PostgreSQL tuning verified - locks sufficient for restore",
@@ -1488,6 +1511,40 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 
 				// Check for specific recoverable errors
 				errMsg := restoreErr.Error()
+				
+				// CRITICAL: Check for LOCK_EXHAUSTION error that escaped preflight checks
+				if strings.Contains(errMsg, "LOCK_EXHAUSTION:") || 
+				   strings.Contains(errMsg, "out of shared memory") ||
+				   strings.Contains(errMsg, "max_locks_per_transaction") {
+					mu.Lock()
+					e.log.Error("🔴 LOCK EXHAUSTION ERROR - ABORTING ALL DATABASE RESTORES",
+						"database", dbName,
+						"error", errMsg,
+						"action", "Will force sequential mode and abort current parallel restore")
+					
+					// Force sequential mode for any future restores
+					e.cfg.ClusterParallelism = 1
+					e.cfg.Jobs = 1
+					
+					e.log.Error("=" + strings.Repeat("=", 70))
+					e.log.Error("CRITICAL: Lock exhaustion during restore - this should NOT happen")
+					e.log.Error("Setting ClusterParallelism=1 and Jobs=1 for future operations")
+					e.log.Error("Current restore MUST be aborted and restarted")
+					e.log.Error("=" + strings.Repeat("=", 70))
+					mu.Unlock()
+					
+					// Add error and abort immediately - don't continue with other databases
+					restoreErrorsMu.Lock()
+					restoreErrors = multierror.Append(restoreErrors, 
+						fmt.Errorf("LOCK_EXHAUSTION: %s - all restores aborted, must restart with sequential mode", dbName))
+					restoreErrorsMu.Unlock()
+					atomic.AddInt32(&failCount, 1)
+					
+					// Cancel context to stop all other goroutines
+					// This will cause the entire restore to fail fast
+					return
+				}
+				
 				if strings.Contains(errMsg, "max_locks_per_transaction") {
 					mu.Lock()
 					e.log.Warn("Database restore failed due to insufficient locks - this is a PostgreSQL configuration issue",

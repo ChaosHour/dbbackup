@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.105] - 2026-01-23
+
+### Changed - TUI Visual Cleanup
+- **Removed ASCII box characters** from backup/restore success/failure banners
+  - Replaced `╔═╗║╚╝` boxes with clean `═══` horizontal line separators
+  - Cleaner, more modern appearance in terminal output
+- **Consolidated duplicate styles** in TUI components
+  - Unified check status styles (passed/failed/warning/pending) into global definitions
+  - Reduces code duplication across restore preview and diagnose views
+
 ## [3.42.98] - 2025-01-23
 
 ### Fixed - Critical Bug Fixes for v3.42.97

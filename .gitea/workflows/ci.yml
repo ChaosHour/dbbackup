@@ -72,11 +72,11 @@ jobs:
         run: |
           echo "Waiting for PostgreSQL..."
           for i in $(seq 1 30); do
-            pg_isready -h 127.0.0.1 -p 5432 && break || sleep 1
+            pg_isready -h postgres -p 5432 && break || sleep 1
           done
           echo "Waiting for MySQL..."
           for i in $(seq 1 30); do
-            mysqladmin ping -h 127.0.0.1 -u root -pmysql --silent && break || sleep 1
+            mysqladmin ping -h mysql -u root -pmysql --silent && break || sleep 1
           done
 
       - name: Build dbbackup
@@ -84,39 +84,39 @@ jobs:
 
       - name: Test PostgreSQL backup/restore
         env:
-          PGHOST: 127.0.0.1
+          PGHOST: postgres
           PGUSER: postgres
           PGPASSWORD: postgres
         run: |
           # Create test data
-          psql -c "CREATE TABLE test_table (id SERIAL PRIMARY KEY, name TEXT);"
-          psql -c "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
+          psql -h postgres -c "CREATE TABLE test_table (id SERIAL PRIMARY KEY, name TEXT);"
+          psql -h postgres -c "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
           # Run backup
-          ./dbbackup backup --engine postgres --host 127.0.0.1 --user postgres --password postgres --database testdb --output /tmp/pg_backup.sql.gz
+          ./dbbackup backup --engine postgres --host postgres --user postgres --password postgres --database testdb --output /tmp/pg_backup.sql.gz
           # Verify backup file exists
           ls -la /tmp/pg_backup.sql.gz
 
       - name: Test MySQL backup/restore
         env:
-          MYSQL_HOST: 127.0.0.1
+          MYSQL_HOST: mysql
           MYSQL_USER: root
           MYSQL_PASSWORD: mysql
         run: |
           # Create test data
-          mysql -h 127.0.0.1 -u root -pmysql testdb -e "CREATE TABLE test_table (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));"
-          mysql -h 127.0.0.1 -u root -pmysql testdb -e "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
+          mysql -h mysql -u root -pmysql testdb -e "CREATE TABLE test_table (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));"
+          mysql -h mysql -u root -pmysql testdb -e "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
           # Run backup
-          ./dbbackup backup --engine mysql --host 127.0.0.1 --user root --password mysql --database testdb --output /tmp/mysql_backup.sql.gz
+          ./dbbackup backup --engine mysql --host mysql --user root --password mysql --database testdb --output /tmp/mysql_backup.sql.gz
           # Verify backup file exists
           ls -la /tmp/mysql_backup.sql.gz
 
       - name: Test verify-locks command
         env:
-          PGHOST: 127.0.0.1
+          PGHOST: postgres
           PGUSER: postgres
           PGPASSWORD: postgres
         run: |
-          ./dbbackup verify-locks | tee verify-locks.out
+          ./dbbackup verify-locks --host postgres | tee verify-locks.out
           grep -q 'max_locks_per_transaction' verify-locks.out
 
   lint:

@@ -530,11 +530,11 @@ func (g *LargeDBGuard) RevertPostgresSettings() []string {
 
 // TmpfsRecommendation holds info about available tmpfs storage
 type TmpfsRecommendation struct {
-	Available    bool   // Is tmpfs available
-	Path         string // Best tmpfs path (/dev/shm, /tmp, etc)
-	FreeBytes    uint64 // Free space on tmpfs
-	Recommended  bool   // Is tmpfs recommended for this restore
-	Reason       string // Why or why not
+	Available   bool   // Is tmpfs available
+	Path        string // Best tmpfs path (/dev/shm, /tmp, etc)
+	FreeBytes   uint64 // Free space on tmpfs
+	Recommended bool   // Is tmpfs recommended for this restore
+	Reason      string // Why or why not
 }
 
 // CheckTmpfsAvailable checks for available tmpfs storage (no root needed)
@@ -542,29 +542,29 @@ type TmpfsRecommendation struct {
 // Dynamically discovers ALL tmpfs mounts from /proc/mounts - no hardcoded paths
 func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 	rec := &TmpfsRecommendation{}
-	
+
 	// Discover all tmpfs mounts dynamically from /proc/mounts
 	tmpfsMounts := g.discoverTmpfsMounts()
-	
+
 	for _, path := range tmpfsMounts {
 		info, err := os.Stat(path)
 		if err != nil || !info.IsDir() {
 			continue
 		}
-		
+
 		// Check available space
 		var stat syscall.Statfs_t
 		if err := syscall.Statfs(path, &stat); err != nil {
 			continue
 		}
-		
+
 		freeBytes := stat.Bavail * uint64(stat.Bsize)
-		
+
 		// Skip if less than 512MB free
 		if freeBytes < 512*1024*1024 {
 			continue
 		}
-		
+
 		// Check if we can write
 		testFile := filepath.Join(path, ".dbbackup_test")
 		f, err := os.Create(testFile)
@@ -573,7 +573,7 @@ func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 		}
 		f.Close()
 		os.Remove(testFile)
-		
+
 		// Found usable tmpfs - prefer the one with most free space
 		if freeBytes > rec.FreeBytes {
 			rec.Available = true
@@ -581,13 +581,13 @@ func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 			rec.FreeBytes = freeBytes
 		}
 	}
-	
+
 	// Determine recommendation
 	if !rec.Available {
 		rec.Reason = "No writable tmpfs found"
 		return rec
 	}
-	
+
 	freeGB := rec.FreeBytes / (1024 * 1024 * 1024)
 	if freeGB >= 4 {
 		rec.Recommended = true
@@ -599,7 +599,7 @@ func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 		rec.Recommended = false
 		rec.Reason = fmt.Sprintf("tmpfs at %s has only %dMB free - not enough", rec.Path, rec.FreeBytes/(1024*1024))
 	}
-	
+
 	return rec
 }
 
@@ -607,27 +607,27 @@ func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 // No hardcoded paths - discovers everything dynamically
 func (g *LargeDBGuard) discoverTmpfsMounts() []string {
 	var mounts []string
-	
+
 	data, err := os.ReadFile("/proc/mounts")
 	if err != nil {
 		return mounts
 	}
-	
+
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 3 {
 			continue
 		}
-		
+
 		mountPoint := fields[1]
 		fsType := fields[2]
-		
+
 		// Include tmpfs and devtmpfs (RAM-backed filesystems)
 		if fsType == "tmpfs" || fsType == "devtmpfs" {
 			mounts = append(mounts, mountPoint)
 		}
 	}
-	
+
 	return mounts
 }
 
@@ -635,14 +635,14 @@ func (g *LargeDBGuard) discoverTmpfsMounts() []string {
 // Prefers tmpfs if available and has enough space, otherwise falls back to workDir
 func (g *LargeDBGuard) GetOptimalTempDir(workDir string, requiredGB int) (string, string) {
 	tmpfs := g.CheckTmpfsAvailable()
-	
+
 	if tmpfs.Recommended && tmpfs.FreeBytes >= uint64(requiredGB)*1024*1024*1024 {
 		g.log.Info("Using tmpfs for faster restore",
 			"path", tmpfs.Path,
 			"free_gb", tmpfs.FreeBytes/(1024*1024*1024))
 		return tmpfs.Path, "tmpfs (RAM-backed, fast)"
 	}
-	
+
 	g.log.Info("Using disk-based temp directory",
 		"path", workDir,
 		"reason", tmpfs.Reason)

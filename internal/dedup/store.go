@@ -237,10 +237,10 @@ func (s *ChunkStore) Delete(hash string) error {
 
 // Stats returns storage statistics
 type StoreStats struct {
-	TotalChunks   int64
-	TotalSize     int64 // Bytes on disk (after compression/encryption)
-	UniqueSize    int64 // Bytes of unique data
-	Directories   int
+	TotalChunks int64
+	TotalSize   int64 // Bytes on disk (after compression/encryption)
+	UniqueSize  int64 // Bytes of unique data
+	Directories int
 }
 
 // Stats returns statistics about the chunk store

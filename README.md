@@ -930,7 +930,6 @@ Workload types:
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
 - [CHANGELOG.md](CHANGELOG.md) - Version history
 - [docs/LOCK_DEBUGGING.md](docs/LOCK_DEBUGGING.md) - Lock troubleshooting
-- [docs/LEGAL_DOCUMENTATION.md](docs/LEGAL_DOCUMENTATION.md) - Legal & compliance
 
 ## License
 

@@ -14,6 +14,25 @@ import (
 	"github.com/klauspost/pgzip"
 )
 
+// ParallelGzipWriter wraps pgzip.Writer for streaming compression
+type ParallelGzipWriter struct {
+	*pgzip.Writer
+}
+
+// NewParallelGzipWriter creates a parallel gzip writer using all CPU cores
+// This is 2-4x faster than standard gzip on multi-core systems
+func NewParallelGzipWriter(w io.Writer, level int) (*ParallelGzipWriter, error) {
+	gzWriter, err := pgzip.NewWriterLevel(w, level)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create gzip writer: %w", err)
+	}
+	// Set block size and concurrency for parallel compression
+	if err := gzWriter.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
+		// Non-fatal, continue with defaults
+	}
+	return &ParallelGzipWriter{Writer: gzWriter}, nil
+}
+
 // ExtractProgress reports extraction progress
 type ExtractProgress struct {
 	CurrentFile  string

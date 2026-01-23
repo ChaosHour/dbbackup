@@ -714,6 +714,7 @@ func (e *Engine) monitorCommandProgress(stderr io.ReadCloser, tracker *progress.
 }
 
 // executeMySQLWithProgressAndCompression handles MySQL backup with compression and progress
+// Uses in-process pgzip for parallel compression (2-4x faster on multi-core systems)
 func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmdArgs []string, outputFile string, tracker *progress.OperationTracker) error {
 	// Create mysqldump command
 	dumpCmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
@@ -722,9 +723,6 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 		dumpCmd.Env = append(dumpCmd.Env, "MYSQL_PWD="+e.cfg.Password)
 	}
 
-	// Create gzip command
-	gzipCmd := exec.CommandContext(ctx, "gzip", fmt.Sprintf("-%d", e.cfg.CompressionLevel))
-
 	// Create output file
 	outFile, err := os.Create(outputFile)
 	if err != nil {
@@ -732,14 +730,18 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	}
 	defer outFile.Close()
 
-	// Set up pipeline: mysqldump | gzip > outputfile
+	// Create parallel gzip writer using pgzip
+	gzWriter, err := fs.NewParallelGzipWriter(outFile, e.cfg.CompressionLevel)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip writer: %w", err)
+	}
+	defer gzWriter.Close()
+
+	// Set up pipeline: mysqldump stdout -> pgzip writer -> file
 	pipe, err := dumpCmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create pipe: %w", err)
 	}
-
-	gzipCmd.Stdin = pipe
-	gzipCmd.Stdout = outFile
 
 	// Get stderr for progress monitoring
 	stderr, err := dumpCmd.StderrPipe()
@@ -754,15 +756,17 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 		e.monitorCommandProgress(stderr, tracker)
 	}()
 
-	// Start both commands
-	if err := gzipCmd.Start(); err != nil {
-		return fmt.Errorf("failed to start gzip: %w", err)
-	}
-
+	// Start mysqldump
 	if err := dumpCmd.Start(); err != nil {
-		gzipCmd.Process.Kill()
 		return fmt.Errorf("failed to start mysqldump: %w", err)
 	}
+
+	// Copy mysqldump output through pgzip in a goroutine
+	copyDone := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(gzWriter, pipe)
+		copyDone <- err
+	}()
 
 	// Wait for mysqldump with context handling
 	dumpDone := make(chan error, 1)
@@ -777,7 +781,6 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	case <-ctx.Done():
 		e.log.Warn("Backup cancelled - killing mysqldump")
 		dumpCmd.Process.Kill()
-		gzipCmd.Process.Kill()
 		<-dumpDone
 		return ctx.Err()
 	}
@@ -785,10 +788,14 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	// Wait for stderr reader
 	<-stderrDone
 
-	// Close pipe and wait for gzip
-	pipe.Close()
-	if err := gzipCmd.Wait(); err != nil {
-		return fmt.Errorf("gzip failed: %w", err)
+	// Wait for copy to complete
+	if copyErr := <-copyDone; copyErr != nil {
+		return fmt.Errorf("compression failed: %w", copyErr)
+	}
+
+	// Close gzip writer to flush all data
+	if err := gzWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
 	}
 
 	if dumpErr != nil {
@@ -799,6 +806,7 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 }
 
 // executeMySQLWithCompression handles MySQL backup with compression
+// Uses in-process pgzip for parallel compression (2-4x faster on multi-core systems)
 func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []string, outputFile string) error {
 	// Create mysqldump command
 	dumpCmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
@@ -807,9 +815,6 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 		dumpCmd.Env = append(dumpCmd.Env, "MYSQL_PWD="+e.cfg.Password)
 	}
 
-	// Create gzip command
-	gzipCmd := exec.CommandContext(ctx, "gzip", fmt.Sprintf("-%d", e.cfg.CompressionLevel))
-
 	// Create output file
 	outFile, err := os.Create(outputFile)
 	if err != nil {
@@ -817,24 +822,30 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	}
 	defer outFile.Close()
 
-	// Set up pipeline: mysqldump | gzip > outputfile
-	stdin, err := dumpCmd.StdoutPipe()
+	// Create parallel gzip writer using pgzip
+	gzWriter, err := fs.NewParallelGzipWriter(outFile, e.cfg.CompressionLevel)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip writer: %w", err)
+	}
+	defer gzWriter.Close()
+
+	// Set up pipeline: mysqldump stdout -> pgzip writer -> file
+	pipe, err := dumpCmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create pipe: %w", err)
-	}
-	gzipCmd.Stdin = stdin
-	gzipCmd.Stdout = outFile
-
-	// Start gzip first
-	if err := gzipCmd.Start(); err != nil {
-		return fmt.Errorf("failed to start gzip: %w", err)
 	}
 
 	// Start mysqldump
 	if err := dumpCmd.Start(); err != nil {
-		gzipCmd.Process.Kill()
 		return fmt.Errorf("failed to start mysqldump: %w", err)
 	}
+
+	// Copy mysqldump output through pgzip in a goroutine
+	copyDone := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(gzWriter, pipe)
+		copyDone <- err
+	}()
 
 	// Wait for mysqldump with context handling
 	dumpDone := make(chan error, 1)
@@ -849,15 +860,18 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	case <-ctx.Done():
 		e.log.Warn("Backup cancelled - killing mysqldump")
 		dumpCmd.Process.Kill()
-		gzipCmd.Process.Kill()
 		<-dumpDone
 		return ctx.Err()
 	}
 
-	// Close pipe and wait for gzip
-	stdin.Close()
-	if err := gzipCmd.Wait(); err != nil {
-		return fmt.Errorf("gzip failed: %w", err)
+	// Wait for copy to complete
+	if copyErr := <-copyDone; copyErr != nil {
+		return fmt.Errorf("compression failed: %w", copyErr)
+	}
+
+	// Close gzip writer to flush all data
+	if err := gzWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close gzip writer: %w", err)
 	}
 
 	if dumpErr != nil {

@@ -37,6 +37,88 @@ jobs:
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -1
 
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [test]
+    container:
+      image: golang:1.24-bookworm
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports: ['5432:5432']
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: mysql
+          MYSQL_DATABASE: testdb
+        ports: ['3306:3306']
+    steps:
+      - name: Checkout code
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          apt-get update && apt-get install -y -qq git ca-certificates postgresql-client default-mysql-client
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout FETCH_HEAD
+
+      - name: Wait for databases
+        run: |
+          echo "Waiting for PostgreSQL..."
+          for i in $(seq 1 30); do
+            pg_isready -h 127.0.0.1 -p 5432 && break || sleep 1
+          done
+          echo "Waiting for MySQL..."
+          for i in $(seq 1 30); do
+            mysqladmin ping -h 127.0.0.1 -u root -pmysql --silent && break || sleep 1
+          done
+
+      - name: Build dbbackup
+        run: go build -o dbbackup .
+
+      - name: Test PostgreSQL backup/restore
+        env:
+          PGHOST: 127.0.0.1
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          # Create test data
+          psql -c "CREATE TABLE test_table (id SERIAL PRIMARY KEY, name TEXT);"
+          psql -c "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
+          # Run backup
+          ./dbbackup backup --engine postgres --host 127.0.0.1 --user postgres --password postgres --database testdb --output /tmp/pg_backup.sql.gz
+          # Verify backup file exists
+          ls -la /tmp/pg_backup.sql.gz
+
+      - name: Test MySQL backup/restore
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_USER: root
+          MYSQL_PASSWORD: mysql
+        run: |
+          # Create test data
+          mysql -h 127.0.0.1 -u root -pmysql testdb -e "CREATE TABLE test_table (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));"
+          mysql -h 127.0.0.1 -u root -pmysql testdb -e "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
+          # Run backup
+          ./dbbackup backup --engine mysql --host 127.0.0.1 --user root --password mysql --database testdb --output /tmp/mysql_backup.sql.gz
+          # Verify backup file exists
+          ls -la /tmp/mysql_backup.sql.gz
+
+      - name: Test verify-locks command
+        env:
+          PGHOST: 127.0.0.1
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          ./dbbackup verify-locks | tee verify-locks.out
+          grep -q 'max_locks_per_transaction' verify-locks.out
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

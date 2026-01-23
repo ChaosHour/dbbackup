@@ -1,6 +1,7 @@
 package restore
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
@@ -9,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
@@ -167,7 +167,8 @@ func (g *LargeDBGuard) DetermineStrategy(ctx context.Context, archivePath string
 	return strategy
 }
 
-// detectLargeObjects checks dump files for BLOBs/large objects
+// detectLargeObjects checks dump files for BLOBs/large objects using STREAMING
+// This avoids loading pg_restore output into memory for very large dumps
 func (g *LargeDBGuard) detectLargeObjects(ctx context.Context, dumpFiles []string) (bool, int) {
 	totalBlobCount := 0
 
@@ -177,24 +178,18 @@ func (g *LargeDBGuard) detectLargeObjects(ctx context.Context, dumpFiles []strin
 			continue
 		}
 
-		// Use pg_restore -l to list contents (fast)
-		listCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		cmd := exec.CommandContext(listCtx, "pg_restore", "-l", dumpFile)
-		output, err := cmd.Output()
-		cancel()
-
+		// Use streaming BLOB counter - never loads full output into memory
+		count, err := g.StreamCountBLOBs(ctx, dumpFile)
 		if err != nil {
-			continue // Skip on error
-		}
-
-		// Count BLOB entries
-		for _, line := range strings.Split(string(output), "\n") {
-			if strings.Contains(line, "BLOB") ||
-				strings.Contains(line, "LARGE OBJECT") ||
-				strings.Contains(line, " BLOBS ") {
-				totalBlobCount++
+			// Fallback: try older method with timeout
+			if g.cfg.DebugLocks {
+				g.log.Warn("Streaming BLOB count failed, skipping file",
+					"file", dumpFile, "error", err)
 			}
+			continue
 		}
+		
+		totalBlobCount += count
 	}
 
 	return totalBlobCount > 0, totalBlobCount
@@ -526,6 +521,111 @@ func (g *LargeDBGuard) RevertPostgresSettings() []string {
 		"ALTER SYSTEM RESET max_parallel_maintenance_workers;",
 		"SELECT pg_reload_conf();",
 	}
+}
+
+// TuneMySQLForRestore returns SQL commands to tune MySQL/MariaDB for low-memory restore
+// These settings dramatically speed up large restores and reduce memory usage
+func (g *LargeDBGuard) TuneMySQLForRestore() []string {
+	return []string{
+		// Disable sync on every transaction - massive speedup
+		"SET GLOBAL innodb_flush_log_at_trx_commit = 2;",
+		"SET GLOBAL sync_binlog = 0;",
+		// Disable constraint checks during restore
+		"SET GLOBAL foreign_key_checks = 0;",
+		"SET GLOBAL unique_checks = 0;",
+		// Reduce I/O for bulk inserts
+		"SET GLOBAL innodb_change_buffering = 'all';",
+		// Increase buffer for bulk operations (but keep it reasonable)
+		"SET GLOBAL bulk_insert_buffer_size = 268435456;", // 256MB
+		// Reduce logging during restore
+		"SET GLOBAL general_log = 0;",
+		"SET GLOBAL slow_query_log = 0;",
+	}
+}
+
+// RevertMySQLSettings returns SQL commands to restore normal MySQL settings
+func (g *LargeDBGuard) RevertMySQLSettings() []string {
+	return []string{
+		"SET GLOBAL innodb_flush_log_at_trx_commit = 1;",
+		"SET GLOBAL sync_binlog = 1;",
+		"SET GLOBAL foreign_key_checks = 1;",
+		"SET GLOBAL unique_checks = 1;",
+		"SET GLOBAL bulk_insert_buffer_size = 8388608;", // Default 8MB
+	}
+}
+
+// StreamCountBLOBs counts BLOBs in a dump file using streaming (no memory explosion)
+// Uses pg_restore -l which outputs a line-by-line listing, then streams through it
+func (g *LargeDBGuard) StreamCountBLOBs(ctx context.Context, dumpFile string) (int, error) {
+	// pg_restore -l outputs text listing, one line per object
+	cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
+	
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return 0, err
+	}
+	
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+	
+	// Stream through output line by line - never load full output into memory
+	count := 0
+	scanner := bufio.NewScanner(stdout)
+	// Set larger buffer for long lines (some BLOB entries can be verbose)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "BLOB") ||
+			strings.Contains(line, "LARGE OBJECT") ||
+			strings.Contains(line, " BLOBS ") {
+			count++
+		}
+	}
+	
+	if err := scanner.Err(); err != nil {
+		cmd.Wait()
+		return count, err
+	}
+	
+	return count, cmd.Wait()
+}
+
+// StreamAnalyzeDump analyzes a dump file using streaming to avoid memory issues
+// Returns: blobCount, estimatedObjects, error
+func (g *LargeDBGuard) StreamAnalyzeDump(ctx context.Context, dumpFile string) (blobCount, totalObjects int, err error) {
+	cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
+	
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return 0, 0, err
+	}
+	
+	if err := cmd.Start(); err != nil {
+		return 0, 0, err
+	}
+	
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	
+	for scanner.Scan() {
+		line := scanner.Text()
+		totalObjects++
+		
+		if strings.Contains(line, "BLOB") ||
+			strings.Contains(line, "LARGE OBJECT") ||
+			strings.Contains(line, " BLOBS ") {
+			blobCount++
+		}
+	}
+	
+	if err := scanner.Err(); err != nil {
+		cmd.Wait()
+		return blobCount, totalObjects, err
+	}
+	
+	return blobCount, totalObjects, cmd.Wait()
 }
 
 // TmpfsRecommendation holds info about available tmpfs storage

@@ -110,6 +110,28 @@ var ItemOldStyle = lipgloss.NewStyle().
 	Foreground(ColorWarning)
 
 // =============================================================================
+// CHECK STATUS STYLES (for preflight/diagnosis)
+// =============================================================================
+
+// CheckPassedStyle - passed checks (green, bold)
+var CheckPassedStyle = lipgloss.NewStyle().
+	Foreground(ColorSuccess).
+	Bold(true)
+
+// CheckFailedStyle - failed checks (red, bold)
+var CheckFailedStyle = lipgloss.NewStyle().
+	Foreground(ColorError).
+	Bold(true)
+
+// CheckWarningStyle - warning checks (yellow)
+var CheckWarningStyle = lipgloss.NewStyle().
+	Foreground(ColorWarning)
+
+// CheckPendingStyle - pending checks (dim)
+var CheckPendingStyle = lipgloss.NewStyle().
+	Foreground(ColorDim)
+
+// =============================================================================
 // SHORTCUT STYLE
 // =============================================================================
 

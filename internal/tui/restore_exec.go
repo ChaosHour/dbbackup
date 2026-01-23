@@ -679,11 +679,11 @@ func (m RestoreExecutionModel) View() string {
 	if m.done {
 		// Show result with comprehensive summary
 		if m.err != nil {
-			s.WriteString(errorStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
+			s.WriteString(errorStyle.Render("═══════════════════════════════════════════════════════════════"))
 			s.WriteString("\n")
-			s.WriteString(errorStyle.Render("║              [FAIL] RESTORE FAILED                           ║"))
+			s.WriteString(errorStyle.Render("  [FAIL] RESTORE FAILED"))
 			s.WriteString("\n")
-			s.WriteString(errorStyle.Render("╚══════════════════════════════════════════════════════════════╝"))
+			s.WriteString(errorStyle.Render("═══════════════════════════════════════════════════════════════"))
 			s.WriteString("\n\n")
 
 			// Parse and display error in a clean, structured format
@@ -694,11 +694,11 @@ func (m RestoreExecutionModel) View() string {
 			s.WriteString(errDisplay)
 			s.WriteString("\n")
 		} else {
-			s.WriteString(successStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
+			s.WriteString(successStyle.Render("═══════════════════════════════════════════════════════════════"))
 			s.WriteString("\n")
-			s.WriteString(successStyle.Render("║           [OK] RESTORE COMPLETED SUCCESSFULLY                ║"))
+			s.WriteString(successStyle.Render("  [OK] RESTORE COMPLETED SUCCESSFULLY"))
 			s.WriteString("\n")
-			s.WriteString(successStyle.Render("╚══════════════════════════════════════════════════════════════╝"))
+			s.WriteString(successStyle.Render("═══════════════════════════════════════════════════════════════"))
 			s.WriteString("\n\n")
 
 			// Summary section

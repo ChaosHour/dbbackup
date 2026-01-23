@@ -532,20 +532,20 @@ func (m BackupExecutionModel) View() string {
 	} else {
 		// Show completion summary with detailed stats
 		if m.err != nil {
-			s.WriteString(errorStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
+			s.WriteString(errorStyle.Render("═══════════════════════════════════════════════════════════════"))
 			s.WriteString("\n")
-			s.WriteString(errorStyle.Render("║              [FAIL] BACKUP FAILED                            ║"))
+			s.WriteString(errorStyle.Render("  [FAIL] BACKUP FAILED"))
 			s.WriteString("\n")
-			s.WriteString(errorStyle.Render("╚══════════════════════════════════════════════════════════════╝"))
+			s.WriteString(errorStyle.Render("═══════════════════════════════════════════════════════════════"))
 			s.WriteString("\n\n")
 			s.WriteString(errorStyle.Render(fmt.Sprintf("  Error: %v", m.err)))
 			s.WriteString("\n")
 		} else {
-			s.WriteString(successStyle.Render("╔══════════════════════════════════════════════════════════════╗"))
+			s.WriteString(successStyle.Render("═══════════════════════════════════════════════════════════════"))
 			s.WriteString("\n")
-			s.WriteString(successStyle.Render("║           [OK] BACKUP COMPLETED SUCCESSFULLY                 ║"))
+			s.WriteString(successStyle.Render("  [OK] BACKUP COMPLETED SUCCESSFULLY"))
 			s.WriteString("\n")
-			s.WriteString(successStyle.Render("╚══════════════════════════════════════════════════════════════╝"))
+			s.WriteString(successStyle.Render("═══════════════════════════════════════════════════════════════"))
 			s.WriteString("\n\n")
 
 			// Summary section

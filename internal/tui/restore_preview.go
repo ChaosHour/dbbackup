@@ -19,18 +19,6 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("240")).
 			Padding(1, 2)
-
-	checkPassedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("2"))
-
-	checkFailedStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("1"))
-
-	checkWarningStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("3"))
-
-	checkPendingStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("244"))
 )
 
 // SafetyCheck represents a pre-restore safety check
@@ -304,9 +292,9 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cleanClusterFirst {
 					if m.existingDBError != "" {
 						// Detection failed in preview - will re-detect at execution
-						m.message = checkWarningStyle.Render("[WARN] Will clean existing databases before restore (detection pending)")
+						m.message = CheckWarningStyle.Render("[WARN] Will clean existing databases before restore (detection pending)")
 					} else if m.existingDBCount > 0 {
-						m.message = checkWarningStyle.Render(fmt.Sprintf("[WARN] Will drop %d existing database(s) before restore", m.existingDBCount))
+						m.message = CheckWarningStyle.Render(fmt.Sprintf("[WARN] Will drop %d existing database(s) before restore", m.existingDBCount))
 					} else {
 						m.message = infoStyle.Render("[INFO] Cleanup enabled (no databases currently detected)")
 					}
@@ -455,7 +443,7 @@ func (m RestorePreviewModel) View() string {
 
 		if m.existingDBError != "" {
 			// Show warning when database listing failed - but still allow cleanup toggle
-			s.WriteString(checkWarningStyle.Render("  Existing Databases: Detection failed\n"))
+			s.WriteString(CheckWarningStyle.Render("  Existing Databases: Detection failed\n"))
 			s.WriteString(infoStyle.Render(fmt.Sprintf("    (%s)\n", m.existingDBError)))
 			s.WriteString(infoStyle.Render("    (Will re-detect at restore time)\n"))
 		} else if m.existingDBCount > 0 {
@@ -480,7 +468,7 @@ func (m RestorePreviewModel) View() string {
 		cleanStyle := infoStyle
 		if m.cleanClusterFirst {
 			cleanIcon := "[Y]"
-			cleanStyle = checkWarningStyle
+			cleanStyle = CheckWarningStyle
 			s.WriteString(cleanStyle.Render(fmt.Sprintf("  Clean All First: %s enabled (press 'c' to toggle)\n", cleanIcon)))
 		} else {
 			s.WriteString(cleanStyle.Render(fmt.Sprintf("  Clean All First: %s disabled (press 'c' to toggle)\n", cleanIcon)))
@@ -498,21 +486,21 @@ func (m RestorePreviewModel) View() string {
 	} else {
 		for _, check := range m.safetyChecks {
 			icon := "[ ]"
-			style := checkPendingStyle
+			style := CheckPendingStyle
 
 			switch check.Status {
 			case "passed":
 				icon = "[+]"
-				style = checkPassedStyle
+				style = CheckPassedStyle
 			case "failed":
 				icon = "[-]"
-				style = checkFailedStyle
+				style = CheckFailedStyle
 			case "warning":
 				icon = "[!]"
-				style = checkWarningStyle
+				style = CheckWarningStyle
 			case "checking":
 				icon = "[~]"
-				style = checkPendingStyle
+				style = CheckPendingStyle
 			}
 
 			line := fmt.Sprintf("  %s %s", icon, check.Name)
@@ -527,20 +515,20 @@ func (m RestorePreviewModel) View() string {
 
 	// Warnings
 	if m.cleanFirst {
-		s.WriteString(checkWarningStyle.Render("[WARN] Warning: Clean-first enabled"))
+		s.WriteString(CheckWarningStyle.Render("[WARN] Warning: Clean-first enabled"))
 		s.WriteString("\n")
 		s.WriteString(infoStyle.Render("   All existing data in target database will be dropped!"))
 		s.WriteString("\n\n")
 	}
 	if m.cleanClusterFirst {
-		s.WriteString(checkWarningStyle.Render("[DANGER] WARNING: Cluster cleanup enabled"))
+		s.WriteString(CheckWarningStyle.Render("[DANGER] WARNING: Cluster cleanup enabled"))
 		s.WriteString("\n")
 		if m.existingDBError != "" {
-			s.WriteString(checkWarningStyle.Render("   Existing databases will be DROPPED before restore!"))
+			s.WriteString(CheckWarningStyle.Render("   Existing databases will be DROPPED before restore!"))
 			s.WriteString("\n")
 			s.WriteString(infoStyle.Render("   (Database count will be detected at restore time)"))
 		} else if m.existingDBCount > 0 {
-			s.WriteString(checkWarningStyle.Render(fmt.Sprintf("   %d existing database(s) will be DROPPED before restore!", m.existingDBCount)))
+			s.WriteString(CheckWarningStyle.Render(fmt.Sprintf("   %d existing database(s) will be DROPPED before restore!", m.existingDBCount)))
 		} else {
 			s.WriteString(infoStyle.Render("   No databases currently detected - cleanup will verify at restore time"))
 		}
@@ -566,12 +554,12 @@ func (m RestorePreviewModel) View() string {
 		workDirIcon = "[CFG]"
 		workDirSource = "CONFIG"
 		workDirValue = m.config.WorkDir
-		workDirStyle = checkPassedStyle
+		workDirStyle = CheckPassedStyle
 	case WorkDirBackup:
 		workDirIcon = "[BKP]"
 		workDirSource = "BACKUP DIR"
 		workDirValue = m.config.BackupDir
-		workDirStyle = checkPassedStyle
+		workDirStyle = CheckPassedStyle
 	}
 
 	s.WriteString(workDirStyle.Render(fmt.Sprintf("  %s Work Dir [%s]: %s", workDirIcon, workDirSource, workDirValue)))
@@ -579,7 +567,7 @@ func (m RestorePreviewModel) View() string {
 	s.WriteString(infoStyle.Render("      Press 'w' to cycle: SYSTEM → CONFIG → BACKUP → SYSTEM"))
 	s.WriteString("\n")
 	if m.workDirMode == WorkDirSystemTemp {
-		s.WriteString(checkWarningStyle.Render("      ⚠ WARN: Large archives need more space than /tmp may have!"))
+		s.WriteString(CheckWarningStyle.Render("      ⚠ WARN: Large archives need more space than /tmp may have!"))
 		s.WriteString("\n")
 	}
 
@@ -588,7 +576,7 @@ func (m RestorePreviewModel) View() string {
 	debugStyle := infoStyle
 	if m.saveDebugLog {
 		debugIcon = "[+]"
-		debugStyle = checkPassedStyle
+		debugStyle = CheckPassedStyle
 	}
 	s.WriteString(debugStyle.Render(fmt.Sprintf("  %s Debug Log: %v (press 'd' to toggle)", debugIcon, m.saveDebugLog)))
 	s.WriteString("\n")
@@ -602,7 +590,7 @@ func (m RestorePreviewModel) View() string {
 	lockDebugStyle := infoStyle
 	if m.debugLocks {
 		lockDebugIcon = "[🔍]"
-		lockDebugStyle = checkPassedStyle
+		lockDebugStyle = CheckPassedStyle
 	}
 	s.WriteString(lockDebugStyle.Render(fmt.Sprintf("  %s Lock Debug: %v (press 'l' to toggle)", lockDebugIcon, m.debugLocks)))
 	s.WriteString("\n")

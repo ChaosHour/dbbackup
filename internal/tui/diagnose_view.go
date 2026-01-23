@@ -20,20 +20,6 @@ var (
 				BorderForeground(lipgloss.Color("63")).
 				Padding(1, 2)
 
-	diagnosePassStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("2")).
-				Bold(true)
-
-	diagnoseFailStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("1")).
-				Bold(true)
-
-	diagnoseWarnStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("3"))
-
-	diagnoseInfoStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("244"))
-
 	diagnoseHeaderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("63")).
 				Bold(true)
@@ -177,7 +163,7 @@ func (m DiagnoseViewModel) View() string {
 	if m.running {
 		s.WriteString(infoStyle.Render("[WAIT] " + m.progress))
 		s.WriteString("\n\n")
-		s.WriteString(diagnoseInfoStyle.Render("This may take a while for large archives..."))
+		s.WriteString(CheckPendingStyle.Render("This may take a while for large archives..."))
 		return s.String()
 	}
 
@@ -209,20 +195,20 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 	s.WriteString("\n")
 
 	if result.IsValid {
-		s.WriteString(diagnosePassStyle.Render("  [OK] VALID - Archive passed all checks"))
+		s.WriteString(CheckPassedStyle.Render("  [OK] VALID - Archive passed all checks"))
 		s.WriteString("\n")
 	} else {
-		s.WriteString(diagnoseFailStyle.Render("  [FAIL] INVALID - Archive has problems"))
+		s.WriteString(CheckFailedStyle.Render("  [FAIL] INVALID - Archive has problems"))
 		s.WriteString("\n")
 	}
 
 	if result.IsTruncated {
-		s.WriteString(diagnoseFailStyle.Render("  [!] TRUNCATED - File is incomplete"))
+		s.WriteString(CheckFailedStyle.Render("  [!] TRUNCATED - File is incomplete"))
 		s.WriteString("\n")
 	}
 
 	if result.IsCorrupted {
-		s.WriteString(diagnoseFailStyle.Render("  [!] CORRUPTED - File structure damaged"))
+		s.WriteString(CheckFailedStyle.Render("  [!] CORRUPTED - File structure damaged"))
 		s.WriteString("\n")
 	}
 
@@ -234,19 +220,19 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 		s.WriteString("\n")
 
 		if result.Details.HasPGDMPSignature {
-			s.WriteString(diagnosePassStyle.Render("  [+]") + " PostgreSQL custom format (PGDMP)\n")
+			s.WriteString(CheckPassedStyle.Render("  [+]") + " PostgreSQL custom format (PGDMP)\n")
 		}
 
 		if result.Details.HasSQLHeader {
-			s.WriteString(diagnosePassStyle.Render("  [+]") + " PostgreSQL SQL header found\n")
+			s.WriteString(CheckPassedStyle.Render("  [+]") + " PostgreSQL SQL header found\n")
 		}
 
 		if result.Details.GzipValid {
-			s.WriteString(diagnosePassStyle.Render("  [+]") + " Gzip compression valid\n")
+			s.WriteString(CheckPassedStyle.Render("  [+]") + " Gzip compression valid\n")
 		}
 
 		if result.Details.PgRestoreListable {
-			s.WriteString(diagnosePassStyle.Render("  [+]") + fmt.Sprintf(" pg_restore can list contents (%d tables)\n", result.Details.TableCount))
+			s.WriteString(CheckPassedStyle.Render("  [+]") + fmt.Sprintf(" pg_restore can list contents (%d tables)\n", result.Details.TableCount))
 		}
 
 		if result.Details.CopyBlockCount > 0 {
@@ -254,11 +240,11 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 		}
 
 		if result.Details.UnterminatedCopy {
-			s.WriteString(diagnoseFailStyle.Render("  [-]") + " Unterminated COPY: " + truncate(result.Details.LastCopyTable, 30) + "\n")
+			s.WriteString(CheckFailedStyle.Render("  [-]") + " Unterminated COPY: " + truncate(result.Details.LastCopyTable, 30) + "\n")
 		}
 
 		if result.Details.ProperlyTerminated {
-			s.WriteString(diagnosePassStyle.Render("  [+]") + " All COPY blocks properly terminated\n")
+			s.WriteString(CheckPassedStyle.Render("  [+]") + " All COPY blocks properly terminated\n")
 		}
 
 		if result.Details.ExpandedSize > 0 {
@@ -270,7 +256,7 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 
 	// Errors
 	if len(result.Errors) > 0 {
-		s.WriteString(diagnoseFailStyle.Render("[FAIL] Errors"))
+		s.WriteString(CheckFailedStyle.Render("[FAIL] Errors"))
 		s.WriteString("\n")
 		for i, e := range result.Errors {
 			if i >= 5 {
@@ -284,7 +270,7 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 
 	// Warnings
 	if len(result.Warnings) > 0 {
-		s.WriteString(diagnoseWarnStyle.Render("[WARN] Warnings"))
+		s.WriteString(CheckWarningStyle.Render("[WARN] Warnings"))
 		s.WriteString("\n")
 		for i, w := range result.Warnings {
 			if i >= 3 {
@@ -298,7 +284,7 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 
 	// Recommendations
 	if !result.IsValid {
-		s.WriteString(diagnoseInfoStyle.Render("[HINT] Recommendations"))
+		s.WriteString(CheckPendingStyle.Render("[HINT] Recommendations"))
 		s.WriteString("\n")
 		if result.IsTruncated {
 			s.WriteString("  1. Re-run backup with current version (v3.42+)\n")
@@ -333,10 +319,10 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 	s.WriteString("\n\n")
 
 	if invalidCount == 0 {
-		s.WriteString(diagnosePassStyle.Render("[OK] All dumps are valid"))
+		s.WriteString(CheckPassedStyle.Render("[OK] All dumps are valid"))
 		s.WriteString("\n\n")
 	} else {
-		s.WriteString(diagnoseFailStyle.Render(fmt.Sprintf("[FAIL] %d/%d dumps have issues", invalidCount, len(m.results))))
+		s.WriteString(CheckFailedStyle.Render(fmt.Sprintf("[FAIL] %d/%d dumps have issues", invalidCount, len(m.results))))
 		s.WriteString("\n\n")
 	}
 
@@ -363,13 +349,13 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 
 		var status string
 		if r.IsValid {
-			status = diagnosePassStyle.Render("[+]")
+			status = CheckPassedStyle.Render("[+]")
 		} else if r.IsTruncated {
-			status = diagnoseFailStyle.Render("[-] TRUNCATED")
+			status = CheckFailedStyle.Render("[-] TRUNCATED")
 		} else if r.IsCorrupted {
-			status = diagnoseFailStyle.Render("[-] CORRUPTED")
+			status = CheckFailedStyle.Render("[-] CORRUPTED")
 		} else {
-			status = diagnoseFailStyle.Render("[-] INVALID")
+			status = CheckFailedStyle.Render("[-] INVALID")
 		}
 
 		line := fmt.Sprintf("%s %s %-35s %s",
@@ -396,12 +382,12 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 		// Show condensed details for selected
 		if selected.Details != nil {
 			if selected.Details.UnterminatedCopy {
-				s.WriteString(diagnoseFailStyle.Render("  [-] Unterminated COPY: "))
+				s.WriteString(CheckFailedStyle.Render("  [-] Unterminated COPY: "))
 				s.WriteString(selected.Details.LastCopyTable)
 				s.WriteString(fmt.Sprintf(" (line %d)\n", selected.Details.LastCopyLineNumber))
 			}
 			if len(selected.Details.SampleCopyData) > 0 {
-				s.WriteString(diagnoseInfoStyle.Render("  Sample orphaned data: "))
+				s.WriteString(CheckPendingStyle.Render("  Sample orphaned data: "))
 				s.WriteString(truncate(selected.Details.SampleCopyData[0], 50))
 				s.WriteString("\n")
 			}
@@ -412,7 +398,7 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 				if i >= 2 {
 					break
 				}
-				s.WriteString(diagnoseFailStyle.Render("  - "))
+				s.WriteString(CheckFailedStyle.Render("  - "))
 				s.WriteString(truncate(e, 55))
 				s.WriteString("\n")
 			}

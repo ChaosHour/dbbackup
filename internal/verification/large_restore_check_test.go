@@ -15,19 +15,22 @@ import (
 // MockLogger for testing
 type mockLogger struct{}
 
-func (m *mockLogger) Debug(msg string, args ...interface{}) {}
-func (m *mockLogger) Info(msg string, args ...interface{})  {}
-func (m *mockLogger) Warn(msg string, args ...interface{})  {}
-func (m *mockLogger) Error(msg string, args ...interface{}) {}
+func (m *mockLogger) Debug(msg string, args ...interface{})                  {}
+func (m *mockLogger) Info(msg string, args ...interface{})                   {}
+func (m *mockLogger) Warn(msg string, args ...interface{})                   {}
+func (m *mockLogger) Error(msg string, args ...interface{})                  {}
 func (m *mockLogger) WithFields(fields map[string]interface{}) logger.Logger { return m }
-func (m *mockLogger) WithField(key string, value interface{}) logger.Logger { return m }
-func (m *mockLogger) Time(msg string, args ...interface{}) {}
-func (m *mockLogger) StartOperation(name string) logger.OperationLogger { return &mockOperationLogger{} }
+func (m *mockLogger) WithField(key string, value interface{}) logger.Logger  { return m }
+func (m *mockLogger) Time(msg string, args ...interface{})                   {}
+func (m *mockLogger) StartOperation(name string) logger.OperationLogger {
+	return &mockOperationLogger{}
+}
 
 type mockOperationLogger struct{}
-func (m *mockOperationLogger) Update(msg string, args ...interface{}) {}
+
+func (m *mockOperationLogger) Update(msg string, args ...interface{})   {}
 func (m *mockOperationLogger) Complete(msg string, args ...interface{}) {}
-func (m *mockOperationLogger) Fail(msg string, args ...interface{}) {}
+func (m *mockOperationLogger) Fail(msg string, args ...interface{})     {}
 
 func TestNewLargeRestoreChecker(t *testing.T) {
 	log := &mockLogger{}

@@ -24,22 +24,24 @@ import (
 )
 
 var (
-	restoreConfirm      bool
-	restoreDryRun       bool
-	restoreForce        bool
-	restoreClean        bool
-	restoreCreate       bool
-	restoreJobs         int
-	restoreParallelDBs  int    // Number of parallel database restores
-	restoreProfile      string // Resource profile: conservative, balanced, aggressive
-	restoreTarget       string
-	restoreVerbose      bool
-	restoreNoProgress   bool
-	restoreWorkdir      string
-	restoreCleanCluster bool
-	restoreDiagnose     bool   // Run diagnosis before restore
-	restoreSaveDebugLog string // Path to save debug log on failure
-	restoreDebugLocks   bool   // Enable detailed lock debugging
+	restoreConfirm       bool
+	restoreDryRun        bool
+	restoreForce         bool
+	restoreClean         bool
+	restoreCreate        bool
+	restoreJobs          int
+	restoreParallelDBs   int    // Number of parallel database restores
+	restoreProfile       string // Resource profile: conservative, balanced, aggressive
+	restoreTarget        string
+	restoreVerbose       bool
+	restoreNoProgress    bool
+	restoreWorkdir       string
+	restoreCleanCluster  bool
+	restoreDiagnose      bool   // Run diagnosis before restore
+	restoreSaveDebugLog  string // Path to save debug log on failure
+	restoreDebugLocks    bool   // Enable detailed lock debugging
+	restoreOOMProtection bool   // Enable OOM protection for large restores
+	restoreLowMemory     bool   // Force low-memory mode for constrained systems
 
 	// Single database extraction from cluster flags
 	restoreDatabase  string // Single database to extract/restore from cluster
@@ -347,6 +349,8 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreDebugLocks, "debug-locks", false, "Enable detailed lock debugging (captures PostgreSQL config, Guard decisions, boost attempts)")
 	restoreClusterCmd.Flags().BoolVar(&restoreClean, "clean", false, "Drop and recreate target database (for single DB restore)")
 	restoreClusterCmd.Flags().BoolVar(&restoreCreate, "create", false, "Create target database if it doesn't exist (for single DB restore)")
+	restoreClusterCmd.Flags().BoolVar(&restoreOOMProtection, "oom-protection", false, "Enable OOM protection: disable swap, tune PostgreSQL memory, protect from OOM killer")
+	restoreClusterCmd.Flags().BoolVar(&restoreLowMemory, "low-memory", false, "Force low-memory mode: single-threaded restore with minimal memory (use for <8GB RAM or very large backups)")
 
 	// PITR restore flags
 	restorePITRCmd.Flags().StringVar(&pitrBaseBackup, "base-backup", "", "Path to base backup file (.tar.gz) (required)")

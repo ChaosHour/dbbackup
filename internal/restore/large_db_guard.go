@@ -361,3 +361,168 @@ func (g *LargeDBGuard) WarnUser(strategy *RestoreStrategy, silentMode bool) {
 	fmt.Println("═══════════════════════════════════════════════════════════════")
 	fmt.Println()
 }
+
+// CheckSystemMemory validates system has enough memory for restore
+func (g *LargeDBGuard) CheckSystemMemory(backupSizeBytes int64) *MemoryCheck {
+	check := &MemoryCheck{
+		BackupSizeGB: float64(backupSizeBytes) / (1024 * 1024 * 1024),
+	}
+
+	// Get system memory
+	memInfo, err := getMemInfo()
+	if err != nil {
+		check.Warning = fmt.Sprintf("Could not determine system memory: %v", err)
+		return check
+	}
+
+	check.TotalRAMGB = float64(memInfo.Total) / (1024 * 1024 * 1024)
+	check.AvailableRAMGB = float64(memInfo.Available) / (1024 * 1024 * 1024)
+	check.SwapTotalGB = float64(memInfo.SwapTotal) / (1024 * 1024 * 1024)
+	check.SwapFreeGB = float64(memInfo.SwapFree) / (1024 * 1024 * 1024)
+
+	// Estimate uncompressed size (typical compression ratio 5:1 to 10:1)
+	estimatedUncompressedGB := check.BackupSizeGB * 7 // Conservative estimate
+
+	// Memory requirements
+	// - PostgreSQL needs ~2-4GB for shared_buffers
+	// - Each pg_restore worker can use work_mem (64MB-256MB)
+	// - Maintenance operations need maintenance_work_mem (256MB-2GB)
+	// - OS needs ~2GB
+	minMemoryGB := 4.0 // Minimum for single-threaded restore
+
+	if check.TotalRAMGB < minMemoryGB {
+		check.Critical = true
+		check.Recommendation = fmt.Sprintf("CRITICAL: Only %.1fGB RAM. Need at least %.1fGB for restore.", 
+			check.TotalRAMGB, minMemoryGB)
+		return check
+	}
+
+	// Check swap for large backups
+	if estimatedUncompressedGB > 50 && check.SwapTotalGB < 16 {
+		check.NeedsMoreSwap = true
+		check.Recommendation = fmt.Sprintf(
+			"WARNING: Restoring ~%.0fGB database with only %.1fGB swap. "+
+			"Create 32GB swap: fallocate -l 32G /swapfile_emergency && mkswap /swapfile_emergency && swapon /swapfile_emergency",
+			estimatedUncompressedGB, check.SwapTotalGB)
+	}
+
+	// Check available memory
+	if check.AvailableRAMGB < 4 {
+		check.LowMemory = true
+		check.Recommendation = fmt.Sprintf(
+			"WARNING: Only %.1fGB available RAM. Stop other services before restore. "+
+			"Use: work_mem=64MB, maintenance_work_mem=256MB",
+			check.AvailableRAMGB)
+	}
+
+	// Estimate restore time
+	// Rough estimate: 1GB/minute for SSD, 0.3GB/minute for HDD
+	estimatedMinutes := estimatedUncompressedGB * 1.5 // Conservative for mixed workload
+	check.EstimatedHours = estimatedMinutes / 60
+
+	g.log.Info("🧠 Memory check completed",
+		"total_ram_gb", check.TotalRAMGB,
+		"available_gb", check.AvailableRAMGB,
+		"swap_gb", check.SwapTotalGB,
+		"backup_compressed_gb", check.BackupSizeGB,
+		"estimated_uncompressed_gb", estimatedUncompressedGB,
+		"estimated_hours", check.EstimatedHours)
+
+	return check
+}
+
+// MemoryCheck contains system memory analysis results
+type MemoryCheck struct {
+	BackupSizeGB     float64
+	TotalRAMGB       float64
+	AvailableRAMGB   float64
+	SwapTotalGB      float64
+	SwapFreeGB       float64
+	EstimatedHours   float64
+	Critical         bool
+	LowMemory        bool
+	NeedsMoreSwap    bool
+	Warning          string
+	Recommendation   string
+}
+
+// memInfo holds parsed /proc/meminfo data
+type memInfo struct {
+	Total     uint64
+	Available uint64
+	Free      uint64
+	Buffers   uint64
+	Cached    uint64
+	SwapTotal uint64
+	SwapFree  uint64
+}
+
+// getMemInfo reads memory info from /proc/meminfo
+func getMemInfo() (*memInfo, error) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return nil, err
+	}
+
+	info := &memInfo{}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		// Parse value (in kB)
+		var value uint64
+		fmt.Sscanf(fields[1], "%d", &value)
+		value *= 1024 // Convert to bytes
+
+		switch fields[0] {
+		case "MemTotal:":
+			info.Total = value
+		case "MemAvailable:":
+			info.Available = value
+		case "MemFree:":
+			info.Free = value
+		case "Buffers:":
+			info.Buffers = value
+		case "Cached:":
+			info.Cached = value
+		case "SwapTotal:":
+			info.SwapTotal = value
+		case "SwapFree:":
+			info.SwapFree = value
+		}
+	}
+
+	// If MemAvailable not present (older kernels), estimate it
+	if info.Available == 0 {
+		info.Available = info.Free + info.Buffers + info.Cached
+	}
+
+	return info, nil
+}
+
+// TunePostgresForRestore returns SQL commands to tune PostgreSQL for low-memory restore
+func (g *LargeDBGuard) TunePostgresForRestore() []string {
+	return []string{
+		"ALTER SYSTEM SET work_mem = '64MB';",
+		"ALTER SYSTEM SET maintenance_work_mem = '256MB';",
+		"ALTER SYSTEM SET max_parallel_workers = 0;",
+		"ALTER SYSTEM SET max_parallel_workers_per_gather = 0;",
+		"ALTER SYSTEM SET max_parallel_maintenance_workers = 0;",
+		"ALTER SYSTEM SET max_locks_per_transaction = 65536;",
+		"SELECT pg_reload_conf();",
+	}
+}
+
+// RevertPostgresSettings returns SQL commands to restore normal PostgreSQL settings
+func (g *LargeDBGuard) RevertPostgresSettings() []string {
+	return []string{
+		"ALTER SYSTEM RESET work_mem;",
+		"ALTER SYSTEM RESET maintenance_work_mem;",
+		"ALTER SYSTEM RESET max_parallel_workers;",
+		"ALTER SYSTEM RESET max_parallel_workers_per_gather;",
+		"ALTER SYSTEM RESET max_parallel_maintenance_workers;",
+		"SELECT pg_reload_conf();",
+	}
+}

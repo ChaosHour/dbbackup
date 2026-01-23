@@ -1191,6 +1191,41 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	e.progress.Update("Analyzing database characteristics...")
 	guard := NewLargeDBGuard(e.cfg, e.log)
 
+	// 🧠 MEMORY CHECK - Detect OOM risk before attempting restore
+	e.progress.Update("Checking system memory...")
+	archiveStats, statErr := os.Stat(archivePath)
+	var backupSizeBytes int64
+	if statErr == nil && archiveStats != nil {
+		backupSizeBytes = archiveStats.Size()
+	}
+	memCheck := guard.CheckSystemMemory(backupSizeBytes)
+	if memCheck != nil {
+		if memCheck.Critical {
+			e.log.Error("🚨 CRITICAL MEMORY WARNING", "error", memCheck.Recommendation)
+			e.log.Warn("Proceeding but OOM failure is likely - consider adding swap")
+		}
+		if memCheck.LowMemory {
+			e.log.Warn("⚠️ LOW MEMORY DETECTED - Enabling low-memory mode",
+				"available_gb", fmt.Sprintf("%.1f", memCheck.AvailableRAMGB),
+				"backup_gb", fmt.Sprintf("%.1f", memCheck.BackupSizeGB))
+			e.cfg.Jobs = 1
+			e.cfg.ClusterParallelism = 1
+		}
+		if memCheck.NeedsMoreSwap {
+			e.log.Warn("⚠️ SWAP RECOMMENDATION", "action", memCheck.Recommendation)
+			fmt.Println()
+			fmt.Println("═══════════════════════════════════════════════════════════════")
+			fmt.Println("  SWAP MEMORY RECOMMENDATION")
+			fmt.Println("═══════════════════════════════════════════════════════════════")
+			fmt.Println(memCheck.Recommendation)
+			fmt.Println("═══════════════════════════════════════════════════════════════")
+			fmt.Println()
+		}
+		if memCheck.EstimatedHours > 1 {
+			e.log.Info("⏱️ Estimated restore time", "hours", fmt.Sprintf("%.1f", memCheck.EstimatedHours))
+		}
+	}
+
 	// Build list of dump files for analysis
 	var dumpFilePaths []string
 	for _, entry := range entries {

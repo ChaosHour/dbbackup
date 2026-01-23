@@ -91,10 +91,11 @@ jobs:
           # Create test data
           psql -h postgres -c "CREATE TABLE test_table (id SERIAL PRIMARY KEY, name TEXT);"
           psql -h postgres -c "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
-          # Run backup
-          ./dbbackup backup single --db-type postgres --host postgres --user postgres --password postgres --database testdb --output /tmp/pg_backup.sql.gz
+          # Run backup (uses --backup-dir, not --output)
+          mkdir -p /tmp/backups
+          ./dbbackup backup single --db-type postgres --host postgres --user postgres --password postgres --database testdb --backup-dir /tmp/backups
           # Verify backup file exists
-          ls -la /tmp/pg_backup.sql.gz
+          ls -la /tmp/backups/
 
       - name: Test MySQL backup/restore
         env:
@@ -105,10 +106,11 @@ jobs:
           # Create test data
           mysql -h mysql -u root -pmysql testdb -e "CREATE TABLE test_table (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255));"
           mysql -h mysql -u root -pmysql testdb -e "INSERT INTO test_table (name) VALUES ('test1'), ('test2'), ('test3');"
-          # Run backup
-          ./dbbackup backup single --db-type mysql --host mysql --user root --password mysql --database testdb --output /tmp/mysql_backup.sql.gz
+          # Run backup (uses --backup-dir, not --output)
+          mkdir -p /tmp/mysql_backups
+          ./dbbackup backup single --db-type mysql --host mysql --user root --password mysql --database testdb --backup-dir /tmp/mysql_backups
           # Verify backup file exists
-          ls -la /tmp/mysql_backup.sql.gz
+          ls -la /tmp/mysql_backups/
 
       - name: Test verify-locks command
         env:

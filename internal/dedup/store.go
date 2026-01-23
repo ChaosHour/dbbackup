@@ -157,7 +157,7 @@ func (s *ChunkStore) Put(chunk *Chunk) (isNew bool, err error) {
 
 	// Write atomically (write to temp, then rename)
 	tmpPath := path + ".tmp"
-	
+
 	// Write with retry for CIFS/NFS directory visibility lag
 	var writeErr error
 	for attempt := 0; attempt < 3; attempt++ {

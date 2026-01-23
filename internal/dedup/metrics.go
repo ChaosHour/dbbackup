@@ -11,13 +11,16 @@ import (
 // DedupMetrics holds deduplication statistics for Prometheus
 type DedupMetrics struct {
 	// Global stats
-	TotalChunks     int64
-	TotalManifests  int64
-	TotalBackupSize int64   // Sum of all backup original sizes
-	TotalNewData    int64   // Sum of all new chunks stored
-	SpaceSaved      int64   // Bytes saved by deduplication
-	DedupRatio      float64 // Overall dedup ratio (0-1)
-	DiskUsage       int64   // Actual bytes on disk
+	TotalChunks      int64
+	TotalManifests   int64
+	TotalBackupSize  int64   // Sum of all backup original sizes
+	TotalNewData     int64   // Sum of all new chunks stored
+	SpaceSaved       int64   // Bytes saved by deduplication
+	DedupRatio       float64 // Overall dedup ratio (0-1)
+	DiskUsage        int64   // Actual bytes on disk
+	OldestChunkEpoch int64   // Unix timestamp of oldest chunk
+	NewestChunkEpoch int64   // Unix timestamp of newest chunk
+	CompressionRatio float64 // Compression ratio (raw vs stored)
 
 	// Per-database stats
 	ByDatabase map[string]*DatabaseDedupMetrics
@@ -75,6 +78,19 @@ func CollectMetrics(basePath string, indexPath string) (*DedupMetrics, error) {
 		DedupRatio:      stats.DedupRatio,
 		DiskUsage:       storeStats.TotalSize,
 		ByDatabase:      make(map[string]*DatabaseDedupMetrics),
+	}
+
+	// Add chunk age timestamps
+	if !stats.OldestChunk.IsZero() {
+		metrics.OldestChunkEpoch = stats.OldestChunk.Unix()
+	}
+	if !stats.NewestChunk.IsZero() {
+		metrics.NewestChunkEpoch = stats.NewestChunk.Unix()
+	}
+
+	// Calculate compression ratio (raw size vs stored size)
+	if stats.TotalSizeRaw > 0 {
+		metrics.CompressionRatio = 1.0 - float64(stats.TotalSizeStored)/float64(stats.TotalSizeRaw)
 	}
 
 	// Collect per-database metrics from manifest store
@@ -198,6 +214,25 @@ func FormatPrometheusMetrics(m *DedupMetrics, instance string) string {
 	b.WriteString(fmt.Sprintf("dbbackup_dedup_disk_usage_bytes{instance=%q} %d\n", instance, m.DiskUsage))
 	b.WriteString("\n")
 
+	b.WriteString("# HELP dbbackup_dedup_compression_ratio Compression ratio (0-1, higher = better compression)\n")
+	b.WriteString("# TYPE dbbackup_dedup_compression_ratio gauge\n")
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_compression_ratio{instance=%q} %.4f\n", instance, m.CompressionRatio))
+	b.WriteString("\n")
+
+	if m.OldestChunkEpoch > 0 {
+		b.WriteString("# HELP dbbackup_dedup_oldest_chunk_timestamp Unix timestamp of oldest chunk (for retention monitoring)\n")
+		b.WriteString("# TYPE dbbackup_dedup_oldest_chunk_timestamp gauge\n")
+		b.WriteString(fmt.Sprintf("dbbackup_dedup_oldest_chunk_timestamp{instance=%q} %d\n", instance, m.OldestChunkEpoch))
+		b.WriteString("\n")
+	}
+
+	if m.NewestChunkEpoch > 0 {
+		b.WriteString("# HELP dbbackup_dedup_newest_chunk_timestamp Unix timestamp of newest chunk\n")
+		b.WriteString("# TYPE dbbackup_dedup_newest_chunk_timestamp gauge\n")
+		b.WriteString(fmt.Sprintf("dbbackup_dedup_newest_chunk_timestamp{instance=%q} %d\n", instance, m.NewestChunkEpoch))
+		b.WriteString("\n")
+	}
+
 	// Per-database metrics
 	if len(m.ByDatabase) > 0 {
 		b.WriteString("# HELP dbbackup_dedup_database_backup_count Number of deduplicated backups per database\n")
@@ -223,6 +258,22 @@ func FormatPrometheusMetrics(m *DedupMetrics, instance string) string {
 				b.WriteString(fmt.Sprintf("dbbackup_dedup_database_last_backup_timestamp{instance=%q,database=%q} %d\n",
 					instance, db.Database, db.LastBackupTime.Unix()))
 			}
+		}
+		b.WriteString("\n")
+
+		b.WriteString("# HELP dbbackup_dedup_database_total_bytes Total logical size per database\n")
+		b.WriteString("# TYPE dbbackup_dedup_database_total_bytes gauge\n")
+		for _, db := range m.ByDatabase {
+			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_total_bytes{instance=%q,database=%q} %d\n",
+				instance, db.Database, db.TotalSize))
+		}
+		b.WriteString("\n")
+
+		b.WriteString("# HELP dbbackup_dedup_database_stored_bytes Stored bytes per database (after dedup)\n")
+		b.WriteString("# TYPE dbbackup_dedup_database_stored_bytes gauge\n")
+		for _, db := range m.ByDatabase {
+			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_stored_bytes{instance=%q,database=%q} %d\n",
+				instance, db.Database, db.StoredSize))
 		}
 		b.WriteString("\n")
 	}

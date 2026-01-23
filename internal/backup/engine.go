@@ -967,9 +967,49 @@ func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 		cmd.Env = append(cmd.Env, "PGPASSWORD="+e.cfg.Password)
 	}
 
-	output, err := cmd.Output()
+	// Use Start/Wait pattern for proper Ctrl+C handling
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("pg_dumpall failed: %w", err)
+		return fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start pg_dumpall: %w", err)
+	}
+
+	// Read output in goroutine
+	var output []byte
+	var readErr error
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		output, readErr = io.ReadAll(stdout)
+	}()
+
+	// Wait for command with proper context handling
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+		// Command completed normally
+	case <-ctx.Done():
+		e.log.Warn("Globals backup cancelled - killing pg_dumpall")
+		cmd.Process.Kill()
+		<-cmdDone
+		return ctx.Err()
+	}
+
+	<-readDone
+
+	if cmdErr != nil {
+		return fmt.Errorf("pg_dumpall failed: %w", cmdErr)
+	}
+	if readErr != nil {
+		return fmt.Errorf("failed to read pg_dumpall output: %w", readErr)
 	}
 
 	return os.WriteFile(globalsFile, output, 0644)

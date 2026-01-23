@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // ChunkStore manages content-addressed chunk storage
@@ -148,9 +149,28 @@ func (s *ChunkStore) Put(chunk *Chunk) (isNew bool, err error) {
 		return false, fmt.Errorf("failed to write chunk: %w", err)
 	}
 
-	if err := os.Rename(tmpPath, path); err != nil {
+	// Ensure shard directory exists before rename (CIFS/SMB compatibility)
+	// Network filesystems can have stale directory caches that cause
+	// "no such file or directory" errors on rename even when the dir exists
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		os.Remove(tmpPath)
-		return false, fmt.Errorf("failed to commit chunk: %w", err)
+		return false, fmt.Errorf("failed to ensure chunk directory: %w", err)
+	}
+
+	// Rename with retry for CIFS/SMB flakiness
+	var renameErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if renameErr = os.Rename(tmpPath, path); renameErr == nil {
+			break
+		}
+		// Brief pause before retry on network filesystems
+		time.Sleep(10 * time.Millisecond)
+		// Re-ensure directory exists (refresh CIFS cache)
+		os.MkdirAll(filepath.Dir(path), 0700)
+	}
+	if renameErr != nil {
+		os.Remove(tmpPath)
+		return false, fmt.Errorf("failed to commit chunk: %w", renameErr)
 	}
 
 	// Update cache

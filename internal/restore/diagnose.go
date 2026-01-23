@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 )
 
@@ -782,8 +783,8 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 	if stat, err := os.Stat(tempDir); err == nil && stat.IsDir() {
 		// Try extraction of a small test file first with timeout
 		testCtx, testCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		testCmd := exec.CommandContext(testCtx, "tar", "-xzf", archivePath, "-C", tempDir, "--wildcards", "*.json", "--wildcards", "globals.sql")
-		testCmd.Run() // Ignore error - just try to extract metadata
+		testCmd := exec.CommandContext(testCtx, "tar", "-tzf", archivePath)
+		testCmd.Run() // Ignore error - just test if archive is readable
 		testCancel()
 	}
 
@@ -791,15 +792,12 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 		d.log.Info("Archive listing successful", "files", len(files))
 	}
 
-	// Try full extraction - NO TIMEOUT here as large archives can take a long time
-	// Use a generous timeout (30 minutes) for very large archives
+	// Try full extraction using parallel gzip (2-4x faster on multi-core)
 	extractCtx, extractCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer extractCancel()
 
-	cmd := exec.CommandContext(extractCtx, "tar", "-xzf", archivePath, "-C", tempDir)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	err = fs.ExtractTarGzParallel(extractCtx, archivePath, tempDir, nil)
+	if err != nil {
 		// Extraction failed
 		errResult := &DiagnoseResult{
 			FilePath:       archivePath,
@@ -810,7 +808,7 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 			Details:        &DiagnoseDetails{},
 		}
 
-		errOutput := stderr.String()
+		errOutput := err.Error()
 		if strings.Contains(errOutput, "No space left") ||
 			strings.Contains(errOutput, "cannot write") ||
 			strings.Contains(errOutput, "Disk quota exceeded") {

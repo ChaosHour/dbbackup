@@ -19,6 +19,7 @@ import (
 	"dbbackup/internal/checks"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/progress"
 	"dbbackup/internal/security"
@@ -1844,74 +1845,31 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 	return n, err
 }
 
-// extractArchiveShell extracts using shell tar command (faster but no progress)
+// extractArchiveShell extracts using parallel gzip (2-4x faster on multi-core)
 func (e *Engine) extractArchiveShell(ctx context.Context, archivePath, destDir string) error {
 	// Start heartbeat ticker for extraction progress
 	extractionStart := time.Now()
-	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
-	heartbeatTicker := time.NewTicker(5 * time.Second)
-	defer heartbeatTicker.Stop()
-	defer cancelHeartbeat()
 
-	go func() {
-		for {
-			select {
-			case <-heartbeatTicker.C:
-				elapsed := time.Since(extractionStart)
-				e.progress.Update(fmt.Sprintf("Extracting archive... (elapsed: %s)", formatDuration(elapsed)))
-			case <-heartbeatCtx.Done():
-				return
-			}
+	e.log.Info("Extracting archive with parallel gzip",
+		"archive", archivePath,
+		"dest", destDir,
+		"method", "pgzip")
+
+	// Use parallel extraction
+	err := fs.ExtractTarGzParallel(ctx, archivePath, destDir, func(progress fs.ExtractProgress) {
+		if progress.TotalBytes > 0 {
+			elapsed := time.Since(extractionStart)
+			pct := float64(progress.BytesRead) / float64(progress.TotalBytes) * 100
+			e.progress.Update(fmt.Sprintf("Extracting archive... %.1f%% (elapsed: %s)", pct, formatDuration(elapsed)))
 		}
-	}()
+	})
 
-	cmd := exec.CommandContext(ctx, "tar", "-xzf", archivePath, "-C", destDir)
-
-	// Stream stderr to avoid memory issues - tar can produce lots of output for large archives
-	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe: %w", err)
+		return fmt.Errorf("parallel extraction failed: %w", err)
 	}
 
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start tar: %w", err)
-	}
-
-	// Discard stderr output in chunks to prevent memory buildup
-	stderrDone := make(chan struct{})
-	go func() {
-		defer close(stderrDone)
-		buf := make([]byte, 4096)
-		for {
-			_, err := stderr.Read(buf)
-			if err != nil {
-				break
-			}
-		}
-	}()
-
-	// Wait for command with proper context handling
-	cmdDone := make(chan error, 1)
-	go func() {
-		cmdDone <- cmd.Wait()
-	}()
-
-	var cmdErr error
-	select {
-	case cmdErr = <-cmdDone:
-		// Command completed
-	case <-ctx.Done():
-		e.log.Warn("Archive extraction cancelled - killing process")
-		cmd.Process.Kill()
-		<-cmdDone
-		cmdErr = ctx.Err()
-	}
-
-	<-stderrDone
-
-	if cmdErr != nil {
-		return fmt.Errorf("tar extraction failed: %w", cmdErr)
-	}
+	elapsed := time.Since(extractionStart)
+	e.log.Info("Archive extraction complete", "duration", formatDuration(elapsed))
 	return nil
 }
 

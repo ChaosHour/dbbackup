@@ -47,8 +47,8 @@ type WorkDirMode int
 
 const (
 	WorkDirSystemTemp WorkDirMode = iota // Use system temp (/tmp)
-	WorkDirConfig                         // Use config.WorkDir
-	WorkDirBackup                         // Use config.BackupDir
+	WorkDirConfig                        // Use config.WorkDir
+	WorkDirBackup                        // Use config.BackupDir
 )
 
 type RestorePreviewModel struct {
@@ -69,9 +69,9 @@ type RestorePreviewModel struct {
 	checking          bool
 	canProceed        bool
 	message           string
-	saveDebugLog      bool   // Save detailed error report on failure
-	debugLocks        bool   // Enable detailed lock debugging
-	workDir           string // Resolved work directory path
+	saveDebugLog      bool        // Save detailed error report on failure
+	debugLocks        bool        // Enable detailed lock debugging
+	workDir           string      // Resolved work directory path
 	workDirMode       WorkDirMode // Which source is selected
 }
 

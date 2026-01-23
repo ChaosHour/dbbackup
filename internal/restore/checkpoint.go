@@ -30,10 +30,10 @@ type RestoreCheckpoint struct {
 	ExtractedPath string            `json:"extracted_path"` // Reuse extraction
 
 	// Config at start (for validation)
-	Profile         string `json:"profile"`
-	CleanCluster    bool   `json:"clean_cluster"`
-	ParallelDBs     int    `json:"parallel_dbs"`
-	Jobs            int    `json:"jobs"`
+	Profile      string `json:"profile"`
+	CleanCluster bool   `json:"clean_cluster"`
+	ParallelDBs  int    `json:"parallel_dbs"`
+	Jobs         int    `json:"jobs"`
 }
 
 // CheckpointFile returns the checkpoint file path for an archive

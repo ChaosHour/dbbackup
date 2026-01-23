@@ -674,7 +674,8 @@ func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 			continue
 		}
 
-		freeBytes := stat.Bavail * uint64(stat.Bsize)
+		// Use int64 for cross-platform compatibility (FreeBSD uses int64)
+		freeBytes := uint64(int64(stat.Bavail) * int64(stat.Bsize))
 
 		// Skip if less than 512MB free
 		if freeBytes < 512*1024*1024 {

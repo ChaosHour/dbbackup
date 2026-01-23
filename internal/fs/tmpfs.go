@@ -77,11 +77,18 @@ func (m *TmpfsManager) checkMount(mountPoint string) *TmpfsInfo {
 		return nil
 	}
 
+	// Use int64 for all calculations to handle platform differences
+	// (FreeBSD has int64 for Bavail/Bfree, Linux has uint64)
+	bsize := int64(stat.Bsize)
+	blocks := int64(stat.Blocks)
+	bavail := int64(stat.Bavail)
+	bfree := int64(stat.Bfree)
+
 	info := &TmpfsInfo{
 		MountPoint: mountPoint,
-		TotalBytes: stat.Blocks * uint64(stat.Bsize),
-		FreeBytes:  stat.Bavail * uint64(stat.Bsize),
-		UsedBytes:  (stat.Blocks - stat.Bfree) * uint64(stat.Bsize),
+		TotalBytes: uint64(blocks * bsize),
+		FreeBytes:  uint64(bavail * bsize),
+		UsedBytes:  uint64((blocks - bfree) * bsize),
 	}
 
 	// Check if we can write

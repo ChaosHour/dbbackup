@@ -59,6 +59,49 @@ jobs:
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.8.0
           golangci-lint run --timeout=5m ./...
 
+  integration-verify-locks:
+    name: Integration — verify-locks
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/main'
+    container:
+      image: golang:1.24-bookworm
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+    steps:
+      - name: Checkout code
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          apt-get update && apt-get install -y -qq git ca-certificates postgresql-client
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout FETCH_HEAD
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 20); do
+            pg_isready -h 127.0.0.1 -p 5432 && break || sleep 1
+          done
+
+      - name: Build dbbackup
+        run: go build -o dbbackup .
+
+      - name: Run verify-locks (smoke)
+        env:
+          PGHOST: 127.0.0.1
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          ./dbbackup verify-locks | tee verify-locks.out
+          grep -q 'max_locks_per_transaction' verify-locks.out
+
   build-and-release:
     name: Build & Release
     runs-on: ubuntu-latest

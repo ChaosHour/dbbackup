@@ -25,7 +25,14 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git init
           git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "${GITHUB_SHA}"
+          # Prefer fetching the branch (works when workflow was triggered by branch push).
+          # Fallback to the specific SHA when the event references a commit directly (tags or specific refs).
+          if [[ "${GITHUB_REF}" == refs/heads/* ]]; then
+            BRANCH=${GITHUB_REF#refs/heads/}
+            git fetch --depth=1 origin "${BRANCH}" || git fetch --depth=1 origin "${GITHUB_SHA}"
+          else
+            git fetch --depth=1 origin "${GITHUB_SHA}"
+          fi
           git checkout FETCH_HEAD
 
       - name: Download dependencies
@@ -91,7 +98,12 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git init
           git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "${GITHUB_SHA}"
+          if [[ "${GITHUB_REF}" == refs/heads/* ]]; then
+            BRANCH=${GITHUB_REF#refs/heads/}
+            git fetch --depth=1 origin "${BRANCH}" || git fetch --depth=1 origin "${GITHUB_SHA}"
+          else
+            git fetch --depth=1 origin "${GITHUB_SHA}"
+          fi
           git checkout FETCH_HEAD
 
       - name: Wait for Postgres
@@ -128,7 +140,12 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git init
           git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
-          git fetch --depth=1 origin "${GITHUB_SHA}"
+          if [[ "${GITHUB_REF}" == refs/heads/* ]]; then
+            BRANCH=${GITHUB_REF#refs/heads/}
+            git fetch --depth=1 origin "${BRANCH}" || git fetch --depth=1 origin "${GITHUB_SHA}"
+          else
+            git fetch --depth=1 origin "${GITHUB_SHA}"
+          fi
           git checkout FETCH_HEAD
 
       - name: Build all platforms

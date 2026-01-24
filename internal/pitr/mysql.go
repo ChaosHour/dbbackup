@@ -4,7 +4,6 @@ package pitr
 
 import (
 	"bufio"
-	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -17,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/klauspost/pgzip"
 )
 
 // MySQLPITR implements PITRProvider for MySQL and MariaDB
@@ -820,14 +821,14 @@ func (m *MySQLPITR) PurgeBinlogs(ctx context.Context) error {
 
 // GzipWriter is a helper for gzip compression
 type GzipWriter struct {
-	w *gzip.Writer
+	w *pgzip.Writer
 }
 
 func NewGzipWriter(w io.Writer, level int) *GzipWriter {
 	if level <= 0 {
-		level = gzip.DefaultCompression
+		level = pgzip.DefaultCompression
 	}
-	gw, _ := gzip.NewWriterLevel(w, level)
+	gw, _ := pgzip.NewWriterLevel(w, level)
 	return &GzipWriter{w: gw}
 }
 
@@ -841,11 +842,11 @@ func (g *GzipWriter) Close() error {
 
 // GzipReader is a helper for gzip decompression
 type GzipReader struct {
-	r *gzip.Reader
+	r *pgzip.Reader
 }
 
 func NewGzipReader(r io.Reader) (*GzipReader, error) {
-	gr, err := gzip.NewReader(r)
+	gr, err := pgzip.NewReader(r)
 	if err != nil {
 		return nil, err
 	}
@@ -870,7 +871,7 @@ func ExtractBinlogPositionFromDump(dumpPath string) (*BinlogPosition, error) {
 
 	var reader io.Reader = file
 	if strings.HasSuffix(dumpPath, ".gz") {
-		gzReader, err := gzip.NewReader(file)
+		gzReader, err := pgzip.NewReader(file)
 		if err != nil {
 			return nil, fmt.Errorf("creating gzip reader: %w", err)
 		}

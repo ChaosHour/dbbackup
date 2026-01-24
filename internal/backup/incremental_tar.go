@@ -2,11 +2,12 @@ package backup
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/klauspost/pgzip"
 )
 
 // createTarGz creates a tar.gz archive with the specified changed files
@@ -18,8 +19,8 @@ func (e *PostgresIncrementalEngine) createTarGz(ctx context.Context, outputFile 
 	}
 	defer outFile.Close()
 
-	// Create gzip writer
-	gzWriter, err := gzip.NewWriterLevel(outFile, config.CompressionLevel)
+	// Create parallel gzip writer for faster compression
+	gzWriter, err := pgzip.NewWriterLevel(outFile, config.CompressionLevel)
 	if err != nil {
 		return fmt.Errorf("failed to create gzip writer: %w", err)
 	}

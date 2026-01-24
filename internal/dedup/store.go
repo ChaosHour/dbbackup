@@ -1,7 +1,6 @@
 package dedup
 
 import (
-	"compress/gzip"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -13,6 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/klauspost/pgzip"
 )
 
 // ChunkStore manages content-addressed chunk storage
@@ -309,10 +310,10 @@ func (s *ChunkStore) LoadIndex() error {
 	})
 }
 
-// compressData compresses data using gzip
+// compressData compresses data using parallel gzip
 func (s *ChunkStore) compressData(data []byte) ([]byte, error) {
 	var buf []byte
-	w, err := gzip.NewWriterLevel((*bytesBuffer)(&buf), gzip.BestCompression)
+	w, err := pgzip.NewWriterLevel((*bytesBuffer)(&buf), pgzip.BestCompression)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +336,7 @@ func (b *bytesBuffer) Write(p []byte) (int, error) {
 
 // decompressData decompresses gzip data
 func (s *ChunkStore) decompressData(data []byte) ([]byte, error) {
-	r, err := gzip.NewReader(&bytesReader{data: data})
+	r, err := pgzip.NewReader(&bytesReader{data: data})
 	if err != nil {
 		return nil, err
 	}

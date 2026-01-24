@@ -4,7 +4,6 @@ package pitr
 
 import (
 	"bufio"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/klauspost/pgzip"
 )
 
 // BinlogPosition represents a MySQL binary log position
@@ -438,10 +439,10 @@ func (m *BinlogManager) ArchiveBinlog(ctx context.Context, binlog *BinlogFile) (
 	defer dst.Close()
 
 	var writer io.Writer = dst
-	var gzWriter *gzip.Writer
+	var gzWriter *pgzip.Writer
 
 	if m.compression {
-		gzWriter = gzip.NewWriter(dst)
+		gzWriter = pgzip.NewWriter(dst)
 		writer = gzWriter
 		defer gzWriter.Close()
 	}

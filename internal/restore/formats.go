@@ -1,11 +1,12 @@
 package restore
 
 import (
-	"compress/gzip"
 	"encoding/json"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/klauspost/pgzip"
 )
 
 // ArchiveFormat represents the type of backup archive
@@ -133,7 +134,7 @@ func isCustomFormat(filename string, compressed bool) formatCheckResult {
 
 	// Handle compression
 	if compressed {
-		gz, err := gzip.NewReader(file)
+		gz, err := pgzip.NewReader(file)
 		if err != nil {
 			return formatCheckFileNotFound
 		}

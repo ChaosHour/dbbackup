@@ -4,16 +4,24 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-isatty"
 
 	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 )
+
+// IsInteractiveTerminal checks if stdout is an interactive terminal
+// Returns false for: pipes, screen sessions (backgrounded), tmux detached, etc.
+func IsInteractiveTerminal() bool {
+	return isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
+}
 
 // Style definitions
 var (
@@ -464,6 +472,18 @@ func (m *MenuModel) applyDatabaseSelection() {
 
 // RunInteractiveMenu starts the simple TUI
 func RunInteractiveMenu(cfg *config.Config, log logger.Logger) error {
+	// Check for interactive terminal
+	// Non-interactive terminals (screen backgrounded, pipes, etc.) cause scrambled output
+	if !IsInteractiveTerminal() {
+		if log != nil {
+			log.Warn("TUI started in non-interactive terminal (screen/tmux backgrounded or piped output)",
+				"hint", "Output may be scrambled. Consider using CLI commands instead.")
+		}
+		fmt.Fprintln(os.Stderr, "[WARN] Non-interactive terminal detected (screen/tmux backgrounded?)")
+		fmt.Fprintln(os.Stderr, "[WARN] TUI output may be scrambled. Use CLI commands for background operations:")
+		fmt.Fprintln(os.Stderr, "       dbbackup restore cluster <archive.tar.gz> --confirm")
+	}
+
 	m := NewMenuModel(cfg, log)
 	p := tea.NewProgram(m)
 

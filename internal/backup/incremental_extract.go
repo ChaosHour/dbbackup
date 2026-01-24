@@ -2,12 +2,13 @@ package backup
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/klauspost/pgzip"
 )
 
 // extractTarGz extracts a tar.gz archive to the specified directory
@@ -20,8 +21,8 @@ func (e *PostgresIncrementalEngine) extractTarGz(ctx context.Context, archivePat
 	}
 	defer archiveFile.Close()
 
-	// Create gzip reader
-	gzReader, err := gzip.NewReader(archiveFile)
+	// Create parallel gzip reader for faster decompression
+	gzReader, err := pgzip.NewReader(archiveFile)
 	if err != nil {
 		return fmt.Errorf("failed to create gzip reader: %w", err)
 	}

@@ -2,7 +2,6 @@ package restore
 
 import (
 	"bufio"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,6 +15,8 @@ import (
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
+
+	"github.com/klauspost/pgzip"
 )
 
 // RestoreErrorReport contains comprehensive information about a restore failure
@@ -256,7 +257,7 @@ func (ec *ErrorCollector) getSurroundingLines(lineNum int, context int) []string
 
 	// Handle compressed files
 	if strings.HasSuffix(ec.archivePath, ".gz") {
-		gz, err := gzip.NewReader(file)
+		gz, err := pgzip.NewReader(file)
 		if err != nil {
 			return nil
 		}

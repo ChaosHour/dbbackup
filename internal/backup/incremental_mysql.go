@@ -2,7 +2,6 @@ package backup
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -12,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/klauspost/pgzip"
 
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
@@ -367,15 +368,15 @@ func (e *MySQLIncrementalEngine) CalculateFileChecksum(path string) (string, err
 
 // createTarGz creates a tar.gz archive with the specified changed files
 func (e *MySQLIncrementalEngine) createTarGz(ctx context.Context, outputFile string, changedFiles []ChangedFile, config *IncrementalBackupConfig) error {
-	// Import needed for tar/gzip
+	// Create output file
 	outFile, err := os.Create(outputFile)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
 	defer outFile.Close()
 
-	// Create gzip writer
-	gzWriter, err := gzip.NewWriterLevel(outFile, config.CompressionLevel)
+	// Create parallel gzip writer for faster compression
+	gzWriter, err := pgzip.NewWriterLevel(outFile, config.CompressionLevel)
 	if err != nil {
 		return fmt.Errorf("failed to create gzip writer: %w", err)
 	}
@@ -460,8 +461,8 @@ func (e *MySQLIncrementalEngine) extractTarGz(ctx context.Context, archivePath, 
 	}
 	defer archiveFile.Close()
 
-	// Create gzip reader
-	gzReader, err := gzip.NewReader(archiveFile)
+	// Create parallel gzip reader for faster decompression
+	gzReader, err := pgzip.NewReader(archiveFile)
 	if err != nil {
 		return fmt.Errorf("failed to create gzip reader: %w", err)
 	}

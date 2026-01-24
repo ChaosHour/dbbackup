@@ -2,7 +2,6 @@ package engine
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"context"
 	"database/sql"
 	"fmt"
@@ -15,6 +14,8 @@ import (
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
+
+	"github.com/klauspost/pgzip"
 )
 
 // SnapshotEngine implements BackupEngine using filesystem snapshots
@@ -296,14 +297,13 @@ func (e *SnapshotEngine) streamSnapshot(ctx context.Context, sourcePath, destFil
 	// Wrap in counting writer for progress
 	countWriter := &countingWriter{w: outFile}
 
-	// Create gzip writer
-	level := gzip.DefaultCompression
+	// Create parallel gzip writer for faster compression
+	level := pgzip.DefaultCompression
 	if e.config.Threads > 1 {
-		// Use parallel gzip if available (pigz)
-		// For now, use standard gzip
-		level = gzip.BestSpeed // Faster for parallel streaming
+		// pgzip already uses parallel compression
+		level = pgzip.BestSpeed // Faster for parallel streaming
 	}
-	gzWriter, err := gzip.NewWriterLevel(countWriter, level)
+	gzWriter, err := pgzip.NewWriterLevel(countWriter, level)
 	if err != nil {
 		return 0, err
 	}
@@ -448,8 +448,8 @@ func (e *SnapshotEngine) Restore(ctx context.Context, opts *RestoreOptions) erro
 	}
 	defer file.Close()
 
-	// Create gzip reader
-	gzReader, err := gzip.NewReader(file)
+	// Create parallel gzip reader for faster decompression
+	gzReader, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("failed to create gzip reader: %w", err)
 	}

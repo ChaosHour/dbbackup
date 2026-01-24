@@ -5,6 +5,34 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.106] - 2026-01-24
+
+### Fixed - Cluster Restore Resilience & Performance
+- **Fixed cluster restore failing on missing roles** - harmless "role does not exist" errors no longer abort restore
+  - Added role-related errors to `isIgnorableError()` with warning log
+  - Removed `ON_ERROR_STOP=1` from psql commands (pre-validation catches real corruption)
+  - Restore now continues gracefully when referenced roles don't exist in target cluster
+  - Previously caused 12h+ restores to fail at 94% completion
+
+- **Fixed TUI output scrambling in screen/tmux sessions** - added terminal detection
+  - Uses `go-isatty` to detect non-interactive terminals (backgrounded screen sessions, pipes)
+  - Added `viewSimple()` methods for clean line-by-line output without ANSI escape codes
+  - TUI menu now shows warning when running in non-interactive terminal
+
+### Changed - Consistent Parallel Compression (pgzip)
+- **Migrated all gzip operations to parallel pgzip** - 2-4x faster compression/decompression on multi-core systems
+  - Systematic audit found 17 files using standard `compress/gzip`
+  - All converted to `github.com/klauspost/pgzip` for consistent performance
+  - **Files updated**:
+    - `internal/backup/`: incremental_tar.go, incremental_extract.go, incremental_mysql.go
+    - `internal/wal/`: compression.go (CompressWALFile, DecompressWALFile, VerifyCompressedFile)
+    - `internal/engine/`: clone.go, snapshot_engine.go, mysqldump.go, binlog/file_target.go
+    - `internal/restore/`: engine.go, safety.go, formats.go, error_report.go
+    - `internal/pitr/`: mysql.go, binlog.go
+    - `internal/dedup/`: store.go
+    - `cmd/`: dedup.go, placeholder.go
+  - **Benefit**: Large backup/restore operations now fully utilize available CPU cores
+
 ## [3.42.105] - 2026-01-23
 
 ### Changed - TUI Visual Cleanup

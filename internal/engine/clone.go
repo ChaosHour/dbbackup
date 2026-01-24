@@ -2,7 +2,6 @@ package engine
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"context"
 	"database/sql"
 	"fmt"
@@ -17,6 +16,8 @@ import (
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
+
+	"github.com/klauspost/pgzip"
 )
 
 // CloneEngine implements BackupEngine using MySQL Clone Plugin (8.0.17+)
@@ -597,12 +598,12 @@ func (e *CloneEngine) compressClone(ctx context.Context, sourceDir, targetFile s
 	}
 	defer outFile.Close()
 
-	// Create gzip writer
+	// Create parallel gzip writer for faster compression
 	level := e.config.CompressLevel
 	if level == 0 {
-		level = gzip.DefaultCompression
+		level = pgzip.DefaultCompression
 	}
-	gzWriter, err := gzip.NewWriterLevel(outFile, level)
+	gzWriter, err := pgzip.NewWriterLevel(outFile, level)
 	if err != nil {
 		return err
 	}
@@ -684,8 +685,8 @@ func (e *CloneEngine) extractClone(ctx context.Context, sourceFile, targetDir st
 	}
 	defer file.Close()
 
-	// Create gzip reader
-	gzReader, err := gzip.NewReader(file)
+	// Create parallel gzip reader for faster decompression
+	gzReader, err := pgzip.NewReader(file)
 	if err != nil {
 		return err
 	}

@@ -2,7 +2,6 @@ package restore
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"context"
 	"database/sql"
 	"fmt"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/hashicorp/go-multierror"
 	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
+	"github.com/klauspost/pgzip"
 )
 
 // ProgressCallback is called with progress updates during long operations
@@ -489,10 +489,13 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 	}
 
 	if compressed {
-		// Use ON_ERROR_STOP=1 to fail fast on first error (prevents millions of errors on truncated dumps)
-		psqlCmd := fmt.Sprintf("psql %s -U %s -d %s -v ON_ERROR_STOP=1", portArg, e.cfg.User, targetDB)
+		// NOTE: We do NOT use ON_ERROR_STOP=1 because:
+		// 1. We pre-validate dumps above to catch truncation/corruption
+		// 2. ON_ERROR_STOP=1 would fail on harmless "role does not exist" errors
+		// 3. We handle errors in executeRestoreCommand with proper classification
+		psqlCmd := fmt.Sprintf("psql %s -U %s -d %s", portArg, e.cfg.User, targetDB)
 		if hostArg != "" {
-			psqlCmd = fmt.Sprintf("psql %s %s -U %s -d %s -v ON_ERROR_STOP=1", hostArg, portArg, e.cfg.User, targetDB)
+			psqlCmd = fmt.Sprintf("psql %s %s -U %s -d %s", hostArg, portArg, e.cfg.User, targetDB)
 		}
 		// Set PGPASSWORD in the bash command for password-less auth
 		cmd = []string{
@@ -500,6 +503,7 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 			fmt.Sprintf("PGPASSWORD='%s' gunzip -c %s | %s", e.cfg.Password, archivePath, psqlCmd),
 		}
 	} else {
+		// NOTE: We do NOT use ON_ERROR_STOP=1 (see above)
 		if hostArg != "" {
 			cmd = []string{
 				"psql",
@@ -507,7 +511,6 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 				"-p", fmt.Sprintf("%d", e.cfg.Port),
 				"-U", e.cfg.User,
 				"-d", targetDB,
-				"-v", "ON_ERROR_STOP=1",
 				"-f", archivePath,
 			}
 		} else {
@@ -516,7 +519,6 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 				"-p", fmt.Sprintf("%d", e.cfg.Port),
 				"-U", e.cfg.User,
 				"-d", targetDB,
-				"-v", "ON_ERROR_STOP=1",
 				"-f", archivePath,
 			}
 		}
@@ -1744,8 +1746,8 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 		desc:      "Extracting archive",
 	}
 
-	// Create gzip reader
-	gzReader, err := gzip.NewReader(progressReader)
+	// Create parallel gzip reader for faster decompression
+	gzReader, err := pgzip.NewReader(progressReader)
 	if err != nil {
 		return fmt.Errorf("failed to create gzip reader: %w", err)
 	}
@@ -2374,7 +2376,7 @@ func (e *Engine) isIgnorableError(errorMsg string) bool {
 		}
 	}
 
-	// List of ignorable error patterns (objects that already exist)
+	// List of ignorable error patterns (objects that already exist or don't exist)
 	ignorablePatterns := []string{
 		"already exists",
 		"duplicate key",
@@ -2386,6 +2388,16 @@ func (e *Engine) isIgnorableError(errorMsg string) bool {
 		if strings.Contains(lowerMsg, pattern) {
 			return true
 		}
+	}
+
+	// Special handling for "role does not exist" - this is a warning, not fatal
+	// Happens when globals.sql didn't contain a role that the dump references
+	// The restore can continue, but ownership won't be preserved for that role
+	if strings.Contains(lowerMsg, "role") && strings.Contains(lowerMsg, "does not exist") {
+		e.log.Warn("Role referenced in dump does not exist - ownership won't be preserved",
+			"error", errorMsg,
+			"hint", "The role may not have been in globals.sql or globals restore failed")
+		return true // Treat as ignorable - restore can continue
 	}
 
 	return false

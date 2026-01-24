@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"dbbackup/internal/logger"
 	"dbbackup/internal/tui"
 
+	"github.com/klauspost/pgzip"
 	"github.com/spf13/cobra"
 )
 
@@ -658,7 +658,7 @@ func verifyPgDumpGzip(path string) error {
 	}
 	defer file.Close()
 
-	gz, err := gzip.NewReader(file)
+	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("failed to open gzip stream: %w", err)
 	}
@@ -707,7 +707,7 @@ func verifyGzipSqlScript(path string) error {
 	}
 	defer file.Close()
 
-	gz, err := gzip.NewReader(file)
+	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("failed to open gzip stream: %w", err)
 	}

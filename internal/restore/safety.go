@@ -1,7 +1,6 @@
 package restore
 
 import (
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -12,6 +11,8 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
+
+	"github.com/klauspost/pgzip"
 )
 
 // Safety provides pre-restore validation and safety checks
@@ -111,7 +112,7 @@ func (s *Safety) validatePgDumpGz(path string) error {
 	defer file.Close()
 
 	// Open gzip reader
-	gz, err := gzip.NewReader(file)
+	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("not a valid gzip file: %w", err)
 	}
@@ -171,7 +172,7 @@ func (s *Safety) validateSQLScriptGz(path string) error {
 	}
 	defer file.Close()
 
-	gz, err := gzip.NewReader(file)
+	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("not a valid gzip file: %w", err)
 	}
@@ -213,7 +214,7 @@ func (s *Safety) validateTarGz(path string) error {
 	// Quick tar structure validation (stream-based, no full extraction)
 	// Reset to start and decompress first few KB to check tar header
 	file.Seek(0, 0)
-	gzReader, err := gzip.NewReader(file)
+	gzReader, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("gzip corruption detected: %w", err)
 	}

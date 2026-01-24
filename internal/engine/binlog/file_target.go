@@ -1,7 +1,6 @@
 package binlog
 
 import (
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/klauspost/pgzip"
 )
 
 // FileTarget writes binlog events to local files
@@ -167,7 +168,7 @@ type CompressedFileTarget struct {
 
 	mu       sync.Mutex
 	file     *os.File
-	gzWriter *gzip.Writer
+	gzWriter *pgzip.Writer
 	written  int64
 	fileNum  int
 	healthy  bool
@@ -261,7 +262,7 @@ func (c *CompressedFileTarget) openNewFile() error {
 	}
 
 	c.file = file
-	c.gzWriter = gzip.NewWriter(file)
+	c.gzWriter = pgzip.NewWriter(file)
 	c.written = 0
 	return nil
 }

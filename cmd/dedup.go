@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 
 	"dbbackup/internal/dedup"
 
+	"github.com/klauspost/pgzip"
 	"github.com/spf13/cobra"
 )
 
@@ -295,7 +295,7 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 
 	if isGzipped && dedupDecompress {
 		fmt.Printf("Auto-decompressing gzip input for better dedup ratio...\n")
-		gzReader, err := gzip.NewReader(file)
+		gzReader, err := pgzip.NewReader(file)
 		if err != nil {
 			return fmt.Errorf("failed to decompress gzip input: %w", err)
 		}

@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -10,12 +11,18 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mattn/go-isatty"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/restore"
 )
+
+// isInteractiveTTY checks if we have an interactive terminal for progress display
+func isInteractiveTTY() bool {
+	return isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
+}
 
 // Shared spinner frames for consistent animation across all TUI operations
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
@@ -659,6 +666,12 @@ func (m RestoreExecutionModel) View() string {
 	var s strings.Builder
 	s.Grow(512) // Pre-allocate estimated capacity for better performance
 
+	// For non-interactive terminals (screen backgrounded, etc.), use simple line output
+	// This prevents ANSI escape code scrambling
+	if !isInteractiveTTY() {
+		return m.viewSimple()
+	}
+
 	// Title
 	title := "[EXEC] Restoring Database"
 	if m.restoreType == "restore-cluster" {
@@ -842,6 +855,53 @@ func (m RestoreExecutionModel) View() string {
 		s.WriteString(fmt.Sprintf("Elapsed: %s\n", formatDuration(m.elapsed)))
 		s.WriteString("\n")
 		s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C to cancel"))
+	}
+
+	return s.String()
+}
+
+// viewSimple provides clean line-by-line output for non-interactive terminals
+// Avoids ANSI escape codes that cause scrambling in screen/tmux background sessions
+func (m RestoreExecutionModel) viewSimple() string {
+	var s strings.Builder
+
+	if m.done {
+		if m.err != nil {
+			s.WriteString(fmt.Sprintf("[FAIL] Restore failed after %s\n", formatDuration(m.elapsed)))
+			s.WriteString(fmt.Sprintf("Error: %s\n", m.err.Error()))
+		} else {
+			s.WriteString(fmt.Sprintf("[OK] %s\n", m.result))
+			s.WriteString(fmt.Sprintf("Elapsed: %s\n", formatDuration(m.elapsed)))
+			if m.dbTotal > 0 {
+				s.WriteString(fmt.Sprintf("Databases: %d restored\n", m.dbTotal))
+			}
+		}
+		return s.String()
+	}
+
+	// Progress output - simple format for log files
+	if m.restoreType == "restore-cluster" {
+		if m.showBytes && m.bytesTotal > 0 {
+			pct := int((m.bytesDone * 100) / m.bytesTotal)
+			s.WriteString(fmt.Sprintf("[%s] Phase 1/3: Extracting... %d%% (%s/%s) [%s]\n",
+				formatDuration(m.elapsed), pct,
+				FormatBytes(m.bytesDone), FormatBytes(m.bytesTotal),
+				m.status))
+		} else if m.dbTotal > 0 {
+			pct := 0
+			if m.dbTotal > 0 {
+				pct = (m.dbDone * 100) / m.dbTotal
+			}
+			s.WriteString(fmt.Sprintf("[%s] Phase 3/3: Databases %d/%d (%d%%) - Current: %s\n",
+				formatDuration(m.elapsed), m.dbDone, m.dbTotal, pct, m.currentDB))
+		} else if m.extractionDone {
+			s.WriteString(fmt.Sprintf("[%s] Phase 2/3: Restoring globals...\n", formatDuration(m.elapsed)))
+		} else {
+			s.WriteString(fmt.Sprintf("[%s] %s - %s\n", formatDuration(m.elapsed), m.phase, m.status))
+		}
+	} else {
+		s.WriteString(fmt.Sprintf("[%s] %s - %s (%d%%)\n",
+			formatDuration(m.elapsed), m.phase, m.status, m.progress))
 	}
 
 	return s.String()

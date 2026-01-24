@@ -1,11 +1,12 @@
 package wal
 
 import (
-	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/klauspost/pgzip"
 
 	"dbbackup/internal/logger"
 )
@@ -22,7 +23,7 @@ func NewCompressor(log logger.Logger) *Compressor {
 	}
 }
 
-// CompressWALFile compresses a WAL file using gzip
+// CompressWALFile compresses a WAL file using parallel gzip (pgzip)
 // Returns the path to the compressed file and the compressed size
 func (c *Compressor) CompressWALFile(sourcePath, destPath string, level int) (int64, error) {
 	c.log.Debug("Compressing WAL file", "source", sourcePath, "dest", destPath, "level", level)
@@ -48,8 +49,8 @@ func (c *Compressor) CompressWALFile(sourcePath, destPath string, level int) (in
 	}
 	defer dstFile.Close()
 
-	// Create gzip writer with specified compression level
-	gzWriter, err := gzip.NewWriterLevel(dstFile, level)
+	// Create parallel gzip writer for faster compression
+	gzWriter, err := pgzip.NewWriterLevel(dstFile, level)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create gzip writer: %w", err)
 	}
@@ -99,8 +100,8 @@ func (c *Compressor) DecompressWALFile(sourcePath, destPath string) (int64, erro
 	}
 	defer srcFile.Close()
 
-	// Create gzip reader
-	gzReader, err := gzip.NewReader(srcFile)
+	// Create parallel gzip reader for faster decompression
+	gzReader, err := pgzip.NewReader(srcFile)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create gzip reader (file may be corrupted): %w", err)
 	}
@@ -177,7 +178,7 @@ func (c *Compressor) VerifyCompressedFile(compressedPath string) error {
 	}
 	defer file.Close()
 
-	gzReader, err := gzip.NewReader(file)
+	gzReader, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("invalid gzip format: %w", err)
 	}

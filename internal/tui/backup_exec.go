@@ -3,18 +3,25 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/mattn/go-isatty"
 
 	"dbbackup/internal/backup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
-	"path/filepath"
 )
+
+// isInteractiveBackupTTY checks if we have an interactive terminal for progress display
+func isInteractiveBackupTTY() bool {
+	return isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())
+}
 
 // Backup phase constants for consistency
 const (
@@ -434,6 +441,12 @@ func (m BackupExecutionModel) View() string {
 	var s strings.Builder
 	s.Grow(512) // Pre-allocate estimated capacity for better performance
 
+	// For non-interactive terminals (screen backgrounded, etc.), use simple line output
+	// This prevents ANSI escape code scrambling
+	if !isInteractiveBackupTTY() {
+		return m.viewSimple()
+	}
+
 	// Clear screen with newlines and render header
 	s.WriteString("\n\n")
 	header := "[EXEC] Backing up Database"
@@ -604,6 +617,53 @@ func (m BackupExecutionModel) View() string {
 		s.WriteString(infoStyle.Render("  ───────────────────────────────────────────────────────────"))
 		s.WriteString("\n\n")
 		s.WriteString(infoStyle.Render("  [KEYS]  Press Enter to continue"))
+	}
+
+	return s.String()
+}
+
+// viewSimple provides clean line-by-line output for non-interactive terminals
+// Avoids ANSI escape codes that cause scrambling in screen/tmux background sessions
+func (m BackupExecutionModel) viewSimple() string {
+	var s strings.Builder
+
+	elapsed := m.elapsed
+	if elapsed == 0 {
+		elapsed = time.Since(m.startTime)
+	}
+
+	if m.done {
+		if m.err != nil {
+			s.WriteString(fmt.Sprintf("[FAIL] Backup failed after %s\n", formatDuration(elapsed)))
+			s.WriteString(fmt.Sprintf("Error: %s\n", m.err.Error()))
+		} else {
+			s.WriteString(fmt.Sprintf("[OK] %s\n", m.result))
+			s.WriteString(fmt.Sprintf("Elapsed: %s\n", formatDuration(elapsed)))
+			if m.archivePath != "" {
+				s.WriteString(fmt.Sprintf("Archive: %s\n", m.archivePath))
+			}
+			if m.archiveSize > 0 {
+				s.WriteString(fmt.Sprintf("Size: %s\n", FormatBytes(m.archiveSize)))
+			}
+			if m.dbTotal > 0 {
+				s.WriteString(fmt.Sprintf("Databases: %d backed up\n", m.dbTotal))
+			}
+		}
+		return s.String()
+	}
+
+	// Progress output - simple format for log files
+	if m.backupType == "cluster" {
+		if m.dbTotal > 0 {
+			pct := (m.dbDone * 100) / m.dbTotal
+			s.WriteString(fmt.Sprintf("[%s] Databases %d/%d (%d%%) - Current: %s\n",
+				formatDuration(elapsed), m.dbDone, m.dbTotal, pct, m.dbName))
+		} else {
+			s.WriteString(fmt.Sprintf("[%s] %s - %s\n", formatDuration(elapsed), m.phaseDesc, m.status))
+		}
+	} else {
+		s.WriteString(fmt.Sprintf("[%s] %s - %s (%d%%)\n",
+			formatDuration(elapsed), m.phaseDesc, m.status, m.progress))
 	}
 
 	return s.String()

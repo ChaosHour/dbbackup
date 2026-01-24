@@ -2,7 +2,6 @@ package engine
 
 import (
 	"bufio"
-	"compress/gzip"
 	"context"
 	"database/sql"
 	"fmt"
@@ -17,6 +16,8 @@ import (
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
+
+	"github.com/klauspost/pgzip"
 )
 
 // MySQLDumpEngine implements BackupEngine using mysqldump
@@ -184,13 +185,13 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 
 	// Setup writer (with optional compression)
 	var writer io.Writer = outFile
-	var gzWriter *gzip.Writer
+	var gzWriter *pgzip.Writer
 	if opts.Compress {
 		level := opts.CompressLevel
 		if level == 0 {
-			level = gzip.DefaultCompression
+			level = pgzip.DefaultCompression
 		}
-		gzWriter, err = gzip.NewWriterLevel(outFile, level)
+		gzWriter, err = pgzip.NewWriterLevel(outFile, level)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create gzip writer: %w", err)
 		}
@@ -374,7 +375,7 @@ func (e *MySQLDumpEngine) Restore(ctx context.Context, opts *RestoreOptions) err
 	// Setup reader (with optional decompression)
 	var reader io.Reader = inFile
 	if strings.HasSuffix(opts.SourcePath, ".gz") {
-		gzReader, err := gzip.NewReader(inFile)
+		gzReader, err := pgzip.NewReader(inFile)
 		if err != nil {
 			return fmt.Errorf("failed to create gzip reader: %w", err)
 		}
@@ -441,9 +442,9 @@ func (e *MySQLDumpEngine) BackupToWriter(ctx context.Context, w io.Writer, opts 
 
 	// Copy with optional compression
 	var writer io.Writer = w
-	var gzWriter *gzip.Writer
+	var gzWriter *pgzip.Writer
 	if opts.Compress {
-		gzWriter = gzip.NewWriter(w)
+		gzWriter = pgzip.NewWriter(w)
 		defer gzWriter.Close()
 		writer = gzWriter
 	}

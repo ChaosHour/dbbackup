@@ -59,6 +59,22 @@ dbbackup dedup prune /mnt/backups/databases
 dbbackup dedup verify /mnt/backups/databases
 ```
 
+## Blob Statistics
+
+```bash
+# Analyze blob/binary columns in a database (plan extraction strategies)
+dbbackup blob stats --database myapp
+
+# Output shows tables with blob columns, row counts, and estimated sizes
+# Helps identify large binary data for separate extraction
+
+# With explicit connection
+dbbackup blob stats --database myapp --host dbserver --user admin
+
+# MySQL blob analysis
+dbbackup blob stats --database shopdb --db-type mysql
+```
+
 ## Cloud Storage
 
 ```bash

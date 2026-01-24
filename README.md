@@ -99,12 +99,29 @@ Database: postgres@localhost:5432 (PostgreSQL)
   Diagnose Backup File
   List & Manage Backups
   ────────────────────────────────
+  Tools
   View Active Operations
   Show Operation History
   Database Status & Health Check
   Configuration Settings
   Clear Operation History
   Quit
+```
+
+**Tools Menu:**
+```
+Tools
+
+Advanced utilities for database backup management
+
+> Blob Statistics
+  Blob Extract (externalize LOBs)
+  ────────────────────────────────
+  Dedup Store Analyze
+  Verify Backup Integrity
+  Catalog Sync
+  ────────────────────────────────
+  Back to Main Menu
 ```
 
 **Database Selection:**
@@ -334,6 +351,7 @@ dbbackup backup single mydb --dry-run
 | `drill` | DR drill testing |
 | `report` | Compliance report generation |
 | `rto` | RTO/RPO analysis |
+| `blob stats` | Analyze blob/bytea columns in database |
 | `install` | Install as systemd service |
 | `uninstall` | Remove systemd service |
 | `metrics export` | Export Prometheus metrics to textfile |

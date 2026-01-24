@@ -5,6 +5,25 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.108] - 2026-01-24
+
+### Added - TUI Tools Expansion
+- **Table Sizes** - view top 100 tables sorted by size with row counts, data/index breakdown
+  - Supports PostgreSQL (`pg_stat_user_tables`) and MySQL (`information_schema.TABLES`)
+  - Shows total/data/index sizes, row counts, schema prefix for non-public schemas
+
+- **Kill Connections** - manage active database connections
+  - List all active connections with PID, user, database, state, query preview, duration
+  - Kill single connection or all connections to a specific database
+  - Useful before restore operations to clear blocking sessions
+  - Supports PostgreSQL (`pg_terminate_backend`) and MySQL (`KILL`)
+
+- **Drop Database** - safely drop databases with double confirmation
+  - Lists user databases (system DBs hidden: postgres, template0/1, mysql, sys, etc.)
+  - Requires two confirmations: y/n then type full database name
+  - Auto-terminates connections before drop
+  - Supports PostgreSQL and MySQL
+
 ## [3.42.107] - 2026-01-24
 
 ### Added - Tools Menu & Blob Statistics

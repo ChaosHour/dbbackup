@@ -27,6 +27,10 @@ func NewToolsMenu(cfg *config.Config, log logger.Logger, parent tea.Model, ctx c
 		choices: []string{
 			"Blob Statistics",
 			"Blob Extract (externalize LOBs)",
+			"Table Sizes",
+			"--------------------------------",
+			"Kill Connections",
+			"Drop Database",
 			"--------------------------------",
 			"Dedup Store Analyze",
 			"Verify Backup Integrity",
@@ -78,13 +82,19 @@ func (t *ToolsMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return t.handleBlobStats()
 			case 1: // Blob Extract
 				return t.handleBlobExtract()
-			case 3: // Dedup Store Analyze
+			case 2: // Table Sizes
+				return t.handleTableSizes()
+			case 4: // Kill Connections
+				return t.handleKillConnections()
+			case 5: // Drop Database
+				return t.handleDropDatabase()
+			case 7: // Dedup Store Analyze
 				return t.handleDedupAnalyze()
-			case 4: // Verify Backup Integrity
+			case 8: // Verify Backup Integrity
 				return t.handleVerifyIntegrity()
-			case 5: // Catalog Sync
+			case 9: // Catalog Sync
 				return t.handleCatalogSync()
-			case 7: // Back to Main Menu
+			case 11: // Back to Main Menu
 				return t.parent, nil
 			}
 		}
@@ -155,4 +165,22 @@ func (t *ToolsMenu) handleVerifyIntegrity() (tea.Model, tea.Cmd) {
 func (t *ToolsMenu) handleCatalogSync() (tea.Model, tea.Cmd) {
 	t.message = infoStyle.Render("[INFO] Catalog sync coming soon - synchronizes local catalog with cloud storage")
 	return t, nil
+}
+
+// handleTableSizes opens the table sizes view
+func (t *ToolsMenu) handleTableSizes() (tea.Model, tea.Cmd) {
+	view := NewTableSizesView(t.config, t.logger, t, t.ctx)
+	return view, view.Init()
+}
+
+// handleKillConnections opens the kill connections view
+func (t *ToolsMenu) handleKillConnections() (tea.Model, tea.Cmd) {
+	view := NewKillConnectionsView(t.config, t.logger, t, t.ctx)
+	return view, view.Init()
+}
+
+// handleDropDatabase opens the drop database confirmation
+func (t *ToolsMenu) handleDropDatabase() (tea.Model, tea.Cmd) {
+	view := NewDropDatabaseView(t.config, t.logger, t, t.ctx)
+	return view, view.Init()
 }

@@ -19,17 +19,17 @@ import (
 
 // BlobColumn represents a blob/bytea column in the database
 type BlobColumn struct {
-	Schema     string
-	Table      string
-	Column     string
-	DataType   string
-	RowCount   int64
-	TotalSize  int64
-	AvgSize    int64
-	MaxSize    int64
-	NullCount  int64
-	Scanned    bool
-	ScanError  string
+	Schema    string
+	Table     string
+	Column    string
+	DataType  string
+	RowCount  int64
+	TotalSize int64
+	AvgSize   int64
+	MaxSize   int64
+	NullCount int64
+	Scanned   bool
+	ScanError string
 }
 
 // BlobStatsView displays blob statistics for a database
@@ -205,7 +205,7 @@ func (b *BlobStatsView) scanColumnStats(ctx context.Context, db *sql.DB, col *Bl
 	var query string
 	fullName := fmt.Sprintf(`"%s"."%s"`, col.Schema, col.Table)
 	colName := fmt.Sprintf(`"%s"`, col.Column)
-	
+
 	if b.config.IsPostgreSQL() {
 		query = fmt.Sprintf(`
 			SELECT 
@@ -239,13 +239,13 @@ func (b *BlobStatsView) scanColumnStats(ctx context.Context, db *sql.DB, col *Bl
 	err := row.Scan(&col.RowCount, &col.TotalSize, &avgSize, &col.MaxSize, &col.NullCount)
 	col.AvgSize = int64(avgSize)
 	col.Scanned = true
-	
+
 	if err != nil {
 		col.ScanError = err.Error()
 		if b.logger != nil {
-			b.logger.Warn("Failed to scan blob column stats", 
-				"schema", col.Schema, 
-				"table", col.Table, 
+			b.logger.Warn("Failed to scan blob column stats",
+				"schema", col.Schema,
+				"table", col.Table,
 				"column", col.Column,
 				"error", err)
 		}
@@ -301,7 +301,7 @@ func (b *BlobStatsView) View() string {
 
 	// Connection info
 	dbInfo := fmt.Sprintf("Database: %s@%s:%d/%s (%s)",
-		b.config.User, b.config.Host, b.config.Port, 
+		b.config.User, b.config.Host, b.config.Port,
 		b.config.Database, b.config.DisplayDatabaseType())
 	s.WriteString(infoStyle.Render(dbInfo))
 	s.WriteString("\n\n")
@@ -368,7 +368,7 @@ func (b *BlobStatsView) View() string {
 		col := b.columns[i]
 		cursor := " "
 		style := menuStyle
-		
+
 		if i == b.cursor {
 			cursor = ">"
 			style = menuSelectedStyle
@@ -412,10 +412,10 @@ func (b *BlobStatsView) View() string {
 			Border(lipgloss.RoundedBorder()).
 			Padding(0, 1).
 			BorderForeground(lipgloss.Color("240"))
-		
+
 		detail := fmt.Sprintf(
 			"Selected: %s.%s.%s\n"+
-			"Type: %s | Rows: %s | Non-NULL: %s | Max Size: %s",
+				"Type: %s | Rows: %s | Non-NULL: %s | Max Size: %s",
 			col.Schema, col.Table, col.Column,
 			col.DataType,
 			formatBlobNumber(col.RowCount),

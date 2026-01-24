@@ -168,10 +168,10 @@ func runBlobStats(cmd *cobra.Command, args []string) error {
 	var totalBlobs, totalSize int64
 	for i := range columns {
 		col := &columns[i]
-		
+
 		var query string
 		var fullName, colName string
-		
+
 		if cfg.IsPostgreSQL() {
 			fullName = fmt.Sprintf(`"%s"."%s"`, col.Schema, col.Table)
 			colName = fmt.Sprintf(`"%s"`, col.Column)
@@ -248,7 +248,7 @@ func runBlobStats(cmd *cobra.Command, args []string) error {
 	if len(columns) > 1 {
 		fmt.Println("\n───────────────────────────────────────────────────────────────────")
 		fmt.Println("TOP TABLES BY BLOB SIZE:")
-		
+
 		// Simple sort (bubble sort is fine for small lists)
 		for i := 0; i < len(columns)-1; i++ {
 			for j := i + 1; j < len(columns); j++ {
@@ -299,7 +299,7 @@ func formatNumberWithCommas(n int64) string {
 	if len(str) <= 3 {
 		return str
 	}
-	
+
 	var result strings.Builder
 	for i, c := range str {
 		if i > 0 && (len(str)-i)%3 == 0 {

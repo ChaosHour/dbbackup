@@ -103,6 +103,7 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
 			"Diagnose Backup File",
 			"List & Manage Backups",
 			"--------------------------------",
+			"Tools",
 			"View Active Operations",
 			"Show Operation History",
 			"Database Status & Health Check",
@@ -176,17 +177,19 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleDiagnoseBackup()
 			case 7: // List & Manage Backups
 				return m.handleBackupManager()
-			case 9: // View Active Operations
+			case 9: // Tools
+				return m.handleTools()
+			case 10: // View Active Operations
 				return m.handleViewOperations()
-			case 10: // Show Operation History
+			case 11: // Show Operation History
 				return m.handleOperationHistory()
-			case 11: // Database Status
+			case 12: // Database Status
 				return m.handleStatus()
-			case 12: // Settings
+			case 13: // Settings
 				return m.handleSettings()
-			case 13: // Clear History
+			case 14: // Clear History
 				m.message = "[DEL] History cleared"
-			case 14: // Quit
+			case 15: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -276,17 +279,19 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleBackupManager()
 			case 8: // Separator
 				// Do nothing
-			case 9: // View Active Operations
+			case 9: // Tools
+				return m.handleTools()
+			case 10: // View Active Operations
 				return m.handleViewOperations()
-			case 10: // Show Operation History
+			case 11: // Show Operation History
 				return m.handleOperationHistory()
-			case 11: // Database Status
+			case 12: // Database Status
 				return m.handleStatus()
-			case 12: // Settings
+			case 13: // Settings
 				return m.handleSettings()
-			case 13: // Clear History
+			case 14: // Clear History
 				m.message = "[DEL] History cleared"
-			case 14: // Quit
+			case 15: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -443,6 +448,12 @@ func (m *MenuModel) handleBackupManager() (tea.Model, tea.Cmd) {
 func (m *MenuModel) handleDiagnoseBackup() (tea.Model, tea.Cmd) {
 	browser := NewArchiveBrowser(m.config, m.logger, m, m.ctx, "diagnose")
 	return browser, browser.Init()
+}
+
+// handleTools opens the tools submenu
+func (m *MenuModel) handleTools() (tea.Model, tea.Cmd) {
+	tools := NewToolsMenu(m.config, m.logger, m, m.ctx)
+	return tools, tools.Init()
 }
 
 func (m *MenuModel) applyDatabaseSelection() {

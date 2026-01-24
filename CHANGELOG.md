@@ -5,6 +5,23 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.107] - 2026-01-24
+
+### Added - Tools Menu & Blob Statistics
+- **New "Tools" submenu in TUI** - centralized access to utility functions
+  - Blob Statistics - scan database for bytea/blob columns with size analysis
+  - Blob Extract - externalize large objects (coming soon)
+  - Dedup Store Analyze - storage savings analysis (coming soon)
+  - Verify Backup Integrity - backup verification
+  - Catalog Sync - synchronize local catalog (coming soon)
+
+- **New `dbbackup blob stats` CLI command** - analyze blob/bytea columns
+  - Scans `information_schema` for binary column types
+  - Shows row counts, total size, average size, max size per column
+  - Identifies tables storing large binary data for optimization
+  - Supports both PostgreSQL (bytea, oid) and MySQL (blob, mediumblob, longblob)
+  - Provides recommendations for databases with >100MB blob data
+
 ## [3.42.106] - 2026-01-24
 
 ### Fixed - Cluster Restore Resilience & Performance

@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	metricsInstance string
-	metricsOutput   string
-	metricsPort     int
+	metricsServer string
+	metricsOutput string
+	metricsPort   int
 )
 
 // metricsCmd represents the metrics command
@@ -45,7 +45,7 @@ Examples:
   dbbackup metrics export --output /var/lib/dbbackup/metrics/dbbackup.prom
 
   # Export for specific instance
-  dbbackup metrics export --instance production --output /var/lib/dbbackup/metrics/production.prom
+  dbbackup metrics export --server production --output /var/lib/dbbackup/metrics/production.prom
 
 After export, configure node_exporter with:
   --collector.textfile.directory=/var/lib/dbbackup/metrics/
@@ -90,11 +90,11 @@ func init() {
 	metricsCmd.AddCommand(metricsServeCmd)
 
 	// Export flags
-	metricsExportCmd.Flags().StringVar(&metricsInstance, "instance", "default", "Instance name for metrics labels")
+	metricsExportCmd.Flags().StringVar(&metricsServer, "server", "default", "Server name for metrics labels")
 	metricsExportCmd.Flags().StringVarP(&metricsOutput, "output", "o", "/var/lib/dbbackup/metrics/dbbackup.prom", "Output file path")
 
 	// Serve flags
-	metricsServeCmd.Flags().StringVar(&metricsInstance, "instance", "default", "Instance name for metrics labels")
+	metricsServeCmd.Flags().StringVar(&metricsServer, "server", "default", "Server name for metrics labels")
 	metricsServeCmd.Flags().IntVarP(&metricsPort, "port", "p", 9399, "HTTP server port")
 }
 
@@ -107,14 +107,14 @@ func runMetricsExport(ctx context.Context) error {
 	defer cat.Close()
 
 	// Create metrics writer
-	writer := prometheus.NewMetricsWriter(log, cat, metricsInstance)
+	writer := prometheus.NewMetricsWriter(log, cat, metricsServer)
 
 	// Write textfile
 	if err := writer.WriteTextfile(metricsOutput); err != nil {
 		return fmt.Errorf("failed to write metrics: %w", err)
 	}
 
-	log.Info("Exported metrics to textfile", "path", metricsOutput, "instance", metricsInstance)
+	log.Info("Exported metrics to textfile", "path", metricsOutput, "server", metricsServer)
 	return nil
 }
 
@@ -131,7 +131,7 @@ func runMetricsServe(ctx context.Context) error {
 	defer cat.Close()
 
 	// Create exporter
-	exporter := prometheus.NewExporter(log, cat, metricsInstance, metricsPort)
+	exporter := prometheus.NewExporter(log, cat, metricsServer, metricsPort)
 
 	// Run server (blocks until context is cancelled)
 	return exporter.Serve(ctx)

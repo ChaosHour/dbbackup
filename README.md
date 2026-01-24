@@ -784,6 +784,8 @@ sudo dbbackup uninstall cluster --purge
 
 Export backup metrics for monitoring with Prometheus:
 
+> **Migration Note (v1.x → v2.x):** The `--instance` flag was renamed to `--server` to avoid collision with Prometheus's reserved `instance` label. Update your cronjobs and scripts accordingly.
+
 ### Textfile Collector
 
 For integration with node_exporter:
@@ -792,8 +794,8 @@ For integration with node_exporter:
 # Export metrics to textfile
 dbbackup metrics export --output /var/lib/node_exporter/textfile_collector/dbbackup.prom
 
-# Export for specific instance
-dbbackup metrics export --instance production --output /var/lib/dbbackup/metrics/production.prom
+# Export for specific server
+dbbackup metrics export --server production --output /var/lib/dbbackup/metrics/production.prom
 ```
 
 Configure node_exporter:

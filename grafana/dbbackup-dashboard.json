@@ -94,7 +94,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_rpo_seconds{instance=~\"$instance\"} < bool 604800",
+          "expr": "dbbackup_rpo_seconds{server=~\"$server\"} < bool 604800",
           "legendFormat": "{{database}}",
           "range": true,
           "refId": "A"
@@ -164,7 +164,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_rpo_seconds{instance=~\"$instance\"}",
+          "expr": "dbbackup_rpo_seconds{server=~\"$server\"}",
           "legendFormat": "{{database}}",
           "range": true,
           "refId": "A"
@@ -225,7 +225,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_backup_total{instance=~\"$instance\", status=\"success\"}",
+          "expr": "dbbackup_backup_total{server=~\"$server\", status=\"success\"}",
           "legendFormat": "{{database}}",
           "range": true,
           "refId": "A"
@@ -290,7 +290,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_backup_total{instance=~\"$instance\", status=\"failure\"}",
+          "expr": "dbbackup_backup_total{server=~\"$server\", status=\"failure\"}",
           "legendFormat": "{{database}}",
           "range": true,
           "refId": "A"
@@ -384,8 +384,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_rpo_seconds{instance=~\"$instance\"}",
-          "legendFormat": "{{instance}} - {{database}}",
+          "expr": "dbbackup_rpo_seconds{server=~\"$server\"}",
+          "legendFormat": "{{server}} - {{database}}",
           "range": true,
           "refId": "A"
         }
@@ -474,8 +474,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_last_backup_size_bytes{instance=~\"$instance\"}",
-          "legendFormat": "{{instance}} - {{database}}",
+          "expr": "dbbackup_last_backup_size_bytes{server=~\"$server\"}",
+          "legendFormat": "{{server}} - {{database}}",
           "range": true,
           "refId": "A"
         }
@@ -564,8 +564,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_last_backup_duration_seconds{instance=~\"$instance\"}",
-          "legendFormat": "{{instance}} - {{database}}",
+          "expr": "dbbackup_last_backup_duration_seconds{server=~\"$server\"}",
+          "legendFormat": "{{server}} - {{database}}",
           "range": true,
           "refId": "A"
         }
@@ -717,7 +717,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_rpo_seconds{instance=~\"$instance\"}",
+          "expr": "dbbackup_rpo_seconds{server=~\"$server\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -731,7 +731,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_last_backup_size_bytes{instance=~\"$instance\"}",
+          "expr": "dbbackup_last_backup_size_bytes{server=~\"$server\"}",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -850,7 +850,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_ratio{instance=~\"$instance\"}",
+          "expr": "dbbackup_dedup_ratio{server=~\"$server\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -910,7 +910,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_space_saved_bytes{instance=~\"$instance\"}",
+          "expr": "dbbackup_dedup_space_saved_bytes{server=~\"$server\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -970,7 +970,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_disk_usage_bytes{instance=~\"$instance\"}",
+          "expr": "dbbackup_dedup_disk_usage_bytes{server=~\"$server\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1030,7 +1030,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_chunks_total{instance=~\"$instance\"}",
+          "expr": "dbbackup_dedup_chunks_total{server=~\"$server\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1090,7 +1090,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_compression_ratio{instance=~\"$instance\"}",
+          "expr": "dbbackup_dedup_compression_ratio{server=~\"$server\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1150,7 +1150,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_oldest_chunk_timestamp{instance=~\"$instance\"} * 1000",
+          "expr": "dbbackup_dedup_oldest_chunk_timestamp{server=~\"$server\"} * 1000",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1210,7 +1210,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_newest_chunk_timestamp{instance=~\"$instance\"} * 1000",
+          "expr": "dbbackup_dedup_newest_chunk_timestamp{server=~\"$server\"} * 1000",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1302,7 +1302,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_database_ratio{instance=~\"$instance\"}",
+          "expr": "dbbackup_dedup_database_ratio{server=~\"$server\"}",
           "legendFormat": "{{database}}",
           "range": true,
           "refId": "A"
@@ -1394,7 +1394,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_space_saved_bytes{instance=~\"$instance\"}",
+          "expr": "dbbackup_dedup_space_saved_bytes{server=~\"$server\"}",
           "legendFormat": "Space Saved",
           "range": true,
           "refId": "A"
@@ -1405,7 +1405,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "dbbackup_dedup_disk_usage_bytes{instance=~\"$instance\"}",
+          "expr": "dbbackup_dedup_disk_usage_bytes{server=~\"$server\"}",
           "legendFormat": "Disk Usage",
           "range": true,
           "refId": "B"
@@ -1435,15 +1435,15 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(dbbackup_rpo_seconds, instance)",
+        "definition": "label_values(dbbackup_rpo_seconds, server)",
         "hide": 0,
         "includeAll": true,
-        "label": "Instance",
+        "label": "Server",
         "multi": true,
-        "name": "instance",
+        "name": "server",
         "options": [],
         "query": {
-          "query": "label_values(dbbackup_rpo_seconds, instance)",
+          "query": "label_values(dbbackup_rpo_seconds, server)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,

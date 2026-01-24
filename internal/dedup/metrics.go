@@ -169,67 +169,67 @@ func WritePrometheusTextfile(path string, instance string, basePath string, inde
 }
 
 // FormatPrometheusMetrics formats dedup metrics in Prometheus exposition format
-func FormatPrometheusMetrics(m *DedupMetrics, instance string) string {
+func FormatPrometheusMetrics(m *DedupMetrics, server string) string {
 	var b strings.Builder
 	now := time.Now().Unix()
 
 	b.WriteString("# DBBackup Deduplication Prometheus Metrics\n")
 	b.WriteString(fmt.Sprintf("# Generated at: %s\n", time.Now().Format(time.RFC3339)))
-	b.WriteString(fmt.Sprintf("# Instance: %s\n", instance))
+	b.WriteString(fmt.Sprintf("# Server: %s\n", server))
 	b.WriteString("\n")
 
 	// Global dedup metrics
 	b.WriteString("# HELP dbbackup_dedup_chunks_total Total number of unique chunks stored\n")
 	b.WriteString("# TYPE dbbackup_dedup_chunks_total gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_dedup_chunks_total{instance=%q} %d\n", instance, m.TotalChunks))
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_chunks_total{server=%q} %d\n", server, m.TotalChunks))
 	b.WriteString("\n")
 
 	b.WriteString("# HELP dbbackup_dedup_manifests_total Total number of deduplicated backups\n")
 	b.WriteString("# TYPE dbbackup_dedup_manifests_total gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_dedup_manifests_total{instance=%q} %d\n", instance, m.TotalManifests))
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_manifests_total{server=%q} %d\n", server, m.TotalManifests))
 	b.WriteString("\n")
 
 	b.WriteString("# HELP dbbackup_dedup_backup_bytes_total Total logical size of all backups in bytes\n")
 	b.WriteString("# TYPE dbbackup_dedup_backup_bytes_total gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_dedup_backup_bytes_total{instance=%q} %d\n", instance, m.TotalBackupSize))
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_backup_bytes_total{server=%q} %d\n", server, m.TotalBackupSize))
 	b.WriteString("\n")
 
 	b.WriteString("# HELP dbbackup_dedup_stored_bytes_total Total unique data stored in bytes (after dedup)\n")
 	b.WriteString("# TYPE dbbackup_dedup_stored_bytes_total gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_dedup_stored_bytes_total{instance=%q} %d\n", instance, m.TotalNewData))
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_stored_bytes_total{server=%q} %d\n", server, m.TotalNewData))
 	b.WriteString("\n")
 
 	b.WriteString("# HELP dbbackup_dedup_space_saved_bytes Bytes saved by deduplication\n")
 	b.WriteString("# TYPE dbbackup_dedup_space_saved_bytes gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_dedup_space_saved_bytes{instance=%q} %d\n", instance, m.SpaceSaved))
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_space_saved_bytes{server=%q} %d\n", server, m.SpaceSaved))
 	b.WriteString("\n")
 
 	b.WriteString("# HELP dbbackup_dedup_ratio Deduplication ratio (0-1, higher is better)\n")
 	b.WriteString("# TYPE dbbackup_dedup_ratio gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_dedup_ratio{instance=%q} %.4f\n", instance, m.DedupRatio))
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_ratio{server=%q} %.4f\n", server, m.DedupRatio))
 	b.WriteString("\n")
 
 	b.WriteString("# HELP dbbackup_dedup_disk_usage_bytes Actual disk usage of chunk store\n")
 	b.WriteString("# TYPE dbbackup_dedup_disk_usage_bytes gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_dedup_disk_usage_bytes{instance=%q} %d\n", instance, m.DiskUsage))
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_disk_usage_bytes{server=%q} %d\n", server, m.DiskUsage))
 	b.WriteString("\n")
 
 	b.WriteString("# HELP dbbackup_dedup_compression_ratio Compression ratio (0-1, higher = better compression)\n")
 	b.WriteString("# TYPE dbbackup_dedup_compression_ratio gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_dedup_compression_ratio{instance=%q} %.4f\n", instance, m.CompressionRatio))
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_compression_ratio{server=%q} %.4f\n", server, m.CompressionRatio))
 	b.WriteString("\n")
 
 	if m.OldestChunkEpoch > 0 {
 		b.WriteString("# HELP dbbackup_dedup_oldest_chunk_timestamp Unix timestamp of oldest chunk (for retention monitoring)\n")
 		b.WriteString("# TYPE dbbackup_dedup_oldest_chunk_timestamp gauge\n")
-		b.WriteString(fmt.Sprintf("dbbackup_dedup_oldest_chunk_timestamp{instance=%q} %d\n", instance, m.OldestChunkEpoch))
+		b.WriteString(fmt.Sprintf("dbbackup_dedup_oldest_chunk_timestamp{server=%q} %d\n", server, m.OldestChunkEpoch))
 		b.WriteString("\n")
 	}
 
 	if m.NewestChunkEpoch > 0 {
 		b.WriteString("# HELP dbbackup_dedup_newest_chunk_timestamp Unix timestamp of newest chunk\n")
 		b.WriteString("# TYPE dbbackup_dedup_newest_chunk_timestamp gauge\n")
-		b.WriteString(fmt.Sprintf("dbbackup_dedup_newest_chunk_timestamp{instance=%q} %d\n", instance, m.NewestChunkEpoch))
+		b.WriteString(fmt.Sprintf("dbbackup_dedup_newest_chunk_timestamp{server=%q} %d\n", server, m.NewestChunkEpoch))
 		b.WriteString("\n")
 	}
 
@@ -238,16 +238,16 @@ func FormatPrometheusMetrics(m *DedupMetrics, instance string) string {
 		b.WriteString("# HELP dbbackup_dedup_database_backup_count Number of deduplicated backups per database\n")
 		b.WriteString("# TYPE dbbackup_dedup_database_backup_count gauge\n")
 		for _, db := range m.ByDatabase {
-			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_backup_count{instance=%q,database=%q} %d\n",
-				instance, db.Database, db.BackupCount))
+			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_backup_count{server=%q,database=%q} %d\n",
+				server, db.Database, db.BackupCount))
 		}
 		b.WriteString("\n")
 
 		b.WriteString("# HELP dbbackup_dedup_database_ratio Deduplication ratio per database (0-1)\n")
 		b.WriteString("# TYPE dbbackup_dedup_database_ratio gauge\n")
 		for _, db := range m.ByDatabase {
-			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_ratio{instance=%q,database=%q} %.4f\n",
-				instance, db.Database, db.DedupRatio))
+			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_ratio{server=%q,database=%q} %.4f\n",
+				server, db.Database, db.DedupRatio))
 		}
 		b.WriteString("\n")
 
@@ -255,8 +255,8 @@ func FormatPrometheusMetrics(m *DedupMetrics, instance string) string {
 		b.WriteString("# TYPE dbbackup_dedup_database_last_backup_timestamp gauge\n")
 		for _, db := range m.ByDatabase {
 			if !db.LastBackupTime.IsZero() {
-				b.WriteString(fmt.Sprintf("dbbackup_dedup_database_last_backup_timestamp{instance=%q,database=%q} %d\n",
-					instance, db.Database, db.LastBackupTime.Unix()))
+				b.WriteString(fmt.Sprintf("dbbackup_dedup_database_last_backup_timestamp{server=%q,database=%q} %d\n",
+					server, db.Database, db.LastBackupTime.Unix()))
 			}
 		}
 		b.WriteString("\n")
@@ -264,23 +264,23 @@ func FormatPrometheusMetrics(m *DedupMetrics, instance string) string {
 		b.WriteString("# HELP dbbackup_dedup_database_total_bytes Total logical size per database\n")
 		b.WriteString("# TYPE dbbackup_dedup_database_total_bytes gauge\n")
 		for _, db := range m.ByDatabase {
-			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_total_bytes{instance=%q,database=%q} %d\n",
-				instance, db.Database, db.TotalSize))
+			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_total_bytes{server=%q,database=%q} %d\n",
+				server, db.Database, db.TotalSize))
 		}
 		b.WriteString("\n")
 
 		b.WriteString("# HELP dbbackup_dedup_database_stored_bytes Stored bytes per database (after dedup)\n")
 		b.WriteString("# TYPE dbbackup_dedup_database_stored_bytes gauge\n")
 		for _, db := range m.ByDatabase {
-			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_stored_bytes{instance=%q,database=%q} %d\n",
-				instance, db.Database, db.StoredSize))
+			b.WriteString(fmt.Sprintf("dbbackup_dedup_database_stored_bytes{server=%q,database=%q} %d\n",
+				server, db.Database, db.StoredSize))
 		}
 		b.WriteString("\n")
 	}
 
 	b.WriteString("# HELP dbbackup_dedup_scrape_timestamp Unix timestamp when dedup metrics were collected\n")
 	b.WriteString("# TYPE dbbackup_dedup_scrape_timestamp gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_dedup_scrape_timestamp{instance=%q} %d\n", instance, now))
+	b.WriteString(fmt.Sprintf("dbbackup_dedup_scrape_timestamp{server=%q} %d\n", server, now))
 
 	return b.String()
 }

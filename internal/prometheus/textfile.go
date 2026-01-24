@@ -156,7 +156,7 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 	// Header comment
 	b.WriteString("# DBBackup Prometheus Metrics\n")
 	b.WriteString(fmt.Sprintf("# Generated at: %s\n", time.Now().Format(time.RFC3339)))
-	b.WriteString(fmt.Sprintf("# Instance: %s\n", m.instance))
+	b.WriteString(fmt.Sprintf("# Server: %s\n", m.instance))
 	b.WriteString("\n")
 
 	// dbbackup_last_success_timestamp
@@ -164,7 +164,7 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 	b.WriteString("# TYPE dbbackup_last_success_timestamp gauge\n")
 	for _, met := range metrics {
 		if !met.LastSuccess.IsZero() {
-			b.WriteString(fmt.Sprintf("dbbackup_last_success_timestamp{instance=%q,database=%q,engine=%q} %d\n",
+			b.WriteString(fmt.Sprintf("dbbackup_last_success_timestamp{server=%q,database=%q,engine=%q} %d\n",
 				m.instance, met.Database, met.Engine, met.LastSuccess.Unix()))
 		}
 	}
@@ -175,7 +175,7 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 	b.WriteString("# TYPE dbbackup_last_backup_duration_seconds gauge\n")
 	for _, met := range metrics {
 		if met.LastDuration > 0 {
-			b.WriteString(fmt.Sprintf("dbbackup_last_backup_duration_seconds{instance=%q,database=%q,engine=%q} %.2f\n",
+			b.WriteString(fmt.Sprintf("dbbackup_last_backup_duration_seconds{server=%q,database=%q,engine=%q} %.2f\n",
 				m.instance, met.Database, met.Engine, met.LastDuration.Seconds()))
 		}
 	}
@@ -186,7 +186,7 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 	b.WriteString("# TYPE dbbackup_last_backup_size_bytes gauge\n")
 	for _, met := range metrics {
 		if met.LastSize > 0 {
-			b.WriteString(fmt.Sprintf("dbbackup_last_backup_size_bytes{instance=%q,database=%q,engine=%q} %d\n",
+			b.WriteString(fmt.Sprintf("dbbackup_last_backup_size_bytes{server=%q,database=%q,engine=%q} %d\n",
 				m.instance, met.Database, met.Engine, met.LastSize))
 		}
 	}
@@ -196,9 +196,9 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 	b.WriteString("# HELP dbbackup_backup_total Total number of backup attempts\n")
 	b.WriteString("# TYPE dbbackup_backup_total counter\n")
 	for _, met := range metrics {
-		b.WriteString(fmt.Sprintf("dbbackup_backup_total{instance=%q,database=%q,status=\"success\"} %d\n",
+		b.WriteString(fmt.Sprintf("dbbackup_backup_total{server=%q,database=%q,status=\"success\"} %d\n",
 			m.instance, met.Database, met.SuccessCount))
-		b.WriteString(fmt.Sprintf("dbbackup_backup_total{instance=%q,database=%q,status=\"failure\"} %d\n",
+		b.WriteString(fmt.Sprintf("dbbackup_backup_total{server=%q,database=%q,status=\"failure\"} %d\n",
 			m.instance, met.Database, met.FailureCount))
 	}
 	b.WriteString("\n")
@@ -208,7 +208,7 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 	b.WriteString("# TYPE dbbackup_rpo_seconds gauge\n")
 	for _, met := range metrics {
 		if met.RPOSeconds > 0 {
-			b.WriteString(fmt.Sprintf("dbbackup_rpo_seconds{instance=%q,database=%q} %.0f\n",
+			b.WriteString(fmt.Sprintf("dbbackup_rpo_seconds{server=%q,database=%q} %.0f\n",
 				m.instance, met.Database, met.RPOSeconds))
 		}
 	}
@@ -222,7 +222,7 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 		if met.Verified {
 			verified = 1
 		}
-		b.WriteString(fmt.Sprintf("dbbackup_backup_verified{instance=%q,database=%q} %d\n",
+		b.WriteString(fmt.Sprintf("dbbackup_backup_verified{server=%q,database=%q} %d\n",
 			m.instance, met.Database, verified))
 	}
 	b.WriteString("\n")
@@ -230,7 +230,7 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 	// dbbackup_scrape_timestamp
 	b.WriteString("# HELP dbbackup_scrape_timestamp Unix timestamp when metrics were collected\n")
 	b.WriteString("# TYPE dbbackup_scrape_timestamp gauge\n")
-	b.WriteString(fmt.Sprintf("dbbackup_scrape_timestamp{instance=%q} %d\n", m.instance, now))
+	b.WriteString(fmt.Sprintf("dbbackup_scrape_timestamp{server=%q} %d\n", m.instance, now))
 
 	return b.String()
 }

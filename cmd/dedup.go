@@ -164,8 +164,8 @@ var (
 
 // metrics flags
 var (
-	dedupMetricsOutput   string
-	dedupMetricsInstance string
+	dedupMetricsOutput string
+	dedupMetricsServer string
 )
 
 var dedupMetricsCmd = &cobra.Command{
@@ -241,7 +241,7 @@ func init() {
 
 	// Metrics flags
 	dedupMetricsCmd.Flags().StringVarP(&dedupMetricsOutput, "output", "o", "", "Output file path (default: stdout)")
-	dedupMetricsCmd.Flags().StringVar(&dedupMetricsInstance, "instance", "", "Instance label for metrics (default: hostname)")
+	dedupMetricsCmd.Flags().StringVar(&dedupMetricsServer, "server", "", "Server label for metrics (default: hostname)")
 }
 
 func getDedupDir() string {
@@ -1258,10 +1258,10 @@ func runDedupMetrics(cmd *cobra.Command, args []string) error {
 	basePath := getDedupDir()
 	indexPath := getIndexDBPath()
 
-	instance := dedupMetricsInstance
-	if instance == "" {
+	server := dedupMetricsServer
+	if server == "" {
 		hostname, _ := os.Hostname()
-		instance = hostname
+		server = hostname
 	}
 
 	metrics, err := dedup.CollectMetrics(basePath, indexPath)
@@ -1269,10 +1269,10 @@ func runDedupMetrics(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to collect metrics: %w", err)
 	}
 
-	output := dedup.FormatPrometheusMetrics(metrics, instance)
+	output := dedup.FormatPrometheusMetrics(metrics, server)
 
 	if dedupMetricsOutput != "" {
-		if err := dedup.WritePrometheusTextfile(dedupMetricsOutput, instance, basePath, indexPath); err != nil {
+		if err := dedup.WritePrometheusTextfile(dedupMetricsOutput, server, basePath, indexPath); err != nil {
 			return fmt.Errorf("failed to write metrics: %w", err)
 		}
 		fmt.Printf("Wrote metrics to %s\n", dedupMetricsOutput)

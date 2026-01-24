@@ -19,10 +19,8 @@ type StreamingBackupEngine struct {
 
 	mu        sync.Mutex
 	streamer  *parallel.CloudStreamer
-	pipe      *io.PipeWriter
 	started   bool
 	completed bool
-	err       error
 }
 
 // StreamingConfig holds streaming configuration

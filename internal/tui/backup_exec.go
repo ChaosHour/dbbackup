@@ -59,7 +59,6 @@ type BackupExecutionModel struct {
 	dbName          string        // Current database being backed up
 	overallPhase    int           // 1=globals, 2=databases, 3=compressing
 	phaseDesc       string        // Description of current phase
-	phase2StartTime time.Time     // When phase 2 (databases) started (for realtime ETA)
 	dbPhaseElapsed  time.Duration // Elapsed time since database backup phase started
 	dbAvgPerDB      time.Duration // Average time per database backup
 }
@@ -160,15 +159,12 @@ func backupTickCmd() tea.Cmd {
 type backupProgressMsg struct {
 	status   string
 	progress int
-	detail   string
 }
 
 type backupCompleteMsg struct {
-	result      string
-	err         error
-	archivePath string
-	archiveSize int64
-	elapsed     time.Duration
+	result  string
+	err     error
+	elapsed time.Duration
 }
 
 func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
@@ -372,34 +368,6 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
-}
-
-// renderDatabaseProgressBar renders a progress bar for database count progress
-func renderBackupDatabaseProgressBar(done, total int, dbName string, width int) string {
-	if total == 0 {
-		return ""
-	}
-
-	// Calculate progress percentage
-	percent := float64(done) / float64(total)
-	if percent > 1.0 {
-		percent = 1.0
-	}
-
-	// Calculate filled width
-	barWidth := width - 20 // Leave room for label and percentage
-	if barWidth < 10 {
-		barWidth = 10
-	}
-	filled := int(float64(barWidth) * percent)
-	if filled > barWidth {
-		filled = barWidth
-	}
-
-	// Build progress bar
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-
-	return fmt.Sprintf("  Database: [%s] %d/%d", bar, done, total)
 }
 
 // renderBackupDatabaseProgressBarWithTiming renders database backup progress with ETA

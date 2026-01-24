@@ -29,9 +29,6 @@ var (
 	archiveNormalStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("250"))
 
-	archiveValidStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("2"))
-
 	archiveInvalidStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("1"))
 

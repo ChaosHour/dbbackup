@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -44,7 +43,6 @@ var (
 	mysqlArchiveInterval  string
 	mysqlRequireRowFormat bool
 	mysqlRequireGTID      bool
-	mysqlWatchMode        bool
 )
 
 // pitrCmd represents the pitr command group
@@ -1310,15 +1308,4 @@ func runMySQLPITREnable(cmd *cobra.Command, args []string) error {
 	log.Info("  dbbackup restore pitr <backup> --target-time '2024-01-15 14:30:00'")
 
 	return nil
-}
-
-// getMySQLBinlogDir attempts to determine the binlog directory from MySQL
-func getMySQLBinlogDir(ctx context.Context, db *sql.DB) (string, error) {
-	var logBinBasename string
-	err := db.QueryRowContext(ctx, "SELECT @@log_bin_basename").Scan(&logBinBasename)
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Dir(logBinBasename), nil
 }

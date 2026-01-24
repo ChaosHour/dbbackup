@@ -39,7 +39,6 @@ type TableSizesView struct {
 	tables   []TableInfo
 	cursor   int
 	offset   int
-	message  string
 	loading  bool
 	err      error
 }

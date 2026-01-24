@@ -1,7 +1,7 @@
 # Makefile for dbbackup
 # Provides common development workflows
 
-.PHONY: build test lint vet clean install-tools help race cover
+.PHONY: build test lint vet clean install-tools help race cover golangci-lint
 
 # Build variables
 VERSION := $(shell grep 'version.*=' main.go | head -1 | sed 's/.*"\(.*\)".*/\1/')
@@ -48,7 +48,7 @@ cover-html:
 	@echo "📄 Coverage report: coverage.html"
 
 ## lint: Run all linters
-lint: vet staticcheck
+lint: vet staticcheck golangci-lint
 
 ## vet: Run go vet
 vet:
@@ -64,11 +64,21 @@ staticcheck:
 	fi
 	$$(go env GOPATH)/bin/staticcheck ./...
 
+## golangci-lint: Run golangci-lint (comprehensive linting)
+golangci-lint:
+	@echo "🔍 Running golangci-lint..."
+	@if ! command -v golangci-lint >/dev/null 2>&1; then \
+		echo "Installing golangci-lint..."; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+	fi
+	$$(go env GOPATH)/bin/golangci-lint run --timeout 5m
+
 ## install-tools: Install development tools
 install-tools:
 	@echo "📦 Installing development tools..."
 	go install honnef.co/go/tools/cmd/staticcheck@latest
 	go install golang.org/x/tools/cmd/goimports@latest
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	@echo "✅ Tools installed"
 
 ## fmt: Format code

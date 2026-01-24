@@ -74,7 +74,6 @@ type RestoreExecutionModel struct {
 	// Overall progress tracking for unified display
 	overallPhase   int // 1=Extracting, 2=Globals, 3=Databases
 	extractionDone bool
-	extractionTime time.Duration // How long extraction took (for ETA calc)
 
 	// Results
 	done       bool
@@ -262,9 +261,6 @@ func calculateRollingSpeed(samples []restoreSpeedSample) float64 {
 	bytesTransferred := lastInWindow.bytes - firstInWindow.bytes
 	return float64(bytesTransferred) / elapsed
 }
-
-// restoreProgressChannel allows sending progress updates from the restore goroutine
-type restoreProgressChannel chan restoreProgressMsg
 
 func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool) tea.Cmd {
 	return func() tea.Msg {
@@ -918,16 +914,6 @@ func renderProgressBar(percent int) string {
 	return successStyle.Render(bar) + infoStyle.Render(empty)
 }
 
-// renderDetailedProgressBar renders a schollz-style progress bar with bytes, speed, and ETA
-// Uses elapsed time for speed calculation (fallback)
-func renderDetailedProgressBar(done, total int64, elapsed time.Duration) string {
-	speed := 0.0
-	if elapsed.Seconds() > 0 {
-		speed = float64(done) / elapsed.Seconds()
-	}
-	return renderDetailedProgressBarWithSpeed(done, total, speed)
-}
-
 // renderDetailedProgressBarWithSpeed renders a schollz-style progress bar with pre-calculated rolling speed
 func renderDetailedProgressBarWithSpeed(done, total int64, speed float64) string {
 	var s strings.Builder
@@ -970,36 +956,6 @@ func renderDetailedProgressBarWithSpeed(done, total int64, speed float64) string
 			s.WriteString(fmt.Sprintf("  ETA: %s", FormatDurationShort(eta)))
 		}
 	}
-
-	return s.String()
-}
-
-// renderDatabaseProgressBar renders a progress bar for database count (cluster restore)
-func renderDatabaseProgressBar(done, total int) string {
-	var s strings.Builder
-
-	// Calculate percentage
-	percent := 0
-	if total > 0 {
-		percent = (done * 100) / total
-		if percent > 100 {
-			percent = 100
-		}
-	}
-
-	// Render progress bar
-	width := 30
-	filled := (percent * width) / 100
-	barFilled := strings.Repeat("█", filled)
-	barEmpty := strings.Repeat("░", width-filled)
-
-	s.WriteString(successStyle.Render("["))
-	s.WriteString(successStyle.Render(barFilled))
-	s.WriteString(infoStyle.Render(barEmpty))
-	s.WriteString(successStyle.Render("]"))
-
-	// Count and percentage
-	s.WriteString(fmt.Sprintf("  %3d%%  %d / %d databases", percent, done, total))
 
 	return s.String()
 }

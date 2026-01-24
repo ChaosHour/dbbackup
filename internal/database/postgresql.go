@@ -461,61 +461,6 @@ func (p *PostgreSQL) ValidateBackupTools() error {
 	return nil
 }
 
-// buildDSN constructs PostgreSQL connection string
-func (p *PostgreSQL) buildDSN() string {
-	dsn := fmt.Sprintf("user=%s dbname=%s", p.cfg.User, p.cfg.Database)
-
-	if p.cfg.Password != "" {
-		dsn += " password=" + p.cfg.Password
-	}
-
-	// For localhost connections, try socket first for peer auth
-	if p.cfg.Host == "localhost" && p.cfg.Password == "" {
-		// Try Unix socket connection for peer authentication
-		// Common PostgreSQL socket locations
-		socketDirs := []string{
-			"/var/run/postgresql",
-			"/tmp",
-			"/var/lib/pgsql",
-		}
-
-		for _, dir := range socketDirs {
-			socketPath := fmt.Sprintf("%s/.s.PGSQL.%d", dir, p.cfg.Port)
-			if _, err := os.Stat(socketPath); err == nil {
-				dsn += " host=" + dir
-				p.log.Debug("Using PostgreSQL socket", "path", socketPath)
-				break
-			}
-		}
-	} else if p.cfg.Host != "localhost" || p.cfg.Password != "" {
-		// Use TCP connection
-		dsn += " host=" + p.cfg.Host
-		dsn += " port=" + strconv.Itoa(p.cfg.Port)
-	}
-
-	if p.cfg.SSLMode != "" && !p.cfg.Insecure {
-		// Map SSL modes to supported values for lib/pq
-		switch strings.ToLower(p.cfg.SSLMode) {
-		case "prefer", "preferred":
-			dsn += " sslmode=require" // lib/pq default, closest to prefer
-		case "require", "required":
-			dsn += " sslmode=require"
-		case "verify-ca":
-			dsn += " sslmode=verify-ca"
-		case "verify-full", "verify-identity":
-			dsn += " sslmode=verify-full"
-		case "disable", "disabled":
-			dsn += " sslmode=disable"
-		default:
-			dsn += " sslmode=require" // Safe default
-		}
-	} else if p.cfg.Insecure {
-		dsn += " sslmode=disable"
-	}
-
-	return dsn
-}
-
 // buildPgxDSN builds a connection string for pgx
 func (p *PostgreSQL) buildPgxDSN() string {
 	// pgx supports both URL and keyword=value formats

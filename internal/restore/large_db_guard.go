@@ -206,16 +206,6 @@ func (g *LargeDBGuard) estimateTotalSize(dumpFiles []string) int64 {
 	return total
 }
 
-// checkLockCapacity gets PostgreSQL lock table capacity
-func (g *LargeDBGuard) checkLockCapacity(ctx context.Context) int {
-	maxLocks, maxConns := g.checkLockConfiguration(ctx)
-	maxPrepared := 0 // We don't use prepared transactions in restore
-
-	// Calculate total lock capacity
-	capacity := maxLocks * (maxConns + maxPrepared)
-	return capacity
-}
-
 // checkLockConfiguration returns max_locks_per_transaction and max_connections
 func (g *LargeDBGuard) checkLockConfiguration(ctx context.Context) (int, int) {
 	if g.cfg.DebugLocks {

@@ -15,7 +15,6 @@ import (
 var (
 	okColor   = color.New(color.FgGreen, color.Bold)
 	failColor = color.New(color.FgRed, color.Bold)
-	warnColor = color.New(color.FgYellow, color.Bold)
 )
 
 // Indicator represents a progress indicator interface

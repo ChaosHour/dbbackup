@@ -65,13 +65,3 @@ func loadEncryptionKey(keyFile, keyEnvVar string) ([]byte, error) {
 func isEncryptionEnabled() bool {
 	return encryptBackupFlag
 }
-
-// generateEncryptionKey generates a new random encryption key
-func generateEncryptionKey() ([]byte, error) {
-	salt, err := crypto.GenerateSalt()
-	if err != nil {
-		return nil, err
-	}
-	// For key generation, use salt as both password and salt (random)
-	return crypto.DeriveKey(salt, salt), nil
-}

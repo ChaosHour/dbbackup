@@ -189,22 +189,6 @@ func (r *DownloadResult) Cleanup() error {
 	return nil
 }
 
-// calculateSHA256 calculates the SHA-256 checksum of a file
-func calculateSHA256(filePath string) (string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(hash.Sum(nil)), nil
-}
-
 // calculateSHA256WithProgress calculates SHA-256 with visual progress bar
 func calculateSHA256WithProgress(filePath string) (string, error) {
 	file, err := os.Open(filePath)

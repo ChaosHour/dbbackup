@@ -105,13 +105,6 @@ func (e *Engine) SetDatabaseProgressCallback(cb DatabaseProgressCallback) {
 	e.dbProgressCallback = cb
 }
 
-// reportProgress reports progress to the callback if set
-func (e *Engine) reportProgress(current, total int64, description string) {
-	if e.progressCallback != nil {
-		e.progressCallback(current, total, description)
-	}
-}
-
 // reportDatabaseProgress reports database count progress to the callback if set
 func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
 	if e.dbProgressCallback != nil {

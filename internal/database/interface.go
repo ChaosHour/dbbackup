@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
@@ -123,12 +122,4 @@ func (b *baseDatabase) Ping(ctx context.Context) error {
 		return fmt.Errorf("database not connected")
 	}
 	return b.db.PingContext(ctx)
-}
-
-// buildTimeout creates a context with timeout for database operations
-func buildTimeout(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
-	if timeout <= 0 {
-		timeout = 30 * time.Second
-	}
-	return context.WithTimeout(ctx, timeout)
 }

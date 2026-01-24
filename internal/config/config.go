@@ -609,37 +609,6 @@ func getDefaultBackupDir() string {
 	return filepath.Join(os.TempDir(), "db_backups")
 }
 
-// CPU-related helper functions
-func getDefaultJobs(cpuInfo *cpu.CPUInfo) int {
-	if cpuInfo == nil {
-		return 1
-	}
-	// Default to logical cores for restore operations
-	jobs := cpuInfo.LogicalCores
-	if jobs < 1 {
-		jobs = 1
-	}
-	if jobs > 16 {
-		jobs = 16 // Safety limit
-	}
-	return jobs
-}
-
-func getDefaultDumpJobs(cpuInfo *cpu.CPUInfo) int {
-	if cpuInfo == nil {
-		return 1
-	}
-	// Use physical cores for dump operations (CPU intensive)
-	jobs := cpuInfo.PhysicalCores
-	if jobs < 1 {
-		jobs = 1
-	}
-	if jobs > 8 {
-		jobs = 8 // Conservative limit for dumps
-	}
-	return jobs
-}
-
 func getDefaultMaxCores(cpuInfo *cpu.CPUInfo) int {
 	if cpuInfo == nil {
 		return 16

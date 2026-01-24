@@ -5,6 +5,23 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.110] - 2026-01-24
+
+### Improved - Code Quality & Testing
+- **Cleaned up 40+ unused code items** found by staticcheck:
+  - Removed unused functions, variables, struct fields, and type aliases
+  - Fixed SA4006 warning (unused value assignment in restore engine)
+  - All packages now pass staticcheck with zero warnings
+
+- **Added golangci-lint integration** to Makefile:
+  - New `make golangci-lint` target with auto-install
+  - Updated `lint` target to include golangci-lint
+  - Updated `install-tools` to install golangci-lint
+
+- **New unit tests** for improved coverage:
+  - `internal/config/config_test.go` - Tests for config initialization, database types, env helpers
+  - `internal/security/security_test.go` - Tests for checksums, path validation, rate limiting, audit logging
+
 ## [3.42.109] - 2026-01-24
 
 ### Added - Grafana Dashboard & Monitoring Improvements

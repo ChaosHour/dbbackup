@@ -35,7 +35,6 @@ type BackupManagerModel struct {
 	err          error
 	message      string
 	totalSize    int64
-	freeSpace    int64
 	opState      OperationState
 	opTarget     string // Name of archive being operated on
 	spinnerFrame int

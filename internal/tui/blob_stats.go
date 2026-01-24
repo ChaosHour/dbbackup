@@ -45,7 +45,6 @@ type BlobStatsView struct {
 	cursor     int
 	totalBlobs int64
 	totalSize  int64
-	message    string
 }
 
 // NewBlobStatsView creates a new blob statistics view

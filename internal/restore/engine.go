@@ -2242,11 +2242,10 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
 	createCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 
-	var createErr error
-	output, createErr = createCmd.CombinedOutput()
+	createOutput, createErr := createCmd.CombinedOutput()
 	if createErr != nil {
 		// If encoding/locale fails, try simpler CREATE DATABASE
-		e.log.Warn("Database creation with encoding failed, trying simple create", "name", dbName, "error", createErr)
+		e.log.Warn("Database creation with encoding failed, trying simple create", "name", dbName, "error", createErr, "output", string(createOutput))
 
 		simpleArgs := []string{
 			"-p", fmt.Sprintf("%d", e.cfg.Port),
@@ -2479,130 +2478,6 @@ func (e *Engine) quickValidateSQLDump(archivePath string, compressed bool) error
 	}
 
 	e.log.Debug("SQL dump validation passed", "path", archivePath)
-	return nil
-}
-
-// boostLockCapacity checks and reports on max_locks_per_transaction capacity.
-// IMPORTANT: max_locks_per_transaction requires a PostgreSQL RESTART to change!
-// This function now calculates total lock capacity based on max_connections and
-// warns the user if capacity is insufficient for the restore.
-func (e *Engine) boostLockCapacity(ctx context.Context) (int, error) {
-	// Connect to PostgreSQL to run system commands
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
-		e.cfg.Host, e.cfg.Port, e.cfg.User, e.cfg.Password)
-
-	// For localhost, use Unix socket
-	if e.cfg.Host == "localhost" || e.cfg.Host == "" {
-		connStr = fmt.Sprintf("user=%s password=%s dbname=postgres sslmode=disable",
-			e.cfg.User, e.cfg.Password)
-	}
-
-	db, err := sql.Open("pgx", connStr)
-	if err != nil {
-		return 0, fmt.Errorf("failed to connect: %w", err)
-	}
-	defer db.Close()
-
-	// Get current max_locks_per_transaction
-	var currentValue int
-	err = db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&currentValue)
-	if err != nil {
-		// Try parsing as string (some versions return string)
-		var currentValueStr string
-		err = db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&currentValueStr)
-		if err != nil {
-			return 0, fmt.Errorf("failed to get current max_locks_per_transaction: %w", err)
-		}
-		fmt.Sscanf(currentValueStr, "%d", &currentValue)
-	}
-
-	// Get max_connections to calculate total lock capacity
-	var maxConns int
-	if err := db.QueryRowContext(ctx, "SHOW max_connections").Scan(&maxConns); err != nil {
-		maxConns = 100 // default
-	}
-
-	// Get max_prepared_transactions
-	var maxPreparedTxns int
-	if err := db.QueryRowContext(ctx, "SHOW max_prepared_transactions").Scan(&maxPreparedTxns); err != nil {
-		maxPreparedTxns = 0
-	}
-
-	// Calculate total lock table capacity:
-	// Total locks = max_locks_per_transaction × (max_connections + max_prepared_transactions)
-	totalLockCapacity := currentValue * (maxConns + maxPreparedTxns)
-
-	e.log.Info("PostgreSQL lock table capacity",
-		"max_locks_per_transaction", currentValue,
-		"max_connections", maxConns,
-		"max_prepared_transactions", maxPreparedTxns,
-		"total_lock_capacity", totalLockCapacity)
-
-	// Minimum recommended total capacity for BLOB-heavy restores: 200,000 locks
-	minRecommendedCapacity := 200000
-	if totalLockCapacity < minRecommendedCapacity {
-		recommendedMaxLocks := minRecommendedCapacity / (maxConns + maxPreparedTxns)
-		if recommendedMaxLocks < 4096 {
-			recommendedMaxLocks = 4096
-		}
-
-		e.log.Warn("Lock table capacity may be insufficient for BLOB-heavy restores",
-			"current_total_capacity", totalLockCapacity,
-			"recommended_capacity", minRecommendedCapacity,
-			"current_max_locks", currentValue,
-			"recommended_max_locks", recommendedMaxLocks,
-			"note", "max_locks_per_transaction requires PostgreSQL RESTART to change")
-
-		// Write suggested fix to ALTER SYSTEM but warn about restart
-		_, err = db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", recommendedMaxLocks))
-		if err != nil {
-			e.log.Warn("Could not set recommended max_locks_per_transaction (needs superuser)", "error", err)
-		} else {
-			e.log.Warn("Wrote recommended max_locks_per_transaction to postgresql.auto.conf",
-				"value", recommendedMaxLocks,
-				"action", "RESTART PostgreSQL to apply: sudo systemctl restart postgresql")
-		}
-	} else {
-		e.log.Info("Lock table capacity is sufficient",
-			"total_capacity", totalLockCapacity,
-			"max_locks_per_transaction", currentValue)
-	}
-
-	return currentValue, nil
-}
-
-// resetLockCapacity restores the original max_locks_per_transaction value
-func (e *Engine) resetLockCapacity(ctx context.Context, originalValue int) error {
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
-		e.cfg.Host, e.cfg.Port, e.cfg.User, e.cfg.Password)
-
-	if e.cfg.Host == "localhost" || e.cfg.Host == "" {
-		connStr = fmt.Sprintf("user=%s password=%s dbname=postgres sslmode=disable",
-			e.cfg.User, e.cfg.Password)
-	}
-
-	db, err := sql.Open("pgx", connStr)
-	if err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-	defer db.Close()
-
-	// Reset to original value (or use RESET to go back to default)
-	if originalValue == 64 { // Default value
-		_, err = db.ExecContext(ctx, "ALTER SYSTEM RESET max_locks_per_transaction")
-	} else {
-		_, err = db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", originalValue))
-	}
-	if err != nil {
-		return fmt.Errorf("failed to reset max_locks_per_transaction: %w", err)
-	}
-
-	// Reload config
-	_, err = db.ExecContext(ctx, "SELECT pg_reload_conf()")
-	if err != nil {
-		return fmt.Errorf("failed to reload config: %w", err)
-	}
-
 	return nil
 }
 

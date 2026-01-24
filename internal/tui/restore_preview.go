@@ -7,18 +7,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/restore"
-)
-
-var (
-	previewBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
-			Padding(1, 2)
 )
 
 // SafetyCheck represents a pre-restore safety check

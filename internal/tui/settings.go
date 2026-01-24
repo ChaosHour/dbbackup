@@ -17,7 +17,6 @@ import (
 var (
 	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("250")).Padding(1, 2)
 	inputStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	buttonStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("240")).Padding(0, 2)
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("240")).Bold(true)
 	detailStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("244")).Italic(true)
 )
@@ -767,33 +766,6 @@ func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 	}
 
 	m.message = successStyle.Render("[OK] Settings validated and saved")
-	return m, nil
-}
-
-// cycleDatabaseType cycles through database type options
-func (m SettingsModel) cycleDatabaseType() (tea.Model, tea.Cmd) {
-	dbTypes := []string{"postgres", "mysql", "mariadb"}
-
-	// Find current index
-	currentIdx := 0
-	for i, dbType := range dbTypes {
-		if m.config.DatabaseType == dbType {
-			currentIdx = i
-			break
-		}
-	}
-
-	// Cycle to next
-	nextIdx := (currentIdx + 1) % len(dbTypes)
-	newType := dbTypes[nextIdx]
-
-	// Update config
-	if err := m.config.SetDatabaseType(newType); err != nil {
-		m.message = errorStyle.Render(fmt.Sprintf("[FAIL] Failed to set database type: %s", err.Error()))
-		return m, nil
-	}
-
-	m.message = successStyle.Render(fmt.Sprintf("[OK] Database type set to %s", m.config.DisplayDatabaseType()))
 	return m, nil
 }
 

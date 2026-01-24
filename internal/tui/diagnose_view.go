@@ -15,11 +15,6 @@ import (
 )
 
 var (
-	diagnoseBoxStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("63")).
-				Padding(1, 2)
-
 	diagnoseHeaderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("63")).
 				Bold(true)
@@ -412,10 +407,6 @@ func (m DiagnoseViewModel) renderClusterResults() string {
 }
 
 // Helper functions for temp directory management
-func createTempDir(pattern string) (string, error) {
-	return os.MkdirTemp("", pattern)
-}
-
 func createTempDirIn(baseDir, pattern string) (string, error) {
 	if baseDir == "" {
 		return os.MkdirTemp("", pattern)

@@ -168,9 +168,15 @@ func (ec *ErrorCollector) SetExitCode(code int) {
 
 // GenerateReport creates a comprehensive error report
 func (ec *ErrorCollector) GenerateReport(errMessage string, errType string, errHint string) *RestoreErrorReport {
+	// Get version from config, fallback to build default
+	version := "unknown"
+	if ec.cfg != nil && ec.cfg.Version != "" {
+		version = ec.cfg.Version
+	}
+
 	report := &RestoreErrorReport{
 		Timestamp:     time.Now(),
-		Version:       "1.0.0", // TODO: inject actual version
+		Version:       version,
 		GoVersion:     runtime.Version(),
 		OS:            runtime.GOOS,
 		Arch:          runtime.GOARCH,

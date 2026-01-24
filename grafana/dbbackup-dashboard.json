@@ -15,18 +15,33 @@
       }
     ]
   },
+  "description": "Comprehensive monitoring dashboard for DBBackup - tracks backup status, RPO, deduplication, and verification across all database servers.",
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [],
   "liveNow": false,
   "panels": [
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 200,
+      "panels": [],
+      "title": "Backup Overview",
+      "type": "row"
+    },
+    {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Shows SUCCESS if RPO is under 7 days, FAILED otherwise. Green = healthy backup schedule.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -67,9 +82,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 5,
         "x": 0,
-        "y": 0
+        "y": 1
       },
       "id": 1,
       "options": {
@@ -108,6 +123,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Time elapsed since the last successful backup. Green < 12h, Yellow < 24h, Red > 24h.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -137,9 +153,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 0
+        "w": 5,
+        "x": 5,
+        "y": 1
       },
       "id": 2,
       "options": {
@@ -178,6 +194,89 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Whether the most recent backup was verified successfully. 1 = verified and valid.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "orange",
+                  "index": 1,
+                  "text": "NOT VERIFIED"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "VERIFIED"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 10,
+        "y": 1
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "dbbackup_backup_verified{server=~\"$server\"}",
+          "legendFormat": "{{database}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Verification Status",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Total count of successful backup completions.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -198,9 +297,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 0
+        "w": 4,
+        "x": 15,
+        "y": 1
       },
       "id": 3,
       "options": {
@@ -239,6 +338,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Total count of failed backup attempts. Any value > 0 warrants investigation.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -263,9 +363,9 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 0
+        "w": 5,
+        "x": 19,
+        "y": 1
       },
       "id": 4,
       "options": {
@@ -304,6 +404,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Recovery Point Objective over time. Shows how long since the last successful backup. Red line at 24h threshold.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -362,7 +463,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 5
       },
       "id": 5,
       "options": {
@@ -398,6 +499,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Size of each backup over time. Useful for capacity planning and detecting unexpected growth.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -452,7 +554,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 4
+        "y": 5
       },
       "id": 6,
       "options": {
@@ -488,6 +590,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "How long each backup takes. Monitor for trends that may indicate database growth or performance issues.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -542,7 +645,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 12
+        "y": 13
       },
       "id": 7,
       "options": {
@@ -578,6 +681,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Summary table showing current status of all databases with color-coded RPO and backup sizes.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -694,7 +798,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 12
+        "y": 13
       },
       "id": 8,
       "options": {
@@ -792,7 +896,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 21
       },
       "id": 100,
       "panels": [],
@@ -804,6 +908,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Overall deduplication efficiency (0-1). Higher values mean more duplicate data eliminated. 0.5 = 50% space savings.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -827,7 +932,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 31
+        "y": 22
       },
       "id": 101,
       "options": {
@@ -864,6 +969,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Total bytes saved by deduplication across all backups.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -887,7 +993,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 31
+        "y": 22
       },
       "id": 102,
       "options": {
@@ -924,6 +1030,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Actual disk usage of the chunk store after deduplication.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -947,7 +1054,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 31
+        "y": 22
       },
       "id": 103,
       "options": {
@@ -984,6 +1091,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Total number of unique content-addressed chunks in the dedup store.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1007,7 +1115,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 31
+        "y": 22
       },
       "id": 104,
       "options": {
@@ -1044,6 +1152,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Compression ratio achieved (0-1). Higher = better compression of chunk data.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1067,7 +1176,7 @@
         "h": 5,
         "w": 4,
         "x": 0,
-        "y": 36
+        "y": 27
       },
       "id": 107,
       "options": {
@@ -1104,6 +1213,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Timestamp of the oldest chunk - useful for monitoring retention policy.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1127,7 +1237,7 @@
         "h": 5,
         "w": 4,
         "x": 4,
-        "y": 36
+        "y": 27
       },
       "id": 108,
       "options": {
@@ -1164,6 +1274,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Timestamp of the newest chunk - confirms dedup is working on recent backups.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1187,7 +1298,7 @@
         "h": 5,
         "w": 4,
         "x": 8,
-        "y": 36
+        "y": 27
       },
       "id": 109,
       "options": {
@@ -1224,6 +1335,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Per-database deduplication efficiency over time. Compare databases to identify which benefit most from dedup.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1279,7 +1391,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 36
+        "y": 32
       },
       "id": 105,
       "options": {
@@ -1316,6 +1428,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
+      "description": "Storage trends: compare space saved by dedup vs actual disk usage over time.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1371,7 +1484,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 36
+        "y": 32
       },
       "id": 106,
       "options": {
@@ -1421,7 +1534,8 @@
     "dbbackup",
     "backup",
     "database",
-    "dedup"
+    "dedup",
+    "monitoring"
   ],
   "templating": {
     "list": [

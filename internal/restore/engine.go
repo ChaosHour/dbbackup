@@ -1847,12 +1847,12 @@ func (pr *progressReader) Read(p []byte) (n int, err error) {
 	return n, err
 }
 
-// extractArchiveShell extracts using parallel gzip (2-4x faster on multi-core)
+// extractArchiveShell extracts using pgzip (parallel gzip, 2-4x faster on multi-core)
 func (e *Engine) extractArchiveShell(ctx context.Context, archivePath, destDir string) error {
 	// Start heartbeat ticker for extraction progress
 	extractionStart := time.Now()
 
-	e.log.Info("Extracting archive with parallel gzip",
+	e.log.Info("Extracting archive with pgzip (parallel gzip)",
 		"archive", archivePath,
 		"dest", destDir,
 		"method", "pgzip")
@@ -2242,10 +2242,11 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
 	createCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 
-	output, err = createCmd.CombinedOutput()
-	if err != nil {
+	var createErr error
+	output, createErr = createCmd.CombinedOutput()
+	if createErr != nil {
 		// If encoding/locale fails, try simpler CREATE DATABASE
-		e.log.Warn("Database creation with encoding failed, trying simple create", "name", dbName, "error", err)
+		e.log.Warn("Database creation with encoding failed, trying simple create", "name", dbName, "error", createErr)
 
 		simpleArgs := []string{
 			"-p", fmt.Sprintf("%d", e.cfg.Port),

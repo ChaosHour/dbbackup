@@ -281,7 +281,7 @@ Use this when:
 Checks performed:
   - File format detection (custom dump vs SQL)
   - PGDMP signature verification
-  - Gzip integrity validation
+  - Compression integrity validation (pgzip)
   - COPY block termination check
   - pg_restore --list verification
   - Cluster archive structure validation

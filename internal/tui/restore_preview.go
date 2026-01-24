@@ -299,12 +299,12 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.message = infoStyle.Render("[INFO] Cleanup enabled (no databases currently detected)")
 					}
 				} else {
-					m.message = fmt.Sprintf("Clean cluster first: disabled")
+					m.message = "Clean cluster first: disabled"
 				}
 			} else {
 				// Toggle create if missing
 				m.createIfMissing = !m.createIfMissing
-				m.message = fmt.Sprintf("Create if missing: %v", m.createIfMissing)
+				m.message = "Create if missing: " + fmt.Sprintf("%v", m.createIfMissing)
 			}
 
 		case "d":

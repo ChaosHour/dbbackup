@@ -183,9 +183,10 @@ func IsRetryableError(err error) bool {
 	}
 
 	// Network errors are typically retryable
+	// Note: netErr.Temporary() is deprecated since Go 1.18 - most "temporary" errors are timeouts
 	var netErr net.Error
 	if ok := isNetError(err, &netErr); ok {
-		return netErr.Timeout() || netErr.Temporary()
+		return netErr.Timeout()
 	}
 
 	errStr := strings.ToLower(err.Error())

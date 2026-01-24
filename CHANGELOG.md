@@ -5,6 +5,45 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.109] - 2026-01-24
+
+### Added - Grafana Dashboard & Monitoring Improvements
+- **Enhanced Grafana dashboard** with comprehensive improvements:
+  - Added dashboard description for better discoverability
+  - New collapsible "Backup Overview" row for organization
+  - New **Verification Status** panel showing last backup verification state
+  - Added descriptions to all 17 panels for better understanding
+  - Enabled shared crosshair (graphTooltip=1) for correlated analysis
+  - Added "monitoring" tag for dashboard discovery
+
+- **New Prometheus alerting rules** (`grafana/alerting-rules.yaml`):
+  - `DBBackupRPOCritical` - No backup in 24+ hours (critical)
+  - `DBBackupRPOWarning` - No backup in 12+ hours (warning)
+  - `DBBackupFailure` - Backup failures detected
+  - `DBBackupNotVerified` - Backup not verified in 24h
+  - `DBBackupDedupRatioLow` - Dedup ratio below 10%
+  - `DBBackupDedupDiskGrowth` - Rapid storage growth prediction
+  - `DBBackupExporterDown` - Metrics exporter not responding
+  - `DBBackupMetricsStale` - Metrics not updated in 10+ minutes
+  - `DBBackupNeverSucceeded` - Database never backed up successfully
+
+### Changed
+- **Grafana dashboard layout fixes**:
+  - Fixed overlapping dedup panels (y: 31/36 → 22/27/32)
+  - Adjusted top row panel widths for better balance (5+5+5+4+5=24)
+
+- **Added Makefile** for streamlined development workflow:
+  - `make build` - optimized binary with ldflags
+  - `make test`, `make race`, `make cover` - testing targets
+  - `make lint` - runs vet + staticcheck
+  - `make all-platforms` - cross-platform builds
+
+### Fixed
+- Removed deprecated `netErr.Temporary()` call in cloud retry logic (Go 1.18+)
+- Fixed staticcheck warnings for redundant fmt.Sprintf calls
+- Logger optimizations: buffer pooling, early level check, pre-allocated maps
+- Clone engine now validates disk space before operations
+
 ## [3.42.108] - 2026-01-24
 
 ### Added - TUI Tools Expansion

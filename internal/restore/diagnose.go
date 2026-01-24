@@ -854,7 +854,7 @@ func (d *Diagnoser) PrintDiagnosis(result *DiagnoseResult) {
 			fmt.Println("  [+] Has PostgreSQL SQL header")
 		}
 		if result.Details.GzipValid {
-			fmt.Println("  [+] Gzip compression valid")
+			fmt.Println("  [+] Compression valid (pgzip)")
 		}
 		if result.Details.PgRestoreListable {
 			fmt.Printf("  [+] pg_restore can list contents (%d tables)\n", result.Details.TableCount)

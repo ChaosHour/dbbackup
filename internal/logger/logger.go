@@ -1,15 +1,24 @@
 package logger
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
 	"github.com/sirupsen/logrus"
 )
+
+// Buffer pool to reduce allocations in formatter
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
+}
 
 // Color printers for consistent output across the application
 var (
@@ -183,13 +192,24 @@ func (ol *operationLogger) Fail(msg string, args ...any) {
 }
 
 // logWithFields forwards log messages with structured fields to logrus
+// Includes early exit for disabled levels to avoid allocation overhead
 func (l *logger) logWithFields(level logrus.Level, msg string, args ...any) {
 	if l == nil || l.logrus == nil {
 		return
 	}
 
+	// Early exit if level is disabled - avoids field allocation overhead
+	if !l.logrus.IsLevelEnabled(level) {
+		return
+	}
+
 	fields := fieldsFromArgs(args...)
-	entry := l.logrus.WithFields(fields)
+	var entry *logrus.Entry
+	if fields != nil {
+		entry = l.logrus.WithFields(fields)
+	} else {
+		entry = logrus.NewEntry(l.logrus)
+	}
 
 	switch level {
 	case logrus.DebugLevel:
@@ -204,8 +224,14 @@ func (l *logger) logWithFields(level logrus.Level, msg string, args ...any) {
 }
 
 // fieldsFromArgs converts variadic key/value pairs into logrus fields
+// Pre-allocates the map with estimated capacity to reduce allocations
 func fieldsFromArgs(args ...any) logrus.Fields {
-	fields := logrus.Fields{}
+	if len(args) == 0 {
+		return nil // Return nil instead of empty map for zero allocation
+	}
+
+	// Pre-allocate with estimated size (args come in pairs)
+	fields := make(logrus.Fields, len(args)/2+1)
 
 	for i := 0; i < len(args); {
 		if i+1 < len(args) {
@@ -240,74 +266,83 @@ func formatDuration(d time.Duration) string {
 }
 
 // CleanFormatter formats log entries in a clean, human-readable format
-type CleanFormatter struct{}
+// Uses buffer pooling to reduce allocations
+type CleanFormatter struct {
+	// Pre-computed colored level strings (initialized once)
+	levelStrings     map[logrus.Level]string
+	levelStringsOnce sync.Once
+}
 
-// Format implements logrus.Formatter interface
+// Pre-compute level strings with colors to avoid repeated color.Sprint calls
+func (f *CleanFormatter) getLevelStrings() map[logrus.Level]string {
+	f.levelStringsOnce.Do(func() {
+		f.levelStrings = map[logrus.Level]string{
+			logrus.DebugLevel: DebugColor.Sprint("DEBUG"),
+			logrus.InfoLevel:  SuccessColor.Sprint("INFO "),
+			logrus.WarnLevel:  WarnColor.Sprint("WARN "),
+			logrus.ErrorLevel: ErrorColor.Sprint("ERROR"),
+			logrus.FatalLevel: ErrorColor.Sprint("FATAL"),
+			logrus.PanicLevel: ErrorColor.Sprint("PANIC"),
+			logrus.TraceLevel: DebugColor.Sprint("TRACE"),
+		}
+	})
+	return f.levelStrings
+}
+
+// Format implements logrus.Formatter interface with optimized allocations
 func (f *CleanFormatter) Format(entry *logrus.Entry) ([]byte, error) {
+	// Get buffer from pool
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufferPool.Put(buf)
+
+	// Pre-format timestamp (avoid repeated formatting)
 	timestamp := entry.Time.Format("2006-01-02T15:04:05")
 
-	// Get level color and text using fatih/color
-	var levelPrinter *color.Color
-	var levelText string
-	switch entry.Level {
-	case logrus.DebugLevel:
-		levelPrinter = DebugColor
-		levelText = "DEBUG"
-	case logrus.InfoLevel:
-		levelPrinter = SuccessColor
-		levelText = "INFO "
-	case logrus.WarnLevel:
-		levelPrinter = WarnColor
-		levelText = "WARN "
-	case logrus.ErrorLevel:
-		levelPrinter = ErrorColor
-		levelText = "ERROR"
-	default:
-		levelPrinter = InfoColor
-		levelText = "INFO "
+	// Get pre-computed colored level string
+	levelStrings := f.getLevelStrings()
+	levelText, ok := levelStrings[entry.Level]
+	if !ok {
+		levelText = levelStrings[logrus.InfoLevel]
 	}
 
-	// Build the message with perfectly aligned columns
-	var output strings.Builder
-
-	// Column 1: Level (with color, fixed width 5 chars)
-	output.WriteString(levelPrinter.Sprint(levelText))
-	output.WriteString(" ")
-
-	// Column 2: Timestamp (fixed format)
-	output.WriteString("[")
-	output.WriteString(timestamp)
-	output.WriteString("] ")
-
-	// Column 3: Message
-	output.WriteString(entry.Message)
+	// Build output directly into pooled buffer
+	buf.WriteString(levelText)
+	buf.WriteByte(' ')
+	buf.WriteByte('[')
+	buf.WriteString(timestamp)
+	buf.WriteString("] ")
+	buf.WriteString(entry.Message)
 
 	// Append important fields in a clean format (skip internal/redundant fields)
 	if len(entry.Data) > 0 {
-		// Only show truly important fields, skip verbose ones
 		for k, v := range entry.Data {
 			// Skip noisy internal fields and redundant message field
-			if k == "elapsed" || k == "operation_id" || k == "step" || k == "timestamp" || k == "message" {
+			switch k {
+			case "elapsed", "operation_id", "step", "timestamp", "message":
 				continue
-			}
-
-			// Format duration nicely at the end
-			if k == "duration" {
+			case "duration":
 				if str, ok := v.(string); ok {
-					output.WriteString(fmt.Sprintf(" (%s)", str))
+					buf.WriteString(" (")
+					buf.WriteString(str)
+					buf.WriteByte(')')
 				}
 				continue
-			}
-
-			// Only show critical fields (driver, errors, etc)
-			if k == "driver" || k == "max_conns" || k == "error" || k == "database" {
-				output.WriteString(fmt.Sprintf(" %s=%v", k, v))
+			case "driver", "max_conns", "error", "database":
+				buf.WriteByte(' ')
+				buf.WriteString(k)
+				buf.WriteByte('=')
+				fmt.Fprint(buf, v)
 			}
 		}
 	}
 
-	output.WriteString("\n")
-	return []byte(output.String()), nil
+	buf.WriteByte('\n')
+
+	// Return a copy since we're returning the buffer to the pool
+	result := make([]byte, buf.Len())
+	copy(result, buf.Bytes())
+	return result, nil
 }
 
 // FileLogger creates a logger that writes to both stdout and a file

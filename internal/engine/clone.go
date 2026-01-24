@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/checks"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
@@ -575,8 +576,18 @@ func (e *CloneEngine) getCloneStatus(ctx context.Context) (*CloneStatus, error) 
 func (e *CloneEngine) validatePrerequisites(ctx context.Context) ([]string, error) {
 	var warnings []string
 
-	// Check disk space
-	// TODO: Implement disk space check
+	// Check disk space on target directory
+	if e.config.DataDirectory != "" {
+		diskCheck := checks.CheckDiskSpace(e.config.DataDirectory)
+		if diskCheck.Critical {
+			return nil, fmt.Errorf("insufficient disk space on %s: only %.1f%% available (%.2f GB free)",
+				e.config.DataDirectory, 100-diskCheck.UsedPercent, float64(diskCheck.AvailableBytes)/(1024*1024*1024))
+		}
+		if diskCheck.Warning {
+			warnings = append(warnings, fmt.Sprintf("low disk space on %s: %.1f%% used (%.2f GB free)",
+				e.config.DataDirectory, diskCheck.UsedPercent, float64(diskCheck.AvailableBytes)/(1024*1024*1024)))
+		}
+	}
 
 	// Check that we're not cloning to same directory as source
 	var datadir string

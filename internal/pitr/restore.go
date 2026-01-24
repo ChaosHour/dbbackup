@@ -229,9 +229,9 @@ func (ro *RestoreOrchestrator) extractBaseBackup(ctx context.Context, opts *Rest
 	return fmt.Errorf("unsupported backup format: %s (expected .tar.gz, .tar, or directory)", backupPath)
 }
 
-// extractTarGzBackup extracts a .tar.gz backup using parallel gzip
+// extractTarGzBackup extracts a .tar.gz backup using parallel gzip (pgzip)
 func (ro *RestoreOrchestrator) extractTarGzBackup(ctx context.Context, source, dest string) error {
-	ro.log.Info("Extracting tar.gz backup with parallel gzip...")
+	ro.log.Info("Extracting tar.gz backup with pgzip (parallel gzip)...")
 
 	// Use parallel extraction (2-4x faster on multi-core)
 	err := fs.ExtractTarGzParallel(ctx, source, dest, func(progress fs.ExtractProgress) {

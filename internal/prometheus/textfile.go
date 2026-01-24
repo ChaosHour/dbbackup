@@ -32,16 +32,16 @@ func NewMetricsWriter(log logger.Logger, cat catalog.Catalog, instance string) *
 
 // BackupMetrics holds metrics for a single database
 type BackupMetrics struct {
-	Database      string
-	Engine        string
-	LastSuccess   time.Time
-	LastDuration  time.Duration
-	LastSize      int64
-	TotalBackups  int
-	SuccessCount  int
-	FailureCount  int
-	Verified      bool
-	RPOSeconds    float64
+	Database     string
+	Engine       string
+	LastSuccess  time.Time
+	LastDuration time.Duration
+	LastSize     int64
+	TotalBackups int
+	SuccessCount int
+	FailureCount int
+	Verified     bool
+	RPOSeconds   float64
 }
 
 // WriteTextfile writes metrics to a Prometheus textfile collector file

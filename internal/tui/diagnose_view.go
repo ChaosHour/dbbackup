@@ -228,7 +228,7 @@ func (m DiagnoseViewModel) renderSingleResult(result *restore.DiagnoseResult) st
 		}
 
 		if result.Details.GzipValid {
-			s.WriteString(CheckPassedStyle.Render("  [+]") + " Gzip compression valid\n")
+			s.WriteString(CheckPassedStyle.Render("  [+]") + " Compression valid (pgzip)\n")
 		}
 
 		if result.Details.PgRestoreListable {

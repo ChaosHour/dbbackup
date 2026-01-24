@@ -293,7 +293,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			currentDBs, err := safety.ListUserDatabases(ctx)
 			if err != nil {
 				log.Warn("Failed to list databases for cleanup, using preview list", "error", err)
-				currentDBs = existingDBs // Fall back to preview list
+				// Keep using existingDBs from preview
 			} else if len(currentDBs) > 0 {
 				log.Info("Re-detected user databases for cleanup", "count", len(currentDBs), "databases", currentDBs)
 				existingDBs = currentDBs // Update with fresh list
@@ -726,7 +726,7 @@ func (m RestoreExecutionModel) View() string {
 
 			// Restore type specific info
 			if m.restoreType == "restore-cluster" {
-				s.WriteString(fmt.Sprintf("    Type:          Cluster Restore\n"))
+				s.WriteString("    Type:          Cluster Restore\n")
 				if m.dbTotal > 0 {
 					s.WriteString(fmt.Sprintf("    Databases:     %d restored\n", m.dbTotal))
 				}
@@ -734,7 +734,7 @@ func (m RestoreExecutionModel) View() string {
 					s.WriteString(fmt.Sprintf("    Cleaned:       %d existing database(s) dropped\n", len(m.existingDBs)))
 				}
 			} else {
-				s.WriteString(fmt.Sprintf("    Type:          Single Database Restore\n"))
+				s.WriteString("    Type:          Single Database Restore\n")
 				s.WriteString(fmt.Sprintf("    Target DB:     %s\n", m.targetDB))
 			}
 

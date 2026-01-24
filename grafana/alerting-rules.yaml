@@ -1,0 +1,136 @@
+# DBBackup Prometheus Alerting Rules
+# Deploy these to your Prometheus server or use Grafana Alerting
+#
+# Usage with Prometheus:
+#   Add to prometheus.yml:
+#     rule_files:
+#       - /path/to/alerting-rules.yaml
+#
+# Usage with Grafana Alerting:
+#   Import these as Grafana alert rules via the UI or provisioning
+
+groups:
+  - name: dbbackup_alerts
+    interval: 1m
+    rules:
+      # Critical: No backup in 24 hours
+      - alert: DBBackupRPOCritical
+        expr: dbbackup_rpo_seconds > 86400
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No backup for {{ $labels.database }} in 24+ hours"
+          description: |
+            Database {{ $labels.database }} on {{ $labels.server }} has not been
+            backed up in {{ $value | humanizeDuration }}. This exceeds the 24-hour
+            RPO threshold. Immediate investigation required.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#rpo-critical"
+
+      # Warning: No backup in 12 hours
+      - alert: DBBackupRPOWarning
+        expr: dbbackup_rpo_seconds > 43200 and dbbackup_rpo_seconds <= 86400
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No backup for {{ $labels.database }} in 12+ hours"
+          description: |
+            Database {{ $labels.database }} on {{ $labels.server }} has not been
+            backed up in {{ $value | humanizeDuration }}. Check backup schedule.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#rpo-warning"
+
+      # Critical: Backup failures detected
+      - alert: DBBackupFailure
+        expr: increase(dbbackup_backup_total{status="failure"}[1h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backup failure detected for {{ $labels.database }}"
+          description: |
+            One or more backup attempts failed for {{ $labels.database }} on
+            {{ $labels.server }} in the last hour. Check logs for details.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#backup-failure"
+
+      # Warning: Backup not verified
+      - alert: DBBackupNotVerified
+        expr: dbbackup_backup_verified == 0
+        for: 24h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup for {{ $labels.database }} not verified"
+          description: |
+            The latest backup for {{ $labels.database }} on {{ $labels.server }}
+            has not been verified. Consider running verification to ensure
+            backup integrity.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#verification"
+
+      # Warning: Dedup ratio dropping
+      - alert: DBBackupDedupRatioLow
+        expr: dbbackup_dedup_ratio < 0.1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low deduplication ratio on {{ $labels.server }}"
+          description: |
+            Deduplication ratio on {{ $labels.server }} is {{ $value | printf "%.1f%%" }}.
+            This may indicate changes in data patterns or dedup configuration issues.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#dedup-low"
+
+      # Warning: Dedup disk usage growing rapidly
+      - alert: DBBackupDedupDiskGrowth
+        expr: |
+          predict_linear(dbbackup_dedup_disk_usage_bytes[7d], 30*24*3600) > 
+          (dbbackup_dedup_disk_usage_bytes * 2)
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rapid dedup storage growth on {{ $labels.server }}"
+          description: |
+            Dedup storage on {{ $labels.server }} is growing rapidly.
+            At current rate, usage will double in 30 days.
+            Current usage: {{ $value | humanize1024 }}B
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#storage-growth"
+
+      # Info: Exporter not responding
+      - alert: DBBackupExporterDown
+        expr: up{job="dbbackup"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DBBackup exporter is down on {{ $labels.instance }}"
+          description: |
+            The DBBackup Prometheus exporter on {{ $labels.instance }} is not
+            responding. Metrics collection is affected.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#exporter-down"
+
+      # Info: Metrics stale (scrape timestamp old)
+      - alert: DBBackupMetricsStale
+        expr: time() - dbbackup_scrape_timestamp > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DBBackup metrics are stale on {{ $labels.server }}"
+          description: |
+            Metrics for {{ $labels.server }} haven't been updated in
+            {{ $value | humanizeDuration }}. The exporter may be having issues.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#metrics-stale"
+
+      # Critical: No successful backups ever
+      - alert: DBBackupNeverSucceeded
+        expr: dbbackup_backup_total{status="success"} == 0
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "No successful backups for {{ $labels.database }}"
+          description: |
+            Database {{ $labels.database }} on {{ $labels.server }} has never
+            had a successful backup. This requires immediate attention.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#never-succeeded"

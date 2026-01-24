@@ -434,8 +434,8 @@ func runRestore(ctx context.Context, archiveName string) error {
 		fmt.Printf("   Command: pg_restore -h %s -p %d -U %s -d %s --verbose %s\n",
 			cfg.Host, cfg.Port, cfg.User, cfg.Database, archivePath)
 	case "Single Database (.dump.gz)":
-		fmt.Println("[EXEC] Would execute: gunzip and pg_restore to restore single database")
-		fmt.Printf("   Command: gunzip -c %s | pg_restore -h %s -p %d -U %s -d %s --verbose\n",
+		fmt.Println("[EXEC] Would execute: decompress (pgzip in-process) and pg_restore to restore single database")
+		fmt.Printf("   Equivalent: pgzip -dc %s | pg_restore -h %s -p %d -U %s -d %s --verbose\n",
 			archivePath, cfg.Host, cfg.Port, cfg.User, cfg.Database)
 	case "SQL Script (.sql)":
 		if cfg.IsPostgreSQL() {
@@ -450,19 +450,19 @@ func runRestore(ctx context.Context, archiveName string) error {
 		}
 	case "SQL Script (.sql.gz)":
 		if cfg.IsPostgreSQL() {
-			fmt.Println("[EXEC] Would execute: gunzip and psql to run SQL script")
-			fmt.Printf("   Command: gunzip -c %s | psql -h %s -p %d -U %s -d %s\n",
+			fmt.Println("[EXEC] Would execute: decompress (pgzip in-process) and psql to run SQL script")
+			fmt.Printf("   Equivalent: pgzip -dc %s | psql -h %s -p %d -U %s -d %s\n",
 				archivePath, cfg.Host, cfg.Port, cfg.User, cfg.Database)
 		} else if cfg.IsMySQL() {
-			fmt.Println("[EXEC] Would execute: gunzip and mysql to run SQL script")
+			fmt.Println("[EXEC] Would execute: decompress (pgzip in-process) and mysql to run SQL script")
 			fmt.Printf("   Command: %s\n", mysqlRestoreCommand(archivePath, true))
 		} else {
-			fmt.Println("[EXEC] Would execute: gunzip and SQL client to run script (database type unknown)")
+			fmt.Println("[EXEC] Would execute: decompress (pgzip in-process) and SQL client to run script (database type unknown)")
 		}
 	case "Cluster Backup (.tar.gz)":
 		fmt.Println("[EXEC] Would execute: Extract and restore cluster backup")
 		fmt.Println("   Steps:")
-		fmt.Println("   1. Extract tar.gz archive")
+		fmt.Println("   1. Extract tar.gz archive (pgzip in-process)")
 		fmt.Println("   2. Restore global objects (roles, tablespaces)")
 		fmt.Println("   3. Restore individual databases")
 	default:
@@ -800,7 +800,7 @@ func mysqlRestoreCommand(archivePath string, compressed bool) string {
 	command := strings.Join(parts, " ")
 
 	if compressed {
-		return fmt.Sprintf("gunzip -c %s | %s", archivePath, command)
+		return fmt.Sprintf("pgzip -dc %s | %s", archivePath, command)
 	}
 
 	return fmt.Sprintf("%s < %s", command, archivePath)

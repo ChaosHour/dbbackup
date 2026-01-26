@@ -58,13 +58,13 @@ var singleCmd = &cobra.Command{
 
 Backup Types:
   --backup-type full         - Complete full backup (default)
-  --backup-type incremental  - Incremental backup (only changed files since base) [NOT IMPLEMENTED]
+  --backup-type incremental  - Incremental backup (only changed files since base)
 
 Examples:
   # Full backup (default)
   dbbackup backup single mydb
   
-  # Incremental backup (requires previous full backup) [COMING IN v2.2.1]
+  # Incremental backup (requires previous full backup)
   dbbackup backup single mydb --backup-type incremental --base-backup mydb_20250126.tar.gz`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -114,7 +114,7 @@ func init() {
 	backupCmd.AddCommand(sampleCmd)
 
 	// Incremental backup flags (single backup only) - using global vars to avoid initialization cycle
-	singleCmd.Flags().StringVar(&backupTypeFlag, "backup-type", "full", "Backup type: full or incremental [incremental NOT IMPLEMENTED]")
+	singleCmd.Flags().StringVar(&backupTypeFlag, "backup-type", "full", "Backup type: full or incremental")
 	singleCmd.Flags().StringVar(&baseBackupFlag, "base-backup", "", "Path to base backup (required for incremental)")
 
 	// Encryption flags for all backup commands

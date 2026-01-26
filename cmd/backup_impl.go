@@ -12,6 +12,7 @@ import (
 	"dbbackup/internal/checks"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/notify"
 	"dbbackup/internal/security"
 )
 
@@ -57,6 +58,17 @@ func runClusterBackup(ctx context.Context) error {
 	user := security.GetCurrentUser()
 	auditLogger.LogBackupStart(user, "all_databases", "cluster")
 
+	// Track start time for notifications
+	backupStartTime := time.Now()
+
+	// Notify: backup started
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventBackupStarted, notify.SeverityInfo, "Cluster backup started").
+			WithDatabase("all_databases").
+			WithDetail("host", cfg.Host).
+			WithDetail("backup_dir", cfg.BackupDir))
+	}
+
 	// Rate limit connection attempts
 	host := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	if err := rateLimiter.CheckAndWait(host); err != nil {
@@ -86,6 +98,13 @@ func runClusterBackup(ctx context.Context) error {
 	// Perform cluster backup
 	if err := engine.BackupCluster(ctx); err != nil {
 		auditLogger.LogBackupFailed(user, "all_databases", err)
+		// Notify: backup failed
+		if notifyManager != nil {
+			notifyManager.Notify(notify.NewEvent(notify.EventBackupFailed, notify.SeverityError, "Cluster backup failed").
+				WithDatabase("all_databases").
+				WithError(err).
+				WithDuration(time.Since(backupStartTime)))
+		}
 		return err
 	}
 
@@ -93,6 +112,13 @@ func runClusterBackup(ctx context.Context) error {
 	if isEncryptionEnabled() {
 		if err := encryptLatestClusterBackup(); err != nil {
 			log.Error("Failed to encrypt backup", "error", err)
+			// Notify: encryption failed
+			if notifyManager != nil {
+				notifyManager.Notify(notify.NewEvent(notify.EventBackupFailed, notify.SeverityError, "Backup encryption failed").
+					WithDatabase("all_databases").
+					WithError(err).
+					WithDuration(time.Since(backupStartTime)))
+			}
 			return fmt.Errorf("backup completed successfully but encryption failed. Unencrypted backup remains in %s: %w", cfg.BackupDir, err)
 		}
 		log.Info("Cluster backup encrypted successfully")
@@ -100,6 +126,14 @@ func runClusterBackup(ctx context.Context) error {
 
 	// Audit log: backup success
 	auditLogger.LogBackupComplete(user, "all_databases", cfg.BackupDir, 0)
+
+	// Notify: backup completed
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventBackupCompleted, notify.SeveritySuccess, "Cluster backup completed successfully").
+			WithDatabase("all_databases").
+			WithDuration(time.Since(backupStartTime)).
+			WithDetail("backup_dir", cfg.BackupDir))
+	}
 
 	// Cleanup old backups if retention policy is enabled
 	if cfg.RetentionDays > 0 {
@@ -144,10 +178,9 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		return runBackupPreflight(ctx, databaseName)
 	}
 
-	// Get backup type and base backup from command line flags (set via global vars in PreRunE)
-	// These are populated by cobra flag binding in cmd/backup.go
-	backupType := "full" // Default to full backup if not specified
-	baseBackup := ""     // Base backup path for incremental backups
+	// Get backup type and base backup from command line flags
+	backupType := backupTypeFlag
+	baseBackup := baseBackupFlag
 
 	// Validate backup type
 	if backupType != "full" && backupType != "incremental" {
@@ -189,6 +222,17 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Audit log: backup start
 	user := security.GetCurrentUser()
 	auditLogger.LogBackupStart(user, databaseName, "single")
+
+	// Track start time for notifications
+	backupStartTime := time.Now()
+
+	// Notify: backup started
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventBackupStarted, notify.SeverityInfo, "Database backup started").
+			WithDatabase(databaseName).
+			WithDetail("host", cfg.Host).
+			WithDetail("backup_type", backupType))
+	}
 
 	// Rate limit connection attempts
 	host := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -272,6 +316,13 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 
 	if backupErr != nil {
 		auditLogger.LogBackupFailed(user, databaseName, backupErr)
+		// Notify: backup failed
+		if notifyManager != nil {
+			notifyManager.Notify(notify.NewEvent(notify.EventBackupFailed, notify.SeverityError, "Database backup failed").
+				WithDatabase(databaseName).
+				WithError(backupErr).
+				WithDuration(time.Since(backupStartTime)))
+		}
 		return backupErr
 	}
 
@@ -279,6 +330,13 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	if isEncryptionEnabled() {
 		if err := encryptLatestBackup(databaseName); err != nil {
 			log.Error("Failed to encrypt backup", "error", err)
+			// Notify: encryption failed
+			if notifyManager != nil {
+				notifyManager.Notify(notify.NewEvent(notify.EventBackupFailed, notify.SeverityError, "Backup encryption failed").
+					WithDatabase(databaseName).
+					WithError(err).
+					WithDuration(time.Since(backupStartTime)))
+			}
 			return fmt.Errorf("backup succeeded but encryption failed: %w", err)
 		}
 		log.Info("Backup encrypted successfully")
@@ -286,6 +344,15 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 
 	// Audit log: backup success
 	auditLogger.LogBackupComplete(user, databaseName, cfg.BackupDir, 0)
+
+	// Notify: backup completed
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventBackupCompleted, notify.SeveritySuccess, "Database backup completed successfully").
+			WithDatabase(databaseName).
+			WithDuration(time.Since(backupStartTime)).
+			WithDetail("backup_dir", cfg.BackupDir).
+			WithDetail("backup_type", backupType))
+	}
 
 	// Cleanup old backups if retention policy is enabled
 	if cfg.RetentionDays > 0 {

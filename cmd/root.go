@@ -6,6 +6,7 @@ import (
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/notify"
 	"dbbackup/internal/security"
 
 	"github.com/spf13/cobra"
@@ -13,10 +14,11 @@ import (
 )
 
 var (
-	cfg         *config.Config
-	log         logger.Logger
-	auditLogger *security.AuditLogger
-	rateLimiter *security.RateLimiter
+	cfg           *config.Config
+	log           logger.Logger
+	auditLogger   *security.AuditLogger
+	rateLimiter   *security.RateLimiter
+	notifyManager *notify.Manager
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -119,6 +121,13 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 
 	// Initialize rate limiter
 	rateLimiter = security.NewRateLimiter(config.MaxRetries, logger)
+
+	// Initialize notification manager from environment variables
+	notifyCfg := notify.ConfigFromEnv()
+	notifyManager = notify.NewManager(notifyCfg)
+	if notifyManager.HasEnabledNotifiers() {
+		logger.Info("Notifications enabled", "smtp", notifyCfg.SMTPEnabled, "webhook", notifyCfg.WebhookEnabled)
+	}
 
 	// Set version info
 	rootCmd.Version = fmt.Sprintf("%s (built: %s, commit: %s)",

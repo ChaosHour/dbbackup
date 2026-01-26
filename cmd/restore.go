@@ -15,6 +15,7 @@ import (
 	"dbbackup/internal/cloud"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/notify"
 	"dbbackup/internal/pitr"
 	"dbbackup/internal/progress"
 	"dbbackup/internal/restore"
@@ -696,13 +697,35 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	startTime := time.Now()
 	auditLogger.LogRestoreStart(user, targetDB, archivePath)
 
+	// Notify: restore started
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventRestoreStarted, notify.SeverityInfo, "Database restore started").
+			WithDatabase(targetDB).
+			WithDetail("archive", filepath.Base(archivePath)))
+	}
+
 	if err := engine.RestoreSingle(ctx, archivePath, targetDB, restoreClean, restoreCreate); err != nil {
 		auditLogger.LogRestoreFailed(user, targetDB, err)
+		// Notify: restore failed
+		if notifyManager != nil {
+			notifyManager.Notify(notify.NewEvent(notify.EventRestoreFailed, notify.SeverityError, "Database restore failed").
+				WithDatabase(targetDB).
+				WithError(err).
+				WithDuration(time.Since(startTime)))
+		}
 		return fmt.Errorf("restore failed: %w", err)
 	}
 
 	// Audit log: restore success
 	auditLogger.LogRestoreComplete(user, targetDB, time.Since(startTime))
+
+	// Notify: restore completed
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventRestoreCompleted, notify.SeveritySuccess, "Database restore completed successfully").
+			WithDatabase(targetDB).
+			WithDuration(time.Since(startTime)).
+			WithDetail("archive", filepath.Base(archivePath)))
+	}
 
 	log.Info("[OK] Restore completed successfully", "database", targetDB)
 	return nil
@@ -1195,14 +1218,35 @@ func runFullClusterRestore(archivePath string) error {
 	startTime := time.Now()
 	auditLogger.LogRestoreStart(user, "all_databases", archivePath)
 
+	// Notify: restore started
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventRestoreStarted, notify.SeverityInfo, "Cluster restore started").
+			WithDatabase("all_databases").
+			WithDetail("archive", filepath.Base(archivePath)))
+	}
+
 	// Pass pre-extracted directory to avoid double extraction
 	if err := engine.RestoreCluster(ctx, archivePath, extractedDir); err != nil {
 		auditLogger.LogRestoreFailed(user, "all_databases", err)
+		// Notify: restore failed
+		if notifyManager != nil {
+			notifyManager.Notify(notify.NewEvent(notify.EventRestoreFailed, notify.SeverityError, "Cluster restore failed").
+				WithDatabase("all_databases").
+				WithError(err).
+				WithDuration(time.Since(startTime)))
+		}
 		return fmt.Errorf("cluster restore failed: %w", err)
 	}
 
 	// Audit log: restore success
 	auditLogger.LogRestoreComplete(user, "all_databases", time.Since(startTime))
+
+	// Notify: restore completed
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventRestoreCompleted, notify.SeveritySuccess, "Cluster restore completed successfully").
+			WithDatabase("all_databases").
+			WithDuration(time.Since(startTime)))
+	}
 
 	log.Info("[OK] Cluster restore completed successfully")
 	return nil

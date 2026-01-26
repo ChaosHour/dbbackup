@@ -18,14 +18,17 @@ This document provides complete reference for the DBBackup Prometheus exporter, 
 ### Start the Metrics Server
 
 ```bash
-# Start HTTP exporter on default port 9399
+# Start HTTP exporter on default port 9399 (auto-detects hostname for server label)
 dbbackup metrics serve
 
 # Custom port
 dbbackup metrics serve --port 9100
 
-# Specify server name for labels
+# Specify server name for labels (overrides auto-detection)
 dbbackup metrics serve --server production-db-01
+
+# Specify custom catalog database location
+dbbackup metrics serve --catalog-db /path/to/catalog.db
 ```
 
 ### Export to Textfile (for node_exporter)
@@ -36,6 +39,9 @@ dbbackup metrics export
 
 # Custom output path
 dbbackup metrics export --output /var/lib/node_exporter/textfile_collector/dbbackup.prom
+
+# Specify catalog database and server name
+dbbackup metrics export --catalog-db /root/.dbbackup/catalog.db --server myhost
 ```
 
 ### Install as Systemd Service
@@ -64,16 +70,32 @@ Runs a standalone HTTP server exposing metrics for direct Prometheus scraping.
 
 **Default Port:** 9399
 
+**Server Label:** Auto-detected from hostname (use `--server` to override)
+
+**Catalog Location:** `~/.dbbackup/catalog.db` (use `--catalog-db` to override)
+
 **Configuration:**
 ```bash
-dbbackup metrics serve --server <instance-name> --port <port>
+dbbackup metrics serve [--server <instance-name>] [--port <port>] [--catalog-db <path>]
 ```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--server` | hostname | Server label for metrics (auto-detected if not set) |
+| `--port` | 9399 | HTTP server port |
+| `--catalog-db` | ~/.dbbackup/catalog.db | Path to catalog SQLite database |
 
 ### Textfile Mode (`metrics export`)
 
 Writes metrics to a file for collection by node_exporter's textfile collector.
 
 **Default Path:** `/var/lib/dbbackup/metrics/dbbackup.prom`
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--server` | hostname | Server label for metrics (auto-detected if not set) |
+| `--output` | /var/lib/dbbackup/metrics/dbbackup.prom | Output file path |
+| `--catalog-db` | ~/.dbbackup/catalog.db | Path to catalog SQLite database |
 
 **node_exporter Configuration:**
 ```bash
@@ -123,6 +145,9 @@ All metrics use the `dbbackup_` prefix. Below is the **validated** list of metri
 | `dbbackup_dedup_database_last_backup_timestamp` | gauge | `server`, `database` | Last backup timestamp per database |
 | `dbbackup_dedup_database_total_bytes` | gauge | `server`, `database` | Total logical size per database |
 | `dbbackup_dedup_database_stored_bytes` | gauge | `server`, `database` | Stored bytes per database (after dedup) |
+| `dbbackup_rpo_seconds` | gauge | `server`, `database` | Seconds since last backup (same as regular backups for unified alerting) |
+
+> **Note:** The `dbbackup_rpo_seconds` metric is exported by both regular backups and dedup backups, enabling unified alerting without complex PromQL expressions.
 
 ---
 
@@ -339,6 +364,21 @@ dbbackup dedup status
 
 The exporter caches metrics for 30 seconds. The `/health` endpoint can confirm the exporter is running.
 
+### Stale or Empty Metrics (Catalog Location Mismatch)
+
+If the exporter shows stale or no backup data, verify the catalog database location:
+
+```bash
+# Check where catalog sync writes
+dbbackup catalog sync /path/to/backups
+# Output shows: [STATS] Catalog database: /root/.dbbackup/catalog.db
+
+# Ensure exporter reads from the same location
+dbbackup metrics serve --catalog-db /root/.dbbackup/catalog.db
+```
+
+**Common Issue:** If backup scripts run as root but the exporter runs as a different user, they may use different catalog locations. Use `--catalog-db` to ensure consistency.
+
 ### Dashboard Shows "No Data"
 
 1. Verify Prometheus is scraping successfully:
@@ -357,9 +397,11 @@ The exporter caches metrics for 30 seconds. The `/health` endpoint can confirm t
 
 Ensure the `--server` flag matches across all instances:
 ```bash
-# Consistent naming
+# Consistent naming (or let it auto-detect from hostname)
 dbbackup metrics serve --server prod-db-01
 ```
+
+> **Note:** As of v3.x, the exporter auto-detects hostname if `--server` is not specified. This ensures unique server labels in multi-host deployments.
 
 ---
 

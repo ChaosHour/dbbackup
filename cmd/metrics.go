@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
+	"dbbackup/internal/catalog"
 	"dbbackup/internal/prometheus"
 
 	"github.com/spf13/cobra"
@@ -84,37 +86,56 @@ Endpoints:
 	},
 }
 
+var metricsCatalogDB string
+
 func init() {
 	rootCmd.AddCommand(metricsCmd)
 	metricsCmd.AddCommand(metricsExportCmd)
 	metricsCmd.AddCommand(metricsServeCmd)
 
+	// Default catalog path (same as catalog command)
+	home, _ := os.UserHomeDir()
+	defaultCatalogPath := filepath.Join(home, ".dbbackup", "catalog.db")
+
 	// Export flags
-	metricsExportCmd.Flags().StringVar(&metricsServer, "server", "default", "Server name for metrics labels")
+	metricsExportCmd.Flags().StringVar(&metricsServer, "server", "", "Server name for metrics labels (default: hostname)")
 	metricsExportCmd.Flags().StringVarP(&metricsOutput, "output", "o", "/var/lib/dbbackup/metrics/dbbackup.prom", "Output file path")
+	metricsExportCmd.Flags().StringVar(&metricsCatalogDB, "catalog-db", defaultCatalogPath, "Path to catalog SQLite database")
 
 	// Serve flags
-	metricsServeCmd.Flags().StringVar(&metricsServer, "server", "default", "Server name for metrics labels")
+	metricsServeCmd.Flags().StringVar(&metricsServer, "server", "", "Server name for metrics labels (default: hostname)")
 	metricsServeCmd.Flags().IntVarP(&metricsPort, "port", "p", 9399, "HTTP server port")
+	metricsServeCmd.Flags().StringVar(&metricsCatalogDB, "catalog-db", defaultCatalogPath, "Path to catalog SQLite database")
 }
 
 func runMetricsExport(ctx context.Context) error {
-	// Open catalog
-	cat, err := openCatalog()
+	// Auto-detect hostname if server not specified
+	server := metricsServer
+	if server == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			server = "unknown"
+		} else {
+			server = hostname
+		}
+	}
+
+	// Open catalog using specified path
+	cat, err := catalog.NewSQLiteCatalog(metricsCatalogDB)
 	if err != nil {
 		return fmt.Errorf("failed to open catalog: %w", err)
 	}
 	defer cat.Close()
 
 	// Create metrics writer
-	writer := prometheus.NewMetricsWriter(log, cat, metricsServer)
+	writer := prometheus.NewMetricsWriter(log, cat, server)
 
 	// Write textfile
 	if err := writer.WriteTextfile(metricsOutput); err != nil {
 		return fmt.Errorf("failed to write metrics: %w", err)
 	}
 
-	log.Info("Exported metrics to textfile", "path", metricsOutput, "server", metricsServer)
+	log.Info("Exported metrics to textfile", "path", metricsOutput, "server", server)
 	return nil
 }
 
@@ -123,15 +144,26 @@ func runMetricsServe(ctx context.Context) error {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	// Open catalog
-	cat, err := openCatalog()
+	// Auto-detect hostname if server not specified
+	server := metricsServer
+	if server == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			server = "unknown"
+		} else {
+			server = hostname
+		}
+	}
+
+	// Open catalog using specified path
+	cat, err := catalog.NewSQLiteCatalog(metricsCatalogDB)
 	if err != nil {
 		return fmt.Errorf("failed to open catalog: %w", err)
 	}
 	defer cat.Close()
 
 	// Create exporter
-	exporter := prometheus.NewExporter(log, cat, metricsServer, metricsPort)
+	exporter := prometheus.NewExporter(log, cat, server, metricsPort)
 
 	// Run server (blocks until context is cancelled)
 	return exporter.Serve(ctx)

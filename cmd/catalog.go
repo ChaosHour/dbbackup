@@ -271,11 +271,19 @@ func runCatalogSync(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  [OK] Added:   %d\n", result.Added)
 	fmt.Printf("  [SYNC] Updated: %d\n", result.Updated)
 	fmt.Printf("  [DEL]  Removed: %d\n", result.Removed)
+	if result.Skipped > 0 {
+		fmt.Printf("  [SKIP] Skipped: %d (legacy files without metadata)\n", result.Skipped)
+	}
 	if result.Errors > 0 {
 		fmt.Printf("  [FAIL] Errors:  %d\n", result.Errors)
 	}
 	fmt.Printf("  [TIME]  Duration: %.2fs\n", result.Duration)
 	fmt.Printf("=====================================================\n")
+
+	// Show legacy backup warning
+	if result.LegacyWarning != "" {
+		fmt.Printf("\n[WARN] %s\n", result.LegacyWarning)
+	}
 
 	// Show details if verbose
 	if catalogVerbose && len(result.Details) > 0 {

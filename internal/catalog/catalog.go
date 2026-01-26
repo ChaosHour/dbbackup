@@ -150,12 +150,14 @@ type Catalog interface {
 
 // SyncResult contains results from a catalog sync operation
 type SyncResult struct {
-	Added    int      `json:"added"`
-	Updated  int      `json:"updated"`
-	Removed  int      `json:"removed"`
-	Errors   int      `json:"errors"`
-	Duration float64  `json:"duration_seconds"`
-	Details  []string `json:"details,omitempty"`
+	Added         int      `json:"added"`
+	Updated       int      `json:"updated"`
+	Removed       int      `json:"removed"`
+	Skipped       int      `json:"skipped"` // Files without metadata (legacy backups)
+	Errors        int      `json:"errors"`
+	Duration      float64  `json:"duration_seconds"`
+	Details       []string `json:"details,omitempty"`
+	LegacyWarning string   `json:"legacy_warning,omitempty"` // Warning about legacy files
 }
 
 // FormatSize formats bytes as human-readable string

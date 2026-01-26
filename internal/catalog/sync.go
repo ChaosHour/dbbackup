@@ -30,6 +30,33 @@ func (c *SQLiteCatalog) SyncFromDirectory(ctx context.Context, dir string) (*Syn
 	subMatches, _ := filepath.Glob(subPattern)
 	matches = append(matches, subMatches...)
 
+	// Count legacy backups (files without metadata)
+	legacySkipped := 0
+	legacyPatterns := []string{
+		filepath.Join(dir, "*.sql"),
+		filepath.Join(dir, "*.sql.gz"),
+		filepath.Join(dir, "*.sql.lz4"),
+		filepath.Join(dir, "*.sql.zst"),
+		filepath.Join(dir, "*.dump"),
+		filepath.Join(dir, "*.dump.gz"),
+		filepath.Join(dir, "*", "*.sql"),
+		filepath.Join(dir, "*", "*.sql.gz"),
+	}
+	metaSet := make(map[string]bool)
+	for _, m := range matches {
+		// Store the backup file path (without .meta.json)
+		metaSet[strings.TrimSuffix(m, ".meta.json")] = true
+	}
+	for _, pat := range legacyPatterns {
+		legacyMatches, _ := filepath.Glob(pat)
+		for _, lm := range legacyMatches {
+			// Skip if this file has metadata
+			if !metaSet[lm] {
+				legacySkipped++
+			}
+		}
+	}
+
 	for _, metaPath := range matches {
 		// Derive backup file path from metadata path
 		backupPath := strings.TrimSuffix(metaPath, ".meta.json")
@@ -95,6 +122,17 @@ func (c *SQLiteCatalog) SyncFromDirectory(ctx context.Context, dir string) (*Syn
 			result.Details = append(result.Details,
 				fmt.Sprintf("REMOVED: %s (file not found)", filepath.Base(entry.BackupPath)))
 		}
+	}
+
+	// Set legacy backup warning if applicable
+	result.Skipped = legacySkipped
+	if legacySkipped > 0 {
+		result.LegacyWarning = fmt.Sprintf(
+			"%d backup file(s) found without .meta.json metadata. "+
+				"These are likely legacy backups created by raw mysqldump/pg_dump. "+
+				"Only backups created by 'dbbackup backup' (with metadata) can be imported. "+
+				"To track legacy backups, re-create them using 'dbbackup backup' command.",
+			legacySkipped)
 	}
 
 	result.Duration = time.Since(start).Seconds()

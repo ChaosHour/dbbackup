@@ -261,6 +261,22 @@ func FormatPrometheusMetrics(m *DedupMetrics, server string) string {
 		}
 		b.WriteString("\n")
 
+		// Add RPO (Recovery Point Objective) metric for dedup backups - same metric name as regular backups
+		// This enables unified alerting across regular and dedup backup modes
+		b.WriteString("# HELP dbbackup_rpo_seconds Seconds since last successful backup (Recovery Point Objective)\n")
+		b.WriteString("# TYPE dbbackup_rpo_seconds gauge\n")
+		for _, db := range m.ByDatabase {
+			if !db.LastBackupTime.IsZero() {
+				rpoSeconds := now - db.LastBackupTime.Unix()
+				if rpoSeconds < 0 {
+					rpoSeconds = 0
+				}
+				b.WriteString(fmt.Sprintf("dbbackup_rpo_seconds{server=%q,database=%q} %d\n",
+					server, db.Database, rpoSeconds))
+			}
+		}
+		b.WriteString("\n")
+
 		b.WriteString("# HELP dbbackup_dedup_database_total_bytes Total logical size per database\n")
 		b.WriteString("# TYPE dbbackup_dedup_database_total_bytes gauge\n")
 		for _, db := range m.ByDatabase {

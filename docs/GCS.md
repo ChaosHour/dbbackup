@@ -293,8 +293,8 @@ dbbackup cloud download \
 # Manual delete
 dbbackup cloud delete "gs://prod-backups/postgres/old_backup.sql"
 
-# Automatic cleanup (keep last 7 backups)
-dbbackup cleanup "gs://prod-backups/postgres/" --keep 7
+# Automatic cleanup (keep last 7 days, min 5 backups)
+dbbackup cleanup "gs://prod-backups/postgres/" --retention-days 7 --min-backups 5
 ```
 
 ### Scheduled Backups
@@ -310,7 +310,7 @@ dbbackup backup single production_db \
   --compression 9
 
 # Cleanup old backups
-dbbackup cleanup "gs://prod-backups/postgres/" --keep 30
+dbbackup cleanup "gs://prod-backups/postgres/" --retention-days 30 --min-backups 5
 ```
 
 **Crontab:**
@@ -482,7 +482,7 @@ Tests include:
 ### 4. Reliability
 
 - Test **restore procedures** regularly
-- Use **retention policies**: `--keep 30`
+- Use **retention policies**: `--retention-days 30`
 - Enable **object versioning** (30-day recovery)
 - Use **multi-region** buckets for disaster recovery
 - Monitor backup success with Cloud Monitoring

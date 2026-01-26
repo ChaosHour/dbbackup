@@ -573,7 +573,7 @@ dbbackup cleanup minio://test-backups/test/ --retention-days 7 --dry-run
 
 3. **Use compression:**
    ```bash
-   --compression gzip  # Reduces upload size
+   --compression 6  # Reduces upload size
    ```
 
 ### Reliability
@@ -693,7 +693,7 @@ Error: checksum mismatch: expected abc123, got def456
 for db in db1 db2 db3; do
     dbbackup backup single $db \
         --cloud s3://production-backups/daily/$db/ \
-        --compression gzip
+        --compression 6
 done
 
 # Cleanup old backups (keep 30 days, min 10 backups)

@@ -654,11 +654,11 @@ dbbackup catalog stats
 # Detect backup gaps (missing scheduled backups)
 dbbackup catalog gaps --interval 24h --database mydb
 
-# Search backups
-dbbackup catalog search --database mydb --start 2024-01-01 --end 2024-12-31
+# Search backups by date range
+dbbackup catalog search --database mydb --after 2024-01-01 --before 2024-12-31
 
-# Get backup info
-dbbackup catalog info 42
+# Get backup info by path
+dbbackup catalog info /backups/mydb_20240115.dump.gz
 ```
 
 ## DR Drill Testing
@@ -669,8 +669,8 @@ Automated disaster recovery testing restores backups to Docker containers:
 # Run full DR drill
 dbbackup drill run /backups/mydb_latest.dump.gz \
   --database mydb \
-  --db-type postgres \
-  --timeout 30m
+  --type postgresql \
+  --timeout 1800
 
 # Quick drill (restore + basic validation)
 dbbackup drill quick /backups/mydb_latest.dump.gz --database mydb
@@ -678,11 +678,11 @@ dbbackup drill quick /backups/mydb_latest.dump.gz --database mydb
 # List running drill containers
 dbbackup drill list
 
-# Cleanup old drill containers
-dbbackup drill cleanup --age 24h
+# Cleanup all drill containers
+dbbackup drill cleanup
 
-# Generate drill report
-dbbackup drill report --format html --output drill-report.html
+# Display a saved drill report
+dbbackup drill report drill_20240115_120000_report.json --format json
 ```
 
 **Drill phases:**
@@ -727,16 +727,13 @@ Calculate and monitor Recovery Time/Point Objectives:
 
 ```bash
 # Analyze RTO/RPO for a database
-dbbackup rto analyze mydb
+dbbackup rto analyze --database mydb
 
 # Show status for all databases
 dbbackup rto status
 
 # Check against targets
-dbbackup rto check --rto 4h --rpo 1h
-
-# Set target objectives
-dbbackup rto analyze mydb --target-rto 4h --target-rpo 1h
+dbbackup rto check --target-rto 4h --target-rpo 1h
 ```
 
 **Analysis includes:**

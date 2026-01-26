@@ -5,20 +5,20 @@ Real examples, no fluff.
 ## Basic Backups
 
 ```bash
-# PostgreSQL (auto-detects all databases)
-dbbackup backup all /mnt/backups/databases
+# PostgreSQL cluster (all databases + globals)
+dbbackup backup cluster
 
 # Single database
-dbbackup backup single myapp /mnt/backups/databases
+dbbackup backup single myapp
 
 # MySQL
-dbbackup backup single gitea --db-type mysql --db-host 127.0.0.1 --db-port 3306 /mnt/backups/databases
+dbbackup backup single gitea --db-type mysql --host 127.0.0.1 --port 3306
 
-# With compression level (1-9, default 6)
-dbbackup backup all /mnt/backups/databases --compression-level 9
+# With compression level (0-9, default 6)
+dbbackup backup cluster --compression 9
 
 # As root (requires flag)
-sudo dbbackup backup all /mnt/backups/databases --allow-root
+sudo dbbackup backup cluster --allow-root
 ```
 
 ## PITR (Point-in-Time Recovery)
@@ -78,39 +78,33 @@ dbbackup blob stats --database shopdb --db-type mysql
 ## Cloud Storage
 
 ```bash
-# Upload to S3/MinIO
+# Upload to S3
 dbbackup cloud upload /mnt/backups/databases/myapp_2026-01-23.sql.gz \
-  --provider s3 \
-  --bucket my-backups \
-  --endpoint https://s3.amazonaws.com
+  --cloud-provider s3 \
+  --cloud-bucket my-backups
 
 # Upload to MinIO (self-hosted)
 dbbackup cloud upload backup.sql.gz \
-  --provider s3 \
-  --bucket backups \
-  --endpoint https://minio.internal:9000
+  --cloud-provider minio \
+  --cloud-bucket backups \
+  --cloud-endpoint https://minio.internal:9000
 
-# Upload to Google Cloud Storage
+# Upload to Backblaze B2
 dbbackup cloud upload backup.sql.gz \
-  --provider gcs \
-  --bucket my-gcs-bucket
-
-# Upload to Azure Blob
-dbbackup cloud upload backup.sql.gz \
-  --provider azure \
-  --bucket mycontainer
+  --cloud-provider b2 \
+  --cloud-bucket my-b2-bucket
 
 # With bandwidth limit (don't saturate the network)
-dbbackup cloud upload backup.sql.gz --provider s3 --bucket backups --bandwidth-limit 10MB/s
+dbbackup cloud upload backup.sql.gz --cloud-provider s3 --cloud-bucket backups --bandwidth-limit 10MB/s
 
 # List remote backups
-dbbackup cloud list --provider s3 --bucket my-backups
+dbbackup cloud list --cloud-provider s3 --cloud-bucket my-backups
 
 # Download
-dbbackup cloud download myapp_2026-01-23.sql.gz /tmp/ --provider s3 --bucket my-backups
+dbbackup cloud download myapp_2026-01-23.sql.gz /tmp/ --cloud-provider s3 --cloud-bucket my-backups
 
-# Sync local backup dir to cloud
-dbbackup cloud sync /mnt/backups/databases --provider s3 --bucket my-backups
+# Delete old backup from cloud
+dbbackup cloud delete myapp_2026-01-01.sql.gz --cloud-provider s3 --cloud-bucket my-backups
 ```
 
 ### Cloud Environment Variables
@@ -133,15 +127,17 @@ export AZURE_STORAGE_KEY=xxxxxxxx
 
 ```bash
 # Backup with encryption (AES-256-GCM)
-dbbackup backup all /mnt/backups/databases --encrypt --encrypt-key "my-secret-passphrase"
+dbbackup backup single myapp --encrypt
 
-# Or use environment variable
-export DBBACKUP_ENCRYPT_KEY="my-secret-passphrase"
-dbbackup backup all /mnt/backups/databases --encrypt
+# Use environment variable for key (recommended)
+export DBBACKUP_ENCRYPTION_KEY="my-secret-passphrase"
+dbbackup backup cluster --encrypt
 
-# Restore encrypted backup
-dbbackup restore /mnt/backups/databases/myapp_2026-01-23.sql.gz.enc myapp_restored \
-  --encrypt-key "my-secret-passphrase"
+# Or use key file
+dbbackup backup single myapp --encrypt --encryption-key-file /path/to/keyfile
+
+# Restore encrypted backup (key from environment)
+dbbackup restore single myapp_2026-01-23.dump.gz.enc --confirm
 ```
 
 ## Catalog (Backup Inventory)
@@ -153,44 +149,50 @@ dbbackup catalog sync /mnt/backups/databases
 # List all backups
 dbbackup catalog list
 
+# Show catalog statistics
+dbbackup catalog stats
+
 # Show gaps (missing daily backups)
-dbbackup catalog gaps
+dbbackup catalog gaps mydb --interval 24h
 
 # Search backups
-dbbackup catalog search myapp
+dbbackup catalog search --database myapp --after 2026-01-01
 
-# Export catalog to JSON
-dbbackup catalog export --format json > backups.json
+# Show detailed info for a backup
+dbbackup catalog info myapp_2026-01-23.dump.gz
 ```
 
 ## Restore
 
 ```bash
-# Restore to new database
-dbbackup restore /mnt/backups/databases/myapp_2026-01-23.sql.gz myapp_restored
+# Preview restore (dry-run by default)
+dbbackup restore single myapp_2026-01-23.dump.gz
 
-# Restore to existing database (overwrites!)
-dbbackup restore /mnt/backups/databases/myapp_2026-01-23.sql.gz myapp --force
+# Restore to new database
+dbbackup restore single myapp_2026-01-23.dump.gz --target myapp_restored --confirm
+
+# Restore to existing database (clean first)
+dbbackup restore single myapp_2026-01-23.dump.gz --clean --confirm
 
 # Restore MySQL
-dbbackup restore /mnt/backups/databases/gitea_2026-01-23.sql.gz gitea_restored \
-  --db-type mysql --db-host 127.0.0.1
+dbbackup restore single gitea_2026-01-23.sql.gz --target gitea_restored \
+  --db-type mysql --host 127.0.0.1 --confirm
 
 # Verify restore (restores to temp db, runs checks, drops it)
-dbbackup verify-restore /mnt/backups/databases/myapp_2026-01-23.sql.gz
+dbbackup verify-restore myapp_2026-01-23.dump.gz
 ```
 
 ## Retention & Cleanup
 
 ```bash
-# Delete backups older than 30 days
-dbbackup cleanup /mnt/backups/databases --older-than 30d
+# Delete backups older than 30 days (keep at least 5)
+dbbackup cleanup /mnt/backups/databases --retention-days 30 --min-backups 5
 
-# Keep 7 daily, 4 weekly, 12 monthly (GFS)
-dbbackup cleanup /mnt/backups/databases --keep-daily 7 --keep-weekly 4 --keep-monthly 12
+# GFS retention: 7 daily, 4 weekly, 12 monthly
+dbbackup cleanup /mnt/backups/databases --gfs --gfs-daily 7 --gfs-weekly 4 --gfs-monthly 12
 
 # Dry run (show what would be deleted)
-dbbackup cleanup /mnt/backups/databases --older-than 30d --dry-run
+dbbackup cleanup /mnt/backups/databases --retention-days 7 --dry-run
 ```
 
 ## Disaster Recovery Drill
@@ -240,38 +242,37 @@ systemctl list-timers dbbackup.timer
 ## Common Combinations
 
 ```bash
-# Full production setup: encrypted, deduplicated, uploaded to S3
-dbbackup backup all /mnt/backups/databases \
-  --dedup \
+# Full production setup: encrypted, with cloud auto-upload
+dbbackup backup cluster \
   --encrypt \
-  --compression-level 9
-
-dbbackup cloud sync /mnt/backups/databases \
-  --provider s3 \
-  --bucket prod-backups \
-  --bandwidth-limit 50MB/s
+  --compression 9 \
+  --cloud-auto-upload \
+  --cloud-provider s3 \
+  --cloud-bucket prod-backups
 
 # Quick MySQL backup to S3
-dbbackup backup single shopdb --db-type mysql /tmp/backup && \
-dbbackup cloud upload /tmp/backup/shopdb_*.sql.gz --provider s3 --bucket backups
+dbbackup backup single shopdb --db-type mysql && \
+dbbackup cloud upload shopdb_*.sql.gz --cloud-provider s3 --cloud-bucket backups
 
-# PITR-enabled PostgreSQL with cloud sync
+# PITR-enabled PostgreSQL with cloud upload
 dbbackup pitr enable proddb /mnt/wal
 dbbackup pitr base proddb /mnt/wal
-dbbackup cloud sync /mnt/wal --provider gcs --bucket wal-archive
+dbbackup cloud upload /mnt/wal/*.gz --cloud-provider s3 --cloud-bucket wal-archive
 ```
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `DBBACKUP_ENCRYPT_KEY` | Encryption passphrase |
+| `DBBACKUP_ENCRYPTION_KEY` | Encryption passphrase |
 | `DBBACKUP_BANDWIDTH_LIMIT` | Cloud upload limit (e.g., `10MB/s`) |
+| `DBBACKUP_CLOUD_PROVIDER` | Cloud provider (s3, minio, b2) |
+| `DBBACKUP_CLOUD_BUCKET` | Cloud bucket name |
+| `DBBACKUP_CLOUD_ENDPOINT` | Custom endpoint (for MinIO) |
+| `AWS_ACCESS_KEY_ID` | S3/MinIO credentials |
+| `AWS_SECRET_ACCESS_KEY` | S3/MinIO secret key |
 | `PGHOST`, `PGPORT`, `PGUSER` | PostgreSQL connection |
 | `MYSQL_HOST`, `MYSQL_TCP_PORT` | MySQL connection |
-| `AWS_ACCESS_KEY_ID` | S3/MinIO credentials |
-| `GOOGLE_APPLICATION_CREDENTIALS` | GCS service account JSON path |
-| `AZURE_STORAGE_ACCOUNT` | Azure storage account name |
 
 ## Quick Checks
 
@@ -279,12 +280,15 @@ dbbackup cloud sync /mnt/wal --provider gcs --bucket wal-archive
 # What version?
 dbbackup --version
 
-# What's installed?
+# Connection status
 dbbackup status
 
-# Test database connection
-dbbackup backup single testdb /tmp --dry-run
+# Test database connection (dry-run)
+dbbackup backup single testdb --dry-run
 
 # Verify a backup file
-dbbackup verify /mnt/backups/databases/myapp_2026-01-23.sql.gz
+dbbackup verify /mnt/backups/databases/myapp_2026-01-23.dump.gz
+
+# Run preflight checks
+dbbackup preflight
 ```

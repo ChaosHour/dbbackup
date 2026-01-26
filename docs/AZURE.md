@@ -236,8 +236,8 @@ dbbackup cloud download \
 # Manual delete
 dbbackup cloud delete "azure://prod-backups/postgres/old_backup.sql?account=myaccount&key=KEY"
 
-# Automatic cleanup (keep last 7 backups)
-dbbackup cleanup "azure://prod-backups/postgres/?account=myaccount&key=KEY" --keep 7
+# Automatic cleanup (keep last 7 days, min 5 backups)
+dbbackup cleanup "azure://prod-backups/postgres/?account=myaccount&key=KEY" --retention-days 7 --min-backups 5
 ```
 
 ### Scheduled Backups
@@ -253,7 +253,7 @@ dbbackup backup single production_db \
   --compression 9
 
 # Cleanup old backups
-dbbackup cleanup "azure://prod-backups/postgres/?account=myaccount&key=${AZURE_STORAGE_KEY}" --keep 30
+dbbackup cleanup "azure://prod-backups/postgres/?account=myaccount&key=${AZURE_STORAGE_KEY}" --retention-days 30 --min-backups 5
 ```
 
 **Crontab:**
@@ -385,7 +385,7 @@ Tests include:
 ### 4. Reliability
 
 - Test **restore procedures** regularly
-- Use **retention policies**: `--keep 30`
+- Use **retention policies**: `--retention-days 30`
 - Enable **soft delete** in Azure (30-day recovery)
 - Monitor backup success with Azure Monitor
 

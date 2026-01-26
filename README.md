@@ -1,9 +1,19 @@
-# dbbackup
+```
+    ██╗  ██╗    ██████╗ 
+    ██║  ██║   ██╔═████╗
+    ███████║   ██║██╔██║
+    ╚════██║   ████╔╝██║
+         ██║██╗╚██████╔╝
+         ╚═╝╚═╝ ╚═════╝ 
+```
+
+# dbbackup v4.0.0
 
 Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/)
+[![Release](https://img.shields.io/badge/Release-v4.0.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/tag/v4.0.0)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup

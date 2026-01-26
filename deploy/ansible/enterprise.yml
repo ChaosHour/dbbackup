@@ -1,0 +1,153 @@
+---
+# dbbackup Enterprise Deployment
+# Full-featured installation with all enterprise capabilities
+#
+# Usage:
+#   ansible-playbook -i inventory enterprise.yml
+#
+# Features:
+#   ✓ Automated scheduled backups
+#   ✓ GFS retention policy (Grandfather-Father-Son)
+#   ✓ Prometheus metrics exporter
+#   ✓ SMTP email notifications
+#   ✓ Webhook/Slack notifications
+#   ✓ Encrypted backups (optional)
+#   ✓ Cloud storage upload (optional)
+#   ✓ Catalog for backup tracking
+#
+# Required Vault Variables:
+#   dbbackup_db_password
+#   dbbackup_encryption_key (if encryption enabled)
+#   dbbackup_notify_smtp_password (if SMTP enabled)
+#   dbbackup_cloud_access_key (if cloud enabled)
+#   dbbackup_cloud_secret_key (if cloud enabled)
+
+- name: Deploy dbbackup (Enterprise)
+  hosts: db_servers
+  become: yes
+  
+  vars:
+    # Full feature set
+    dbbackup_exporter_enabled: true
+    dbbackup_exporter_port: 9399
+    dbbackup_notify_enabled: true
+    
+    # GFS Retention
+    dbbackup_gfs_enabled: true
+    dbbackup_gfs_daily: 7
+    dbbackup_gfs_weekly: 4
+    dbbackup_gfs_monthly: 12
+    dbbackup_gfs_yearly: 3
+    
+  pre_tasks:
+    - name: Check for required secrets
+      assert:
+        that:
+          - dbbackup_db_password is defined
+        fail_msg: "Required secrets not provided. Use ansible-vault for dbbackup_db_password"
+
+    - name: Validate encryption key if enabled
+      assert:
+        that:
+          - dbbackup_encryption_key is defined
+          - dbbackup_encryption_key | length >= 16
+        fail_msg: "Encryption enabled but key not provided or too short"
+      when: dbbackup_encryption_enabled | default(false)
+
+  roles:
+    - dbbackup
+
+  post_tasks:
+    # Verify exporter
+    - name: Wait for exporter to start
+      wait_for:
+        port: "{{ dbbackup_exporter_port }}"
+        timeout: 30
+      when: dbbackup_exporter_enabled
+
+    - name: Test metrics endpoint
+      uri:
+        url: "http://localhost:{{ dbbackup_exporter_port }}/metrics"
+        return_content: yes
+      register: metrics_response
+      when: dbbackup_exporter_enabled
+
+    # Initialize catalog
+    - name: Sync existing backups to catalog
+      command: "{{ dbbackup_install_dir }}/dbbackup catalog sync {{ dbbackup_backup_dir }}"
+      become_user: dbbackup
+      changed_when: false
+
+    # Run preflight check
+    - name: Run preflight checks
+      command: "{{ dbbackup_install_dir }}/dbbackup preflight"
+      become_user: dbbackup
+      register: preflight_result
+      changed_when: false
+      failed_when: preflight_result.rc > 1  # rc=1 is warnings, rc=2 is failure
+
+    - name: Display preflight result
+      debug:
+        msg: "{{ preflight_result.stdout_lines }}"
+
+    # Summary
+    - name: Display deployment summary
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════╗
+          ║             dbbackup Enterprise Deployment Complete          ║
+          ╚══════════════════════════════════════════════════════════════╝
+          
+          Host: {{ inventory_hostname }}
+          Version: {{ dbbackup_version }}
+          
+          ┌─ Backup Configuration ─────────────────────────────────────────
+          │ Type: {{ dbbackup_backup_type }}
+          │ Schedule: {{ dbbackup_schedule }}
+          │ Directory: {{ dbbackup_backup_dir }}
+          │ Encryption: {{ 'Enabled' if dbbackup_encryption_enabled else 'Disabled' }}
+          └────────────────────────────────────────────────────────────────
+          
+          ┌─ Retention Policy (GFS) ───────────────────────────────────────
+          │ Daily: {{ dbbackup_gfs_daily }} backups
+          │ Weekly: {{ dbbackup_gfs_weekly }} backups
+          │ Monthly: {{ dbbackup_gfs_monthly }} backups
+          │ Yearly: {{ dbbackup_gfs_yearly }} backups
+          └────────────────────────────────────────────────────────────────
+          
+          ┌─ Monitoring ───────────────────────────────────────────────────
+          │ Prometheus: http://{{ inventory_hostname }}:{{ dbbackup_exporter_port }}/metrics
+          └────────────────────────────────────────────────────────────────
+          
+          ┌─ Notifications ────────────────────────────────────────────────
+          {% if dbbackup_notify_smtp_enabled | default(false) %}
+          │ SMTP: {{ dbbackup_notify_smtp_to | join(', ') }}
+          {% endif %}
+          {% if dbbackup_notify_slack_enabled | default(false) %}
+          │ Slack: Enabled
+          {% endif %}
+          └────────────────────────────────────────────────────────────────
+
+- name: Configure Prometheus scrape targets
+  hosts: monitoring
+  become: yes
+  tasks:
+    - name: Add dbbackup targets to prometheus
+      blockinfile:
+        path: /etc/prometheus/targets/dbbackup.yml
+        create: yes
+        block: |
+          - targets:
+          {% for host in groups['db_servers'] %}
+              - {{ host }}:{{ hostvars[host]['dbbackup_exporter_port'] | default(9399) }}
+          {% endfor %}
+            labels:
+              job: dbbackup
+      notify: reload prometheus
+      when: "'monitoring' in group_names"
+
+  handlers:
+    - name: reload prometheus
+      systemd:
+        name: prometheus
+        state: reloaded

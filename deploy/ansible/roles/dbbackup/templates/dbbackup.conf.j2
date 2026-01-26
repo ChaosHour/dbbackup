@@ -1,0 +1,39 @@
+# dbbackup Configuration
+# Managed by Ansible - do not edit manually
+
+# Database
+db-type = {{ dbbackup_db_type }}
+host = {{ dbbackup_db_host }}
+port = {{ dbbackup_db_port }}
+user = {{ dbbackup_db_user }}
+
+# Backup
+backup-dir = {{ dbbackup_backup_dir }}
+compression = {{ dbbackup_compression }}
+
+# Retention
+retention-days = {{ dbbackup_retention_days }}
+min-backups = {{ dbbackup_min_backups }}
+
+{% if dbbackup_gfs_enabled %}
+# GFS Retention Policy
+gfs = true
+gfs-daily = {{ dbbackup_gfs_daily }}
+gfs-weekly = {{ dbbackup_gfs_weekly }}
+gfs-monthly = {{ dbbackup_gfs_monthly }}
+gfs-yearly = {{ dbbackup_gfs_yearly }}
+{% endif %}
+
+{% if dbbackup_encryption_enabled %}
+# Encryption
+encrypt = true
+{% endif %}
+
+{% if dbbackup_cloud_enabled %}
+# Cloud Storage
+cloud-provider = {{ dbbackup_cloud_provider }}
+cloud-bucket = {{ dbbackup_cloud_bucket }}
+{% if dbbackup_cloud_endpoint %}
+cloud-endpoint = {{ dbbackup_cloud_endpoint }}
+{% endif %}
+{% endif %}

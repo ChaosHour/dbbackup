@@ -1,0 +1,25 @@
+# dbbackup Ansible Inventory Example
+# Copy to 'inventory' and customize
+
+[db_servers]
+# PostgreSQL servers
+pg-primary.example.com   dbbackup_db_type=postgres
+pg-replica.example.com   dbbackup_db_type=postgres dbbackup_backup_from_replica=true
+
+# MySQL servers  
+mysql-01.example.com     dbbackup_db_type=mysql
+
+[db_servers:vars]
+ansible_user=deploy
+ansible_become=yes
+
+# Group-level defaults
+dbbackup_backup_dir=/var/backups/databases
+dbbackup_schedule=daily
+
+[monitoring]
+prometheus.example.com
+
+[monitoring:vars]
+# Servers where metrics are scraped
+dbbackup_exporter_enabled=true

@@ -1,0 +1,48 @@
+# Prometheus scrape configuration for dbbackup
+# Add to your prometheus.yml
+
+scrape_configs:
+  - job_name: 'dbbackup'
+    # Scrape interval - backup metrics don't change frequently
+    scrape_interval: 60s
+    scrape_timeout: 10s
+    
+    # Static targets - list your database servers
+    static_configs:
+      - targets:
+          - 'db-server-01:9399'
+          - 'db-server-02:9399'
+          - 'db-server-03:9399'
+        labels:
+          environment: 'production'
+      
+      - targets:
+          - 'db-staging:9399'
+        labels:
+          environment: 'staging'
+    
+    # Relabeling (optional)
+    relabel_configs:
+      # Extract hostname from target
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):\d+'
+        replacement: '$1'
+
+# Alternative: File-based service discovery
+# Useful when targets are managed by Ansible/Terraform
+
+  - job_name: 'dbbackup-sd'
+    scrape_interval: 60s
+    file_sd_configs:
+      - files:
+          - '/etc/prometheus/targets/dbbackup/*.yml'
+        refresh_interval: 5m
+
+# Example target file (/etc/prometheus/targets/dbbackup/production.yml):
+# - targets:
+#     - db-server-01:9399
+#     - db-server-02:9399
+#   labels:
+#     environment: production
+#     datacenter: us-east-1

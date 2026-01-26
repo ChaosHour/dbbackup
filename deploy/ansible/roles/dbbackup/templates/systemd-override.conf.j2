@@ -1,0 +1,6 @@
+# dbbackup Systemd Override
+# Managed by Ansible
+
+[Service]
+# Load environment from secure file
+EnvironmentFile=-{{ dbbackup_config_dir }}/env.d/{{ dbbackup_backup_type }}.conf

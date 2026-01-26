@@ -1,0 +1,52 @@
+---
+# dbbackup with Prometheus Exporter
+# Installation with metrics endpoint for monitoring
+#
+# Usage:
+#   ansible-playbook -i inventory with-exporter.yml
+#
+# Features:
+#   ✓ Automated daily backups
+#   ✓ Retention policy
+#   ✓ Prometheus exporter on port 9399
+#   ✗ No notifications
+
+- name: Deploy dbbackup with Prometheus exporter
+  hosts: db_servers
+  become: yes
+  
+  vars:
+    dbbackup_exporter_enabled: true
+    dbbackup_exporter_port: 9399
+    dbbackup_notify_enabled: false
+  
+  roles:
+    - dbbackup
+
+  post_tasks:
+    - name: Wait for exporter to start
+      wait_for:
+        port: "{{ dbbackup_exporter_port }}"
+        timeout: 30
+
+    - name: Test metrics endpoint
+      uri:
+        url: "http://localhost:{{ dbbackup_exporter_port }}/metrics"
+        return_content: yes
+      register: metrics_response
+
+    - name: Verify metrics available
+      assert:
+        that:
+          - "'dbbackup_' in metrics_response.content"
+        fail_msg: "Metrics endpoint not returning dbbackup metrics"
+        success_msg: "Prometheus exporter running on port {{ dbbackup_exporter_port }}"
+
+    - name: Display Prometheus scrape config
+      debug:
+        msg: |
+          Add to prometheus.yml:
+          
+          - job_name: 'dbbackup'
+            static_configs:
+              - targets: ['{{ inventory_hostname }}:{{ dbbackup_exporter_port }}']

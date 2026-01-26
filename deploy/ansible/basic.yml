@@ -1,0 +1,42 @@
+---
+# dbbackup Basic Deployment
+# Simple installation without monitoring or notifications
+#
+# Usage:
+#   ansible-playbook -i inventory basic.yml
+#
+# Features:
+#   ✓ Automated daily backups
+#   ✓ Retention policy (30 days default)
+#   ✗ No Prometheus exporter
+#   ✗ No notifications
+
+- name: Deploy dbbackup (basic)
+  hosts: db_servers
+  become: yes
+  
+  vars:
+    dbbackup_exporter_enabled: false
+    dbbackup_notify_enabled: false
+  
+  roles:
+    - dbbackup
+
+  post_tasks:
+    - name: Verify installation
+      command: "{{ dbbackup_install_dir }}/dbbackup --version"
+      register: version_check
+      changed_when: false
+
+    - name: Display version
+      debug:
+        msg: "Installed: {{ version_check.stdout }}"
+
+    - name: Show timer status
+      command: systemctl status dbbackup-{{ dbbackup_backup_type }}.timer --no-pager
+      register: timer_status
+      changed_when: false
+
+    - name: Display next backup time
+      debug:
+        msg: "{{ timer_status.stdout_lines | select('search', 'Trigger') | list }}"

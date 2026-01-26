@@ -1,0 +1,114 @@
+# Prometheus ServiceMonitor for dbbackup
+# Requires prometheus-operator
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dbbackup
+  labels:
+    app: dbbackup
+    release: prometheus  # Match your Prometheus operator release
+spec:
+  selector:
+    matchLabels:
+      app: dbbackup
+      component: exporter
+  endpoints:
+    - port: metrics
+      interval: 60s
+      path: /metrics
+  namespaceSelector:
+    matchNames:
+      - dbbackup
+
+---
+# Metrics exporter deployment (optional - for continuous metrics)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dbbackup-exporter
+  labels:
+    app: dbbackup
+    component: exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dbbackup
+      component: exporter
+  template:
+    metadata:
+      labels:
+        app: dbbackup
+        component: exporter
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      
+      containers:
+      - name: exporter
+        image: git.uuxo.net/uuxo/dbbackup:latest
+        args:
+          - metrics
+          - serve
+          - --port
+          - "9399"
+        
+        ports:
+          - name: metrics
+            containerPort: 9399
+            protocol: TCP
+        
+        envFrom:
+          - configMapRef:
+              name: dbbackup-config
+        
+        volumeMounts:
+          - name: backup-storage
+            mountPath: /backups
+            readOnly: true
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: metrics
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: metrics
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "10m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      
+      volumes:
+        - name: backup-storage
+          persistentVolumeClaim:
+            claimName: dbbackup-storage
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dbbackup-exporter
+  labels:
+    app: dbbackup
+    component: exporter
+spec:
+  ports:
+    - name: metrics
+      port: 9399
+      targetPort: metrics
+  selector:
+    app: dbbackup
+    component: exporter

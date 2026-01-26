@@ -1,0 +1,12 @@
+---
+# dbbackup Ansible Role - Handlers
+
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: restart dbbackup
+  systemd:
+    name: "dbbackup-{{ dbbackup_backup_type }}.service"
+    state: restarted
+  when: ansible_service_mgr == 'systemd'

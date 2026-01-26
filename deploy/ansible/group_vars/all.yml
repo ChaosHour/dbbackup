@@ -1,0 +1,71 @@
+# dbbackup Ansible Variables
+# =========================
+
+# Version and Installation
+dbbackup_version: "3.42.74"
+dbbackup_download_url: "https://git.uuxo.net/UUXO/dbbackup/releases/download/v{{ dbbackup_version }}"
+dbbackup_install_dir: "/usr/local/bin"
+dbbackup_config_dir: "/etc/dbbackup"
+dbbackup_data_dir: "/var/lib/dbbackup"
+dbbackup_log_dir: "/var/log/dbbackup"
+
+# Database Configuration
+dbbackup_db_type: "postgres"  # postgres, mysql, mariadb
+dbbackup_db_host: "localhost"
+dbbackup_db_port: 5432        # 5432 for postgres, 3306 for mysql
+dbbackup_db_user: "postgres"
+# dbbackup_db_password: ""    # Use vault for passwords!
+
+# Backup Configuration
+dbbackup_backup_dir: "/var/backups/databases"
+dbbackup_backup_type: "cluster"  # cluster, single
+dbbackup_compression: 6
+dbbackup_encryption_enabled: false
+# dbbackup_encryption_key: "" # Use vault!
+
+# Schedule (systemd OnCalendar format)
+dbbackup_schedule: "daily"  # daily, weekly, *-*-* 02:00:00
+
+# Retention Policy
+dbbackup_retention_days: 30
+dbbackup_min_backups: 5
+
+# GFS Retention (enterprise.yml)
+dbbackup_gfs_enabled: false
+dbbackup_gfs_daily: 7
+dbbackup_gfs_weekly: 4
+dbbackup_gfs_monthly: 12
+dbbackup_gfs_yearly: 3
+
+# Prometheus Exporter (with-exporter.yml, enterprise.yml)
+dbbackup_exporter_enabled: false
+dbbackup_exporter_port: 9399
+
+# Cloud Storage (optional)
+dbbackup_cloud_enabled: false
+dbbackup_cloud_provider: "s3"  # s3, minio, b2, azure, gcs
+dbbackup_cloud_bucket: ""
+dbbackup_cloud_endpoint: ""    # For MinIO/B2
+# dbbackup_cloud_access_key: "" # Use vault!
+# dbbackup_cloud_secret_key: "" # Use vault!
+
+# Notifications (with-notifications.yml, enterprise.yml)
+dbbackup_notify_enabled: false
+
+# SMTP Notifications
+dbbackup_notify_smtp_enabled: false
+dbbackup_notify_smtp_host: ""
+dbbackup_notify_smtp_port: 587
+dbbackup_notify_smtp_user: ""
+# dbbackup_notify_smtp_password: "" # Use vault!
+dbbackup_notify_smtp_from: ""
+dbbackup_notify_smtp_to: []  # List of recipients
+
+# Webhook Notifications
+dbbackup_notify_webhook_enabled: false
+dbbackup_notify_webhook_url: ""
+# dbbackup_notify_webhook_secret: "" # Use vault for HMAC secret!
+
+# Slack Integration (uses webhook)
+dbbackup_notify_slack_enabled: false
+dbbackup_notify_slack_webhook: ""

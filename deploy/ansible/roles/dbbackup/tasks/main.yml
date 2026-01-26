@@ -1,0 +1,116 @@
+---
+# dbbackup Ansible Role - Main Tasks
+
+- name: Create dbbackup group
+  group:
+    name: dbbackup
+    system: yes
+
+- name: Create dbbackup user
+  user:
+    name: dbbackup
+    group: dbbackup
+    system: yes
+    home: "{{ dbbackup_data_dir }}"
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Create directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: dbbackup
+    group: dbbackup
+    mode: "0755"
+  loop:
+    - "{{ dbbackup_config_dir }}"
+    - "{{ dbbackup_data_dir }}"
+    - "{{ dbbackup_data_dir }}/catalog"
+    - "{{ dbbackup_log_dir }}"
+    - "{{ dbbackup_backup_dir }}"
+
+- name: Create env.d directory
+  file:
+    path: "{{ dbbackup_config_dir }}/env.d"
+    state: directory
+    owner: root
+    group: dbbackup
+    mode: "0750"
+
+- name: Detect architecture
+  set_fact:
+    dbbackup_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+
+- name: Download dbbackup binary
+  get_url:
+    url: "{{ dbbackup_download_url }}/dbbackup-linux-{{ dbbackup_arch }}"
+    dest: "{{ dbbackup_install_dir }}/dbbackup"
+    mode: "0755"
+    owner: root
+    group: root
+  notify: restart dbbackup
+
+- name: Deploy configuration file
+  template:
+    src: dbbackup.conf.j2
+    dest: "{{ dbbackup_config_dir }}/dbbackup.conf"
+    owner: root
+    group: dbbackup
+    mode: "0640"
+  notify: restart dbbackup
+
+- name: Deploy environment file
+  template:
+    src: env.j2
+    dest: "{{ dbbackup_config_dir }}/env.d/{{ dbbackup_backup_type }}.conf"
+    owner: root
+    group: dbbackup
+    mode: "0600"
+  notify: restart dbbackup
+
+- name: Install systemd service
+  command: >
+    {{ dbbackup_install_dir }}/dbbackup install
+    --backup-type {{ dbbackup_backup_type }}
+    --schedule "{{ dbbackup_schedule }}"
+    {% if dbbackup_exporter_enabled %}--with-metrics --metrics-port {{ dbbackup_exporter_port }}{% endif %}
+  args:
+    creates: "/etc/systemd/system/dbbackup-{{ dbbackup_backup_type }}.service"
+  notify:
+    - reload systemd
+    - restart dbbackup
+
+- name: Deploy systemd override (if customizations needed)
+  template:
+    src: systemd-override.conf.j2
+    dest: "/etc/systemd/system/dbbackup-{{ dbbackup_backup_type }}.service.d/override.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  when: dbbackup_notify_enabled or dbbackup_cloud_enabled
+  notify:
+    - reload systemd
+    - restart dbbackup
+
+- name: Create systemd override directory
+  file:
+    path: "/etc/systemd/system/dbbackup-{{ dbbackup_backup_type }}.service.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: dbbackup_notify_enabled or dbbackup_cloud_enabled
+
+- name: Enable and start dbbackup timer
+  systemd:
+    name: "dbbackup-{{ dbbackup_backup_type }}.timer"
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: Enable dbbackup exporter service
+  systemd:
+    name: dbbackup-exporter
+    enabled: yes
+    state: started
+  when: dbbackup_exporter_enabled

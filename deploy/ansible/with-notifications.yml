@@ -1,0 +1,84 @@
+---
+# dbbackup with Notifications
+# Installation with SMTP email and/or webhook notifications
+#
+# Usage:
+#   # With SMTP notifications
+#   ansible-playbook -i inventory with-notifications.yml \
+#     -e dbbackup_notify_smtp_enabled=true \
+#     -e dbbackup_notify_smtp_host=smtp.example.com \
+#     -e dbbackup_notify_smtp_from=backups@example.com \
+#     -e '{"dbbackup_notify_smtp_to": ["admin@example.com", "dba@example.com"]}'
+#
+#   # With Slack notifications
+#   ansible-playbook -i inventory with-notifications.yml \
+#     -e dbbackup_notify_slack_enabled=true \
+#     -e dbbackup_notify_slack_webhook=https://hooks.slack.com/services/XXX
+#
+# Features:
+#   ✓ Automated daily backups
+#   ✓ Retention policy
+#   ✗ No Prometheus exporter
+#   ✓ Email notifications (optional)
+#   ✓ Webhook/Slack notifications (optional)
+
+- name: Deploy dbbackup with notifications
+  hosts: db_servers
+  become: yes
+  
+  vars:
+    dbbackup_exporter_enabled: false
+    dbbackup_notify_enabled: true
+    # Enable one or more notification methods:
+    # dbbackup_notify_smtp_enabled: true
+    # dbbackup_notify_webhook_enabled: true
+    # dbbackup_notify_slack_enabled: true
+  
+  pre_tasks:
+    - name: Validate notification configuration
+      assert:
+        that:
+          - dbbackup_notify_smtp_enabled or dbbackup_notify_webhook_enabled or dbbackup_notify_slack_enabled
+        fail_msg: "At least one notification method must be enabled"
+        success_msg: "Notification configuration valid"
+
+    - name: Validate SMTP configuration
+      assert:
+        that:
+          - dbbackup_notify_smtp_host != ''
+          - dbbackup_notify_smtp_from != ''
+          - dbbackup_notify_smtp_to | length > 0
+        fail_msg: "SMTP configuration incomplete"
+      when: dbbackup_notify_smtp_enabled | default(false)
+
+    - name: Validate webhook configuration
+      assert:
+        that:
+          - dbbackup_notify_webhook_url != ''
+        fail_msg: "Webhook URL required"
+      when: dbbackup_notify_webhook_enabled | default(false)
+
+    - name: Validate Slack configuration
+      assert:
+        that:
+          - dbbackup_notify_slack_webhook != ''
+        fail_msg: "Slack webhook URL required"
+      when: dbbackup_notify_slack_enabled | default(false)
+
+  roles:
+    - dbbackup
+
+  post_tasks:
+    - name: Display notification configuration
+      debug:
+        msg: |
+          Notifications configured:
+          {% if dbbackup_notify_smtp_enabled | default(false) %}
+          - SMTP: {{ dbbackup_notify_smtp_to | join(', ') }}
+          {% endif %}
+          {% if dbbackup_notify_webhook_enabled | default(false) %}
+          - Webhook: {{ dbbackup_notify_webhook_url }}
+          {% endif %}
+          {% if dbbackup_notify_slack_enabled | default(false) %}
+          - Slack: Enabled
+          {% endif %}

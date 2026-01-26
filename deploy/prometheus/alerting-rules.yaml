@@ -1,0 +1,121 @@
+# Prometheus Alerting Rules for dbbackup
+# Import into your Prometheus/Alertmanager configuration
+
+groups:
+  - name: dbbackup
+    rules:
+      # RPO Alerts - Recovery Point Objective violations
+      - alert: DBBackupRPOWarning
+        expr: dbbackup_rpo_seconds > 43200  # 12 hours
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database backup RPO warning on {{ $labels.server }}"
+          description: "No successful backup for {{ $labels.database }} in {{ $value | humanizeDuration }}. RPO threshold: 12 hours."
+
+      - alert: DBBackupRPOCritical
+        expr: dbbackup_rpo_seconds > 86400  # 24 hours
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database backup RPO critical on {{ $labels.server }}"
+          description: "No successful backup for {{ $labels.database }} in {{ $value | humanizeDuration }}. Immediate attention required!"
+          runbook_url: "https://wiki.example.com/runbooks/dbbackup-rpo-violation"
+
+      # Backup Failure Alerts
+      - alert: DBBackupFailed
+        expr: increase(dbbackup_backup_total{status="failure"}[1h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database backup failed on {{ $labels.server }}"
+          description: "Backup for {{ $labels.database }} failed. Check logs for details."
+
+      - alert: DBBackupFailureRateHigh
+        expr: |
+          rate(dbbackup_backup_total{status="failure"}[24h]) 
+          / 
+          rate(dbbackup_backup_total[24h]) > 0.1
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "High backup failure rate on {{ $labels.server }}"
+          description: "More than 10% of backups are failing over the last 24 hours."
+
+      # Backup Size Anomalies
+      - alert: DBBackupSizeAnomaly
+        expr: |
+          abs(
+            dbbackup_last_backup_size_bytes 
+            - avg_over_time(dbbackup_last_backup_size_bytes[7d])
+          ) 
+          / avg_over_time(dbbackup_last_backup_size_bytes[7d]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup size anomaly for {{ $labels.database }}"
+          description: "Backup size changed by more than 50% compared to 7-day average. Current: {{ $value | humanize1024 }}B"
+
+      - alert: DBBackupSizeZero
+        expr: dbbackup_last_backup_size_bytes == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Zero-size backup detected for {{ $labels.database }}"
+          description: "Last backup file is empty. Backup likely failed silently."
+
+      # Duration Alerts
+      - alert: DBBackupDurationHigh
+        expr: dbbackup_last_backup_duration_seconds > 3600  # 1 hour
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup taking too long for {{ $labels.database }}"
+          description: "Last backup took {{ $value | humanizeDuration }}. Consider optimizing backup strategy."
+
+      # Verification Alerts
+      - alert: DBBackupNotVerified
+        expr: dbbackup_backup_verified == 0
+        for: 24h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backup not verified for {{ $labels.database }}"
+          description: "Last backup was not verified. Run dbbackup verify to check integrity."
+
+      # Exporter Health
+      - alert: DBBackupExporterDown
+        expr: up{job="dbbackup"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "dbbackup exporter is down on {{ $labels.instance }}"
+          description: "Cannot scrape metrics from dbbackup exporter. Monitoring is impaired."
+
+      # Deduplication Alerts
+      - alert: DBBackupDedupRatioLow
+        expr: dbbackup_dedup_ratio < 0.2
+        for: 24h
+        labels:
+          severity: info
+        annotations:
+          summary: "Low deduplication ratio on {{ $labels.server }}"
+          description: "Dedup ratio is {{ $value | printf \"%.1f%%\" }}. Consider if dedup is beneficial."
+
+      # Storage Alerts
+      - alert: DBBackupStorageHigh
+        expr: dbbackup_dedup_disk_usage_bytes > 1099511627776  # 1 TB
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "High backup storage usage on {{ $labels.server }}"
+          description: "Backup storage using {{ $value | humanize1024 }}B. Review retention policy."

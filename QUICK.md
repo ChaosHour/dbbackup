@@ -202,8 +202,10 @@ dbbackup drill /mnt/backups/databases
 # Test specific database
 dbbackup drill /mnt/backups/databases --database myapp
 
-# With email report
-dbbackup drill /mnt/backups/databases --notify admin@example.com
+# With email notification (configure via environment variables)
+export NOTIFY_SMTP_HOST="smtp.example.com"
+export NOTIFY_SMTP_TO="admin@example.com"
+dbbackup drill /mnt/backups/databases --database myapp
 ```
 
 ## Monitoring & Metrics

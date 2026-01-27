@@ -42,8 +42,11 @@ type LocalConfig struct {
 
 // LoadLocalConfig loads configuration from .dbbackup.conf in current directory
 func LoadLocalConfig() (*LocalConfig, error) {
-	configPath := filepath.Join(".", ConfigFileName)
+	return LoadLocalConfigFromPath(filepath.Join(".", ConfigFileName))
+}
 
+// LoadLocalConfigFromPath loads configuration from a specific path
+func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {

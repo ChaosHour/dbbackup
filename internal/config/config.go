@@ -17,6 +17,9 @@ type Config struct {
 	BuildTime string
 	GitCommit string
 
+	// Config file path (--config flag)
+	ConfigPath string
+
 	// Database connection
 	Host         string
 	Port         int

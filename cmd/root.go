@@ -55,9 +55,26 @@ For help with specific commands, use: dbbackup [command] --help`,
 
 		// Load local config if not disabled
 		if !cfg.NoLoadConfig {
-			if localCfg, err := config.LoadLocalConfig(); err != nil {
-				log.Warn("Failed to load local config", "error", err)
-			} else if localCfg != nil {
+			// Use custom config path if specified, otherwise default to current directory
+			var localCfg *config.LocalConfig
+			var err error
+			if cfg.ConfigPath != "" {
+				localCfg, err = config.LoadLocalConfigFromPath(cfg.ConfigPath)
+				if err != nil {
+					log.Warn("Failed to load config from specified path", "path", cfg.ConfigPath, "error", err)
+				} else if localCfg != nil {
+					log.Info("Loaded configuration", "path", cfg.ConfigPath)
+				}
+			} else {
+				localCfg, err = config.LoadLocalConfig()
+				if err != nil {
+					log.Warn("Failed to load local config", "error", err)
+				} else if localCfg != nil {
+					log.Info("Loaded configuration from .dbbackup.conf")
+				}
+			}
+
+			if localCfg != nil {
 				// Save current flag values that were explicitly set
 				savedBackupDir := cfg.BackupDir
 				savedHost := cfg.Host
@@ -72,7 +89,6 @@ For help with specific commands, use: dbbackup [command] --help`,
 
 				// Apply config from file
 				config.ApplyLocalConfig(cfg, localCfg)
-				log.Info("Loaded configuration from .dbbackup.conf")
 
 				// Restore explicitly set flag values (flags have priority)
 				if flagsSet["backup-dir"] {
@@ -141,6 +157,7 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 		cfg.Version, cfg.BuildTime, cfg.GitCommit)
 
 	// Add persistent flags
+	rootCmd.PersistentFlags().StringVarP(&cfg.ConfigPath, "config", "c", "", "Path to config file (default: .dbbackup.conf in current directory)")
 	rootCmd.PersistentFlags().StringVar(&cfg.Host, "host", cfg.Host, "Database host")
 	rootCmd.PersistentFlags().IntVar(&cfg.Port, "port", cfg.Port, "Database port")
 	rootCmd.PersistentFlags().StringVar(&cfg.Socket, "socket", cfg.Socket, "Unix socket path for MySQL/MariaDB (e.g., /var/run/mysqld/mysqld.sock)")

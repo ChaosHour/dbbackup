@@ -2,6 +2,31 @@
 
 This document provides complete reference for the DBBackup Prometheus exporter, including all exported metrics, setup instructions, and Grafana dashboard configuration.
 
+## What's New (January 2026)
+
+### New Features
+- **Backup Type Tracking**: All backup metrics now include a `backup_type` label (`full`, `incremental`, `pitr_base`)
+- **PITR Metrics**: Complete Point-in-Time Recovery monitoring for PostgreSQL WAL and MySQL binlog archiving
+- **New Alerts**: PITR-specific alerts for archive lag, chain integrity, and gap detection
+
+### New Metrics Added
+| Metric | Description |
+|--------|-------------|
+| `dbbackup_backup_by_type` | Count backups by type (full/incremental/pitr_base) |
+| `dbbackup_pitr_enabled` | Whether PITR is enabled (1/0) |
+| `dbbackup_pitr_archive_lag_seconds` | Seconds since last WAL/binlog archived |
+| `dbbackup_pitr_chain_valid` | WAL/binlog chain integrity (1=valid) |
+| `dbbackup_pitr_gap_count` | Number of gaps in archive chain |
+| `dbbackup_pitr_archive_count` | Total archived segments |
+| `dbbackup_pitr_archive_size_bytes` | Total archive storage |
+| `dbbackup_pitr_recovery_window_minutes` | Estimated PITR coverage |
+
+### Label Changes
+- `backup_type` label added to: `dbbackup_rpo_seconds`, `dbbackup_last_success_timestamp`, `dbbackup_last_backup_duration_seconds`, `dbbackup_last_backup_size_bytes`
+- `dbbackup_backup_total` type changed from counter to gauge (more accurate for snapshot-based collection)
+
+---
+
 ## Table of Contents
 
 - [Quick Start](#quick-start)
@@ -112,13 +137,28 @@ All metrics use the `dbbackup_` prefix. Below is the **validated** list of metri
 
 | Metric Name | Type | Labels | Description |
 |-------------|------|--------|-------------|
-| `dbbackup_last_success_timestamp` | gauge | `server`, `database`, `engine` | Unix timestamp of last successful backup |
-| `dbbackup_last_backup_duration_seconds` | gauge | `server`, `database`, `engine` | Duration of last successful backup in seconds |
-| `dbbackup_last_backup_size_bytes` | gauge | `server`, `database`, `engine` | Size of last successful backup in bytes |
-| `dbbackup_backup_total` | counter | `server`, `database`, `status` | Total backup attempts (status: `success` or `failure`) |
-| `dbbackup_rpo_seconds` | gauge | `server`, `database` | Seconds since last successful backup (RPO) |
+| `dbbackup_last_success_timestamp` | gauge | `server`, `database`, `engine`, `backup_type` | Unix timestamp of last successful backup |
+| `dbbackup_last_backup_duration_seconds` | gauge | `server`, `database`, `engine`, `backup_type` | Duration of last successful backup in seconds |
+| `dbbackup_last_backup_size_bytes` | gauge | `server`, `database`, `engine`, `backup_type` | Size of last successful backup in bytes |
+| `dbbackup_backup_total` | gauge | `server`, `database`, `status` | Total backup attempts (status: `success` or `failure`) |
+| `dbbackup_backup_by_type` | gauge | `server`, `database`, `backup_type` | Backup count by type (`full`, `incremental`, `pitr_base`) |
+| `dbbackup_rpo_seconds` | gauge | `server`, `database`, `backup_type` | Seconds since last successful backup (RPO) |
 | `dbbackup_backup_verified` | gauge | `server`, `database` | Whether last backup was verified (1=yes, 0=no) |
 | `dbbackup_scrape_timestamp` | gauge | `server` | Unix timestamp when metrics were collected |
+
+### PITR (Point-in-Time Recovery) Metrics
+
+| Metric Name | Type | Labels | Description |
+|-------------|------|--------|-------------|
+| `dbbackup_pitr_enabled` | gauge | `server`, `database`, `engine` | Whether PITR is enabled (1=yes, 0=no) |
+| `dbbackup_pitr_last_archived_timestamp` | gauge | `server`, `database`, `engine` | Unix timestamp of last archived WAL/binlog |
+| `dbbackup_pitr_archive_lag_seconds` | gauge | `server`, `database`, `engine` | Seconds since last archive (lower is better) |
+| `dbbackup_pitr_archive_count` | gauge | `server`, `database`, `engine` | Total archived WAL segments or binlog files |
+| `dbbackup_pitr_archive_size_bytes` | gauge | `server`, `database`, `engine` | Total size of archived logs in bytes |
+| `dbbackup_pitr_chain_valid` | gauge | `server`, `database`, `engine` | Whether archive chain is valid (1=yes, 0=gaps) |
+| `dbbackup_pitr_gap_count` | gauge | `server`, `database`, `engine` | Number of gaps in archive chain |
+| `dbbackup_pitr_recovery_window_minutes` | gauge | `server`, `database`, `engine` | Estimated PITR coverage window in minutes |
+| `dbbackup_pitr_scrape_timestamp` | gauge | `server` | PITR metrics collection timestamp |
 
 ### Deduplication Metrics
 
@@ -155,33 +195,54 @@ All metrics use the `dbbackup_` prefix. Below is the **validated** list of metri
 
 ```prometheus
 # DBBackup Prometheus Metrics
-# Generated at: 2026-01-26T10:30:00Z
+# Generated at: 2026-01-27T10:30:00Z
 # Server: production
 
 # HELP dbbackup_last_success_timestamp Unix timestamp of last successful backup
 # TYPE dbbackup_last_success_timestamp gauge
-dbbackup_last_success_timestamp{server="production",database="myapp",engine="postgres"} 1737884600
+dbbackup_last_success_timestamp{server="production",database="myapp",engine="postgres",backup_type="full"} 1737884600
 
 # HELP dbbackup_last_backup_duration_seconds Duration of last successful backup in seconds
 # TYPE dbbackup_last_backup_duration_seconds gauge
-dbbackup_last_backup_duration_seconds{server="production",database="myapp",engine="postgres"} 125.50
+dbbackup_last_backup_duration_seconds{server="production",database="myapp",engine="postgres",backup_type="full"} 125.50
 
 # HELP dbbackup_last_backup_size_bytes Size of last successful backup in bytes
 # TYPE dbbackup_last_backup_size_bytes gauge
-dbbackup_last_backup_size_bytes{server="production",database="myapp",engine="postgres"} 1073741824
+dbbackup_last_backup_size_bytes{server="production",database="myapp",engine="postgres",backup_type="full"} 1073741824
 
-# HELP dbbackup_backup_total Total number of backup attempts
-# TYPE dbbackup_backup_total counter
+# HELP dbbackup_backup_total Total number of backup attempts by type and status
+# TYPE dbbackup_backup_total gauge
 dbbackup_backup_total{server="production",database="myapp",status="success"} 42
 dbbackup_backup_total{server="production",database="myapp",status="failure"} 2
 
+# HELP dbbackup_backup_by_type Total number of backups by backup type
+# TYPE dbbackup_backup_by_type gauge
+dbbackup_backup_by_type{server="production",database="myapp",backup_type="full"} 30
+dbbackup_backup_by_type{server="production",database="myapp",backup_type="incremental"} 12
+
 # HELP dbbackup_rpo_seconds Recovery Point Objective - seconds since last successful backup
 # TYPE dbbackup_rpo_seconds gauge
-dbbackup_rpo_seconds{server="production",database="myapp"} 3600
+dbbackup_rpo_seconds{server="production",database="myapp",backup_type="full"} 3600
 
 # HELP dbbackup_backup_verified Whether the last backup was verified (1=yes, 0=no)
 # TYPE dbbackup_backup_verified gauge
 dbbackup_backup_verified{server="production",database="myapp"} 1
+
+# HELP dbbackup_pitr_enabled Whether PITR is enabled for database (1=enabled, 0=disabled)
+# TYPE dbbackup_pitr_enabled gauge
+dbbackup_pitr_enabled{server="production",database="myapp",engine="postgres"} 1
+
+# HELP dbbackup_pitr_archive_lag_seconds Seconds since last WAL/binlog was archived
+# TYPE dbbackup_pitr_archive_lag_seconds gauge
+dbbackup_pitr_archive_lag_seconds{server="production",database="myapp",engine="postgres"} 45
+
+# HELP dbbackup_pitr_chain_valid Whether the WAL/binlog chain is valid (1=valid, 0=gaps detected)
+# TYPE dbbackup_pitr_chain_valid gauge
+dbbackup_pitr_chain_valid{server="production",database="myapp",engine="postgres"} 1
+
+# HELP dbbackup_pitr_recovery_window_minutes Estimated recovery window in minutes
+# TYPE dbbackup_pitr_recovery_window_minutes gauge
+dbbackup_pitr_recovery_window_minutes{server="production",database="myapp",engine="postgres"} 10080
 
 # HELP dbbackup_dedup_ratio Deduplication ratio (0-1, higher is better)
 # TYPE dbbackup_dedup_ratio gauge
@@ -301,6 +362,7 @@ The dashboard includes the following panels:
 
 Import `deploy/prometheus/alerting-rules.yaml` into Prometheus/Alertmanager.
 
+#### Backup Status Alerts
 | Alert | Expression | Severity | Description |
 |-------|------------|----------|-------------|
 | `DBBackupRPOWarning` | `dbbackup_rpo_seconds > 43200` | warning | No backup for 12+ hours |
@@ -311,6 +373,20 @@ Import `deploy/prometheus/alerting-rules.yaml` into Prometheus/Alertmanager.
 | `DBBackupSizeZero` | `dbbackup_last_backup_size_bytes == 0` | critical | Empty backup file |
 | `DBBackupDurationHigh` | `dbbackup_last_backup_duration_seconds > 3600` | warning | Backup taking > 1 hour |
 | `DBBackupNotVerified` | `dbbackup_backup_verified == 0` for 24h | warning | Backup not verified |
+| `DBBackupNoRecentFull` | No full backup in 7+ days | warning | Need full backup for incremental chain |
+
+#### PITR Alerts (New)
+| Alert | Expression | Severity | Description |
+|-------|------------|----------|-------------|
+| `DBBackupPITRArchiveLag` | `dbbackup_pitr_archive_lag_seconds > 600` | warning | Archive 10+ min behind |
+| `DBBackupPITRArchiveCritical` | `dbbackup_pitr_archive_lag_seconds > 1800` | critical | Archive 30+ min behind |
+| `DBBackupPITRChainBroken` | `dbbackup_pitr_chain_valid == 0` | critical | Gaps in WAL/binlog chain |
+| `DBBackupPITRGaps` | `dbbackup_pitr_gap_count > 0` | warning | Gaps detected in archive chain |
+| `DBBackupPITRDisabled` | PITR unexpectedly disabled | critical | PITR was enabled but now off |
+
+#### Infrastructure Alerts
+| Alert | Expression | Severity | Description |
+|-------|------------|----------|-------------|
 | `DBBackupExporterDown` | `up{job="dbbackup"} == 0` | critical | Exporter unreachable |
 | `DBBackupDedupRatioLow` | `dbbackup_dedup_ratio < 0.2` for 24h | info | Low dedup efficiency |
 | `DBBackupStorageHigh` | `dbbackup_dedup_disk_usage_bytes > 1TB` | warning | High storage usage |
@@ -329,6 +405,15 @@ groups:
         annotations:
           summary: "No backup for {{ $labels.database }} in 24+ hours"
           description: "RPO violation on {{ $labels.server }}. Last backup: {{ $value | humanizeDuration }} ago."
+      
+      - alert: DBBackupPITRChainBroken
+        expr: dbbackup_pitr_chain_valid == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PITR chain broken for {{ $labels.database }}"
+          description: "WAL/binlog chain has gaps. Point-in-time recovery is NOT possible. New base backup required."
 ```
 
 ---

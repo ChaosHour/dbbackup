@@ -6,7 +6,7 @@ This document describes all Prometheus metrics exposed by DBBackup for monitorin
 
 ### `dbbackup_rpo_seconds`
 **Type:** Gauge  
-**Labels:** `server`, `database`, `engine`  
+**Labels:** `server`, `database`, `backup_type`  
 **Description:** Time in seconds since the last successful backup (Recovery Point Objective).
 
 **Recommended Thresholds:**
@@ -17,19 +17,38 @@ This document describes all Prometheus metrics exposed by DBBackup for monitorin
 **Example Query:**
 ```promql
 dbbackup_rpo_seconds{server="prod-db-01"} > 86400
+
+# RPO by backup type
+dbbackup_rpo_seconds{backup_type="full"}
+dbbackup_rpo_seconds{backup_type="incremental"}
 ```
 
 ---
 
 ### `dbbackup_backup_total`
-**Type:** Counter  
-**Labels:** `server`, `database`, `engine`, `status`  
+**Type:** Gauge  
+**Labels:** `server`, `database`, `status`  
 **Description:** Total count of backup attempts, labeled by status (`success` or `failure`).
 
 **Example Query:**
 ```promql
-# Failure rate over last hour
-rate(dbbackup_backup_total{status="failure"}[1h])
+# Total successful backups
+dbbackup_backup_total{status="success"}
+```
+
+---
+
+### `dbbackup_backup_by_type`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `backup_type`  
+**Description:** Total count of backups by backup type (`full`, `incremental`, `pitr_base`).
+
+**Example Query:**
+```promql
+# Count of each backup type
+dbbackup_backup_by_type{backup_type="full"}
+dbbackup_backup_by_type{backup_type="incremental"}
+dbbackup_backup_by_type{backup_type="pitr_base"}
 ```
 
 ---
@@ -43,21 +62,112 @@ rate(dbbackup_backup_total{status="failure"}[1h])
 
 ### `dbbackup_last_backup_size_bytes`
 **Type:** Gauge  
-**Labels:** `server`, `database`, `engine`  
+**Labels:** `server`, `database`, `engine`, `backup_type`  
 **Description:** Size of the last successful backup in bytes.
 
 **Example Query:**
 ```promql
 # Total backup storage across all databases
 sum(dbbackup_last_backup_size_bytes)
+
+# Size by backup type
+dbbackup_last_backup_size_bytes{backup_type="full"}
 ```
 
 ---
 
 ### `dbbackup_last_backup_duration_seconds`
 **Type:** Gauge  
-**Labels:** `server`, `database`, `engine`  
+**Labels:** `server`, `database`, `engine`, `backup_type`  
 **Description:** Duration of the last backup operation in seconds.
+
+---
+
+### `dbbackup_last_success_timestamp`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `engine`, `backup_type`  
+**Description:** Unix timestamp of the last successful backup.
+
+---
+
+## PITR (Point-in-Time Recovery) Metrics
+
+### `dbbackup_pitr_enabled`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `engine`  
+**Description:** Whether PITR is enabled for the database (1 = enabled, 0 = disabled).
+
+**Example Query:**
+```promql
+# Check if PITR is enabled
+dbbackup_pitr_enabled{database="production"} == 1
+```
+
+---
+
+### `dbbackup_pitr_last_archived_timestamp`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `engine`  
+**Description:** Unix timestamp of the last archived WAL segment (PostgreSQL) or binlog file (MySQL).
+
+---
+
+### `dbbackup_pitr_archive_lag_seconds`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `engine`  
+**Description:** Seconds since the last WAL/binlog was archived. High values indicate archiving issues.
+
+**Recommended Thresholds:**
+- Green: < 300 (5 minutes)
+- Yellow: 300-600 (5-10 minutes)
+- Red: > 600 (10+ minutes)
+
+**Example Query:**
+```promql
+# Alert on high archive lag
+dbbackup_pitr_archive_lag_seconds > 600
+```
+
+---
+
+### `dbbackup_pitr_archive_count`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `engine`  
+**Description:** Total number of archived WAL segments or binlog files.
+
+---
+
+### `dbbackup_pitr_archive_size_bytes`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `engine`  
+**Description:** Total size of archived logs in bytes.
+
+---
+
+### `dbbackup_pitr_chain_valid`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `engine`  
+**Description:** Whether the WAL/binlog chain is valid (1 = valid, 0 = gaps detected).
+
+**Example Query:**
+```promql
+# Alert on broken chain
+dbbackup_pitr_chain_valid == 0
+```
+
+---
+
+### `dbbackup_pitr_gap_count`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `engine`  
+**Description:** Number of gaps detected in the WAL/binlog chain. Any value > 0 requires investigation.
+
+---
+
+### `dbbackup_pitr_recovery_window_minutes`
+**Type:** Gauge  
+**Labels:** `server`, `database`, `engine`  
+**Description:** Estimated recovery window in minutes - the time span covered by archived logs.
 
 ---
 
@@ -131,6 +241,10 @@ See [alerting-rules.yaml](../grafana/alerting-rules.yaml) for pre-configured Pro
 | BackupFailed | `increase(dbbackup_backup_total{status="failure"}[1h]) > 0` | Warning |
 | BackupNotVerified | `dbbackup_backup_verified == 0` | Warning |
 | DedupDegraded | `dbbackup_dedup_ratio < 0.1` | Info |
+| PITRArchiveLag | `dbbackup_pitr_archive_lag_seconds > 600` | Warning |
+| PITRChainBroken | `dbbackup_pitr_chain_valid == 0` | Critical |
+| PITRDisabled | `dbbackup_pitr_enabled == 0` (unexpected) | Critical |
+| NoIncrementalBackups | `dbbackup_backup_by_type{backup_type="incremental"} == 0` for 7d | Info |
 
 ---
 

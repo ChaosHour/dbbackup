@@ -96,6 +96,90 @@ groups:
             Current usage: {{ $value | humanize1024 }}B
           runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#storage-growth"
 
+      # PITR: Archive lag high
+      - alert: DBBackupPITRArchiveLag
+        expr: dbbackup_pitr_archive_lag_seconds > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PITR archive lag high for {{ $labels.database }}"
+          description: |
+            WAL/binlog archiving for {{ $labels.database }} on {{ $labels.server }}
+            is {{ $value | humanizeDuration }} behind. This reduces the PITR
+            recovery point. Check archive process and disk space.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#pitr-archive-lag"
+
+      # PITR: Archive lag critical
+      - alert: DBBackupPITRArchiveLagCritical
+        expr: dbbackup_pitr_archive_lag_seconds > 1800
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PITR archive severely behind for {{ $labels.database }}"
+          description: |
+            WAL/binlog archiving for {{ $labels.database }} is {{ $value | humanizeDuration }}
+            behind. Point-in-time recovery capability is at risk. Immediate action required.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#pitr-archive-critical"
+
+      # PITR: Chain broken (gaps detected)
+      - alert: DBBackupPITRChainBroken
+        expr: dbbackup_pitr_chain_valid == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PITR chain broken for {{ $labels.database }}"
+          description: |
+            The WAL/binlog chain for {{ $labels.database }} on {{ $labels.server }}
+            has gaps. Point-in-time recovery to arbitrary points is NOT possible.
+            A new base backup is required to restore PITR capability.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#pitr-chain-broken"
+
+      # PITR: Gaps in chain
+      - alert: DBBackupPITRGapsDetected
+        expr: dbbackup_pitr_gap_count > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PITR chain has {{ $value }} gaps for {{ $labels.database }}"
+          description: |
+            {{ $value }} gaps detected in WAL/binlog chain for {{ $labels.database }}.
+            Recovery to points within gaps will fail. Consider taking a new base backup.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#pitr-gaps"
+
+      # PITR: Unexpectedly disabled
+      - alert: DBBackupPITRDisabled
+        expr: |
+          dbbackup_pitr_enabled == 0 
+          and on(database) dbbackup_pitr_archive_count > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PITR unexpectedly disabled for {{ $labels.database }}"
+          description: |
+            PITR was previously enabled for {{ $labels.database }} (has archived logs)
+            but is now disabled. This may indicate a configuration issue or
+            database restart without PITR settings.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#pitr-disabled"
+
+      # Backup type: No full backups recently
+      - alert: DBBackupNoRecentFullBackup
+        expr: |
+          time() - dbbackup_last_success_timestamp{backup_type="full"} > 604800
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No full backup in 7+ days for {{ $labels.database }}"
+          description: |
+            Database {{ $labels.database }} has not had a full backup in over 7 days.
+            Incremental backups depend on a valid full backup base.
+          runbook_url: "https://github.com/your-org/dbbackup/wiki/Runbooks#no-full-backup"
+
       # Info: Exporter not responding
       - alert: DBBackupExporterDown
         expr: up{job="dbbackup"} == 0

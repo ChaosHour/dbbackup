@@ -90,6 +90,53 @@ groups:
           summary: "Backup not verified for {{ $labels.database }}"
           description: "Last backup was not verified. Run dbbackup verify to check integrity."
 
+      # PITR Alerts
+      - alert: DBBackupPITRArchiveLag
+        expr: dbbackup_pitr_archive_lag_seconds > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PITR archive lag on {{ $labels.server }}"
+          description: "WAL/binlog archiving for {{ $labels.database }} is {{ $value | humanizeDuration }} behind."
+
+      - alert: DBBackupPITRArchiveCritical
+        expr: dbbackup_pitr_archive_lag_seconds > 1800
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PITR archive critically behind on {{ $labels.server }}"
+          description: "WAL/binlog archiving for {{ $labels.database }} is {{ $value | humanizeDuration }} behind. PITR capability at risk!"
+
+      - alert: DBBackupPITRChainBroken
+        expr: dbbackup_pitr_chain_valid == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PITR chain broken for {{ $labels.database }}"
+          description: "WAL/binlog chain has gaps. Point-in-time recovery NOT possible. New base backup required."
+
+      - alert: DBBackupPITRGaps
+        expr: dbbackup_pitr_gap_count > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PITR chain gaps for {{ $labels.database }}"
+          description: "{{ $value }} gaps in WAL/binlog chain. Recovery to points within gaps will fail."
+
+      # Backup Type Alerts
+      - alert: DBBackupNoRecentFull
+        expr: time() - dbbackup_last_success_timestamp{backup_type="full"} > 604800
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No full backup in 7+ days for {{ $labels.database }}"
+          description: "Consider taking a full backup. Incremental chains depend on valid base."
+
       # Exporter Health
       - alert: DBBackupExporterDown
         expr: up{job="dbbackup"} == 0

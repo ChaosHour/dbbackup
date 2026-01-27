@@ -37,3 +37,6 @@ CRITICAL_BUGS_FIXED.md
 LEGAL_DOCUMENTATION.md
 LEGAL_*.md
 legal/
+
+# Release binaries (uploaded via gh release, not git)
+release/dbbackup_*

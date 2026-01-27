@@ -43,6 +43,13 @@ dbbackup_backup_total{status="success"}
 **Labels:** `server`, `database`, `backup_type`  
 **Description:** Total count of backups by backup type (`full`, `incremental`, `pitr_base`).
 
+> **Note:** The `backup_type` label values are:
+> - `full` - Created with `--backup-type full` (default)
+> - `incremental` - Created with `--backup-type incremental`
+> - `pitr_base` - Auto-assigned when using `dbbackup pitr base` command
+>
+> The CLI `--backup-type` flag only accepts `full` or `incremental`.
+
 **Example Query:**
 ```promql
 # Count of each backup type
@@ -226,6 +233,32 @@ dbbackup_pitr_chain_valid == 0
 **Type:** Gauge  
 **Labels:** `server`  
 **Description:** Unix timestamp of the newest chunk. Confirms dedup is working on recent backups.
+
+---
+
+## Build Information Metrics
+
+### `dbbackup_build_info`
+**Type:** Gauge  
+**Labels:** `server`, `version`, `commit`  
+**Description:** Build information for the dbbackup exporter. Value is always 1.
+
+This metric is useful for:
+- Tracking which version is deployed across your fleet
+- Alerting when versions drift between servers
+- Correlating behavior changes with deployments
+
+**Example Queries:**
+```promql
+# Show all deployed versions
+group by (version) (dbbackup_build_info)
+
+# Find servers not on latest version
+dbbackup_build_info{version!="4.1.1"}
+
+# Alert on version drift
+count(count by (version) (dbbackup_build_info)) > 1
+```
 
 ---
 

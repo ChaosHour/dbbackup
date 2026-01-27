@@ -14,10 +14,12 @@ import (
 
 // Exporter provides an HTTP endpoint for Prometheus metrics
 type Exporter struct {
-	log      logger.Logger
-	catalog  catalog.Catalog
-	instance string
-	port     int
+	log       logger.Logger
+	catalog   catalog.Catalog
+	instance  string
+	port      int
+	version   string
+	gitCommit string
 
 	mu          sync.RWMutex
 	cachedData  string
@@ -32,6 +34,19 @@ func NewExporter(log logger.Logger, cat catalog.Catalog, instance string, port i
 		catalog:    cat,
 		instance:   instance,
 		port:       port,
+		refreshTTL: 30 * time.Second,
+	}
+}
+
+// NewExporterWithVersion creates a new Prometheus exporter with version info
+func NewExporterWithVersion(log logger.Logger, cat catalog.Catalog, instance string, port int, version, gitCommit string) *Exporter {
+	return &Exporter{
+		log:        log,
+		catalog:    cat,
+		instance:   instance,
+		port:       port,
+		version:    version,
+		gitCommit:  gitCommit,
 		refreshTTL: 30 * time.Second,
 	}
 }
@@ -158,7 +173,7 @@ func (e *Exporter) refreshLoop(ctx context.Context) {
 
 // refresh updates the cached metrics
 func (e *Exporter) refresh() error {
-	writer := NewMetricsWriter(e.log, e.catalog, e.instance)
+	writer := NewMetricsWriterWithVersion(e.log, e.catalog, e.instance, e.version, e.gitCommit)
 	data, err := writer.GenerateMetricsString()
 	if err != nil {
 		return err

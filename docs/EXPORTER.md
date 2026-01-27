@@ -5,13 +5,15 @@ This document provides complete reference for the DBBackup Prometheus exporter, 
 ## What's New (January 2026)
 
 ### New Features
-- **Backup Type Tracking**: All backup metrics now include a `backup_type` label (`full`, `incremental`, `pitr_base`)
+- **Backup Type Tracking**: All backup metrics now include a `backup_type` label (`full`, `incremental`, or `pitr_base` for PITR base backups)
+  - **Note**: CLI `--backup-type` flag only accepts `full` or `incremental`. The `pitr_base` label is auto-assigned when using `dbbackup pitr base`
 - **PITR Metrics**: Complete Point-in-Time Recovery monitoring for PostgreSQL WAL and MySQL binlog archiving
 - **New Alerts**: PITR-specific alerts for archive lag, chain integrity, and gap detection
 
 ### New Metrics Added
 | Metric | Description |
 |--------|-------------|
+| `dbbackup_build_info` | Build info with version and commit labels |
 | `dbbackup_backup_by_type` | Count backups by type (full/incremental/pitr_base) |
 | `dbbackup_pitr_enabled` | Whether PITR is enabled (1/0) |
 | `dbbackup_pitr_archive_lag_seconds` | Seconds since last WAL/binlog archived |

@@ -127,8 +127,8 @@ func runMetricsExport(ctx context.Context) error {
 	}
 	defer cat.Close()
 
-	// Create metrics writer
-	writer := prometheus.NewMetricsWriter(log, cat, server)
+	// Create metrics writer with version info
+	writer := prometheus.NewMetricsWriterWithVersion(log, cat, server, cfg.Version, cfg.GitCommit)
 
 	// Write textfile
 	if err := writer.WriteTextfile(metricsOutput); err != nil {
@@ -162,8 +162,8 @@ func runMetricsServe(ctx context.Context) error {
 	}
 	defer cat.Close()
 
-	// Create exporter
-	exporter := prometheus.NewExporter(log, cat, server, metricsPort)
+	// Create exporter with version info
+	exporter := prometheus.NewExporterWithVersion(log, cat, server, metricsPort, cfg.Version, cfg.GitCommit)
 
 	// Run server (blocks until context is cancelled)
 	return exporter.Serve(ctx)

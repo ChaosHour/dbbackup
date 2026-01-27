@@ -5,6 +5,39 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.1] - 2026-01-25
+
+### Added
+- **`dbbackup_build_info` metric** - Exposes version and git commit as Prometheus labels
+  - Useful for tracking deployed versions across a fleet
+  - Labels: `server`, `version`, `commit`
+
+### Fixed
+- **Documentation clarification**: The `pitr_base` value for `backup_type` label is auto-assigned
+  by `dbbackup pitr base` command. CLI `--backup-type` flag only accepts `full` or `incremental`.
+  This was causing confusion in deployments.
+
+## [4.1.0] - 2026-01-25
+
+### Added
+- **Backup Type Tracking**: All backup metrics now include a `backup_type` label
+  (`full`, `incremental`, or `pitr_base` for PITR base backups)
+- **PITR Metrics**: Complete Point-in-Time Recovery monitoring
+  - `dbbackup_pitr_enabled` - Whether PITR is enabled (1/0)
+  - `dbbackup_pitr_archive_lag_seconds` - Seconds since last WAL/binlog archived
+  - `dbbackup_pitr_chain_valid` - WAL/binlog chain integrity (1=valid)
+  - `dbbackup_pitr_gap_count` - Number of gaps in archive chain
+  - `dbbackup_pitr_archive_count` - Total archived segments
+  - `dbbackup_pitr_archive_size_bytes` - Total archive storage
+  - `dbbackup_pitr_recovery_window_minutes` - Estimated PITR coverage
+- **PITR Alerting Rules**: 6 new alerts for PITR monitoring
+  - PITRArchiveLag, PITRChainBroken, PITRGapsDetected, PITRArchiveStalled,
+    PITRStorageGrowing, PITRDisabledUnexpectedly
+- **`dbbackup_backup_by_type` metric** - Count backups by type
+
+### Changed
+- `dbbackup_backup_total` type changed from counter to gauge for snapshot-based collection
+
 ## [3.42.110] - 2026-01-24
 
 ### Improved - Code Quality & Testing

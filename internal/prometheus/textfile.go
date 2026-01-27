@@ -16,17 +16,32 @@ import (
 
 // MetricsWriter writes metrics in Prometheus text format
 type MetricsWriter struct {
-	log      logger.Logger
-	catalog  catalog.Catalog
-	instance string
+	log       logger.Logger
+	catalog   catalog.Catalog
+	instance  string
+	version   string
+	gitCommit string
 }
 
 // NewMetricsWriter creates a new MetricsWriter
 func NewMetricsWriter(log logger.Logger, cat catalog.Catalog, instance string) *MetricsWriter {
 	return &MetricsWriter{
-		log:      log,
-		catalog:  cat,
-		instance: instance,
+		log:       log,
+		catalog:   cat,
+		instance:  instance,
+		version:   "unknown",
+		gitCommit: "unknown",
+	}
+}
+
+// NewMetricsWriterWithVersion creates a MetricsWriter with version info for build_info metric
+func NewMetricsWriterWithVersion(log logger.Logger, cat catalog.Catalog, instance, version, gitCommit string) *MetricsWriter {
+	return &MetricsWriter{
+		log:       log,
+		catalog:   cat,
+		instance:  instance,
+		version:   version,
+		gitCommit: gitCommit,
 	}
 }
 
@@ -191,6 +206,13 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 	b.WriteString("# DBBackup Prometheus Metrics\n")
 	b.WriteString(fmt.Sprintf("# Generated at: %s\n", time.Now().Format(time.RFC3339)))
 	b.WriteString(fmt.Sprintf("# Server: %s\n", m.instance))
+	b.WriteString("\n")
+
+	// dbbackup_build_info - version and build information
+	b.WriteString("# HELP dbbackup_build_info Build information for dbbackup exporter\n")
+	b.WriteString("# TYPE dbbackup_build_info gauge\n")
+	b.WriteString(fmt.Sprintf("dbbackup_build_info{server=%q,version=%q,commit=%q} 1\n",
+		m.instance, m.version, m.gitCommit))
 	b.WriteString("\n")
 
 	// dbbackup_last_success_timestamp

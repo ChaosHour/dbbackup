@@ -23,6 +23,7 @@ type Config struct {
 	User         string
 	Database     string
 	Password     string
+	Socket       string // Unix socket path for MySQL/MariaDB
 	DatabaseType string // "postgres" or "mysql"
 	SSLMode      string
 	Insecure     bool

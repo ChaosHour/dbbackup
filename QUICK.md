@@ -14,6 +14,9 @@ dbbackup backup single myapp
 # MySQL
 dbbackup backup single gitea --db-type mysql --host 127.0.0.1 --port 3306
 
+# MySQL/MariaDB with Unix socket
+dbbackup backup single myapp --db-type mysql --socket /var/run/mysqld/mysqld.sock
+
 # With compression level (0-9, default 6)
 dbbackup backup cluster --compression 9
 

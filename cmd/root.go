@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
@@ -107,6 +108,12 @@ For help with specific commands, use: dbbackup [command] --help`,
 			}
 		}
 
+		// Auto-detect socket from --host path (if host starts with /)
+		if strings.HasPrefix(cfg.Host, "/") && cfg.Socket == "" {
+			cfg.Socket = cfg.Host
+			cfg.Host = "localhost" // Reset host for socket connections
+		}
+
 		return cfg.SetDatabaseType(cfg.DatabaseType)
 	},
 }
@@ -136,6 +143,7 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	// Add persistent flags
 	rootCmd.PersistentFlags().StringVar(&cfg.Host, "host", cfg.Host, "Database host")
 	rootCmd.PersistentFlags().IntVar(&cfg.Port, "port", cfg.Port, "Database port")
+	rootCmd.PersistentFlags().StringVar(&cfg.Socket, "socket", cfg.Socket, "Unix socket path for MySQL/MariaDB (e.g., /var/run/mysqld/mysqld.sock)")
 	rootCmd.PersistentFlags().StringVar(&cfg.User, "user", cfg.User, "Database user")
 	rootCmd.PersistentFlags().StringVar(&cfg.Database, "database", cfg.Database, "Database name")
 	rootCmd.PersistentFlags().StringVar(&cfg.Password, "password", cfg.Password, "Database password")

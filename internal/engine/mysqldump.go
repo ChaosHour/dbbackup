@@ -345,8 +345,10 @@ func (e *MySQLDumpEngine) Restore(ctx context.Context, opts *RestoreOptions) err
 	// Build mysql command
 	args := []string{}
 
-	// Connection parameters
-	if e.config.Host != "" && e.config.Host != "localhost" {
+	// Connection parameters - socket takes priority over host
+	if e.config.Socket != "" {
+		args = append(args, "-S", e.config.Socket)
+	} else if e.config.Host != "" && e.config.Host != "localhost" {
 		args = append(args, "-h", e.config.Host)
 		args = append(args, "-P", strconv.Itoa(e.config.Port))
 	}
@@ -494,8 +496,10 @@ func (e *MySQLDumpEngine) BackupToWriter(ctx context.Context, w io.Writer, opts 
 func (e *MySQLDumpEngine) buildArgs(database string) []string {
 	args := []string{}
 
-	// Connection parameters
-	if e.config.Host != "" && e.config.Host != "localhost" {
+	// Connection parameters - socket takes priority over host
+	if e.config.Socket != "" {
+		args = append(args, "-S", e.config.Socket)
+	} else if e.config.Host != "" && e.config.Host != "localhost" {
 		args = append(args, "-h", e.config.Host)
 		args = append(args, "-P", strconv.Itoa(e.config.Port))
 	}

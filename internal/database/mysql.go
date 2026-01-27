@@ -278,8 +278,12 @@ func (m *MySQL) GetTableRowCount(ctx context.Context, database, table string) (i
 func (m *MySQL) BuildBackupCommand(database, outputFile string, options BackupOptions) []string {
 	cmd := []string{"mysqldump"}
 
-	// Connection parameters - handle localhost vs remote differently
-	if m.cfg.Host == "" || m.cfg.Host == "localhost" {
+	// Connection parameters - socket takes priority, then localhost vs remote
+	if m.cfg.Socket != "" {
+		// Explicit socket path provided
+		cmd = append(cmd, "-S", m.cfg.Socket)
+		cmd = append(cmd, "-u", m.cfg.User)
+	} else if m.cfg.Host == "" || m.cfg.Host == "localhost" {
 		// For localhost, use socket connection (don't specify host/port)
 		cmd = append(cmd, "-u", m.cfg.User)
 	} else {
@@ -338,8 +342,12 @@ func (m *MySQL) BuildBackupCommand(database, outputFile string, options BackupOp
 func (m *MySQL) BuildRestoreCommand(database, inputFile string, options RestoreOptions) []string {
 	cmd := []string{"mysql"}
 
-	// Connection parameters - handle localhost vs remote differently
-	if m.cfg.Host == "" || m.cfg.Host == "localhost" {
+	// Connection parameters - socket takes priority, then localhost vs remote
+	if m.cfg.Socket != "" {
+		// Explicit socket path provided
+		cmd = append(cmd, "-S", m.cfg.Socket)
+		cmd = append(cmd, "-u", m.cfg.User)
+	} else if m.cfg.Host == "" || m.cfg.Host == "localhost" {
 		// For localhost, use socket connection (don't specify host/port)
 		cmd = append(cmd, "-u", m.cfg.User)
 	} else {
@@ -417,8 +425,11 @@ func (m *MySQL) buildDSN() string {
 
 	dsn += "@"
 
-	// Handle localhost with Unix socket vs TCP/IP
-	if m.cfg.Host == "" || m.cfg.Host == "localhost" {
+	// Explicit socket takes priority
+	if m.cfg.Socket != "" {
+		dsn += "unix(" + m.cfg.Socket + ")"
+	} else if m.cfg.Host == "" || m.cfg.Host == "localhost" {
+		// Handle localhost with Unix socket vs TCP/IP
 		// Try common socket paths for localhost connections
 		socketPaths := []string{
 			"/run/mysqld/mysqld.sock",

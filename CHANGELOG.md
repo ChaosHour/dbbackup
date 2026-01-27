@@ -5,6 +5,19 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.2] - 2026-01-27
+
+### Added
+- **`--socket` flag for MySQL/MariaDB** - Connect via Unix socket instead of TCP/IP
+  - Usage: `dbbackup backup single mydb --db-type mysql --socket /var/run/mysqld/mysqld.sock`
+  - Works for both backup and restore operations
+  - Supports socket auth (no password required with proper permissions)
+
+### Fixed
+- **Socket path as --host now works** - If `--host` starts with `/`, it's auto-detected as a socket path
+  - Example: `--host /var/run/mysqld/mysqld.sock` now works correctly instead of DNS lookup error
+  - Auto-converts to `--socket` internally
+
 ## [4.1.1] - 2026-01-25
 
 ### Added

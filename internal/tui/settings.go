@@ -112,7 +112,8 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				return c.ResourceProfile
 			},
 			Update: func(c *config.Config, v string) error {
-				profiles := []string{"conservative", "balanced", "performance", "max-performance"}
+				// UPDATED: Added 'turbo' profile for maximum restore speed
+				profiles := []string{"conservative", "balanced", "performance", "max-performance", "turbo"}
 				currentIdx := 0
 				for i, p := range profiles {
 					if c.ResourceProfile == p {
@@ -124,7 +125,7 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				return c.ApplyResourceProfile(profiles[nextIdx])
 			},
 			Type:        "selector",
-			Description: "Resource profile for VM capacity. Toggle 'l' for Large DB Mode on any profile.",
+			Description: "Resource profile. 'turbo' = fastest (matches pg_restore -j8). Press Enter to cycle.",
 		},
 		{
 			Key:         "large_db_mode",

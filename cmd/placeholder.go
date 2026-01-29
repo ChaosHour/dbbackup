@@ -66,14 +66,21 @@ TUI Automation Flags (for testing and CI/CD):
 		cfg.TUIVerbose, _ = cmd.Flags().GetBool("verbose-tui")
 		cfg.TUILogFile, _ = cmd.Flags().GetString("tui-log-file")
 
-		// Set conservative profile as default for TUI mode (safer for interactive users)
-		if cfg.ResourceProfile == "" || cfg.ResourceProfile == "balanced" {
-			cfg.ResourceProfile = "conservative"
-			cfg.LargeDBMode = true
+		// FIXED: Only set default profile if user hasn't configured one
+		// Previously this forced conservative mode, ignoring user's saved settings
+		if cfg.ResourceProfile == "" {
+			// No profile configured at all - use balanced as sensible default
+			cfg.ResourceProfile = "balanced"
 			if cfg.Debug {
-				log.Info("TUI mode: using conservative profile by default")
+				log.Info("TUI mode: no profile configured, using 'balanced' default")
+			}
+		} else {
+			// User has a configured profile - RESPECT IT!
+			if cfg.Debug {
+				log.Info("TUI mode: respecting user-configured profile", "profile", cfg.ResourceProfile)
 			}
 		}
+		// Note: LargeDBMode is no longer forced - user controls it via settings
 
 		// Check authentication before starting TUI
 		if cfg.IsPostgreSQL() {

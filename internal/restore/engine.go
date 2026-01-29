@@ -2,6 +2,7 @@ package restore
 
 import (
 	"archive/tar"
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
@@ -952,6 +953,29 @@ func (e *Engine) RestoreSingleFromCluster(ctx context.Context, clusterArchivePat
 func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtractedPath ...string) error {
 	operation := e.log.StartOperation("Cluster Restore")
 
+	// 🚀 LOG ACTUAL PERFORMANCE SETTINGS - helps debug slow restores
+	profile := e.cfg.GetCurrentProfile()
+	if profile != nil {
+		e.log.Info("🚀 RESTORE PERFORMANCE SETTINGS",
+			"profile", profile.Name,
+			"cluster_parallelism", profile.ClusterParallelism,
+			"pg_restore_jobs", profile.Jobs,
+			"large_db_mode", e.cfg.LargeDBMode,
+			"buffered_io", profile.BufferedIO)
+	} else {
+		e.log.Info("🚀 RESTORE PERFORMANCE SETTINGS (raw config)",
+			"profile", e.cfg.ResourceProfile,
+			"cluster_parallelism", e.cfg.ClusterParallelism,
+			"pg_restore_jobs", e.cfg.Jobs,
+			"large_db_mode", e.cfg.LargeDBMode)
+	}
+
+	// Also show in progress bar for TUI visibility
+	if !e.silentMode {
+		fmt.Printf("\n⚡ Performance: profile=%s, parallel_dbs=%d, pg_restore_jobs=%d\n\n",
+			e.cfg.ResourceProfile, e.cfg.ClusterParallelism, e.cfg.Jobs)
+	}
+
 	// Validate and sanitize archive path
 	validArchivePath, pathErr := security.ValidateArchivePath(archivePath)
 	if pathErr != nil {
@@ -1798,10 +1822,22 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
 			}
 
-			// Copy file contents
-			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
-				return fmt.Errorf("failed to write file %s: %w", targetPath, err)
+			// Copy file contents - use buffered I/O for turbo mode (32KB buffer)
+			if e.cfg.BufferedIO {
+				bufferedWriter := bufio.NewWriterSize(outFile, 32*1024) // 32KB buffer for faster writes
+				if _, err := io.Copy(bufferedWriter, tarReader); err != nil {
+					outFile.Close()
+					return fmt.Errorf("failed to write file %s: %w", targetPath, err)
+				}
+				if err := bufferedWriter.Flush(); err != nil {
+					outFile.Close()
+					return fmt.Errorf("failed to flush buffer for %s: %w", targetPath, err)
+				}
+			} else {
+				if _, err := io.Copy(outFile, tarReader); err != nil {
+					outFile.Close()
+					return fmt.Errorf("failed to write file %s: %w", targetPath, err)
+				}
 			}
 			outFile.Close()
 		case tar.TypeSymlink:

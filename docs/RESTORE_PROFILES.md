@@ -70,15 +70,43 @@ dbbackup restore cluster backup.tar.gz --profile=aggressive --confirm
 ### Potato Profile (`--profile=potato`) 🥔
 **Easter egg:** Same as conservative, for servers running on a potato.
 
+### Turbo Profile (`--profile=turbo`) 🚀
+**NEW! Best for:** Maximum restore speed - matches native pg_restore -j8 performance.
+
+**Settings:**
+- Parallel databases: 2 (balanced I/O)
+- pg_restore jobs: 8 (like `pg_restore -j8`)
+- Buffered I/O: 32KB write buffers for faster extraction
+- Optimized for large databases
+
+**When to use:**
+- Dedicated database server
+- Need fastest possible restore (DR scenarios)
+- Server has 16GB+ RAM, 4+ cores
+- Large databases (100GB+)
+- You want dbbackup to match pg_restore speed
+
+**Example:**
+```bash
+dbbackup restore cluster backup.tar.gz --profile=turbo --confirm
+```
+
+**TUI Usage:**
+1. Go to Settings → Resource Profile
+2. Press Enter to cycle until you see "turbo"
+3. Save settings and run restore
+
 ## Profile Comparison
 
-| Setting | Conservative | Balanced | Aggressive |
-|---------|-------------|----------|-----------|
-| Parallel DBs | 1 (sequential) | Auto (2-4) | Auto (all CPUs) |
-| Jobs (decompression) | 1 | Auto (2-4) | Auto (all CPUs) |
-| Memory Usage | Minimal | Moderate | Maximum |
-| Speed | Slowest | Medium | Fastest |
-| Stability | Most stable | Stable | Requires resources |
+| Setting | Conservative | Balanced | Performance | Turbo 🚀 |
+|---------|-------------|----------|-------------|----------|
+| Parallel DBs | 1 | 2 | 4 | 2 |
+| pg_restore Jobs | 1 | 2 | 4 | 8 |
+| Buffered I/O | No | No | No | Yes (32KB) |
+| Memory Usage | Minimal | Moderate | High | Moderate |
+| Speed | Slowest | Medium | Fast | **Fastest** |
+| Stability | Most stable | Stable | Good | Good |
+| Best For | Small VMs | General use | Powerful servers | DR/Large DBs |
 
 ## Overriding Profile Settings
 

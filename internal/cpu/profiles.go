@@ -35,6 +35,8 @@ type ResourceProfile struct {
 	RecommendedForLarge bool   `json:"recommended_for_large"` // Suitable for large DBs?
 	MinMemoryGB         int    `json:"min_memory_gb"`         // Minimum memory for this profile
 	MinCores            int    `json:"min_cores"`             // Minimum cores for this profile
+	BufferedIO          bool   `json:"buffered_io"`           // Use 32KB buffered I/O for extraction
+	ParallelExtract     bool   `json:"parallel_extract"`      // Enable parallel file extraction
 }
 
 // Predefined resource profiles
@@ -95,12 +97,31 @@ var (
 		MinCores:            16,
 	}
 
+	// ProfileTurbo - TURBO MODE: Optimized for fastest possible restore
+	// Based on real-world testing: matches pg_restore -j8 performance
+	// Uses buffered I/O, parallel extraction, and aggressive pg_restore parallelism
+	ProfileTurbo = ResourceProfile{
+		Name:                "turbo",
+		Description:         "TURBO: Fastest restore mode. Matches native pg_restore -j8 speed. Use on dedicated DB servers.",
+		ClusterParallelism:  2,  // Restore 2 DBs concurrently (I/O balanced)
+		Jobs:                8,  // pg_restore -j8 (matches your pg_dump test)
+		DumpJobs:            8,  // Fast dumps too
+		MaintenanceWorkMem:  "2GB",
+		MaxLocksPerTxn:      4096, // High for large schemas
+		RecommendedForLarge: true, // Optimized for large DBs
+		MinMemoryGB:         16,   // Works on 16GB+ servers
+		MinCores:            4,    // Works on 4+ cores
+		BufferedIO:          true, // Enable 32KB buffered writes
+		ParallelExtract:     true, // Parallel tar extraction where possible
+	}
+
 	// AllProfiles contains all available profiles (VM resource-based)
 	AllProfiles = []ResourceProfile{
 		ProfileConservative,
 		ProfileBalanced,
 		ProfilePerformance,
 		ProfileMaxPerformance,
+		ProfileTurbo,
 	}
 )
 

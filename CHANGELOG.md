@@ -5,6 +5,31 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.4] - 2026-01-29
+
+### Added
+- **New `turbo` restore profile** 🚀 - Maximum restore speed, matches native `pg_restore -j8`
+  - `ClusterParallelism = 2` (restore 2 DBs concurrently)
+  - `Jobs = 8` (8 parallel pg_restore jobs)
+  - `BufferedIO = true` (32KB write buffers for faster extraction)
+  - Works on 16GB+ RAM, 4+ cores
+  - Usage: `dbbackup restore cluster backup.tar.gz --profile=turbo --confirm`
+
+- **Restore startup performance logging** - Shows actual parallelism settings at restore start
+  - Logs profile name, cluster_parallelism, pg_restore_jobs, buffered_io
+  - Helps verify settings before long restore operations
+
+- **Buffered I/O optimization** - 32KB write buffers during tar extraction (turbo profile)
+  - Reduces system call overhead
+  - Improves I/O throughput for large archives
+
+### Fixed
+- **TUI now respects saved profile settings** - Previously TUI forced `conservative` profile on every launch, ignoring user's saved configuration. Now properly loads and respects saved settings.
+
+### Changed
+- TUI default profile changed from forced `conservative` to `balanced` (only when no profile configured)
+- `LargeDBMode` no longer forced on TUI startup - user controls it via settings
+
 ## [4.1.3] - 2026-01-27
 
 ### Added

@@ -41,8 +41,10 @@ type Config struct {
 	CPUWorkloadType  string // "cpu-intensive", "io-intensive", "balanced"
 
 	// Resource profile for backup/restore operations
-	ResourceProfile string // "conservative", "balanced", "performance", "max-performance"
+	ResourceProfile string // "conservative", "balanced", "performance", "max-performance", "turbo"
 	LargeDBMode     bool   // Enable large database mode (reduces parallelism, increases max_locks)
+	BufferedIO      bool   // Use 32KB buffered I/O for faster extraction (turbo profile)
+	ParallelExtract bool   // Enable parallel file extraction where possible (turbo profile)
 
 	// CPU detection
 	CPUDetector *cpu.Detector
@@ -437,7 +439,7 @@ func (c *Config) ApplyResourceProfile(profileName string) error {
 		return &ConfigError{
 			Field:   "resource_profile",
 			Value:   profileName,
-			Message: "unknown profile. Valid profiles: conservative, balanced, performance, max-performance",
+			Message: "unknown profile. Valid profiles: conservative, balanced, performance, max-performance, turbo",
 		}
 	}
 
@@ -459,6 +461,10 @@ func (c *Config) ApplyResourceProfile(profileName string) error {
 	c.ClusterParallelism = profile.ClusterParallelism
 	c.Jobs = profile.Jobs
 	c.DumpJobs = profile.DumpJobs
+
+	// Apply turbo mode optimizations
+	c.BufferedIO = profile.BufferedIO
+	c.ParallelExtract = profile.ParallelExtract
 
 	return nil
 }

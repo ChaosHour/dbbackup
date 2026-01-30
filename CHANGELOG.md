@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added - Quick Wins Release
 
+- **`dbbackup health` command** - Comprehensive backup infrastructure health check
+  - 10 automated health checks: config, DB connectivity, backup dir, catalog, freshness, gaps, verification, file integrity, orphans, disk space
+  - Exit codes for automation: 0=healthy, 1=warning, 2=critical
+  - JSON output for monitoring integration (Prometheus, Nagios, etc.)
+  - Auto-generates actionable recommendations
+  - Custom backup interval for gap detection: `--interval 12h`
+  - Skip database check for offline mode: `--skip-db`
+  - Example: `dbbackup health --format json`
+
+- **TUI System Health Check** - Interactive health monitoring
+  - Accessible via Tools → System Health Check
+  - Runs all 10 checks asynchronously with progress spinner
+  - Color-coded results: green=healthy, yellow=warning, red=critical
+  - Displays recommendations for any issues found
+
 - **`dbbackup restore preview` command** - Pre-restore analysis and validation
   - Shows backup format, compression type, database type
   - Estimates uncompressed size (3x compression ratio)

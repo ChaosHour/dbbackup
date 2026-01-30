@@ -32,6 +32,7 @@ func NewToolsMenu(cfg *config.Config, log logger.Logger, parent tea.Model, ctx c
 			"Kill Connections",
 			"Drop Database",
 			"--------------------------------",
+			"System Health Check",
 			"Dedup Store Analyze",
 			"Verify Backup Integrity",
 			"Catalog Sync",
@@ -88,13 +89,15 @@ func (t *ToolsMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return t.handleKillConnections()
 			case 5: // Drop Database
 				return t.handleDropDatabase()
-			case 7: // Dedup Store Analyze
+			case 7: // System Health Check
+				return t.handleSystemHealth()
+			case 8: // Dedup Store Analyze
 				return t.handleDedupAnalyze()
-			case 8: // Verify Backup Integrity
+			case 9: // Verify Backup Integrity
 				return t.handleVerifyIntegrity()
-			case 9: // Catalog Sync
+			case 10: // Catalog Sync
 				return t.handleCatalogSync()
-			case 11: // Back to Main Menu
+			case 12: // Back to Main Menu
 				return t.parent, nil
 			}
 		}
@@ -146,6 +149,12 @@ func (t *ToolsMenu) handleBlobStats() (tea.Model, tea.Cmd) {
 func (t *ToolsMenu) handleBlobExtract() (tea.Model, tea.Cmd) {
 	t.message = infoStyle.Render("[INFO] Blob extraction coming soon - extracts large objects to dedup store")
 	return t, nil
+}
+
+// handleSystemHealth opens the system health check
+func (t *ToolsMenu) handleSystemHealth() (tea.Model, tea.Cmd) {
+	view := NewHealthView(t.config, t.logger, t, t.ctx)
+	return view, view.Init()
 }
 
 // handleDedupAnalyze shows dedup store analysis

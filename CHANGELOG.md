@@ -5,6 +5,51 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2026-01-30
+
+### Added - Quick Wins Release
+
+- **`dbbackup restore preview` command** - Pre-restore analysis and validation
+  - Shows backup format, compression type, database type
+  - Estimates uncompressed size (3x compression ratio)
+  - Calculates RTO (Recovery Time Objective) based on active profile
+  - Validates backup integrity without actual restore
+  - Displays resource requirements (RAM, CPU, disk space)
+  - Example: `dbbackup restore preview backup.dump.gz`
+
+- **`dbbackup diff` command** - Compare two backups and track changes
+  - Flexible input: file paths, catalog IDs, or `database:latest/previous`
+  - Shows size delta with percentage change
+  - Calculates database growth rate (GB/day)
+  - Projects time to reach 10GB threshold
+  - Compares backup duration and compression efficiency
+  - JSON output for automation and reporting
+  - Example: `dbbackup diff mydb:latest mydb:previous`
+
+- **`dbbackup cost analyze` command** - Cloud storage cost optimization
+  - Analyzes 15 storage tiers across 5 cloud providers
+  - AWS S3: Standard, IA, Glacier Instant/Flexible, Deep Archive
+  - Google Cloud Storage: Standard, Nearline, Coldline, Archive
+  - Azure Blob Storage: Hot, Cool, Archive
+  - Backblaze B2 and Wasabi alternatives
+  - Monthly/annual cost projections
+  - Savings calculations vs S3 Standard baseline
+  - Tiered lifecycle strategy recommendations
+  - Shows potential savings of 90%+ with proper policies
+  - Example: `dbbackup cost analyze --database mydb`
+
+### Enhanced
+- **TUI restore preview** - Added RTO estimates and size calculations
+  - Shows estimated uncompressed size during restore confirmation
+  - Displays estimated restore time based on current profile
+  - Helps users make informed restore decisions
+  - Keeps TUI simple (essentials only), detailed analysis in CLI
+
+### Documentation
+- Updated README.md with new commands and examples
+- Created QUICK_WINS.md documenting the rapid development sprint
+- Added backup diff and cost analysis sections
+
 ## [4.1.4] - 2026-01-29
 
 ### Added

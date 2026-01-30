@@ -30,6 +30,9 @@ type DetailedProgress struct {
 	IsComplete      bool
 	IsFailed        bool
 	ErrorMessage    string
+
+	// Throttling (memory optimization for long operations)
+	lastSampleTime time.Time // Last time we added a speed sample
 }
 
 type speedSample struct {
@@ -84,15 +87,18 @@ func (dp *DetailedProgress) Add(n int64) {
 	dp.Current += n
 	dp.LastUpdate = time.Now()
 
-	// Add speed sample
-	dp.SpeedWindow = append(dp.SpeedWindow, speedSample{
-		timestamp: dp.LastUpdate,
-		bytes:     dp.Current,
-	})
+	// Throttle speed samples to max 10/sec (prevent memory bloat in long operations)
+	if dp.LastUpdate.Sub(dp.lastSampleTime) >= 100*time.Millisecond {
+		dp.SpeedWindow = append(dp.SpeedWindow, speedSample{
+			timestamp: dp.LastUpdate,
+			bytes:     dp.Current,
+		})
+		dp.lastSampleTime = dp.LastUpdate
 
-	// Keep only last 20 samples for speed calculation
-	if len(dp.SpeedWindow) > 20 {
-		dp.SpeedWindow = dp.SpeedWindow[len(dp.SpeedWindow)-20:]
+		// Keep only last 20 samples for speed calculation
+		if len(dp.SpeedWindow) > 20 {
+			dp.SpeedWindow = dp.SpeedWindow[len(dp.SpeedWindow)-20:]
+		}
 	}
 }
 
@@ -104,14 +110,17 @@ func (dp *DetailedProgress) Set(n int64) {
 	dp.Current = n
 	dp.LastUpdate = time.Now()
 
-	// Add speed sample
-	dp.SpeedWindow = append(dp.SpeedWindow, speedSample{
-		timestamp: dp.LastUpdate,
-		bytes:     dp.Current,
-	})
+	// Throttle speed samples to max 10/sec (prevent memory bloat in long operations)
+	if dp.LastUpdate.Sub(dp.lastSampleTime) >= 100*time.Millisecond {
+		dp.SpeedWindow = append(dp.SpeedWindow, speedSample{
+			timestamp: dp.LastUpdate,
+			bytes:     dp.Current,
+		})
+		dp.lastSampleTime = dp.LastUpdate
 
-	if len(dp.SpeedWindow) > 20 {
-		dp.SpeedWindow = dp.SpeedWindow[len(dp.SpeedWindow)-20:]
+		if len(dp.SpeedWindow) > 20 {
+			dp.SpeedWindow = dp.SpeedWindow[len(dp.SpeedWindow)-20:]
+		}
 	}
 }
 

@@ -172,6 +172,10 @@ type sharedProgressState struct {
 
 	// Rolling window for speed calculation
 	speedSamples []restoreSpeedSample
+
+	// Throttling to prevent excessive updates (memory optimization)
+	lastSpeedSampleTime time.Time     // Last time we added a speed sample
+	minSampleInterval   time.Duration // Minimum interval between samples (100ms)
 }
 
 type restoreSpeedSample struct {
@@ -344,14 +348,21 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 				progressState.overallPhase = 2
 			}
 
-			// Add speed sample for rolling window calculation
-			progressState.speedSamples = append(progressState.speedSamples, restoreSpeedSample{
-				timestamp: time.Now(),
-				bytes:     current,
-			})
-			// Keep only last 100 samples
-			if len(progressState.speedSamples) > 100 {
-				progressState.speedSamples = progressState.speedSamples[len(progressState.speedSamples)-100:]
+			// Throttle speed samples to prevent memory bloat (max 10 samples/sec)
+			now := time.Now()
+			if progressState.minSampleInterval == 0 {
+				progressState.minSampleInterval = 100 * time.Millisecond
+			}
+			if now.Sub(progressState.lastSpeedSampleTime) >= progressState.minSampleInterval {
+				progressState.speedSamples = append(progressState.speedSamples, restoreSpeedSample{
+					timestamp: now,
+					bytes:     current,
+				})
+				progressState.lastSpeedSampleTime = now
+				// Keep only last 100 samples (max 10 seconds of history)
+				if len(progressState.speedSamples) > 100 {
+					progressState.speedSamples = progressState.speedSamples[len(progressState.speedSamples)-100:]
+				}
 			}
 		})
 

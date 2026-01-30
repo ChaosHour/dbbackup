@@ -24,6 +24,61 @@ type DatabaseInfo struct {
 	Size     int64
 }
 
+// ListDatabasesFromExtractedDir lists databases from an already-extracted cluster directory
+// This is much faster than scanning the tar.gz archive
+func ListDatabasesFromExtractedDir(ctx context.Context, extractedDir string, log logger.Logger) ([]DatabaseInfo, error) {
+	dumpsDir := filepath.Join(extractedDir, "dumps")
+	entries, err := os.ReadDir(dumpsDir)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read dumps directory: %w", err)
+	}
+
+	databases := make([]DatabaseInfo, 0)
+	for _, entry := range entries {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		if entry.IsDir() {
+			continue
+		}
+
+		filename := entry.Name()
+		// Extract database name from filename
+		dbName := filename
+		dbName = strings.TrimSuffix(dbName, ".dump.gz")
+		dbName = strings.TrimSuffix(dbName, ".dump")
+		dbName = strings.TrimSuffix(dbName, ".sql.gz")
+		dbName = strings.TrimSuffix(dbName, ".sql")
+
+		info, err := entry.Info()
+		if err != nil {
+			log.Warn("Cannot stat dump file", "file", filename, "error", err)
+			continue
+		}
+
+		databases = append(databases, DatabaseInfo{
+			Name:     dbName,
+			Filename: filename,
+			Size:     info.Size(),
+		})
+	}
+
+	// Sort by name for consistent output
+	sort.Slice(databases, func(i, j int) bool {
+		return databases[i].Name < databases[j].Name
+	})
+
+	if len(databases) == 0 {
+		return nil, fmt.Errorf("no databases found in extracted directory")
+	}
+
+	log.Info("Listed databases from extracted directory", "count", len(databases))
+	return databases, nil
+}
+
 // ListDatabasesInCluster lists all databases in a cluster backup archive
 func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.Logger) ([]DatabaseInfo, error) {
 	file, err := os.Open(archivePath)

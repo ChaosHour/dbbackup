@@ -46,6 +46,7 @@ type ArchiveInfo struct {
 	DatabaseName  string
 	Valid         bool
 	ValidationMsg string
+	ExtractedDir  string // Pre-extracted cluster directory (optimization)
 }
 
 // ArchiveBrowserModel for browsing and selecting backup archives

@@ -432,9 +432,20 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		// STEP 3: Execute restore based on type
 		var restoreErr error
 		if restoreType == "restore-cluster" {
-			restoreErr = engine.RestoreCluster(ctx, archive.Path)
+			// Use pre-extracted directory if available (optimization)
+			if archive.ExtractedDir != "" {
+				log.Info("Using pre-extracted cluster directory", "path", archive.ExtractedDir)
+				defer os.RemoveAll(archive.ExtractedDir) // Cleanup after restore completes
+				restoreErr = engine.RestoreCluster(ctx, archive.Path, archive.ExtractedDir)
+			} else {
+				restoreErr = engine.RestoreCluster(ctx, archive.Path)
+			}
 		} else if restoreType == "restore-cluster-single" {
 			// Restore single database from cluster backup
+			// Also cleanup pre-extracted dir if present
+			if archive.ExtractedDir != "" {
+				defer os.RemoveAll(archive.ExtractedDir)
+			}
 			restoreErr = engine.RestoreSingleFromCluster(ctx, archive.Path, targetDB, targetDB, cleanFirst, createIfMissing)
 		} else {
 			restoreErr = engine.RestoreSingle(ctx, archive.Path, targetDB, cleanFirst, createIfMissing)

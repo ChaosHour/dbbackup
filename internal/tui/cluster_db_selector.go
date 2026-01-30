@@ -14,19 +14,20 @@ import (
 
 // ClusterDatabaseSelectorModel for selecting databases from a cluster backup
 type ClusterDatabaseSelectorModel struct {
-	config      *config.Config
-	logger      logger.Logger
-	parent      tea.Model
-	ctx         context.Context
-	archive     ArchiveInfo
-	databases   []restore.DatabaseInfo
-	cursor      int
-	selected    map[int]bool // Track multiple selections
-	loading     bool
-	err         error
-	title       string
-	mode        string // "single" or "multiple"
-	extractOnly bool   // If true, extract without restoring
+	config       *config.Config
+	logger       logger.Logger
+	parent       tea.Model
+	ctx          context.Context
+	archive      ArchiveInfo
+	databases    []restore.DatabaseInfo
+	cursor       int
+	selected     map[int]bool // Track multiple selections
+	loading      bool
+	err          error
+	title        string
+	mode         string // "single" or "multiple"
+	extractOnly  bool   // If true, extract without restoring
+	extractedDir string // Pre-extracted cluster directory (optimization)
 }
 
 func NewClusterDatabaseSelector(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, mode string, extractOnly bool) ClusterDatabaseSelectorModel {
@@ -46,21 +47,38 @@ func NewClusterDatabaseSelector(cfg *config.Config, log logger.Logger, parent te
 }
 
 func (m ClusterDatabaseSelectorModel) Init() tea.Cmd {
-	return fetchClusterDatabases(m.ctx, m.archive, m.logger)
+	return fetchClusterDatabases(m.ctx, m.archive, m.config, m.logger)
 }
 
 type clusterDatabaseListMsg struct {
-	databases []restore.DatabaseInfo
-	err       error
+	databases    []restore.DatabaseInfo
+	err          error
+	extractedDir string // Path to extracted directory (for reuse)
 }
 
-func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, log logger.Logger) tea.Cmd {
+func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config.Config, log logger.Logger) tea.Cmd {
 	return func() tea.Msg {
-		databases, err := restore.ListDatabasesInCluster(ctx, archive.Path, log)
+		// OPTIMIZATION: Extract archive ONCE, then list databases from disk
+		// This eliminates double-extraction (scan + restore)
+		log.Info("Pre-extracting cluster archive for database listing")
+		safety := restore.NewSafety(cfg, log)
+		extractedDir, err := safety.ValidateAndExtractCluster(ctx, archive.Path)
 		if err != nil {
-			return clusterDatabaseListMsg{databases: nil, err: fmt.Errorf("failed to list databases: %w", err)}
+			// Fallback to direct tar scan if extraction fails
+			log.Warn("Pre-extraction failed, falling back to tar scan", "error", err)
+			databases, err := restore.ListDatabasesInCluster(ctx, archive.Path, log)
+			if err != nil {
+				return clusterDatabaseListMsg{databases: nil, err: fmt.Errorf("failed to list databases: %w", err), extractedDir: ""}
+			}
+			return clusterDatabaseListMsg{databases: databases, err: nil, extractedDir: ""}
 		}
-		return clusterDatabaseListMsg{databases: databases, err: nil}
+
+		// List databases from extracted directory (fast!)
+		databases, err := restore.ListDatabasesFromExtractedDir(ctx, extractedDir, log)
+		if err != nil {
+			return clusterDatabaseListMsg{databases: nil, err: fmt.Errorf("failed to list databases from extracted dir: %w", err), extractedDir: extractedDir}
+		}
+		return clusterDatabaseListMsg{databases: databases, err: nil, extractedDir: extractedDir}
 	}
 }
 
@@ -72,6 +90,7 @@ func (m ClusterDatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err
 		} else {
 			m.databases = msg.databases
+			m.extractedDir = msg.extractedDir // Store for later reuse
 			if len(m.databases) > 0 && m.mode == "single" {
 				m.selected[0] = true // Pre-select first database in single mode
 			}
@@ -146,6 +165,7 @@ func (m ClusterDatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					Size:         selectedDBs[0].Size,
 					Modified:     m.archive.Modified,
 					DatabaseName: selectedDBs[0].Name,
+					ExtractedDir: m.extractedDir, // Pass pre-extracted directory
 				}
 
 				preview := NewRestorePreview(m.config, m.logger, m.parent, m.ctx, dbArchive, "restore-cluster-single")

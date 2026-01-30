@@ -5,6 +5,19 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.5] - 2026-01-30
+
+### Fixed - TUI Cluster Restore Double-Extraction
+
+- **TUI cluster restore performance optimization**
+  - Eliminated double-extraction: cluster archives were scanned twice (once for DB list, once for restore)
+  - `internal/restore/extract.go`: Added `ListDatabasesFromExtractedDir()` to list databases from disk instead of tar scan
+  - `internal/tui/cluster_db_selector.go`: Now pre-extracts cluster once, lists from extracted directory
+  - `internal/tui/archive_browser.go`: Added `ExtractedDir` field to `ArchiveInfo` for passing pre-extracted path
+  - `internal/tui/restore_exec.go`: Reuses pre-extracted directory when available
+  - **Performance improvement:** 50GB cluster archive now processes once instead of twice (saves 5-15 minutes)
+  - Automatic cleanup of extracted directory after restore completes or fails
+
 ## [4.2.4] - 2026-01-30
 
 ### Fixed - Comprehensive Ctrl+C Support Across All Operations

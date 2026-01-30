@@ -392,13 +392,13 @@ func (m RestorePreviewModel) View() string {
 	if m.archive.DatabaseName != "" {
 		s.WriteString(fmt.Sprintf("  Database: %s\n", m.archive.DatabaseName))
 	}
-	
+
 	// Estimate uncompressed size and RTO
 	if m.archive.Format.IsCompressed() {
 		// Rough estimate: 3x compression ratio typical for DB dumps
 		uncompressedEst := m.archive.Size * 3
 		s.WriteString(fmt.Sprintf("  Estimated uncompressed: ~%s\n", formatSize(uncompressedEst)))
-		
+
 		// Estimate RTO
 		profile := m.config.GetCurrentProfile()
 		if profile != nil {

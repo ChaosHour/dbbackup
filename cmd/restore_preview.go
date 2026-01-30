@@ -114,11 +114,11 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 
 	// Database information
 	fmt.Printf("Database Information:\n")
-	
+
 	if format.IsClusterBackup() {
 		// For cluster backups, extract database list
 		fmt.Printf("  Type:         Cluster Backup (multiple databases)\n")
-		
+
 		// Try to list databases
 		if dbList, err := listDatabasesInCluster(archivePath); err == nil && len(dbList) > 0 {
 			fmt.Printf("  Databases:    %d\n", len(dbList))
@@ -133,10 +133,10 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 		// Single database backup
 		dbName := extractDatabaseName(archivePath, result)
 		fmt.Printf("  Database:     %s\n", dbName)
-		
+
 		if result.Details != nil && result.Details.TableCount > 0 {
 			fmt.Printf("  Tables:       %d\n", result.Details.TableCount)
-			
+
 			if len(result.Details.TableList) > 0 {
 				fmt.Printf("\n  Largest Tables (top 5):\n")
 				displayCount := 5
@@ -159,16 +159,16 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Size Estimates:\n")
 		fmt.Printf("  Compressed:   %s\n", humanize.Bytes(uint64(fileSize)))
 		fmt.Printf("  Uncompressed: %s\n", humanize.Bytes(uint64(result.Details.ExpandedSize)))
-		
+
 		if result.Details.CompressionRatio > 0 {
-			fmt.Printf("  Ratio:        %.1f%% (%.2fx compression)\n", 
-				result.Details.CompressionRatio*100, 
+			fmt.Printf("  Ratio:        %.1f%% (%.2fx compression)\n",
+				result.Details.CompressionRatio*100,
 				float64(result.Details.ExpandedSize)/float64(fileSize))
 		}
-		
+
 		// Estimate disk space needed (uncompressed + indexes + temp space)
 		estimatedDisk := int64(float64(result.Details.ExpandedSize) * 1.5) // 1.5x for indexes and temp
-		fmt.Printf("  Disk needed:  %s (including indexes and temporary space)\n", 
+		fmt.Printf("  Disk needed:  %s (including indexes and temporary space)\n",
 			humanize.Bytes(uint64(estimatedDisk)))
 		fmt.Println()
 	}
@@ -176,20 +176,20 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 	// Restore time estimation
 	if previewEstimate {
 		fmt.Printf("Restore Estimates:\n")
-		
+
 		// Apply current profile
 		profile := cfg.GetCurrentProfile()
 		if profile != nil {
-			fmt.Printf("  Profile:      %s (P:%d J:%d)\n", 
+			fmt.Printf("  Profile:      %s (P:%d J:%d)\n",
 				profile.Name, profile.ClusterParallelism, profile.Jobs)
 		}
-		
+
 		// Estimate extraction time
 		extractionSpeed := int64(500 * 1024 * 1024) // 500 MB/s typical
-		extractionTime := time.Duration(fileSize / extractionSpeed) * time.Second
-		
+		extractionTime := time.Duration(fileSize/extractionSpeed) * time.Second
+
 		fmt.Printf("  Extract time: ~%s\n", formatDuration(extractionTime))
-		
+
 		// Estimate restore time (depends on data size and parallelism)
 		if result.Details != nil && result.Details.ExpandedSize > 0 {
 			// Rough estimate: 50MB/s per job for PostgreSQL restore
@@ -197,19 +197,19 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 			if profile != nil {
 				restoreSpeed *= int64(profile.Jobs)
 			}
-			restoreTime := time.Duration(result.Details.ExpandedSize / restoreSpeed) * time.Second
-			
+			restoreTime := time.Duration(result.Details.ExpandedSize/restoreSpeed) * time.Second
+
 			fmt.Printf("  Restore time: ~%s\n", formatDuration(restoreTime))
-			
+
 			// Validation time (10% of restore)
 			validationTime := restoreTime / 10
 			fmt.Printf("  Validation:   ~%s\n", formatDuration(validationTime))
-			
+
 			// Total
 			totalTime := extractionTime + restoreTime + validationTime
 			fmt.Printf("  Total (RTO):  ~%s\n", formatDuration(totalTime))
 		}
-		
+
 		fmt.Println()
 	}
 
@@ -253,13 +253,13 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 
 	// Recommendations
 	fmt.Printf("Recommendations:\n")
-	
+
 	if !result.IsValid {
 		fmt.Printf("  - ✗ DO NOT restore this backup - validation failed\n")
 		fmt.Printf("  - Run 'dbbackup restore diagnose %s' for detailed analysis\n", filepath.Base(archivePath))
 	} else {
 		fmt.Printf("  - ✓ Backup is valid and ready to restore\n")
-		
+
 		// Resource recommendations
 		if result.Details != nil && result.Details.ExpandedSize > 0 {
 			estimatedRAM := result.Details.ExpandedSize / (1024 * 1024 * 1024) / 10 // Rough: 10% of data size
@@ -267,12 +267,12 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 				estimatedRAM = 4
 			}
 			fmt.Printf("  - Recommended RAM: %dGB or more\n", estimatedRAM)
-			
+
 			// Disk space
 			estimatedDisk := int64(float64(result.Details.ExpandedSize) * 1.5)
 			fmt.Printf("  - Ensure %s free disk space\n", humanize.Bytes(uint64(estimatedDisk)))
 		}
-		
+
 		// Profile recommendation
 		if result.Details != nil && result.Details.TableCount > 100 {
 			fmt.Printf("  - Use 'conservative' profile for databases with many tables\n")
@@ -282,7 +282,7 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("\n%s\n", strings.Repeat("=", 70))
-	
+
 	if result.IsValid {
 		fmt.Printf("Ready to restore? Run:\n")
 		if format.IsClusterBackup() {
@@ -311,13 +311,13 @@ func extractDatabaseName(archivePath string, result *restore.DiagnoseResult) str
 	baseName = strings.TrimSuffix(baseName, ".dump")
 	baseName = strings.TrimSuffix(baseName, ".sql")
 	baseName = strings.TrimSuffix(baseName, ".tar")
-	
+
 	// Remove timestamp patterns
 	parts := strings.Split(baseName, "_")
 	if len(parts) > 0 {
 		return parts[0]
 	}
-	
+
 	return "unknown"
 }
 

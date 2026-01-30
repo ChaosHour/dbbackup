@@ -660,6 +660,15 @@ dbbackup catalog search --database mydb --after 2024-01-01 --before 2024-12-31
 
 # Get backup info by path
 dbbackup catalog info /backups/mydb_20240115.dump.gz
+
+# Compare two backups to see what changed
+dbbackup diff /backups/mydb_20240115.dump.gz /backups/mydb_20240120.dump.gz
+
+# Compare using catalog IDs
+dbbackup diff 123 456
+
+# Compare latest two backups for a database
+dbbackup diff mydb:latest mydb:previous
 ```
 
 ## DR Drill Testing

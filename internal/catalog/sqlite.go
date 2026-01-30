@@ -464,8 +464,8 @@ func (c *SQLiteCatalog) Stats(ctx context.Context) (*Stats, error) {
 			MAX(created_at),
 			COALESCE(AVG(duration), 0),
 			CAST(COALESCE(AVG(size_bytes), 0) AS INTEGER),
-			SUM(CASE WHEN verified_at IS NOT NULL THEN 1 ELSE 0 END),
-			SUM(CASE WHEN drill_tested_at IS NOT NULL THEN 1 ELSE 0 END)
+			COALESCE(SUM(CASE WHEN verified_at IS NOT NULL THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN drill_tested_at IS NOT NULL THEN 1 ELSE 0 END), 0)
 		FROM backups WHERE status != 'deleted'
 	`)
 
@@ -548,8 +548,8 @@ func (c *SQLiteCatalog) StatsByDatabase(ctx context.Context, database string) (*
 			MAX(created_at),
 			COALESCE(AVG(duration), 0),
 			COALESCE(AVG(size_bytes), 0),
-			SUM(CASE WHEN verified_at IS NOT NULL THEN 1 ELSE 0 END),
-			SUM(CASE WHEN drill_tested_at IS NOT NULL THEN 1 ELSE 0 END)
+			COALESCE(SUM(CASE WHEN verified_at IS NOT NULL THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN drill_tested_at IS NOT NULL THEN 1 ELSE 0 END), 0)
 		FROM backups WHERE database = ? AND status != 'deleted'
 	`, database)
 

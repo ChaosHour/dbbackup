@@ -698,6 +698,44 @@ dbbackup cost analyze --format json
 
 Shows tiered storage strategy recommendations with potential annual savings.
 
+## Health Check
+
+Comprehensive backup infrastructure health monitoring:
+
+```bash
+# Quick health check
+dbbackup health
+
+# Detailed output
+dbbackup health --verbose
+
+# JSON for monitoring integration (Prometheus, Nagios, etc.)
+dbbackup health --format json
+
+# Custom backup interval for gap detection
+dbbackup health --interval 12h
+
+# Skip database connectivity (offline check)
+dbbackup health --skip-db
+```
+
+**Checks performed:**
+- Configuration validity
+- Database connectivity
+- Backup directory accessibility
+- Catalog integrity
+- Backup freshness (is last backup recent?)
+- Gap detection (missed scheduled backups)
+- Verification status (% of backups verified)
+- File integrity (do files exist and match metadata?)
+- Orphaned entries (catalog entries for missing files)
+- Disk space
+
+**Exit codes for automation:**
+- `0` = healthy (all checks passed)
+- `1` = warning (some checks need attention)
+- `2` = critical (immediate action required)
+
 ## DR Drill Testing
 
 Automated disaster recovery testing restores backups to Docker containers:

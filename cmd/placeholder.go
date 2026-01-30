@@ -281,7 +281,7 @@ func runPreflight(ctx context.Context) error {
 
 	// 4. Disk space check
 	fmt.Print("[4] Available disk space... ")
-	if err := checkDiskSpace(); err != nil {
+	if err := checkPreflightDiskSpace(); err != nil {
 		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
 		fmt.Println("[OK] PASSED")
@@ -361,7 +361,7 @@ func checkBackupDirectory() error {
 	return nil
 }
 
-func checkDiskSpace() error {
+func checkPreflightDiskSpace() error {
 	// Basic disk space check - this is a simplified version
 	// In a real implementation, you'd use syscall.Statfs or similar
 	if _, err := os.Stat(cfg.BackupDir); os.IsNotExist(err) {

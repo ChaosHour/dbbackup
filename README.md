@@ -9,6 +9,24 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
 
+## Quick Start (30 seconds)
+
+```bash
+# Download
+wget https://github.com/PlusOne/dbbackup/releases/latest/download/dbbackup-linux-amd64
+chmod +x dbbackup-linux-amd64
+
+# Backup your database
+./dbbackup-linux-amd64 backup single mydb --db-type postgres
+# Or for MySQL
+./dbbackup-linux-amd64 backup single mydb --db-type mysql --user root
+
+# Interactive mode (recommended for first-time users)
+./dbbackup-linux-amd64 interactive
+```
+
+**That's it!** Backups are stored in `./backups/` by default. See [QUICK.md](QUICK.md) for more real-world examples.
+
 ## Features
 
 ### NEW in 5.0: We Built Our Own Database Engines
@@ -16,10 +34,10 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 **This is a really big step.** We're no longer calling external tools - **we built our own machines.**
 
 - **Our Own Engines**: Pure Go implementation - we speak directly to databases using their native wire protocols
-- **🚫 No External Tools**: Goodbye pg_dump, mysqldump, pg_restore, mysql, psql, mysqlbinlog - we don't need them anymore
+- **No External Tools**: Goodbye pg_dump, mysqldump, pg_restore, mysql, psql, mysqlbinlog - we don't need them anymore
 - **Native Protocol**: Direct PostgreSQL (pgx) and MySQL (go-sql-driver) communication - no shell, no pipes, no parsing
 - **Full Control**: Our code generates the SQL, handles the types, manages the connections
-- **🔒 Production Ready**: Advanced data type handling, proper escaping, binary support, batch processing
+- **Production Ready**: Advanced data type handling, proper escaping, binary support, batch processing
 
 ### Core Database Features
 
@@ -1011,10 +1029,8 @@ Workload types:
 
 ## Documentation
 
-**Quick Start:**
-- [QUICK.md](QUICK.md) - Real-world examples cheat sheet
-
 **Guides:**
+- [QUICK.md](QUICK.md) - Real-world examples cheat sheet
 - [docs/PITR.md](docs/PITR.md) - Point-in-Time Recovery (PostgreSQL)
 - [docs/MYSQL_PITR.md](docs/MYSQL_PITR.md) - Point-in-Time Recovery (MySQL)
 - [docs/ENGINES.md](docs/ENGINES.md) - Database engine configuration

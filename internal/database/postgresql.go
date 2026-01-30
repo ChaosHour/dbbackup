@@ -339,8 +339,9 @@ func (p *PostgreSQL) BuildBackupCommand(database, outputFile string, options Bac
 		cmd = append(cmd, "--compress="+strconv.Itoa(options.Compression))
 	}
 
-	// Parallel jobs (only for directory format)
-	if options.Parallel > 1 && options.Format == "directory" {
+	// Parallel jobs (supported for directory and custom formats since PostgreSQL 9.3)
+	// NOTE: plain format does NOT support --jobs (it's single-threaded by design)
+	if options.Parallel > 1 && (options.Format == "directory" || options.Format == "custom") {
 		cmd = append(cmd, "--jobs="+strconv.Itoa(options.Parallel))
 	}
 

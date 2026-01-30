@@ -52,7 +52,7 @@ Examples:
 func init() {
 	rootCmd.AddCommand(manCmd)
 	manCmd.Flags().StringVarP(&manOutputDir, "output", "o", "./man", "Output directory for man pages")
-	
+
 	// Parse flags manually since DisableFlagParsing is enabled
 	manCmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		cmd.Parent().HelpFunc()(cmd, args)
@@ -70,7 +70,7 @@ func runGenerateMan(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	
+
 	// Create output directory
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
@@ -89,7 +89,7 @@ func runGenerateMan(cmd *cobra.Command, args []string) error {
 	root := cmd.Root()
 	generatedCount := 0
 	failedCount := 0
-	
+
 	// Helper to generate man page for a single command
 	genManForCommand := func(c *cobra.Command) {
 		// Recover from panic due to flag conflicts
@@ -99,18 +99,18 @@ func runGenerateMan(cmd *cobra.Command, args []string) error {
 				// Silently skip commands with flag conflicts
 			}
 		}()
-		
+
 		filename := filepath.Join(outputDir, c.CommandPath()+".1")
 		// Replace spaces with hyphens for filename
 		filename = filepath.Join(outputDir, filepath.Base(c.CommandPath())+".1")
-		
+
 		f, err := os.Create(filename)
 		if err != nil {
 			failedCount++
 			return
 		}
 		defer f.Close()
-		
+
 		if err := doc.GenMan(c, header, f); err != nil {
 			failedCount++
 			os.Remove(filename) // Clean up partial file
@@ -118,10 +118,10 @@ func runGenerateMan(cmd *cobra.Command, args []string) error {
 			generatedCount++
 		}
 	}
-	
+
 	// Generate for root command
 	genManForCommand(root)
-	
+
 	// Walk through all commands
 	var walkCommands func(*cobra.Command)
 	walkCommands = func(c *cobra.Command) {
@@ -130,15 +130,15 @@ func runGenerateMan(cmd *cobra.Command, args []string) error {
 			if sub.Hidden {
 				continue
 			}
-			
+
 			// Try to generate man page
 			genManForCommand(sub)
-			
+
 			// Recurse into subcommands
 			walkCommands(sub)
 		}
 	}
-	
+
 	walkCommands(root)
 
 	fmt.Printf("✅ Generated %d man pages in %s", generatedCount, outputDir)
@@ -148,7 +148,7 @@ func runGenerateMan(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 	fmt.Println()
-	
+
 	fmt.Println("📖 Installation Instructions:")
 	fmt.Println()
 	fmt.Println("  1. Install system-wide (requires root):")
@@ -163,7 +163,7 @@ func runGenerateMan(cmd *cobra.Command, args []string) error {
 	fmt.Println("     man dbbackup-backup")
 	fmt.Println("     man dbbackup-restore")
 	fmt.Println()
-	
+
 	// Show some example pages
 	files, err := filepath.Glob(filepath.Join(outputDir, "*.1"))
 	if err == nil && len(files) > 0 {

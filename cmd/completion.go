@@ -53,15 +53,15 @@ After installation, restart your shell or source the completion file.
 Note: Some flags may have conflicting shorthand letters across different
 subcommands (e.g., -d for both db-type and database). Tab completion will
 work correctly for the command you're using.`,
-	ValidArgs:         []string{"bash", "zsh", "fish", "powershell"},
-	Args:              cobra.ExactArgs(1),
+	ValidArgs:          []string{"bash", "zsh", "fish", "powershell"},
+	Args:               cobra.ExactArgs(1),
 	DisableFlagParsing: true, // Don't parse flags for completion generation
 	Run: func(cmd *cobra.Command, args []string) {
 		shell := args[0]
-		
+
 		// Get root command without triggering flag merging
 		root := cmd.Root()
-		
+
 		switch shell {
 		case "bash":
 			root.GenBashCompletionV2(os.Stdout, true)

@@ -105,7 +105,7 @@ func runEstimateSingle(cmd *cobra.Command, args []string) error {
 		if !estimate.HasSufficientSpace {
 			fmt.Println()
 			fmt.Println("⚠️  WARNING: Insufficient disk space!")
-			fmt.Printf("    Need %s more space to proceed safely.\n", 
+			fmt.Printf("    Need %s more space to proceed safely.\n",
 				formatBytes(estimate.RequiredDiskSpace-estimate.AvailableDiskSpace))
 			fmt.Println()
 			fmt.Println("    Recommended actions:")
@@ -191,7 +191,7 @@ func runEstimateCluster(cmd *cobra.Command, args []string) error {
 		if !estimate.HasSufficientSpace {
 			fmt.Println()
 			fmt.Println("⚠️  WARNING: Insufficient disk space!")
-			fmt.Printf("    Need %s more space to proceed safely.\n", 
+			fmt.Printf("    Need %s more space to proceed safely.\n",
 				formatBytes(estimate.RequiredDiskSpace-estimate.AvailableDiskSpace))
 			fmt.Println()
 			fmt.Println("    Recommended actions:")

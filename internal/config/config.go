@@ -51,6 +51,11 @@ type Config struct {
 	CPUInfo     *cpu.CPUInfo
 	MemoryInfo  *cpu.MemoryInfo // System memory information
 
+	// Native engine options
+	UseNativeEngine   bool // Use pure Go native engines instead of external tools
+	FallbackToTools   bool // Fallback to external tools if native engine fails
+	NativeEngineDebug bool // Enable detailed native engine debugging
+
 	// Sample backup options
 	SampleStrategy string // "ratio", "percent", "count"
 	SampleValue    int

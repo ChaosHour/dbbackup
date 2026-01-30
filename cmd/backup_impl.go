@@ -269,7 +269,21 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		return err
 	}
 
-	// Create backup engine
+	// Check if native engine should be used
+	if cfg.UseNativeEngine {
+		log.Info("Using native engine for backup", "database", databaseName)
+		err = runNativeBackup(ctx, db, databaseName, backupType, baseBackup, backupStartTime, user)
+
+		if err != nil && cfg.FallbackToTools {
+			log.Warn("Native engine failed, falling back to external tools", "error", err)
+			// Continue with tool-based backup below
+		} else {
+			// Native engine succeeded or no fallback configured
+			return err // Return success (nil) or failure
+		}
+	}
+
+	// Create backup engine (tool-based)
 	engine := backup.New(cfg, log, db)
 
 	// Perform backup based on type

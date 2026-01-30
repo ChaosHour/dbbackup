@@ -5,6 +5,81 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.9] - 2026-01-30
+
+### Added - MEDIUM Priority Features
+
+- **#11: Enhanced Error Diagnostics with System Context (MEDIUM priority)**
+  - Automatic environmental context collection on errors
+  - Real-time system diagnostics: disk space, memory, file descriptors
+  - PostgreSQL diagnostics: connections, locks, shared memory, version
+  - Smart root cause analysis based on error + environment
+  - Context-specific recommendations (e.g., "Disk 95% full" → cleanup commands)
+  - Comprehensive diagnostics report with actionable fixes
+  - **Problem**: Errors showed symptoms but not environmental causes
+  - **Solution**: Diagnose system state + error pattern → root cause + fix
+
+**Diagnostic Report Includes:**
+- Disk space usage and available capacity
+- Memory usage and pressure indicators
+- File descriptor utilization (Linux/Unix)
+- PostgreSQL connection pool status
+- Lock table capacity calculations
+- Version compatibility checks
+- Contextual recommendations based on actual system state
+
+**Example Diagnostics:**
+```
+═══════════════════════════════════════════════════════════
+  DBBACKUP ERROR DIAGNOSTICS REPORT
+═══════════════════════════════════════════════════════════
+
+Error Type: CRITICAL
+Category:   locks
+Severity:   2/3
+
+Message:
+  out of shared memory: max_locks_per_transaction exceeded
+
+Root Cause:
+  Lock table capacity too low (32,000 total locks). Likely cause: 
+  max_locks_per_transaction (128) too low for this database size
+
+System Context:
+  Disk Space:  45.3 GB / 100.0 GB (45.3% used)
+  Memory:      3.2 GB / 8.0 GB (40.0% used)
+  File Descriptors: 234 / 4096
+
+Database Context:
+  Version:     PostgreSQL 14.10
+  Connections: 15 / 100
+  Max Locks:   128 per transaction
+  Total Lock Capacity: ~12,800
+
+Recommendations:
+  Current lock capacity: 12,800 locks (max_locks_per_transaction × max_connections)
+  ⚠ max_locks_per_transaction is low (128)
+  • Increase: ALTER SYSTEM SET max_locks_per_transaction = 4096;
+  • Then restart PostgreSQL: sudo systemctl restart postgresql
+
+Suggested Action:
+  Fix: ALTER SYSTEM SET max_locks_per_transaction = 4096; then 
+  RESTART PostgreSQL
+```
+
+**Functions:**
+- `GatherErrorContext()` - Collects system + database metrics
+- `DiagnoseError()` - Full error analysis with environmental context
+- `FormatDiagnosticsReport()` - Human-readable report generation
+- `generateContextualRecommendations()` - Smart recommendations based on state
+- `analyzeRootCause()` - Pattern matching for root cause identification
+
+**Integration:**
+- Available for all backup/restore operations
+- Automatic context collection on critical errors
+- Can be manually triggered for troubleshooting
+- Export as JSON for automated monitoring
+
 ## [4.2.8] - 2026-01-30
 
 ### Added - MEDIUM Priority Features

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +28,8 @@ import (
 	"dbbackup/internal/progress"
 	"dbbackup/internal/security"
 	"dbbackup/internal/swap"
+
+	"github.com/klauspost/pgzip"
 )
 
 // ProgressCallback is called with byte-level progress updates during backup operations
@@ -1414,10 +1417,10 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 	return nil
 }
 
-// executeWithStreamingCompression handles plain format dumps with external compression
-// Uses: pg_dump | pigz > file.sql.gz (zero-copy streaming)
+// executeWithStreamingCompression handles plain format dumps with in-process pgzip compression
+// Uses: pg_dump stdout → pgzip.Writer → file.sql.gz (no external process)
 func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []string, outputFile string) error {
-	e.log.Debug("Using streaming compression for large database")
+	e.log.Debug("Using in-process pgzip compression for large database")
 
 	// Derive compressed output filename. If the output was named *.dump we replace that
 	// with *.sql.gz; otherwise append .gz to the provided output file so we don't
@@ -1439,43 +1442,16 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 		dumpCmd.Env = append(dumpCmd.Env, "PGPASSWORD="+e.cfg.Password)
 	}
 
-	// Check for pigz (parallel gzip)
-	compressor := "gzip"
-	compressorArgs := []string{"-c"}
-
-	if _, err := exec.LookPath("pigz"); err == nil {
-		compressor = "pigz"
-		compressorArgs = []string{"-p", strconv.Itoa(e.cfg.Jobs), "-c"}
-		e.log.Debug("Using pigz for parallel compression", "threads", e.cfg.Jobs)
-	}
-
-	// Create compression command
-	compressCmd := exec.CommandContext(ctx, compressor, compressorArgs...)
-
-	// Create output file
-	outFile, err := os.Create(compressedFile)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outFile.Close()
-
-	// Set up pipeline: pg_dump | pigz > file.sql.gz
+	// Get stdout pipe from pg_dump
 	dumpStdout, err := dumpCmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create dump stdout pipe: %w", err)
 	}
 
-	compressCmd.Stdin = dumpStdout
-	compressCmd.Stdout = outFile
-
-	// Capture stderr from both commands
+	// Capture stderr from pg_dump
 	dumpStderr, err := dumpCmd.StderrPipe()
 	if err != nil {
 		e.log.Warn("Failed to capture dump stderr", "error", err)
-	}
-	compressStderr, err := compressCmd.StderrPipe()
-	if err != nil {
-		e.log.Warn("Failed to capture compress stderr", "error", err)
 	}
 
 	// Stream stderr output
@@ -1491,31 +1467,41 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 		}()
 	}
 
-	if compressStderr != nil {
-		go func() {
-			scanner := bufio.NewScanner(compressStderr)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if line != "" {
-					e.log.Debug("compression", "output", line)
-				}
-			}
-		}()
+	// Create output file
+	outFile, err := os.Create(compressedFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
 	}
+	defer outFile.Close()
 
-	// Start compression first
-	if err := compressCmd.Start(); err != nil {
-		return fmt.Errorf("failed to start compressor: %w", err)
+	// Create pgzip writer with parallel compression
+	// Use configured Jobs or default to NumCPU
+	workers := e.cfg.Jobs
+	if workers <= 0 {
+		workers = runtime.NumCPU()
 	}
+	gzWriter, err := pgzip.NewWriterLevel(outFile, pgzip.BestSpeed)
+	if err != nil {
+		return fmt.Errorf("failed to create pgzip writer: %w", err)
+	}
+	if err := gzWriter.SetConcurrency(256*1024, workers); err != nil {
+		e.log.Warn("Failed to set pgzip concurrency", "error", err)
+	}
+	e.log.Debug("Using pgzip for parallel compression", "workers", workers)
 
-	// Then start pg_dump
+	// Start pg_dump
 	if err := dumpCmd.Start(); err != nil {
-		compressCmd.Process.Kill()
 		return fmt.Errorf("failed to start pg_dump: %w", err)
 	}
 
+	// Copy from pg_dump stdout to pgzip writer in a goroutine
+	copyDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(gzWriter, dumpStdout)
+		copyDone <- copyErr
+	}()
+
 	// Wait for pg_dump in a goroutine to handle context timeout properly
-	// This prevents deadlock if pipe buffer fills and pg_dump blocks
 	dumpDone := make(chan error, 1)
 	go func() {
 		dumpDone <- dumpCmd.Wait()
@@ -1533,25 +1519,21 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 		dumpErr = ctx.Err()
 	}
 
-	// Close stdout pipe to signal compressor we're done
-	// This MUST happen after pg_dump exits to avoid broken pipe
-	dumpStdout.Close()
+	// Wait for copy to complete
+	copyErr := <-copyDone
 
-	// Wait for compression to complete
-	compressErr := compressCmd.Wait()
+	// Close gzip writer to flush remaining data
+	gzCloseErr := gzWriter.Close()
 
-	// Check errors - compressor failure first (it's usually the root cause)
-	if compressErr != nil {
-		e.log.Error("Compressor failed", "error", compressErr)
-		return fmt.Errorf("compression failed (check disk space): %w", compressErr)
-	}
+	// Check errors in order of priority
 	if dumpErr != nil {
-		// Check for SIGPIPE (exit code 141) - indicates compressor died first
-		if exitErr, ok := dumpErr.(*exec.ExitError); ok && exitErr.ExitCode() == 141 {
-			e.log.Error("pg_dump received SIGPIPE - compressor may have failed")
-			return fmt.Errorf("pg_dump broken pipe - check disk space and compressor")
-		}
 		return fmt.Errorf("pg_dump failed: %w", dumpErr)
+	}
+	if copyErr != nil {
+		return fmt.Errorf("compression copy failed: %w", copyErr)
+	}
+	if gzCloseErr != nil {
+		return fmt.Errorf("compression flush failed: %w", gzCloseErr)
 	}
 
 	// Sync file to disk to ensure durability (prevents truncation on power loss)
@@ -1559,7 +1541,7 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 		e.log.Warn("Failed to sync output file", "error", err)
 	}
 
-	e.log.Debug("Streaming compression completed", "output", compressedFile)
+	e.log.Debug("In-process pgzip compression completed", "output", compressedFile)
 	return nil
 }
 

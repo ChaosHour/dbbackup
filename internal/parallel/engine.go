@@ -8,10 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/klauspost/pgzip"
 )
 
 // Table represents a database table
@@ -599,21 +602,19 @@ func escapeString(s string) string {
 	return string(result)
 }
 
-// gzipWriter wraps compress/gzip
+// gzipWriter wraps pgzip for parallel compression
 type gzipWriter struct {
-	io.WriteCloser
+	*pgzip.Writer
 }
 
 func newGzipWriter(w io.Writer) (*gzipWriter, error) {
-	// Import would be: import "compress/gzip"
-	// For now, return a passthrough (actual implementation would use gzip)
-	return &gzipWriter{
-		WriteCloser: &nopCloser{w},
-	}, nil
+	gz, err := pgzip.NewWriterLevel(w, pgzip.BestSpeed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pgzip writer: %w", err)
+	}
+	// Use all CPUs for parallel compression
+	if err := gz.SetConcurrency(256*1024, runtime.NumCPU()); err != nil {
+		// Non-fatal, continue with defaults
+	}
+	return &gzipWriter{Writer: gz}, nil
 }
-
-type nopCloser struct {
-	io.Writer
-}
-
-func (n *nopCloser) Close() error { return nil }

@@ -5,6 +5,22 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.2] - 2026-01-30
+
+### Fixed - Complete pgzip Migration (Backup Side)
+
+- **Removed ALL external gzip/pigz calls from backup engine**
+  - `internal/backup/engine.go`: `executeWithStreamingCompression` now uses pgzip
+  - `internal/parallel/engine.go`: Fixed stub gzipWriter to use pgzip
+  - No more gzip/pigz processes visible in htop during backup
+  - Uses klauspost/pgzip for parallel multi-core compression
+
+- **Complete pgzip migration status**:
+  - ✅ Backup: All compression uses in-process pgzip
+  - ✅ Restore: All decompression uses in-process pgzip  
+  - ✅ Drill: Decompress on host with pgzip before Docker copy
+  - ⚠️ PITR only: PostgreSQL's `restore_command` must remain shell (PostgreSQL limitation)
+
 ## [4.2.1] - 2026-01-30
 
 ### Fixed - Complete pgzip Migration

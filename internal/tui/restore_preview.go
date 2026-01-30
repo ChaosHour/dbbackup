@@ -392,6 +392,29 @@ func (m RestorePreviewModel) View() string {
 	if m.archive.DatabaseName != "" {
 		s.WriteString(fmt.Sprintf("  Database: %s\n", m.archive.DatabaseName))
 	}
+	
+	// Estimate uncompressed size and RTO
+	if m.archive.Format.IsCompressed() {
+		// Rough estimate: 3x compression ratio typical for DB dumps
+		uncompressedEst := m.archive.Size * 3
+		s.WriteString(fmt.Sprintf("  Estimated uncompressed: ~%s\n", formatSize(uncompressedEst)))
+		
+		// Estimate RTO
+		profile := m.config.GetCurrentProfile()
+		if profile != nil {
+			extractTime := m.archive.Size / (500 * 1024 * 1024) // 500 MB/s extraction
+			if extractTime < 1 {
+				extractTime = 1
+			}
+			restoreSpeed := int64(50 * 1024 * 1024 * int64(profile.Jobs)) // 50MB/s per job
+			restoreTime := uncompressedEst / restoreSpeed
+			if restoreTime < 1 {
+				restoreTime = 1
+			}
+			totalMinutes := extractTime + restoreTime
+			s.WriteString(fmt.Sprintf("  Estimated RTO: ~%dm (with %s profile)\n", totalMinutes, profile.Name))
+		}
+	}
 	s.WriteString("\n")
 
 	// Target Information

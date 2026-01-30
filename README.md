@@ -671,6 +671,33 @@ dbbackup diff 123 456
 dbbackup diff mydb:latest mydb:previous
 ```
 
+## Cost Analysis
+
+Analyze and optimize cloud storage costs:
+
+```bash
+# Analyze current backup costs
+dbbackup cost analyze
+
+# Specific database
+dbbackup cost analyze --database mydb
+
+# Compare providers and tiers
+dbbackup cost analyze --provider aws --format table
+
+# Get JSON for automation/reporting
+dbbackup cost analyze --format json
+```
+
+**Providers analyzed:**
+- AWS S3 (Standard, IA, Glacier, Deep Archive)
+- Google Cloud Storage (Standard, Nearline, Coldline, Archive)
+- Azure Blob (Hot, Cool, Archive)
+- Backblaze B2
+- Wasabi
+
+Shows tiered storage strategy recommendations with potential annual savings.
+
 ## DR Drill Testing
 
 Automated disaster recovery testing restores backups to Docker containers:

@@ -402,16 +402,22 @@ func (m RestorePreviewModel) View() string {
 		// Estimate RTO
 		profile := m.config.GetCurrentProfile()
 		if profile != nil {
-			extractTime := m.archive.Size / (500 * 1024 * 1024) // 500 MB/s extraction
-			if extractTime < 1 {
-				extractTime = 1
+			// Calculate extraction time in seconds (500 MB/s decompression speed)
+			extractSeconds := m.archive.Size / (500 * 1024 * 1024)
+			if extractSeconds < 1 {
+				extractSeconds = 1
 			}
-			restoreSpeed := int64(50 * 1024 * 1024 * int64(profile.Jobs)) // 50MB/s per job
-			restoreTime := uncompressedEst / restoreSpeed
-			if restoreTime < 1 {
-				restoreTime = 1
+			// Calculate restore time in seconds (50 MB/s per parallel job)
+			restoreSpeed := int64(50 * 1024 * 1024 * int64(profile.Jobs))
+			restoreSeconds := uncompressedEst / restoreSpeed
+			if restoreSeconds < 1 {
+				restoreSeconds = 1
 			}
-			totalMinutes := extractTime + restoreTime
+			// Convert total seconds to minutes
+			totalMinutes := (extractSeconds + restoreSeconds) / 60
+			if totalMinutes < 1 {
+				totalMinutes = 1
+			}
 			s.WriteString(fmt.Sprintf("  Estimated RTO: ~%dm (with %s profile)\n", totalMinutes, profile.Name))
 		}
 	}

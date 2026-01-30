@@ -262,11 +262,11 @@ func containsSQLKeywords(content string) bool {
 // ValidateAndExtractCluster performs validation and pre-extraction for cluster restore
 // Returns path to extracted directory (in temp location) to avoid double-extraction
 // Caller must clean up the returned directory with os.RemoveAll() when done
+// NOTE: Caller should call ValidateArchive() before this function if validation is needed
+// This avoids redundant gzip header reads which can be slow on large archives
 func (s *Safety) ValidateAndExtractCluster(ctx context.Context, archivePath string) (extractedDir string, err error) {
-	// First validate archive integrity (fast stream check)
-	if err := s.ValidateArchive(archivePath); err != nil {
-		return "", fmt.Errorf("archive validation failed: %w", err)
-	}
+	// Skip redundant validation here - caller already validated via ValidateArchive()
+	// Opening gzip multiple times is expensive on large archives
 
 	// Create temp directory for extraction in configured WorkDir
 	workDir := s.cfg.GetEffectiveWorkDir()

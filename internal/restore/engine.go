@@ -1907,20 +1907,24 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
 			}
 
-			// Copy file contents - use buffered I/O for turbo mode (32KB buffer)
+			// Copy file contents with context awareness for Ctrl+C interruption
+			// Use buffered I/O for turbo mode (32KB buffer)
 			if e.cfg.BufferedIO {
 				bufferedWriter := bufio.NewWriterSize(outFile, 32*1024) // 32KB buffer for faster writes
-				if _, err := io.Copy(bufferedWriter, tarReader); err != nil {
+				if _, err := fs.CopyWithContext(ctx, bufferedWriter, tarReader); err != nil {
 					outFile.Close()
+					os.Remove(targetPath) // Clean up partial file
 					return fmt.Errorf("failed to write file %s: %w", targetPath, err)
 				}
 				if err := bufferedWriter.Flush(); err != nil {
 					outFile.Close()
+					os.Remove(targetPath)
 					return fmt.Errorf("failed to flush buffer for %s: %w", targetPath, err)
 				}
 			} else {
-				if _, err := io.Copy(outFile, tarReader); err != nil {
+				if _, err := fs.CopyWithContext(ctx, outFile, tarReader); err != nil {
 					outFile.Close()
+					os.Remove(targetPath) // Clean up partial file
 					return fmt.Errorf("failed to write file %s: %w", targetPath, err)
 				}
 			}

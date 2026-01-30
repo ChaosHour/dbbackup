@@ -5,6 +5,23 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.3] - 2026-01-30
+
+### Fixed - Cluster Restore Performance & Ctrl+C Handling
+
+- **Removed redundant gzip validation in cluster restore**
+  - `ValidateAndExtractCluster()` no longer calls `ValidateArchive()` internally
+  - Previously validation happened 2x before extraction (caller + internal)
+  - Eliminates duplicate gzip header reads on large archives
+  - Reduces cluster restore startup time
+
+- **Fixed Ctrl+C not working during extraction**
+  - Added `CopyWithContext()` function for context-aware file copying
+  - Extraction now checks for cancellation every 1MB of data
+  - Ctrl+C immediately interrupts large file extractions
+  - Partial files are cleaned up on cancellation
+  - Applies to both `ExtractTarGzParallel` and `extractArchiveWithProgress`
+
 ## [4.2.2] - 2026-01-30
 
 ### Fixed - Complete pgzip Migration (Backup Side)

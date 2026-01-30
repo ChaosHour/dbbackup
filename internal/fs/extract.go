@@ -14,6 +14,42 @@ import (
 	"github.com/klauspost/pgzip"
 )
 
+// CopyWithContext copies data from src to dst while checking for context cancellation.
+// This allows Ctrl+C to interrupt large file extractions instead of blocking until complete.
+// Checks context every 1MB of data copied for responsive interruption.
+func CopyWithContext(ctx context.Context, dst io.Writer, src io.Reader) (int64, error) {
+	buf := make([]byte, 1024*1024) // 1MB buffer - check context every 1MB
+	var written int64
+	for {
+		// Check for cancellation before each read
+		select {
+		case <-ctx.Done():
+			return written, ctx.Err()
+		default:
+		}
+
+		nr, readErr := src.Read(buf)
+		if nr > 0 {
+			nw, writeErr := dst.Write(buf[:nr])
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if writeErr != nil {
+				return written, writeErr
+			}
+			if nr != nw {
+				return written, io.ErrShortWrite
+			}
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				return written, nil
+			}
+			return written, readErr
+		}
+	}
+}
+
 // ParallelGzipWriter wraps pgzip.Writer for streaming compression
 type ParallelGzipWriter struct {
 	*pgzip.Writer
@@ -134,11 +170,13 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 				return fmt.Errorf("cannot create file %s: %w", targetPath, err)
 			}
 
-			// Copy with size limit to prevent zip bombs
-			written, err := io.Copy(outFile, tarReader)
+			// Copy with context awareness to allow Ctrl+C interruption during large file extraction
+			written, err := CopyWithContext(ctx, outFile, tarReader)
 			outFile.Close()
 
 			if err != nil {
+				// Clean up partial file on error
+				os.Remove(targetPath)
 				return fmt.Errorf("error writing %s: %w", targetPath, err)
 			}
 

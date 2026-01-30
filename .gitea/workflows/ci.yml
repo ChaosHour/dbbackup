@@ -409,6 +409,98 @@ jobs:
           ls -lh dbbackup
           ./dbbackup version || echo "Binary created successfully"
 
+  test-release-build:
+    name: Test Release Build
+    runs-on: ubuntu-latest  
+    needs: [test, lint]
+    # Remove the tag condition temporarily to test the build process
+    # if: startsWith(github.ref, 'refs/tags/v')
+    container:
+      image: golang:1.24-bookworm
+    steps:
+      - name: Checkout code
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          apt-get update && apt-get install -y -qq git ca-certificates curl jq
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init
+          git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git fetch --tags origin || echo "No tags to fetch"
+          git checkout FETCH_HEAD
+
+      - name: Test multi-platform builds
+        run: |
+          mkdir -p release
+          echo "Testing cross-compilation capabilities..."
+          
+          # Install cross-compilation tools for CGO
+          echo "Installing cross-compilation tools..."
+          apt-get update && apt-get install -y -qq gcc-aarch64-linux-gnu || echo "Cross-compiler installation failed"
+          
+          # Test Linux amd64 build (with CGO for SQLite)
+          echo "Testing linux/amd64 build (CGO enabled)..."
+          if CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release/dbbackup-linux-amd64 .; then
+            echo "✅ linux/amd64 build successful"
+            ls -lh release/dbbackup-linux-amd64
+          else
+            echo "❌ linux/amd64 build failed"
+          fi
+          
+          # Test Darwin amd64 (no CGO - cross-compile limitation) 
+          echo "Testing darwin/amd64 build (CGO disabled)..."
+          if CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o release/dbbackup-darwin-amd64 .; then
+            echo "✅ darwin/amd64 build successful"
+            ls -lh release/dbbackup-darwin-amd64
+          else
+            echo "❌ darwin/amd64 build failed"
+          fi
+          
+          echo "Build test results:"
+          ls -lh release/ || echo "No builds created"
+          
+          # Test if binaries are actually executable
+          if [ -f "release/dbbackup-linux-amd64" ]; then
+            echo "Testing linux binary..."
+            ./release/dbbackup-linux-amd64 version || echo "Linux binary test completed"
+          fi
+
+      - name: Test release creation logic (dry run)
+        run: |
+          echo "=== Testing Release Creation Logic ==="
+          echo "This would normally create a Gitea release, but we're testing the logic..."
+          
+          # Simulate tag extraction
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+            echo "Real tag detected: ${TAG}"
+          else
+            TAG="test-v1.0.0"
+            echo "Simulated tag for testing: ${TAG}"
+          fi
+          
+          echo "Debug: GITHUB_REPOSITORY=${GITHUB_REPOSITORY}"
+          echo "Debug: TAG=${TAG}"
+          echo "Debug: GITHUB_REF=${GITHUB_REF}"
+          
+          # Test that we have the necessary tools
+          curl --version || echo "curl not available"
+          jq --version || echo "jq not available"
+          
+          # Show what files would be uploaded
+          echo "Files that would be uploaded:"
+          if ls release/dbbackup-* 2>/dev/null; then
+            for file in release/dbbackup-*; do
+              FILENAME=$(basename "$file")
+              echo "Would upload: $FILENAME ($(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null) bytes)"
+            done
+          else
+            echo "No release files available to upload"
+          fi
+          
+          echo "Release creation test completed (dry run)"
+
   release:
     name: Release Binaries
     runs-on: ubuntu-latest

@@ -112,25 +112,23 @@ jobs:
           
           # Test legacy backup
           mkdir -p /tmp/backups
-          ./dbbackup backup single testdb --db-type postgres --host postgres --user postgres --backup-dir /tmp/backups --no-config --allow-root
+          ./dbbackup backup single testdb --db-type postgres --host postgres --user postgres --backup-dir /tmp/backups --no-config --allow-root --insecure
           echo "Legacy backup files:"
           ls -la /tmp/backups/
           
           # Test native engine backup
           mkdir -p /tmp/native-backups
-          ./dbbackup backup single testdb --db-type postgres --host postgres --user postgres --backup-dir /tmp/native-backups --native --compression 0 --no-config --allow-root || echo "Native backup failed (expected during development)"
+          ./dbbackup backup single testdb --db-type postgres --host postgres --user postgres --backup-dir /tmp/native-backups --native --compression 0 --no-config --allow-root --insecure
           echo "Native backup files:"
-          ls -la /tmp/native-backups/ || echo "No native backups created"
+          ls -la /tmp/native-backups/
           
-          # If native backup succeeded, verify content contains our test data
-          if ls /tmp/native-backups/testdb_*.sql 2>/dev/null; then
-            echo "Verifying native backup content:"
-            cat /tmp/native-backups/testdb_*.sql
-            # Check for expected content
-            grep -q "users" /tmp/native-backups/testdb_*.sql && echo "✅ Contains users table" || echo "❌ Missing users table"
-            grep -q "active_users" /tmp/native-backups/testdb_*.sql && echo "✅ Contains active_users view" || echo "❌ Missing active_users view"
-            grep -q "alice" /tmp/native-backups/testdb_*.sql && echo "✅ Contains user data" || echo "❌ Missing user data"
-          fi
+          # Verify native backup content contains our test data
+          echo "Verifying native backup content:"
+          cat /tmp/native-backups/testdb_*.sql
+          # Check for expected content
+          grep -q "users" /tmp/native-backups/testdb_*.sql && echo "PASSED: Contains users table" || echo "FAILED: Missing users table"
+          grep -q "active_users" /tmp/native-backups/testdb_*.sql && echo "PASSED: Contains active_users view" || echo "FAILED: Missing active_users view"
+          grep -q "alice" /tmp/native-backups/testdb_*.sql && echo "PASSED: Contains user data" || echo "FAILED: Missing user data"
 
       - name: Test MySQL backup/restore
         env:
@@ -161,13 +159,13 @@ jobs:
           
           # Test legacy backup
           mkdir -p /tmp/mysql_backups
-          ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --database testdb --backup-dir /tmp/mysql_backups --no-config --allow-root || echo "Legacy MySQL backup failed"
+          ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --database testdb --backup-dir /tmp/mysql_backups --no-config --allow-root --insecure || echo "Legacy MySQL backup failed - external tools not available"
           echo "Legacy backup files:"
           ls -la /tmp/mysql_backups/ || echo "No legacy backups created"
           
           # Test native engine backup 
           mkdir -p /tmp/mysql-native-backups
-          MYSQL_PWD=mysql ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --backup-dir /tmp/mysql-native-backups --native --compression 0 --no-config --allow-root || echo "Native MySQL backup failed (expected during development)"
+          MYSQL_PWD=mysql ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --backup-dir /tmp/mysql-native-backups --native --compression 0 --no-config --allow-root --insecure || echo "Native MySQL backup failed - authentication issue expected in CI"
           echo "Native backup files:"
           ls -la /tmp/mysql-native-backups/ || echo "No native backups created"
           
@@ -176,9 +174,9 @@ jobs:
             echo "Verifying native MySQL backup content:"
             cat /tmp/mysql-native-backups/testdb_*.sql
             # Check for expected content
-            grep -q "orders" /tmp/mysql-native-backups/testdb_*.sql && echo "✅ Contains orders table" || echo "❌ Missing orders table"
-            grep -q "priority_orders" /tmp/mysql-native-backups/testdb_*.sql && echo "✅ Contains priority_orders view" || echo "❌ Missing priority_orders view"
-            grep -q "Alice Johnson" /tmp/mysql-native-backups/testdb_*.sql && echo "✅ Contains order data" || echo "❌ Missing order data"
+            grep -q "orders" /tmp/mysql-native-backups/testdb_*.sql && echo "PASSED: Contains orders table" || echo "FAILED: Missing orders table"
+            grep -q "priority_orders" /tmp/mysql-native-backups/testdb_*.sql && echo "PASSED: Contains priority_orders view" || echo "FAILED: Missing priority_orders view"
+            grep -q "Alice Johnson" /tmp/mysql-native-backups/testdb_*.sql && echo "PASSED: Contains order data" || echo "FAILED: Missing order data"
           fi
 
       - name: Test verify-locks command
@@ -274,6 +272,7 @@ jobs:
             --native \
             --compression 0 \
             --no-config \
+            --insecure \
             --allow-root || true
             
           echo "=== Native PostgreSQL Backup Results ==="
@@ -334,6 +333,7 @@ jobs:
             --native \
             --compression 0 \
             --no-config \
+            --insecure \
             --allow-root || true
             
           echo "=== Native MySQL Backup Results ==="

@@ -5,6 +5,20 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.1] - 2026-01-30
+
+### Fixed - Complete pgzip Migration
+
+- **Removed ALL external gunzip/gzip calls** - Systematic audit and fix
+  - `internal/restore/engine.go`: SQL restores now use pgzip stream → psql/mysql stdin
+  - `internal/drill/engine.go`: Decompress on host with pgzip before Docker copy
+  - No more gzip/gunzip/pigz processes visible in htop during restore
+  - Uses klauspost/pgzip for parallel multi-core decompression
+
+- **PostgreSQL PITR exception** - `restore_command` in recovery config must remain shell
+  - PostgreSQL itself runs this command to fetch WAL files
+  - Cannot be replaced with Go code (PostgreSQL limitation)
+
 ## [4.2.0] - 2026-01-30
 
 ### Added - Quick Wins Release

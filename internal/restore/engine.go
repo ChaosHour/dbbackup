@@ -482,27 +482,14 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 	var cmd []string
 
 	// For localhost, omit -h to use Unix socket (avoids Ident auth issues)
-	// But always include -p for port (in case of non-standard port)
 	hostArg := ""
-	portArg := fmt.Sprintf("-p %d", e.cfg.Port)
 	if e.cfg.Host != "localhost" && e.cfg.Host != "" {
 		hostArg = fmt.Sprintf("-h %s", e.cfg.Host)
 	}
 
 	if compressed {
-		// NOTE: We do NOT use ON_ERROR_STOP=1 because:
-		// 1. We pre-validate dumps above to catch truncation/corruption
-		// 2. ON_ERROR_STOP=1 would fail on harmless "role does not exist" errors
-		// 3. We handle errors in executeRestoreCommand with proper classification
-		psqlCmd := fmt.Sprintf("psql %s -U %s -d %s", portArg, e.cfg.User, targetDB)
-		if hostArg != "" {
-			psqlCmd = fmt.Sprintf("psql %s %s -U %s -d %s", hostArg, portArg, e.cfg.User, targetDB)
-		}
-		// Set PGPASSWORD in the bash command for password-less auth
-		cmd = []string{
-			"bash", "-c",
-			fmt.Sprintf("PGPASSWORD='%s' gunzip -c %s | %s", e.cfg.Password, archivePath, psqlCmd),
-		}
+		// Use in-process pgzip decompression (parallel, no external process)
+		return e.executeRestoreWithPgzipStream(ctx, archivePath, targetDB, "postgresql")
 	} else {
 		// NOTE: We do NOT use ON_ERROR_STOP=1 (see above)
 		if hostArg != "" {
@@ -535,11 +522,8 @@ func (e *Engine) restoreMySQLSQL(ctx context.Context, archivePath, targetDB stri
 	cmd := e.db.BuildRestoreCommand(targetDB, archivePath, options)
 
 	if compressed {
-		// For compressed SQL, decompress on the fly
-		cmd = []string{
-			"bash", "-c",
-			fmt.Sprintf("gunzip -c %s | %s", archivePath, strings.Join(cmd, " ")),
-		}
+		// Use in-process pgzip decompression (parallel, no external process)
+		return e.executeRestoreWithPgzipStream(ctx, archivePath, targetDB, "mysql")
 	}
 
 	return e.executeRestoreCommand(ctx, cmd)
@@ -715,25 +699,38 @@ func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs [
 	return nil
 }
 
-// executeRestoreWithDecompression handles decompression during restore
+// executeRestoreWithDecompression handles decompression during restore using in-process pgzip
 func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePath string, restoreCmd []string) error {
-	// Check if pigz is available for faster decompression
-	decompressCmd := "gunzip"
-	if _, err := exec.LookPath("pigz"); err == nil {
-		decompressCmd = "pigz"
-		e.log.Info("Using pigz for parallel decompression")
+	e.log.Info("Using in-process pgzip decompression (parallel)", "archive", archivePath)
+
+	// Open the gzip file
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to open archive: %w", err)
 	}
+	defer file.Close()
 
-	// Build pipeline: decompress | restore
-	pipeline := fmt.Sprintf("%s -dc %s | %s", decompressCmd, archivePath, strings.Join(restoreCmd, " "))
-	cmd := exec.CommandContext(ctx, "bash", "-c", pipeline)
+	// Create parallel gzip reader
+	gz, err := pgzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("failed to create pgzip reader: %w", err)
+	}
+	defer gz.Close()
 
+	// Start restore command
+	cmd := exec.CommandContext(ctx, restoreCmd[0], restoreCmd[1:]...)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password),
 		fmt.Sprintf("MYSQL_PWD=%s", e.cfg.Password),
 	)
 
-	// Stream stderr to avoid memory issues with large output
+	// Pipe decompressed data to restore command stdin
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	// Capture stderr
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stderr pipe: %w", err)
@@ -743,81 +740,169 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 		return fmt.Errorf("failed to start restore command: %w", err)
 	}
 
-	// Read stderr in goroutine to avoid blocking
+	// Stream decompressed data to restore command in goroutine
+	copyDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(stdin, gz)
+		stdin.Close()
+		copyDone <- copyErr
+	}()
+
+	// Read stderr in goroutine
 	var lastError string
 	var errorCount int
 	stderrDone := make(chan struct{})
 	go func() {
 		defer close(stderrDone)
-		buf := make([]byte, 4096)
-		const maxErrors = 10 // Limit captured errors to prevent OOM
-		for {
-			n, err := stderr.Read(buf)
-			if n > 0 {
-				chunk := string(buf[:n])
-				// Only capture REAL errors, not verbose output
-				if strings.Contains(chunk, "ERROR:") || strings.Contains(chunk, "FATAL:") || strings.Contains(chunk, "error:") {
-					lastError = strings.TrimSpace(chunk)
-					errorCount++
-					if errorCount <= maxErrors {
-						e.log.Warn("Restore stderr", "output", chunk)
-					}
-				}
-				// Note: --verbose output is discarded to prevent OOM
-			}
-			if err != nil {
-				break
+		scanner := bufio.NewScanner(stderr)
+		// Increase buffer size for long lines
+		buf := make([]byte, 64*1024)
+		scanner.Buffer(buf, 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.Contains(strings.ToLower(line), "error") ||
+				strings.Contains(line, "ERROR") ||
+				strings.Contains(line, "FATAL") {
+				lastError = line
+				errorCount++
+				e.log.Debug("Restore stderr", "line", line)
 			}
 		}
 	}()
 
-	// Wait for command with proper context handling
-	cmdDone := make(chan error, 1)
-	go func() {
-		cmdDone <- cmd.Wait()
-	}()
+	// Wait for copy to complete
+	copyErr := <-copyDone
 
-	var cmdErr error
-	select {
-	case cmdErr = <-cmdDone:
-		// Command completed (success or failure)
-	case <-ctx.Done():
-		// Context cancelled - kill process
-		e.log.Warn("Restore with decompression cancelled - killing process")
-		cmd.Process.Kill()
-		<-cmdDone
-		cmdErr = ctx.Err()
-	}
-
-	// Wait for stderr reader to finish
+	// Wait for command
+	cmdErr := cmd.Wait()
 	<-stderrDone
 
-	if cmdErr != nil {
-		// PostgreSQL pg_restore returns exit code 1 even for ignorable errors
-		// Check if errors are ignorable (already exists, duplicate, etc.)
-		if lastError != "" && e.isIgnorableError(lastError) {
-			e.log.Warn("Restore with decompression completed with ignorable errors", "error_count", errorCount, "last_error", lastError)
-			return nil // Success despite ignorable errors
-		}
+	if copyErr != nil && cmdErr == nil {
+		return fmt.Errorf("decompression failed: %w", copyErr)
+	}
 
-		// Classify error and provide helpful hints
+	if cmdErr != nil {
+		if lastError != "" && e.isIgnorableError(lastError) {
+			e.log.Warn("Restore completed with ignorable errors", "error_count", errorCount)
+			return nil
+		}
 		if lastError != "" {
 			classification := checks.ClassifyError(lastError)
-			e.log.Error("Restore with decompression failed",
-				"error", cmdErr,
-				"last_stderr", lastError,
-				"error_count", errorCount,
-				"error_type", classification.Type,
-				"hint", classification.Hint,
-				"action", classification.Action)
-			return fmt.Errorf("restore failed: %w (last error: %s, total errors: %d) - %s",
-				cmdErr, lastError, errorCount, classification.Hint)
+			return fmt.Errorf("restore failed: %w (last error: %s) - %s", cmdErr, lastError, classification.Hint)
 		}
-
-		e.log.Error("Restore with decompression failed", "error", cmdErr, "last_stderr", lastError, "error_count", errorCount)
 		return fmt.Errorf("restore failed: %w", cmdErr)
 	}
 
+	e.log.Info("Restore with pgzip decompression completed successfully")
+	return nil
+}
+
+// executeRestoreWithPgzipStream handles SQL restore with in-process pgzip decompression
+func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath, targetDB, dbType string) error {
+	e.log.Info("Using in-process pgzip stream for SQL restore", "archive", archivePath, "database", targetDB, "type", dbType)
+
+	// Open the gzip file
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to open archive: %w", err)
+	}
+	defer file.Close()
+
+	// Create parallel gzip reader
+	gz, err := pgzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("failed to create pgzip reader: %w", err)
+	}
+	defer gz.Close()
+
+	// Build restore command based on database type
+	var cmd *exec.Cmd
+	if dbType == "postgresql" {
+		args := []string{"-p", fmt.Sprintf("%d", e.cfg.Port), "-U", e.cfg.User, "-d", targetDB}
+		if e.cfg.Host != "localhost" && e.cfg.Host != "" {
+			args = append([]string{"-h", e.cfg.Host}, args...)
+		}
+		cmd = exec.CommandContext(ctx, "psql", args...)
+		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+	} else {
+		// MySQL
+		args := []string{"-u", e.cfg.User, "-p" + e.cfg.Password}
+		if e.cfg.Host != "localhost" && e.cfg.Host != "" {
+			args = append(args, "-h", e.cfg.Host)
+		}
+		args = append(args, "-P", fmt.Sprintf("%d", e.cfg.Port), targetDB)
+		cmd = exec.CommandContext(ctx, "mysql", args...)
+	}
+
+	// Pipe decompressed data to restore command stdin
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe: %w", err)
+	}
+
+	// Capture stderr
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start restore command: %w", err)
+	}
+
+	// Stream decompressed data to restore command in goroutine
+	copyDone := make(chan error, 1)
+	go func() {
+		_, copyErr := io.Copy(stdin, gz)
+		stdin.Close()
+		copyDone <- copyErr
+	}()
+
+	// Read stderr in goroutine
+	var lastError string
+	var errorCount int
+	stderrDone := make(chan struct{})
+	go func() {
+		defer close(stderrDone)
+		scanner := bufio.NewScanner(stderr)
+		buf := make([]byte, 64*1024)
+		scanner.Buffer(buf, 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.Contains(strings.ToLower(line), "error") ||
+				strings.Contains(line, "ERROR") ||
+				strings.Contains(line, "FATAL") {
+				lastError = line
+				errorCount++
+				e.log.Debug("Restore stderr", "line", line)
+			}
+		}
+	}()
+
+	// Wait for copy to complete
+	copyErr := <-copyDone
+
+	// Wait for command
+	cmdErr := cmd.Wait()
+	<-stderrDone
+
+	if copyErr != nil && cmdErr == nil {
+		return fmt.Errorf("pgzip decompression failed: %w", copyErr)
+	}
+
+	if cmdErr != nil {
+		if lastError != "" && e.isIgnorableError(lastError) {
+			e.log.Warn("SQL restore completed with ignorable errors", "error_count", errorCount)
+			return nil
+		}
+		if lastError != "" {
+			classification := checks.ClassifyError(lastError)
+			return fmt.Errorf("restore failed: %w (last error: %s) - %s", cmdErr, lastError, classification.Hint)
+		}
+		return fmt.Errorf("restore failed: %w", cmdErr)
+	}
+
+	e.log.Info("SQL restore with pgzip stream completed successfully")
 	return nil
 }
 
@@ -1567,7 +1652,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			var restoreErr error
 			if isCompressedSQL {
 				mu.Lock()
-				e.log.Info("Detected compressed SQL format, using psql + gunzip", "file", dumpFile, "database", dbName)
+				e.log.Info("Detected compressed SQL format, using psql + pgzip", "file", dumpFile, "database", dbName)
 				mu.Unlock()
 				restoreErr = e.restorePostgreSQLSQL(ctx, dumpFile, dbName, true)
 			} else {

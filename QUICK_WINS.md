@@ -4,7 +4,7 @@
 
 Shipped 3 high-value features in rapid succession, transforming dbbackup's analysis capabilities.
 
-## Quick Win #1: Restore Preview ✅
+## Quick Win #1: Restore Preview
 
 **Shipped:** Commit 6f5a759 + de0582f  
 **Command:** `dbbackup restore preview <backup-file>`
@@ -19,7 +19,7 @@ Shows comprehensive pre-restore analysis:
 
 **TUI Integration:** Added RTO estimates to TUI restore preview workflow.
 
-## Quick Win #2: Backup Diff ✅
+## Quick Win #2: Backup Diff
 
 **Shipped:** Commit 14e893f  
 **Command:** `dbbackup diff <backup1> <backup2>`
@@ -35,7 +35,7 @@ Compare two backups intelligently:
 
 Perfect for capacity planning and identifying sudden changes.
 
-## Quick Win #3: Cost Analyzer ✅
+## Quick Win #3: Cost Analyzer
 
 **Shipped:** Commit 4ab8046  
 **Command:** `dbbackup cost analyze`

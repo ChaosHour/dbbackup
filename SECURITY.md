@@ -64,32 +64,32 @@ We release security updates for the following versions:
 ### For Users
 
 **Encryption Keys:**
-- ✅ Generate strong 32-byte keys: `head -c 32 /dev/urandom | base64 > key.file`
-- ✅ Store keys securely (KMS, HSM, or encrypted filesystem)
-- ✅ Use unique keys per environment
-- ❌ Never commit keys to version control
-- ❌ Never share keys over unencrypted channels
+- - RECOMMENDED: Generate strong 32-byte keys: `head -c 32 /dev/urandom | base64 > key.file`
+- - RECOMMENDED: Store keys securely (KMS, HSM, or encrypted filesystem)
+- - RECOMMENDED: Use unique keys per environment
+- - AVOID: Never commit keys to version control
+- - AVOID: Never share keys over unencrypted channels
 
 **Database Credentials:**
-- ✅ Use read-only accounts for backups when possible
-- ✅ Rotate credentials regularly
-- ✅ Use environment variables or secure config files
-- ❌ Never hardcode credentials in scripts
-- ❌ Avoid using root/admin accounts
+- - RECOMMENDED: Use read-only accounts for backups when possible
+- - RECOMMENDED: Rotate credentials regularly
+- - RECOMMENDED: Use environment variables or secure config files
+- - AVOID: Never hardcode credentials in scripts
+- - AVOID: Avoid using root/admin accounts
 
 **Backup Storage:**
-- ✅ Encrypt backups with `--encrypt` flag
-- ✅ Use secure cloud storage with encryption at rest
-- ✅ Implement proper access controls (IAM, ACLs)
-- ✅ Enable backup retention and versioning
-- ❌ Never store unencrypted backups on public storage
+- - RECOMMENDED: Encrypt backups with `--encrypt` flag
+- - RECOMMENDED: Use secure cloud storage with encryption at rest
+- - RECOMMENDED: Implement proper access controls (IAM, ACLs)
+- - RECOMMENDED: Enable backup retention and versioning
+- - AVOID: Never store unencrypted backups on public storage
 
 **Docker Usage:**
-- ✅ Use specific version tags (`:v3.2.0` not `:latest`)
-- ✅ Run as non-root user (default in our image)
-- ✅ Mount volumes read-only when possible
-- ✅ Use Docker secrets for credentials
-- ❌ Don't run with `--privileged` unless necessary
+- - RECOMMENDED: Use specific version tags (`:v3.2.0` not `:latest`)
+- - RECOMMENDED: Run as non-root user (default in our image)
+- - RECOMMENDED: Mount volumes read-only when possible
+- - RECOMMENDED: Use Docker secrets for credentials
+- - AVOID: Don't run with `--privileged` unless necessary
 
 ### For Developers
 
@@ -151,7 +151,7 @@ We release security updates for the following versions:
 
 | Date       | Auditor          | Scope                    | Status |
 |------------|------------------|--------------------------|--------|
-| 2025-11-26 | Internal Review  | Initial release audit    | ✅ Pass |
+| 2025-11-26 | Internal Review  | Initial release audit    | - RECOMMENDED: Pass |
 
 ## Vulnerability Disclosure Policy
 

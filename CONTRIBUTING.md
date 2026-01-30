@@ -43,12 +43,12 @@ We welcome feature requests! Please include:
 4. Create a feature branch
 
 **PR Requirements:**
-- ✅ All tests pass (`go test -v ./...`)
-- ✅ New tests added for new features
-- ✅ Documentation updated (README.md, comments)
-- ✅ Code follows project style
-- ✅ Commit messages are clear and descriptive
-- ✅ No breaking changes without discussion
+- - All tests pass (`go test -v ./...`)
+- - New tests added for new features
+- - Documentation updated (README.md, comments)
+- - Code follows project style
+- - Commit messages are clear and descriptive
+- - No breaking changes without discussion
 
 ## Development Setup
 
@@ -292,4 +292,4 @@ By contributing, you agree that your contributions will be licensed under the Ap
 
 ---
 
-**Thank you for contributing to dbbackup!** 🎉
+**Thank you for contributing to dbbackup!** 

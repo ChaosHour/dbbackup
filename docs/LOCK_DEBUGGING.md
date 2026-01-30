@@ -15,7 +15,7 @@ When PostgreSQL lock exhaustion occurs during restore:
 
 ## Solution
 
-New `--debug-locks` flag captures every decision point in the lock protection system with detailed logging prefixed by 🔍 [LOCK-DEBUG].
+New `--debug-locks` flag captures every decision point in the lock protection system with detailed logging prefixed by [LOCK-DEBUG].
 
 ## Usage
 
@@ -36,7 +36,7 @@ dbbackup --debug-locks restore cluster backup.tar.gz --confirm
 dbbackup  # Start interactive mode
 # Navigate to restore operation
 # Select your archive
-# Press 'l' to toggle lock debugging (🔍 icon appears when enabled)
+# Press 'l' to toggle lock debugging (LOCK-DEBUG icon appears when enabled)
 # Press Enter to proceed
 ```
 
@@ -44,19 +44,19 @@ dbbackup  # Start interactive mode
 
 ### 1. Strategy Analysis Entry Point
 ```
-🔍 [LOCK-DEBUG] Large DB Guard: Starting strategy analysis
+[LOCK-DEBUG] Large DB Guard: Starting strategy analysis
     archive=cluster_backup.tar.gz
     dump_count=15
 ```
 
 ### 2. PostgreSQL Configuration Detection
 ```
-🔍 [LOCK-DEBUG] Querying PostgreSQL for lock configuration
+[LOCK-DEBUG] Querying PostgreSQL for lock configuration
     host=localhost
     port=5432
     user=postgres
 
-🔍 [LOCK-DEBUG] Successfully retrieved PostgreSQL lock settings
+[LOCK-DEBUG] Successfully retrieved PostgreSQL lock settings
     max_locks_per_transaction=2048
     max_connections=256
     total_capacity=524288
@@ -64,14 +64,14 @@ dbbackup  # Start interactive mode
 
 ### 3. Guard Decision Logic  
 ```
-🔍 [LOCK-DEBUG] PostgreSQL lock configuration detected
+[LOCK-DEBUG] PostgreSQL lock configuration detected
     max_locks_per_transaction=2048
     max_connections=256
     calculated_capacity=524288
     threshold_required=4096
     below_threshold=true
 
-🔍 [LOCK-DEBUG] Guard decision: CONSERVATIVE mode
+[LOCK-DEBUG] Guard decision: CONSERVATIVE mode
     jobs=1
     parallel_dbs=1
     reason="Lock threshold not met (max_locks < 4096)"
@@ -79,37 +79,37 @@ dbbackup  # Start interactive mode
 
 ### 4. Lock Boost Attempts
 ```
-🔍 [LOCK-DEBUG] boostPostgreSQLSettings: Starting lock boost procedure
+[LOCK-DEBUG] boostPostgreSQLSettings: Starting lock boost procedure
     target_lock_value=4096
 
-🔍 [LOCK-DEBUG] Current PostgreSQL lock configuration
+[LOCK-DEBUG] Current PostgreSQL lock configuration
     current_max_locks=2048
     target_max_locks=4096
     boost_required=true
 
-🔍 [LOCK-DEBUG] Executing ALTER SYSTEM to boost locks
+[LOCK-DEBUG] Executing ALTER SYSTEM to boost locks
     from=2048
     to=4096
 
-🔍 [LOCK-DEBUG] ALTER SYSTEM succeeded - restart required
+[LOCK-DEBUG] ALTER SYSTEM succeeded - restart required
     setting_saved_to=postgresql.auto.conf
     active_after="PostgreSQL restart"
 ```
 
 ### 5. PostgreSQL Restart Attempts
 ```
-🔍 [LOCK-DEBUG] Attempting PostgreSQL restart to activate new lock setting
+[LOCK-DEBUG] Attempting PostgreSQL restart to activate new lock setting
 
 # If restart succeeds:
-🔍 [LOCK-DEBUG] PostgreSQL restart SUCCEEDED
+[LOCK-DEBUG] PostgreSQL restart SUCCEEDED
 
-🔍 [LOCK-DEBUG] Post-restart verification
+[LOCK-DEBUG] Post-restart verification
     new_max_locks=4096
     target_was=4096
     verification=PASS
 
 # If restart fails:
-🔍 [LOCK-DEBUG] PostgreSQL restart FAILED
+[LOCK-DEBUG] PostgreSQL restart FAILED
     current_locks=2048
     required_locks=4096
     setting_saved=true
@@ -119,12 +119,12 @@ dbbackup  # Start interactive mode
 
 ### 6. Final Verification
 ```
-🔍 [LOCK-DEBUG] Lock boost function returned
+[LOCK-DEBUG] Lock boost function returned
     original_max_locks=2048
     target_max_locks=4096
     boost_successful=false
 
-🔍 [LOCK-DEBUG] CRITICAL: Lock verification FAILED
+[LOCK-DEBUG] CRITICAL: Lock verification FAILED
     actual_locks=2048
     required_locks=4096
     delta=2048
@@ -140,7 +140,7 @@ dbbackup  # Start interactive mode
 dbbackup restore cluster backup.tar.gz --debug-locks --confirm
 
 # Output shows:
-# 🔍 [LOCK-DEBUG] Guard decision: CONSERVATIVE mode
+# [LOCK-DEBUG] Guard decision: CONSERVATIVE mode
 #     current_locks=2048, required=4096
 #     verdict="ABORT - Manual restart required"
 
@@ -188,10 +188,10 @@ dbbackup restore cluster backup.tar.gz --confirm
 - `cmd/restore.go` - Wired flag to single/cluster restore commands
 - `internal/restore/large_db_guard.go` - 20+ debug log points
 - `internal/restore/engine.go` - 15+ debug log points in boost logic
-- `internal/tui/restore_preview.go` - 'l' key toggle with 🔍 icon
+- `internal/tui/restore_preview.go` - 'l' key toggle with LOCK-DEBUG icon
 
 ### Log Locations
-All lock debug logs go to the configured logger (usually syslog or file) with level INFO. The 🔍 [LOCK-DEBUG] prefix makes them easy to grep:
+All lock debug logs go to the configured logger (usually syslog or file) with level INFO. The [LOCK-DEBUG] prefix makes them easy to grep:
 
 ```bash
 # Filter lock debug logs
@@ -203,7 +203,7 @@ grep 'LOCK-DEBUG' /var/log/dbbackup.log
 
 ## Backward Compatibility
 
-- ✅ No breaking changes
+- No breaking changes
 - ✅ Flag defaults to false (no output unless enabled)
 - ✅ Existing scripts continue to work unchanged
 - ✅ TUI users get new 'l' toggle automatically
@@ -256,7 +256,7 @@ Together: Bulletproof protection + complete transparency.
 ## Support
 
 For issues related to lock debugging:
-- Check logs for 🔍 [LOCK-DEBUG] entries
+- Check logs for [LOCK-DEBUG] entries
 - Verify PostgreSQL version supports ALTER SYSTEM (9.4+)
 - Ensure user has SUPERUSER role for ALTER SYSTEM
 - Check systemd/init scripts can restart PostgreSQL

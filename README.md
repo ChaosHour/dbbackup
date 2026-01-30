@@ -11,14 +11,14 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 ## Features
 
-### 🚀 NEW in 5.0: We Built Our Own Database Engines
+### NEW in 5.0: We Built Our Own Database Engines
 
 **This is a really big step.** We're no longer calling external tools - **we built our own machines.**
 
-- **🔧 Our Own Engines**: Pure Go implementation - we speak directly to databases using their native wire protocols
+- **Our Own Engines**: Pure Go implementation - we speak directly to databases using their native wire protocols
 - **🚫 No External Tools**: Goodbye pg_dump, mysqldump, pg_restore, mysql, psql, mysqlbinlog - we don't need them anymore
-- **⚡ Native Protocol**: Direct PostgreSQL (pgx) and MySQL (go-sql-driver) communication - no shell, no pipes, no parsing
-- **🎯 Full Control**: Our code generates the SQL, handles the types, manages the connections
+- **Native Protocol**: Direct PostgreSQL (pgx) and MySQL (go-sql-driver) communication - no shell, no pipes, no parsing
+- **Full Control**: Our code generates the SQL, handles the types, manages the connections
 - **🔒 Production Ready**: Advanced data type handling, proper escaping, binary support, batch processing
 
 ### Core Database Features
@@ -524,13 +524,13 @@ dbbackup backup cluster -n  # Short flag
 
   Checks:
   ─────────────────────────────────────────────────────────────
-  ✅ Database Connectivity: Connected successfully
-  ✅ Required Tools:        pg_dump 15.4 available
-  ✅ Storage Target:        /backups writable (45 GB free)
-  ✅ Size Estimation:       ~2.5 GB required
+  Database Connectivity: Connected successfully
+  Required Tools:        pg_dump 15.4 available
+  Storage Target:        /backups writable (45 GB free)
+  Size Estimation:       ~2.5 GB required
   ─────────────────────────────────────────────────────────────
 
-  ✅ All checks passed
+  All checks passed
 
   Ready to backup. Remove --dry-run to execute.
 ```
@@ -562,24 +562,24 @@ dbbackup restore diagnose cluster_backup.tar.gz --deep
 
 **Example output:**
 ```
-🔍 Backup Diagnosis Report
+Backup Diagnosis Report
 ══════════════════════════════════════════════════════════════
 
 📁 File: mydb_20260105.dump.gz
    Format: PostgreSQL Custom (gzip)
    Size: 2.5 GB
 
-🔬 Analysis Results:
-   ✅ Gzip integrity: Valid
-   ✅ PGDMP signature: Valid
-   ✅ pg_restore --list: Success (245 objects)
-   ❌ COPY block check: TRUNCATED
+Analysis Results:
+   Gzip integrity: Valid
+   PGDMP signature: Valid
+   pg_restore --list: Success (245 objects)
+   COPY block check: TRUNCATED
 
-⚠️  Issues Found:
+Issues Found:
    - COPY block for table 'orders' not terminated
    - Dump appears truncated at line 1,234,567
 
-💡 Recommendations:
+Recommendations:
    - Re-run the backup for this database
    - Check disk space on backup server
    - Verify network stability during backup
@@ -637,7 +637,7 @@ dbbackup backup single mydb
     "backup_size": 2684354560,
     "hostname": "db-server-01"
   },
-  "subject": "✅ [dbbackup] Backup Completed: mydb"
+  "subject": "[dbbackup] Backup Completed: mydb"
 }
 ```
 

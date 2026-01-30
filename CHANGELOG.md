@@ -38,9 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.0.0] - 2026-01-30
 
-### 🚀 MAJOR RELEASE - Native Engine Implementation
+### MAJOR RELEASE - Native Engine Implementation
 
-**🎯 BREAKTHROUGH: We Built Our Own Database Engines**
+**BREAKTHROUGH: We Built Our Own Database Engines**
 
 **This is a really big step.** We're no longer calling external tools - **we built our own machines**.
 
@@ -179,7 +179,7 @@ Database Context:
 
 Recommendations:
   Current lock capacity: 12,800 locks (max_locks_per_transaction × max_connections)
-  ⚠ max_locks_per_transaction is low (128)
+  WARNING: max_locks_per_transaction is low (128)
   • Increase: ALTER SYSTEM SET max_locks_per_transaction = 4096;
   • Then restart PostgreSQL: sudo systemctl restart postgresql
 
@@ -359,10 +359,10 @@ WAL Archive Statistics:
   - Uses klauspost/pgzip for parallel multi-core compression
 
 - **Complete pgzip migration status**:
-  - ✅ Backup: All compression uses in-process pgzip
-  - ✅ Restore: All decompression uses in-process pgzip  
-  - ✅ Drill: Decompress on host with pgzip before Docker copy
-  - ⚠️ PITR only: PostgreSQL's `restore_command` must remain shell (PostgreSQL limitation)
+  - Backup: All compression uses in-process pgzip
+  - Restore: All decompression uses in-process pgzip  
+  - Drill: Decompress on host with pgzip before Docker copy
+  - WARNING: PITR only: PostgreSQL's `restore_command` must remain shell (PostgreSQL limitation)
 
 ## [4.2.1] - 2026-01-30
 
@@ -1326,7 +1326,7 @@ dbbackup metrics serve --port 9399
 
 ## [3.40.0] - 2026-01-05 "The Diagnostician"
 
-### Added - 🔍 Restore Diagnostics & Error Reporting
+### Added - Restore Diagnostics & Error Reporting
 
 **Backup Diagnosis Command:**
 - `restore diagnose <archive>` - Deep analysis of backup files before restore
@@ -1537,7 +1537,7 @@ dbbackup metrics serve --port 9399
 
 ## [3.0.0] - 2025-11-26
 
-### Added - 🔐 AES-256-GCM Encryption (Phase 4)
+### Added - AES-256-GCM Encryption (Phase 4)
 
 **Secure Backup Encryption:**
 - **Algorithm**: AES-256-GCM authenticated encryption (prevents tampering)
@@ -1585,7 +1585,7 @@ head -c 32 /dev/urandom | base64 > encryption.key
 - `internal/backup/encryption.go` - Backup encryption operations
 - Total: ~1,200 lines across 13 files
 
-### Added - 📦 Incremental Backups (Phase 3B)
+### Added - Incremental Backups (Phase 3B)
 
 **MySQL/MariaDB Incremental Backups:**
 - **Change Detection**: mtime-based file modification tracking
@@ -1656,11 +1656,11 @@ head -c 32 /dev/urandom | base64 > encryption.key
 - **Metadata Format**: Extended with encryption and incremental fields
 
 ### Testing
-- ✅ Encryption tests: 4 tests passing (TestAESEncryptionDecryption, TestKeyDerivation, TestKeyValidation, TestLargeData)
-- ✅ Incremental tests: 2 tests passing (TestIncrementalBackupRestore, TestIncrementalBackupErrors)
-- ✅ Roundtrip validation: Encrypt → Decrypt → Verify (data matches perfectly)
-- ✅ Build: All platforms compile successfully
-- ✅ Interface compatibility: PostgreSQL and MySQL engines share test suite
+- Encryption tests: 4 tests passing (TestAESEncryptionDecryption, TestKeyDerivation, TestKeyValidation, TestLargeData)
+- Incremental tests: 2 tests passing (TestIncrementalBackupRestore, TestIncrementalBackupErrors)
+- Roundtrip validation: Encrypt → Decrypt → Verify (data matches perfectly)
+- Build: All platforms compile successfully
+- Interface compatibility: PostgreSQL and MySQL engines share test suite
 
 ### Documentation
 - Updated README.md with encryption and incremental sections
@@ -1709,12 +1709,12 @@ head -c 32 /dev/urandom | base64 > encryption.key
   - `disk_check_netbsd.go` - NetBSD disk space stub
 - **Build Tags**: Proper Go build constraints for platform-specific code
 - **All Platforms Building**: 10/10 platforms successfully compile
-  - ✅ Linux (amd64, arm64, armv7)
-  - ✅ macOS (Intel, Apple Silicon)
-  - ✅ Windows (Intel, ARM)
-  - ✅ FreeBSD amd64
-  - ✅ OpenBSD amd64
-  - ✅ NetBSD amd64
+  - Linux (amd64, arm64, armv7)
+  - macOS (Intel, Apple Silicon)
+  - Windows (Intel, ARM)
+  - FreeBSD amd64
+  - OpenBSD amd64
+  - - NetBSD amd64
 
 ### Changed
 - **Cloud Auto-Upload**: When `CloudEnabled=true` and `CloudAutoUpload=true`, backups automatically upload after creation

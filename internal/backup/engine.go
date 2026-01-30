@@ -174,7 +174,8 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	}
 	e.cfg.BackupDir = validBackupDir
 
-	if err := os.MkdirAll(e.cfg.BackupDir, 0755); err != nil {
+	// Use SecureMkdirAll to handle race conditions and apply secure permissions
+	if err := fs.SecureMkdirAll(e.cfg.BackupDir, 0700); err != nil {
 		err = fmt.Errorf("failed to create backup directory %s. Check write permissions or use --backup-dir to specify writable location: %w", e.cfg.BackupDir, err)
 		prepStep.Fail(err)
 		tracker.Fail(err)
@@ -286,8 +287,8 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 func (e *Engine) BackupSample(ctx context.Context, databaseName string) error {
 	operation := e.log.StartOperation("Sample Database Backup")
 
-	// Ensure backup directory exists
-	if err := os.MkdirAll(e.cfg.BackupDir, 0755); err != nil {
+	// Ensure backup directory exists with race condition handling
+	if err := fs.SecureMkdirAll(e.cfg.BackupDir, 0755); err != nil {
 		operation.Fail("Failed to create backup directory")
 		return fmt.Errorf("failed to create backup directory: %w", err)
 	}
@@ -370,8 +371,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		quietProgress.Start("Starting cluster backup (all databases)")
 	}
 
-	// Ensure backup directory exists
-	if err := os.MkdirAll(e.cfg.BackupDir, 0755); err != nil {
+	// Ensure backup directory exists with race condition handling
+	if err := fs.SecureMkdirAll(e.cfg.BackupDir, 0755); err != nil {
 		operation.Fail("Failed to create backup directory")
 		quietProgress.Fail("Failed to create backup directory")
 		return fmt.Errorf("failed to create backup directory: %w", err)
@@ -405,8 +406,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 
 	operation.Update("Starting cluster backup")
 
-	// Create temporary directory
-	if err := os.MkdirAll(filepath.Join(tempDir, "dumps"), 0755); err != nil {
+	// Create temporary directory with secure permissions and race condition handling
+	if err := fs.SecureMkdirAll(filepath.Join(tempDir, "dumps"), 0700); err != nil {
 		operation.Fail("Failed to create temporary directory")
 		quietProgress.Fail("Failed to create temporary directory")
 		return fmt.Errorf("failed to create temp directory: %w", err)
@@ -719,8 +720,8 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 		dumpCmd.Env = append(dumpCmd.Env, "MYSQL_PWD="+e.cfg.Password)
 	}
 
-	// Create output file
-	outFile, err := os.Create(outputFile)
+	// Create output file with secure permissions (0600)
+	outFile, err := fs.SecureCreate(outputFile)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
@@ -811,8 +812,8 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 		dumpCmd.Env = append(dumpCmd.Env, "MYSQL_PWD="+e.cfg.Password)
 	}
 
-	// Create output file
-	outFile, err := os.Create(outputFile)
+	// Create output file with secure permissions (0600)
+	outFile, err := fs.SecureCreate(outputFile)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
@@ -1467,8 +1468,8 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 		}()
 	}
 
-	// Create output file
-	outFile, err := os.Create(compressedFile)
+	// Create output file with secure permissions (0600)
+	outFile, err := fs.SecureCreate(compressedFile)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}

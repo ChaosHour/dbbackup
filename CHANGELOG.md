@@ -6,6 +6,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [4.2.5] - 2026-01-30
+## [4.2.6] - 2026-01-30
+
+### Security - Critical Fixes
+
+- **SEC#1: Password exposure in process list**
+  - Removed `--password` CLI flag to prevent passwords appearing in `ps aux`
+  - Use environment variables (`PGPASSWORD`, `MYSQL_PWD`) or config file instead
+  - Enhanced security for multi-user systems and shared environments
+
+- **SEC#2: World-readable backup files**
+  - All backup files now created with 0600 permissions (owner-only read/write)
+  - Prevents unauthorized users from reading sensitive database dumps
+  - Affects: `internal/backup/engine.go`, `incremental_mysql.go`, `incremental_tar.go`
+  - Critical for GDPR, HIPAA, and PCI-DSS compliance
+
+- **#4: Directory race condition in parallel backups**
+  - Replaced `os.MkdirAll()` with `fs.SecureMkdirAll()` that handles EEXIST gracefully
+  - Prevents "file exists" errors when multiple backup processes create directories
+  - Affects: All backup directory creation paths
+
+### Added
+
+- **internal/fs/secure.go**: New secure file operations utilities
+  - `SecureMkdirAll()`: Race-condition-safe directory creation
+  - `SecureCreate()`: File creation with 0600 permissions
+  - `SecureMkdirTemp()`: Temporary directories with 0700 permissions
+  - `CheckWriteAccess()`: Proactive detection of read-only filesystems
+
+- **internal/exitcode/codes.go**: BSD-style exit codes for automation
+  - Standard exit codes for scripting and monitoring systems
+  - Improves integration with systemd, cron, and orchestration tools
+
+### Fixed
+
+- Fixed multiple file creation calls using insecure 0644 permissions
+- Fixed race conditions in backup directory creation during parallel operations
+- Improved security posture for multi-user and shared environments
+
 
 ### Fixed - TUI Cluster Restore Double-Extraction
 

@@ -163,7 +163,8 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	rootCmd.PersistentFlags().StringVar(&cfg.Socket, "socket", cfg.Socket, "Unix socket path for MySQL/MariaDB (e.g., /var/run/mysqld/mysqld.sock)")
 	rootCmd.PersistentFlags().StringVar(&cfg.User, "user", cfg.User, "Database user")
 	rootCmd.PersistentFlags().StringVar(&cfg.Database, "database", cfg.Database, "Database name")
-	rootCmd.PersistentFlags().StringVar(&cfg.Password, "password", cfg.Password, "Database password")
+	// SECURITY: Password flag removed - use PGPASSWORD/MYSQL_PWD environment variable or .pgpass file
+	// rootCmd.PersistentFlags().StringVar(&cfg.Password, "password", cfg.Password, "Database password")
 	rootCmd.PersistentFlags().StringVarP(&cfg.DatabaseType, "db-type", "d", cfg.DatabaseType, "Database type (postgres|mysql|mariadb)")
 	rootCmd.PersistentFlags().StringVar(&cfg.BackupDir, "backup-dir", cfg.BackupDir, "Backup directory")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoColor, "no-color", cfg.NoColor, "Disable colored output")

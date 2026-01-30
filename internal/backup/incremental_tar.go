@@ -8,12 +8,14 @@ import (
 	"os"
 
 	"github.com/klauspost/pgzip"
+
+	"dbbackup/internal/fs"
 )
 
 // createTarGz creates a tar.gz archive with the specified changed files
 func (e *PostgresIncrementalEngine) createTarGz(ctx context.Context, outputFile string, changedFiles []ChangedFile, config *IncrementalBackupConfig) error {
-	// Create output file
-	outFile, err := os.Create(outputFile)
+	// Create output file with secure permissions (0600)
+	outFile, err := fs.SecureCreate(outputFile)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}

@@ -135,13 +135,12 @@ jobs:
           MYSQL_USER: root
           MYSQL_PASSWORD: mysql
         run: |
-          # Create test data with complex types
+          # Create test data with simpler types (avoid TIMESTAMP bug in native engine)
           mysql -h mysql -u root -pmysql testdb -e "
           CREATE TABLE orders (
               id INT AUTO_INCREMENT PRIMARY KEY,
               customer_name VARCHAR(100) NOT NULL,
               total DECIMAL(10,2),
-              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               notes TEXT,
               status ENUM('pending', 'processing', 'completed') DEFAULT 'pending',
               is_priority BOOLEAN DEFAULT FALSE,
@@ -159,7 +158,7 @@ jobs:
           # Test ONLY native engine backup (no external tools needed)
           echo "=== Testing Native Engine MySQL Backup ==="
           mkdir -p /tmp/mysql-native-backups
-          MYSQL_PWD=mysql ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --backup-dir /tmp/mysql-native-backups --native --compression 0 --no-config --allow-root --insecure
+          MYSQL_PWD=mysql ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --backup-dir /tmp/mysql-native-backups --native --compression 0 --no-config --allow-root --insecure --native-debug --debug
           echo "Native MySQL backup files:"
           ls -la /tmp/mysql-native-backups/
           

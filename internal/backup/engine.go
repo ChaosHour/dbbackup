@@ -1,7 +1,9 @@
 package backup
 
 import (
+	"archive/tar"
 	"bufio"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -28,6 +30,7 @@ import (
 	"dbbackup/internal/progress"
 	"dbbackup/internal/security"
 	"dbbackup/internal/swap"
+	"dbbackup/internal/verification"
 
 	"github.com/klauspost/pgzip"
 )
@@ -261,6 +264,26 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 		metaStep.Fail(fmt.Errorf("metadata creation failed: %w", err))
 	} else {
 		metaStep.Complete("Metadata file created")
+	}
+
+	// Auto-verify backup integrity if enabled (HIGH priority #9)
+	if e.cfg.VerifyAfterBackup {
+		verifyStep := tracker.AddStep("post-verify", "Verifying backup integrity")
+		e.log.Info("Post-backup verification enabled, checking integrity...")
+
+		if result, err := verification.Verify(outputFile); err != nil {
+			e.log.Error("Post-backup verification failed", "error", err)
+			verifyStep.Fail(fmt.Errorf("verification failed: %w", err))
+			tracker.Fail(fmt.Errorf("backup created but verification failed: %w", err))
+			return fmt.Errorf("backup verification failed (backup may be corrupted): %w", err)
+		} else if !result.Valid {
+			verifyStep.Fail(fmt.Errorf("verification failed: %s", result.Error))
+			tracker.Fail(fmt.Errorf("backup created but verification failed: %s", result.Error))
+			return fmt.Errorf("backup verification failed: %s", result.Error)
+		} else {
+			verifyStep.Complete(fmt.Sprintf("Backup verified (SHA-256: %s...)", result.CalculatedSHA256[:16]))
+			e.log.Info("Backup verification successful", "sha256", result.CalculatedSHA256)
+		}
 	}
 
 	// Record metrics for observability
@@ -597,6 +620,24 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	// Create cluster metadata file
 	if err := e.createClusterMetadata(outputFile, databases, successCountFinal, failCountFinal); err != nil {
 		e.log.Warn("Failed to create cluster metadata file", "error", err)
+	}
+
+	// Auto-verify cluster backup integrity if enabled (HIGH priority #9)
+	if e.cfg.VerifyAfterBackup {
+		e.printf("   Verifying cluster backup integrity...\n")
+		e.log.Info("Post-backup verification enabled, checking cluster archive...")
+
+		// For cluster backups (tar.gz), we do a quick extraction test
+		// Full SHA-256 verification would require decompressing entire archive
+		if err := e.verifyClusterArchive(ctx, outputFile); err != nil {
+			e.log.Error("Cluster backup verification failed", "error", err)
+			quietProgress.Fail(fmt.Sprintf("Cluster backup created but verification failed: %v", err))
+			operation.Fail("Cluster backup verification failed")
+			return fmt.Errorf("cluster backup verification failed: %w", err)
+		} else {
+			e.printf("   [OK] Cluster backup verified successfully\n")
+			e.log.Info("Cluster backup verification successful", "archive", outputFile)
+		}
 	}
 
 	return nil
@@ -1203,6 +1244,65 @@ func (e *Engine) createClusterMetadata(backupFile string, databases []string, su
 		e.log.Warn("Failed to save legacy cluster metadata file", "error", err)
 	}
 
+	return nil
+}
+
+// verifyClusterArchive performs quick integrity check on cluster backup archive
+func (e *Engine) verifyClusterArchive(ctx context.Context, archivePath string) error {
+	// Check file exists and is readable
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("cannot open archive: %w", err)
+	}
+	defer file.Close()
+
+	// Get file size
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("cannot stat archive: %w", err)
+	}
+
+	// Basic sanity checks
+	if info.Size() == 0 {
+		return fmt.Errorf("archive is empty (0 bytes)")
+	}
+
+	if info.Size() < 100 {
+		return fmt.Errorf("archive suspiciously small (%d bytes)", info.Size())
+	}
+
+	// Verify tar.gz structure by reading header
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("invalid gzip format: %w", err)
+	}
+	defer gzipReader.Close()
+
+	// Read tar header to verify archive structure
+	tarReader := tar.NewReader(gzipReader)
+	fileCount := 0
+	for {
+		_, err := tarReader.Next()
+		if err == io.EOF {
+			break // End of archive
+		}
+		if err != nil {
+			return fmt.Errorf("corrupted tar archive at entry %d: %w", fileCount, err)
+		}
+		fileCount++
+
+		// Limit scan to first 100 entries for performance
+		// (cluster backup should have globals + N database dumps)
+		if fileCount >= 100 {
+			break
+		}
+	}
+
+	if fileCount == 0 {
+		return fmt.Errorf("archive contains no files")
+	}
+
+	e.log.Debug("Cluster archive verification passed", "files_checked", fileCount, "size_bytes", info.Size())
 	return nil
 }
 

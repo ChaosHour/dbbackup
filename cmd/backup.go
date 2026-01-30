@@ -129,6 +129,11 @@ func init() {
 		cmd.Flags().BoolVarP(&backupDryRun, "dry-run", "n", false, "Validate configuration without executing backup")
 	}
 
+	// Verification flag for all backup commands (HIGH priority #9)
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
+		cmd.Flags().Bool("no-verify", false, "Skip automatic backup verification after creation")
+	}
+
 	// Cloud storage flags for all backup commands
 	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
 		cmd.Flags().String("cloud", "", "Cloud storage URI (e.g., s3://bucket/path) - takes precedence over individual flags")
@@ -182,6 +187,12 @@ func init() {
 				if c.Flags().Changed("cloud-prefix") {
 					cfg.CloudPrefix, _ = c.Flags().GetString("cloud-prefix")
 				}
+			}
+
+			// Handle --no-verify flag (#9 Auto Backup Verification)
+			if c.Flags().Changed("no-verify") {
+				noVerify, _ := c.Flags().GetBool("no-verify")
+				cfg.VerifyAfterBackup = !noVerify
 			}
 
 			return nil

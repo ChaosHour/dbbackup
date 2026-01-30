@@ -84,6 +84,9 @@ type Config struct {
 	SwapFileSizeGB int    // Size in GB (0 = disabled)
 	AutoSwap       bool   // Automatically manage swap for large backups
 
+	// Backup verification (HIGH priority - #9)
+	VerifyAfterBackup bool // Automatically verify backup integrity after creation (default: true)
+
 	// Security options (MEDIUM priority)
 	RetentionDays  int  // Backup retention in days (0 = disabled)
 	MinBackups     int  // Minimum backups to keep regardless of age
@@ -252,6 +255,9 @@ func New() *Config {
 		SwapFilePath:   "",                                // Will be set after WorkDir is initialized
 		SwapFileSizeGB: getEnvInt("SWAP_FILE_SIZE_GB", 0), // 0 = disabled by default
 		AutoSwap:       getEnvBool("AUTO_SWAP", false),
+
+		// Backup verification defaults
+		VerifyAfterBackup: getEnvBool("VERIFY_AFTER_BACKUP", true), // Auto-verify by default (HIGH priority #9)
 
 		// Security defaults (MEDIUM priority)
 		RetentionDays:  getEnvInt("RETENTION_DAYS", 30),     // Keep backups for 30 days

@@ -167,9 +167,20 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 	if !e.cfg.SchemaOnly {
 		for _, obj := range objects {
 			if obj.Type == "table_data" {
+				e.log.Debug("Copying table data", "schema", obj.Schema, "table", obj.Name)
+				
+				// Write table data header
+				header := fmt.Sprintf("\n--\n-- Data for table %s.%s\n--\n\n",
+					e.quoteIdentifier(obj.Schema), e.quoteIdentifier(obj.Name))
+				if _, err := w.Write([]byte(header)); err != nil {
+					return nil, err
+				}
+				
 				bytesWritten, err := e.copyTableData(ctx, w, obj.Schema, obj.Name)
 				if err != nil {
-					return nil, fmt.Errorf("failed to copy table %s.%s: %w", obj.Schema, obj.Name, err)
+					e.log.Warn("Failed to copy table data", "table", obj.Name, "error", err)
+					// Continue with other tables
+					continue
 				}
 				result.BytesProcessed += bytesWritten
 				result.ObjectsProcessed++
@@ -188,7 +199,30 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 
 // copyTableData uses COPY TO for efficient data export
 func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer, schema, table string) (int64, error) {
-	// Write COPY statement header (matches the TEXT format we're using)
+	// Get a separate connection from the pool for COPY operation
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
+	// Check if table has any data
+	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s",
+		e.quoteIdentifier(schema), e.quoteIdentifier(table))
+	var rowCount int64
+	if err := conn.QueryRow(ctx, countSQL).Scan(&rowCount); err != nil {
+		return 0, fmt.Errorf("failed to count rows: %w", err)
+	}
+
+	// Skip empty tables
+	if rowCount == 0 {
+		e.log.Debug("Skipping empty table", "table", table)
+		return 0, nil
+	}
+
+	e.log.Debug("Starting COPY operation", "table", table, "rowCount", rowCount)
+
+	// Write COPY statement header
 	copyHeader := fmt.Sprintf("COPY %s.%s FROM stdin;\n",
 		e.quoteIdentifier(schema),
 		e.quoteIdentifier(table))
@@ -197,38 +231,20 @@ func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer,
 		return 0, err
 	}
 
-	// Use COPY TO STDOUT with TEXT format (PostgreSQL native format, compatible with FROM stdin)
+	var bytesWritten int64
+
+	// Use proper pgx COPY TO protocol
 	copySQL := fmt.Sprintf("COPY %s.%s TO STDOUT",
 		e.quoteIdentifier(schema),
 		e.quoteIdentifier(table))
 
-	var bytesWritten int64
-
-	// Execute COPY and read data
-	rows, err := e.conn.Query(ctx, copySQL)
+	// Execute COPY TO and get the result directly
+	copyResult, err := conn.Conn().PgConn().CopyTo(ctx, w, copySQL)
 	if err != nil {
-		return 0, fmt.Errorf("COPY operation failed: %w", err)
-	}
-	defer rows.Close()
-
-	// Process each row from COPY output
-	for rows.Next() {
-		var rowData string
-		if err := rows.Scan(&rowData); err != nil {
-			return bytesWritten, fmt.Errorf("failed to scan COPY row: %w", err)
-		}
-
-		// Write the row data
-		written, err := w.Write([]byte(rowData + "\n"))
-		if err != nil {
-			return bytesWritten, err
-		}
-		bytesWritten += int64(written)
+		return bytesWritten, fmt.Errorf("COPY operation failed: %w", err)
 	}
 
-	if err := rows.Err(); err != nil {
-		return bytesWritten, fmt.Errorf("error during COPY: %w", err)
-	}
+	bytesWritten = copyResult.RowsAffected()
 
 	// Write COPY terminator
 	terminator := "\\.\n\n"
@@ -238,6 +254,7 @@ func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer,
 	}
 	bytesWritten += int64(written)
 
+	e.log.Debug("Completed COPY operation", "table", table, "rows", rowCount, "bytes", bytesWritten)
 	return bytesWritten, nil
 }
 
@@ -281,13 +298,20 @@ func (e *PostgreSQLNativeEngine) getDatabaseObjects(ctx context.Context) ([]Data
 
 // getSchemas retrieves all schemas
 func (e *PostgreSQLNativeEngine) getSchemas(ctx context.Context) ([]string, error) {
+	// Get a connection from the pool for metadata queries
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
 	query := `
 		SELECT schema_name 
 		FROM information_schema.schemata 
 		WHERE schema_name NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
 		ORDER BY schema_name`
 
-	rows, err := e.conn.Query(ctx, query)
+	rows, err := conn.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -307,6 +331,13 @@ func (e *PostgreSQLNativeEngine) getSchemas(ctx context.Context) ([]string, erro
 
 // getTables retrieves tables for a schema
 func (e *PostgreSQLNativeEngine) getTables(ctx context.Context, schema string) ([]DatabaseObject, error) {
+	// Get a connection from the pool for metadata queries
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
 	query := `
 		SELECT t.table_name
 		FROM information_schema.tables t
@@ -314,7 +345,7 @@ func (e *PostgreSQLNativeEngine) getTables(ctx context.Context, schema string) (
 		  AND t.table_type = 'BASE TABLE'
 		ORDER BY t.table_name`
 
-	rows, err := e.conn.Query(ctx, query, schema)
+	rows, err := conn.Query(ctx, query, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -362,6 +393,13 @@ func (e *PostgreSQLNativeEngine) getTables(ctx context.Context, schema string) (
 
 // getTableCreateSQL generates CREATE TABLE statement
 func (e *PostgreSQLNativeEngine) getTableCreateSQL(ctx context.Context, schema, table string) (string, error) {
+	// Get a connection from the pool for metadata queries
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
 	// Get column definitions
 	colQuery := `
 		SELECT 
@@ -376,7 +414,7 @@ func (e *PostgreSQLNativeEngine) getTableCreateSQL(ctx context.Context, schema, 
 		WHERE c.table_schema = $1 AND c.table_name = $2
 		ORDER BY c.ordinal_position`
 
-	rows, err := e.conn.Query(ctx, colQuery, schema, table)
+	rows, err := conn.Query(ctx, colQuery, schema, table)
 	if err != nil {
 		return "", err
 	}
@@ -590,14 +628,21 @@ func (e *PostgreSQLNativeEngine) backupTarFormat(ctx context.Context, w io.Write
 // Close closes all connections
 // getViews retrieves views for a schema
 func (e *PostgreSQLNativeEngine) getViews(ctx context.Context, schema string) ([]DatabaseObject, error) {
+	// Get a connection from the pool
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
 	query := `
-		SELECT table_name,
+		SELECT viewname,
 			   pg_get_viewdef(schemaname||'.'||viewname) as view_definition
 		FROM pg_views
 		WHERE schemaname = $1
-		ORDER BY table_name`
+		ORDER BY viewname`
 
-	rows, err := e.conn.Query(ctx, query, schema)
+	rows, err := conn.Query(ctx, query, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -626,13 +671,20 @@ func (e *PostgreSQLNativeEngine) getViews(ctx context.Context, schema string) ([
 
 // getSequences retrieves sequences for a schema
 func (e *PostgreSQLNativeEngine) getSequences(ctx context.Context, schema string) ([]DatabaseObject, error) {
+	// Get a connection from the pool
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
 	query := `
 		SELECT sequence_name
 		FROM information_schema.sequences
 		WHERE sequence_schema = $1
 		ORDER BY sequence_name`
 
-	rows, err := e.conn.Query(ctx, query, schema)
+	rows, err := conn.Query(ctx, query, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -664,6 +716,13 @@ func (e *PostgreSQLNativeEngine) getSequences(ctx context.Context, schema string
 
 // getFunctions retrieves functions and procedures for a schema
 func (e *PostgreSQLNativeEngine) getFunctions(ctx context.Context, schema string) ([]DatabaseObject, error) {
+	// Get a connection from the pool
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
 	query := `
 		SELECT routine_name, routine_type
 		FROM information_schema.routines
@@ -671,7 +730,7 @@ func (e *PostgreSQLNativeEngine) getFunctions(ctx context.Context, schema string
 		  AND routine_type IN ('FUNCTION', 'PROCEDURE')
 		ORDER BY routine_name`
 
-	rows, err := e.conn.Query(ctx, query, schema)
+	rows, err := conn.Query(ctx, query, schema)
 	if err != nil {
 		return nil, err
 	}
@@ -703,6 +762,13 @@ func (e *PostgreSQLNativeEngine) getFunctions(ctx context.Context, schema string
 
 // getSequenceCreateSQL builds CREATE SEQUENCE statement
 func (e *PostgreSQLNativeEngine) getSequenceCreateSQL(ctx context.Context, schema, sequence string) (string, error) {
+	// Get a connection from the pool
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
 	query := `
 		SELECT start_value, minimum_value, maximum_value, increment, cycle_option
 		FROM information_schema.sequences
@@ -711,7 +777,7 @@ func (e *PostgreSQLNativeEngine) getSequenceCreateSQL(ctx context.Context, schem
 	var start, min, max, increment int64
 	var cycle string
 
-	row := e.conn.QueryRow(ctx, query, schema, sequence)
+	row := conn.QueryRow(ctx, query, schema, sequence)
 	if err := row.Scan(&start, &min, &max, &increment, &cycle); err != nil {
 		return "", err
 	}
@@ -730,6 +796,13 @@ func (e *PostgreSQLNativeEngine) getSequenceCreateSQL(ctx context.Context, schem
 
 // getFunctionCreateSQL gets function definition using pg_get_functiondef
 func (e *PostgreSQLNativeEngine) getFunctionCreateSQL(ctx context.Context, schema, function string) (string, error) {
+	// Get a connection from the pool
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
 	// This is simplified - real implementation would need to handle function overloading
 	query := `
 		SELECT pg_get_functiondef(p.oid)
@@ -739,7 +812,7 @@ func (e *PostgreSQLNativeEngine) getFunctionCreateSQL(ctx context.Context, schem
 		LIMIT 1`
 
 	var funcDef string
-	row := e.conn.QueryRow(ctx, query, schema, function)
+	row := conn.QueryRow(ctx, query, schema, function)
 	if err := row.Scan(&funcDef); err != nil {
 		return "", err
 	}

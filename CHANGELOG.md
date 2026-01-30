@@ -5,6 +5,26 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - 2026-01-30
+
+### Fixed
+- **CRITICAL**: Fixed PostgreSQL native engine connection pooling issues that caused \"conn busy\" errors
+- **CRITICAL**: Fixed PostgreSQL table data export - now properly captures all table schemas and data using COPY protocol
+- **CRITICAL**: Fixed PostgreSQL native engine to use connection pool for all metadata queries (getTables, getViews, getSequences, getFunctions)
+- Fixed gzip compression implementation in native backup CLI integration
+- Fixed exitcode package syntax errors causing CI failures
+
+### Added
+- Enhanced PostgreSQL native engine with proper connection pool management
+- Complete table data export using COPY TO STDOUT protocol
+- Comprehensive testing with complex data types (JSONB, arrays, foreign keys)
+- Production-ready native engine performance and stability
+
+### Changed
+- All PostgreSQL metadata queries now use connection pooling instead of shared connection
+- Improved error handling and debugging output for native engines
+- Enhanced backup file structure with proper SQL headers and footers
+
 ## [5.0.1] - 2026-01-30
 
 ### Fixed - Quality Improvements

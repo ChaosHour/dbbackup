@@ -61,6 +61,23 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Target database engine (press Enter to cycle: PostgreSQL → MySQL → MariaDB)",
 		},
 		{
+			Key:         "native_engine",
+			DisplayName: "Engine Mode",
+			Value: func(c *config.Config) string {
+				if c.UseNativeEngine {
+					return "Native (Pure Go)"
+				}
+				return "External Tools"
+			},
+			Update: func(c *config.Config, v string) error {
+				c.UseNativeEngine = !c.UseNativeEngine
+				c.FallbackToTools = !c.UseNativeEngine // Set fallback opposite to native
+				return nil
+			},
+			Type:        "selector",
+			Description: "Engine mode: Native (pure Go, no dependencies) vs External Tools (pg_dump, mysqldump). Press Enter to toggle.",
+		},
+		{
 			Key:         "cpu_workload",
 			DisplayName: "CPU Workload Type",
 			Value:       func(c *config.Config) string { return c.CPUWorkloadType },

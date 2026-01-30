@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	
+
 	"dbbackup/internal/logger"
 )
 
@@ -13,10 +13,10 @@ import (
 type BackupFormat string
 
 const (
-	FormatSQL        BackupFormat = "sql"        // Plain SQL format (default)
-	FormatCustom     BackupFormat = "custom"     // PostgreSQL custom format 
-	FormatDirectory  BackupFormat = "directory"  // Directory format with separate files
-	FormatTar        BackupFormat = "tar"        // Tar archive format
+	FormatSQL       BackupFormat = "sql"       // Plain SQL format (default)
+	FormatCustom    BackupFormat = "custom"    // PostgreSQL custom format
+	FormatDirectory BackupFormat = "directory" // Directory format with separate files
+	FormatTar       BackupFormat = "tar"       // Tar archive format
 )
 
 // CompressionType represents compression algorithms
@@ -33,119 +33,119 @@ const (
 type AdvancedBackupOptions struct {
 	// Output format
 	Format BackupFormat
-	
+
 	// Compression settings
-	Compression CompressionType
+	Compression      CompressionType
 	CompressionLevel int // 1-9 for gzip, 1-22 for zstd
-	
+
 	// Parallel processing
-	ParallelJobs int
+	ParallelJobs   int
 	ParallelTables bool
-	
+
 	// Data filtering
-	WhereConditions map[string]string // table -> WHERE clause
-	ExcludeTableData []string // tables to exclude data from
-	OnlyTableData []string    // only export data from these tables
-	
+	WhereConditions  map[string]string // table -> WHERE clause
+	ExcludeTableData []string          // tables to exclude data from
+	OnlyTableData    []string          // only export data from these tables
+
 	// Advanced PostgreSQL options
 	PostgreSQL *PostgreSQLAdvancedOptions
-	
-	// Advanced MySQL options 
+
+	// Advanced MySQL options
 	MySQL *MySQLAdvancedOptions
-	
+
 	// Performance tuning
-	BatchSize int
+	BatchSize   int
 	MemoryLimit int64 // bytes
-	BufferSize int    // I/O buffer size
-	
+	BufferSize  int   // I/O buffer size
+
 	// Consistency options
 	ConsistentSnapshot bool
-	IsolationLevel string
-	
+	IsolationLevel     string
+
 	// Metadata options
 	IncludeMetadata bool
-	MetadataOnly bool
+	MetadataOnly    bool
 }
 
 // PostgreSQLAdvancedOptions contains PostgreSQL-specific advanced options
 type PostgreSQLAdvancedOptions struct {
 	// Output format specific
-	CustomFormat *PostgreSQLCustomFormatOptions
+	CustomFormat    *PostgreSQLCustomFormatOptions
 	DirectoryFormat *PostgreSQLDirectoryFormatOptions
-	
+
 	// COPY options
 	CopyOptions *PostgreSQLCopyOptions
-	
+
 	// Advanced features
-	IncludeBlobs bool
+	IncludeBlobs        bool
 	IncludeLargeObjects bool
-	UseSetSessionAuth bool
+	UseSetSessionAuth   bool
 	QuoteAllIdentifiers bool
-	
+
 	// Extension and privilege handling
 	IncludeExtensions bool
 	IncludePrivileges bool
-	IncludeSecurity bool
-	
+	IncludeSecurity   bool
+
 	// Replication options
-	LogicalReplication bool
+	LogicalReplication  bool
 	ReplicationSlotName string
 }
 
 // PostgreSQLCustomFormatOptions contains custom format specific settings
 type PostgreSQLCustomFormatOptions struct {
-	CompressionLevel int
+	CompressionLevel   int
 	DisableCompression bool
 }
 
 // PostgreSQLDirectoryFormatOptions contains directory format specific settings
 type PostgreSQLDirectoryFormatOptions struct {
 	OutputDirectory string
-	FilePerTable bool
+	FilePerTable    bool
 }
 
 // PostgreSQLCopyOptions contains COPY command specific settings
 type PostgreSQLCopyOptions struct {
-	Format string // text, csv, binary
-	Delimiter string
-	Quote string
-	Escape string
+	Format     string // text, csv, binary
+	Delimiter  string
+	Quote      string
+	Escape     string
 	NullString string
-	Header bool
+	Header     bool
 }
 
-// MySQLAdvancedOptions contains MySQL-specific advanced options  
+// MySQLAdvancedOptions contains MySQL-specific advanced options
 type MySQLAdvancedOptions struct {
 	// Engine specific
 	StorageEngine string
-	
+
 	// Character set handling
 	DefaultCharacterSet string
-	SetCharset bool
-	
+	SetCharset          bool
+
 	// Binary data handling
-	HexBlob bool
+	HexBlob        bool
 	CompleteInsert bool
 	ExtendedInsert bool
-	InsertIgnore bool
-	ReplaceInsert bool
-	
+	InsertIgnore   bool
+	ReplaceInsert  bool
+
 	// Advanced features
 	IncludeRoutines bool
-	IncludeTriggers bool  
-	IncludeEvents bool
-	IncludeViews bool
-	
+	IncludeTriggers bool
+	IncludeEvents   bool
+	IncludeViews    bool
+
 	// Replication options
 	MasterData int // 0=off, 1=change master, 2=commented change master
-	DumpSlave bool
-	
+	DumpSlave  bool
+
 	// Locking options
-	LockTables bool
+	LockTables        bool
 	SingleTransaction bool
-	
+
 	// Advanced filtering
-	SkipDefiner bool
+	SkipDefiner  bool
 	SkipComments bool
 }
 
@@ -153,16 +153,16 @@ type MySQLAdvancedOptions struct {
 type AdvancedBackupEngine interface {
 	// Advanced backup with extended options
 	AdvancedBackup(ctx context.Context, output io.Writer, options *AdvancedBackupOptions) (*BackupResult, error)
-	
+
 	// Get available formats for this engine
 	GetSupportedFormats() []BackupFormat
-	
+
 	// Get available compression types
 	GetSupportedCompression() []CompressionType
-	
+
 	// Validate advanced options
 	ValidateAdvancedOptions(options *AdvancedBackupOptions) error
-	
+
 	// Get optimal parallel job count
 	GetOptimalParallelJobs() int
 }
@@ -179,7 +179,7 @@ func NewPostgreSQLAdvancedEngine(config *PostgreSQLNativeConfig, log logger.Logg
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &PostgreSQLAdvancedEngine{
 		PostgreSQLNativeEngine: baseEngine,
 	}, nil
@@ -188,23 +188,23 @@ func NewPostgreSQLAdvancedEngine(config *PostgreSQLNativeConfig, log logger.Logg
 // AdvancedBackup performs backup with advanced options
 func (e *PostgreSQLAdvancedEngine) AdvancedBackup(ctx context.Context, output io.Writer, options *AdvancedBackupOptions) (*BackupResult, error) {
 	e.advancedOptions = options
-	
+
 	// Validate options first
 	if err := e.ValidateAdvancedOptions(options); err != nil {
 		return nil, fmt.Errorf("invalid advanced options: %w", err)
 	}
-	
+
 	// Set up parallel processing if requested
 	if options.ParallelJobs > 1 {
 		return e.parallelBackup(ctx, output, options)
 	}
-	
+
 	// Handle different output formats
 	switch options.Format {
 	case FormatSQL:
 		return e.sqlFormatBackup(ctx, output, options)
 	case FormatCustom:
-		return e.customFormatBackup(ctx, output, options) 
+		return e.customFormatBackup(ctx, output, options)
 	case FormatDirectory:
 		return e.directoryFormatBackup(ctx, output, options)
 	default:
@@ -236,7 +236,7 @@ func (e *PostgreSQLAdvancedEngine) ValidateAdvancedOptions(options *AdvancedBack
 	if !formatSupported {
 		return fmt.Errorf("format %s not supported", options.Format)
 	}
-	
+
 	// Check compression support
 	if options.Compression != CompressionNone {
 		supportedCompression := e.GetSupportedCompression()
@@ -251,14 +251,14 @@ func (e *PostgreSQLAdvancedEngine) ValidateAdvancedOptions(options *AdvancedBack
 			return fmt.Errorf("compression %s not supported", options.Compression)
 		}
 	}
-	
+
 	// Validate PostgreSQL-specific options
 	if options.PostgreSQL != nil {
 		if err := e.validatePostgreSQLOptions(options.PostgreSQL); err != nil {
 			return fmt.Errorf("postgresql options validation failed: %w", err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -277,7 +277,7 @@ func (e *PostgreSQLAdvancedEngine) sqlFormatBackup(ctx context.Context, output i
 	if err != nil {
 		return nil, err
 	}
-	
+
 	result.Format = string(options.Format)
 	return result, nil
 }
@@ -289,7 +289,7 @@ func (e *PostgreSQLAdvancedEngine) customFormatBackup(ctx context.Context, outpu
 }
 
 func (e *PostgreSQLAdvancedEngine) directoryFormatBackup(ctx context.Context, output io.Writer, options *AdvancedBackupOptions) (*BackupResult, error) {
-	// TODO: Implement directory format  
+	// TODO: Implement directory format
 	// This would create separate files for schema, data, etc.
 	return nil, fmt.Errorf("directory format not yet implemented")
 }
@@ -303,12 +303,12 @@ func (e *PostgreSQLAdvancedEngine) parallelBackup(ctx context.Context, output io
 func (e *PostgreSQLAdvancedEngine) validatePostgreSQLOptions(options *PostgreSQLAdvancedOptions) error {
 	// Validate PostgreSQL-specific advanced options
 	if options.CopyOptions != nil {
-		if options.CopyOptions.Format != "" && 
-		   !strings.Contains("text,csv,binary", options.CopyOptions.Format) {
+		if options.CopyOptions.Format != "" &&
+			!strings.Contains("text,csv,binary", options.CopyOptions.Format) {
 			return fmt.Errorf("invalid COPY format: %s", options.CopyOptions.Format)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -324,7 +324,7 @@ func NewMySQLAdvancedEngine(config *MySQLNativeConfig, log logger.Logger) (*MySQ
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &MySQLAdvancedEngine{
 		MySQLNativeEngine: baseEngine,
 	}, nil
@@ -333,12 +333,12 @@ func NewMySQLAdvancedEngine(config *MySQLNativeConfig, log logger.Logger) (*MySQ
 // AdvancedBackup performs backup with advanced options
 func (e *MySQLAdvancedEngine) AdvancedBackup(ctx context.Context, output io.Writer, options *AdvancedBackupOptions) (*BackupResult, error) {
 	e.advancedOptions = options
-	
+
 	// Validate options first
 	if err := e.ValidateAdvancedOptions(options); err != nil {
 		return nil, fmt.Errorf("invalid advanced options: %w", err)
 	}
-	
+
 	// MySQL primarily uses SQL format
 	return e.sqlFormatBackup(ctx, output, options)
 }
@@ -359,14 +359,14 @@ func (e *MySQLAdvancedEngine) ValidateAdvancedOptions(options *AdvancedBackupOpt
 	if options.Format != FormatSQL {
 		return fmt.Errorf("MySQL only supports SQL format, got: %s", options.Format)
 	}
-	
+
 	// Validate MySQL-specific options
 	if options.MySQL != nil {
 		if options.MySQL.MasterData < 0 || options.MySQL.MasterData > 2 {
 			return fmt.Errorf("master-data must be 0, 1, or 2, got: %d", options.MySQL.MasterData)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -381,13 +381,13 @@ func (e *MySQLAdvancedEngine) sqlFormatBackup(ctx context.Context, output io.Wri
 	if options.MySQL != nil {
 		e.applyMySQLAdvancedOptions(options.MySQL)
 	}
-	
+
 	// Use base engine for backup
 	result, err := e.MySQLNativeEngine.Backup(ctx, output)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	result.Format = string(options.Format)
 	return result, nil
 }

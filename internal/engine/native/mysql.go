@@ -811,7 +811,7 @@ func (e *MySQLNativeEngine) formatInsertValues(values []interface{}) string {
 				} else {
 					floatVal = v.(float64)
 				}
-				
+
 				if math.IsNaN(floatVal) {
 					formattedValues = append(formattedValues, "NULL")
 				} else if math.IsInf(floatVal, 0) {
@@ -1048,7 +1048,7 @@ func (e *MySQLNativeEngine) escapeString(s string) string {
 	s = strings.ReplaceAll(s, "\t", "\\t")
 	s = strings.ReplaceAll(s, "\x00", "\\0")
 	s = strings.ReplaceAll(s, "\x1a", "\\Z")
-	
+
 	return fmt.Sprintf("'%s'", s)
 }
 

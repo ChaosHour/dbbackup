@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -36,6 +38,7 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 	// Generate output filename
 	timestamp := time.Now().Format("20060102_150405")
 	extension := ".sql"
+	// Note: compression is handled by the engine if configured
 	if cfg.CompressionLevel > 0 {
 		extension = ".sql.gz"
 	}
@@ -55,13 +58,21 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 	}
 	defer file.Close()
 
+	// Wrap with compression if enabled
+	var writer io.Writer = file
+	if cfg.CompressionLevel > 0 {
+		gzWriter := gzip.NewWriter(file)
+		defer gzWriter.Close()
+		writer = gzWriter
+	}
+
 	log.Info("Starting native backup",
 		"database", databaseName,
 		"output", outputFile,
 		"engine", dbType)
 
 	// Perform backup using native engine
-	result, err := engineManager.BackupWithNativeEngine(ctx, file)
+	result, err := engineManager.BackupWithNativeEngine(ctx, writer)
 	if err != nil {
 		// Clean up failed backup file
 		os.Remove(outputFile)

@@ -237,6 +237,8 @@ jobs:
           echo "Skipping MySQL service wait - MySQL native engine tests are disabled due to known bugs"
           echo "MySQL issues: TIMESTAMP conversion + networking problems in CI"
           echo "Focus: PostgreSQL native engine validation only"
+
+      - name: Build dbbackup for native testing
         run: go build -o dbbackup-native .
 
       - name: Test PostgreSQL Native Engine

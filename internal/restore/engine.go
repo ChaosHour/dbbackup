@@ -743,7 +743,7 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	// Stream decompressed data to restore command in goroutine
 	copyDone := make(chan error, 1)
 	go func() {
-		_, copyErr := io.Copy(stdin, gz)
+		_, copyErr := fs.CopyWithContext(ctx, stdin, gz)
 		stdin.Close()
 		copyDone <- copyErr
 	}()
@@ -853,7 +853,7 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 	// Stream decompressed data to restore command in goroutine
 	copyDone := make(chan error, 1)
 	go func() {
-		_, copyErr := io.Copy(stdin, gz)
+		_, copyErr := fs.CopyWithContext(ctx, stdin, gz)
 		stdin.Close()
 		copyDone <- copyErr
 	}()

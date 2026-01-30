@@ -312,8 +312,8 @@ func (a *AzureBackend) Download(ctx context.Context, remotePath, localPath strin
 		// Wrap reader with progress tracking
 		reader := NewProgressReader(resp.Body, fileSize, progress)
 
-		// Copy with progress
-		_, err = io.Copy(file, reader)
+		// Copy with progress and context awareness
+		_, err = CopyWithContext(ctx, file, reader)
 		if err != nil {
 			return fmt.Errorf("failed to write file: %w", err)
 		}

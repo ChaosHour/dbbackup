@@ -170,3 +170,39 @@ func (pr *ProgressReader) Read(p []byte) (int, error) {
 
 	return n, err
 }
+
+// CopyWithContext copies data from src to dst while checking for context cancellation.
+// This allows Ctrl+C to interrupt large file transfers instead of blocking until complete.
+// Checks context every 1MB of data copied for responsive interruption.
+func CopyWithContext(ctx context.Context, dst io.Writer, src io.Reader) (int64, error) {
+	buf := make([]byte, 1024*1024) // 1MB buffer - check context every 1MB
+	var written int64
+	for {
+		// Check for cancellation before each read
+		select {
+		case <-ctx.Done():
+			return written, ctx.Err()
+		default:
+		}
+
+		nr, readErr := src.Read(buf)
+		if nr > 0 {
+			nw, writeErr := dst.Write(buf[:nr])
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if writeErr != nil {
+				return written, writeErr
+			}
+			if nr != nw {
+				return written, io.ErrShortWrite
+			}
+		}
+		if readErr != nil {
+			if readErr == io.EOF {
+				return written, nil
+			}
+			return written, readErr
+		}
+	}
+}

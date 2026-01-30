@@ -128,8 +128,8 @@ func (g *GCSBackend) Upload(ctx context.Context, localPath, remotePath string, p
 			reader = NewThrottledReader(ctx, reader, g.config.BandwidthLimit)
 		}
 
-		// Upload with progress tracking
-		_, err = io.Copy(writer, reader)
+		// Upload with progress tracking and context awareness
+		_, err = CopyWithContext(ctx, writer, reader)
 		if err != nil {
 			writer.Close()
 			return fmt.Errorf("failed to upload object: %w", err)
@@ -191,8 +191,8 @@ func (g *GCSBackend) Download(ctx context.Context, remotePath, localPath string,
 		// Wrap reader with progress tracking
 		progressReader := NewProgressReader(reader, fileSize, progress)
 
-		// Copy with progress
-		_, err = io.Copy(file, progressReader)
+		// Copy with progress and context awareness
+		_, err = CopyWithContext(ctx, file, progressReader)
 		if err != nil {
 			return fmt.Errorf("failed to write file: %w", err)
 		}

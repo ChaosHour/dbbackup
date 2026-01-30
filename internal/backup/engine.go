@@ -760,7 +760,7 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	// Copy mysqldump output through pgzip in a goroutine
 	copyDone := make(chan error, 1)
 	go func() {
-		_, err := io.Copy(gzWriter, pipe)
+		_, err := fs.CopyWithContext(ctx, gzWriter, pipe)
 		copyDone <- err
 	}()
 
@@ -839,7 +839,7 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	// Copy mysqldump output through pgzip in a goroutine
 	copyDone := make(chan error, 1)
 	go func() {
-		_, err := io.Copy(gzWriter, pipe)
+		_, err := fs.CopyWithContext(ctx, gzWriter, pipe)
 		copyDone <- err
 	}()
 
@@ -1497,7 +1497,7 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	// Copy from pg_dump stdout to pgzip writer in a goroutine
 	copyDone := make(chan error, 1)
 	go func() {
-		_, copyErr := io.Copy(gzWriter, dumpStdout)
+		_, copyErr := fs.CopyWithContext(ctx, gzWriter, dumpStdout)
 		copyDone <- copyErr
 	}()
 

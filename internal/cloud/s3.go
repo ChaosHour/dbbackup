@@ -256,7 +256,7 @@ func (s *S3Backend) Download(ctx context.Context, remotePath, localPath string, 
 			reader = NewProgressReader(result.Body, size, progress)
 		}
 
-		_, err = io.Copy(outFile, reader)
+		_, err = CopyWithContext(ctx, outFile, reader)
 		if err != nil {
 			return fmt.Errorf("failed to write file: %w", err)
 		}

@@ -5,6 +5,25 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.4] - 2026-01-30
+
+### Fixed - Comprehensive Ctrl+C Support Across All Operations
+
+- **System-wide context-aware file operations**
+  - All long-running I/O operations now respond to Ctrl+C
+  - Added `CopyWithContext()` to cloud package for S3/Azure/GCS transfers
+  - Partial files are cleaned up on cancellation
+
+- **Fixed components:**
+  - `internal/restore/extract.go`: Single DB extraction from cluster
+  - `internal/wal/compression.go`: WAL file compression/decompression
+  - `internal/restore/engine.go`: SQL restore streaming (2 paths)
+  - `internal/backup/engine.go`: pg_dump/mysqldump streaming (3 paths)
+  - `internal/cloud/s3.go`: S3 download interruption
+  - `internal/cloud/azure.go`: Azure Blob download interruption
+  - `internal/cloud/gcs.go`: GCS upload/download interruption
+  - `internal/drill/engine.go`: DR drill decompression
+
 ## [4.2.3] - 2026-01-30
 
 ### Fixed - Cluster Restore Performance & Ctrl+C Handling

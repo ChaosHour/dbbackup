@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/progress"
 
@@ -180,10 +181,11 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 				prog.Update(fmt.Sprintf("Extracting: %s", filename))
 			}
 
-			written, err := io.Copy(outFile, tarReader)
+			written, err := fs.CopyWithContext(ctx, outFile, tarReader)
 			outFile.Close()
 			if err != nil {
 				close(stopTicker)
+				os.Remove(extractedPath) // Clean up partial file
 				return "", fmt.Errorf("extraction failed: %w", err)
 			}
 
@@ -309,10 +311,11 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 					prog.Update(fmt.Sprintf("Extracting: %s (%d/%d)", dbName, len(extractedPaths)+1, len(dbNames)))
 				}
 
-				written, err := io.Copy(outFile, tarReader)
+				written, err := fs.CopyWithContext(ctx, outFile, tarReader)
 				outFile.Close()
 				if err != nil {
 					close(stopTicker)
+					os.Remove(extractedPath) // Clean up partial file
 					return nil, fmt.Errorf("extraction failed for %s: %w", dbName, err)
 				}
 

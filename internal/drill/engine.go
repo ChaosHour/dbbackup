@@ -4,12 +4,12 @@ package drill
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 
 	"github.com/klauspost/pgzip"
@@ -267,7 +267,9 @@ func (e *Engine) decompressWithPgzip(srcPath string) (string, error) {
 	}
 	defer dstFile.Close()
 
-	if _, err := io.Copy(dstFile, gz); err != nil {
+	// Use context.Background() since decompressWithPgzip doesn't take context
+	// The parent restoreBackup function handles context cancellation
+	if _, err := fs.CopyWithContext(context.Background(), dstFile, gz); err != nil {
 		os.Remove(dstPath)
 		return "", fmt.Errorf("decompression failed: %w", err)
 	}

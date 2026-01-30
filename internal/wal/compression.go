@@ -1,14 +1,16 @@
 package wal
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
-	"github.com/klauspost/pgzip"
-
+	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
+
+	"github.com/klauspost/pgzip"
 )
 
 // Compressor handles WAL file compression
@@ -26,6 +28,11 @@ func NewCompressor(log logger.Logger) *Compressor {
 // CompressWALFile compresses a WAL file using parallel gzip (pgzip)
 // Returns the path to the compressed file and the compressed size
 func (c *Compressor) CompressWALFile(sourcePath, destPath string, level int) (int64, error) {
+	return c.CompressWALFileContext(context.Background(), sourcePath, destPath, level)
+}
+
+// CompressWALFileContext compresses a WAL file with context for cancellation support
+func (c *Compressor) CompressWALFileContext(ctx context.Context, sourcePath, destPath string, level int) (int64, error) {
 	c.log.Debug("Compressing WAL file", "source", sourcePath, "dest", destPath, "level", level)
 
 	// Open source file
@@ -56,8 +63,8 @@ func (c *Compressor) CompressWALFile(sourcePath, destPath string, level int) (in
 	}
 	defer gzWriter.Close()
 
-	// Copy and compress
-	_, err = io.Copy(gzWriter, srcFile)
+	// Copy and compress with context support
+	_, err = fs.CopyWithContext(ctx, gzWriter, srcFile)
 	if err != nil {
 		return 0, fmt.Errorf("compression failed: %w", err)
 	}
@@ -91,6 +98,11 @@ func (c *Compressor) CompressWALFile(sourcePath, destPath string, level int) (in
 
 // DecompressWALFile decompresses a gzipped WAL file
 func (c *Compressor) DecompressWALFile(sourcePath, destPath string) (int64, error) {
+	return c.DecompressWALFileContext(context.Background(), sourcePath, destPath)
+}
+
+// DecompressWALFileContext decompresses a gzipped WAL file with context for cancellation
+func (c *Compressor) DecompressWALFileContext(ctx context.Context, sourcePath, destPath string) (int64, error) {
 	c.log.Debug("Decompressing WAL file", "source", sourcePath, "dest", destPath)
 
 	// Open compressed source file
@@ -114,9 +126,10 @@ func (c *Compressor) DecompressWALFile(sourcePath, destPath string) (int64, erro
 	}
 	defer dstFile.Close()
 
-	// Decompress
-	written, err := io.Copy(dstFile, gzReader)
+	// Decompress with context support
+	written, err := fs.CopyWithContext(ctx, dstFile, gzReader)
 	if err != nil {
+		os.Remove(destPath) // Clean up partial file
 		return 0, fmt.Errorf("decompression failed: %w", err)
 	}
 

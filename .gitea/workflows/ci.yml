@@ -406,7 +406,6 @@ jobs:
           git init
           git remote add origin "https://${TOKEN}@git.uuxo.net/${GITHUB_REPOSITORY}.git"
           git fetch --depth=1 origin "${GITHUB_SHA}"
-          git fetch --tags origin || echo "No tags to fetch"
           git checkout FETCH_HEAD
 
       - name: Test multi-platform builds

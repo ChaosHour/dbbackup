@@ -5,6 +5,41 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.8] - 2026-01-30
+
+### Added - MEDIUM Priority Features
+
+- **#10: WAL Archive Statistics (MEDIUM priority)**
+  - `dbbackup pitr status` now shows comprehensive WAL archive statistics
+  - Displays: total files, total size, compression rate, oldest/newest WAL, time span
+  - Auto-detects archive directory from PostgreSQL `archive_command`
+  - Supports compressed (.gz, .zst, .lz4) and encrypted (.enc) WAL files
+  - **Problem**: No visibility into WAL archive health and growth
+  - **Solution**: Real-time stats in PITR status command, helps identify retention issues
+
+**Example Output:**
+```
+WAL Archive Statistics:
+======================================================
+  Total Files:      1,234
+  Total Size:       19.8 GB
+  Average Size:     16.4 MB
+  Compressed:       1,234 files (68.5% saved)
+  Encrypted:        1,234 files
+
+  Oldest WAL:       000000010000000000000042
+    Created:        2026-01-15 08:30:00
+  Newest WAL:       000000010000000000004D2F
+    Created:        2026-01-30 17:45:30
+  Time Span:        15.4 days
+```
+
+**Files Modified:**
+- `internal/wal/archiver.go`: Extended `ArchiveStats` struct with detailed fields
+- `internal/wal/archiver.go`: Added `GetArchiveStats()`, `FormatArchiveStats()` functions
+- `cmd/pitr.go`: Integrated stats into `pitr status` command
+- `cmd/pitr.go`: Added `extractArchiveDirFromCommand()` helper
+
 ## [4.2.7] - 2026-01-30
 
 ### Added - HIGH Priority Features

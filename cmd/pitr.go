@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -505,12 +506,24 @@ func runPITRStatus(cmd *cobra.Command, args []string) error {
 
 	// Show WAL archive statistics if archive directory can be determined
 	if config.ArchiveCommand != "" {
-		// Extract archive dir from command (simple parsing)
-		fmt.Println()
-		fmt.Println("WAL Archive Statistics:")
-		fmt.Println("======================================================")
-		// TODO: Parse archive dir and show stats
-		fmt.Println("  (Use 'dbbackup wal list --archive-dir <dir>' to view archives)")
+		archiveDir := extractArchiveDirFromCommand(config.ArchiveCommand)
+		if archiveDir != "" {
+			fmt.Println()
+			fmt.Println("WAL Archive Statistics:")
+			fmt.Println("======================================================")
+			stats, err := wal.GetArchiveStats(archiveDir)
+			if err != nil {
+				fmt.Printf("  ⚠ Could not read archive: %v\n", err)
+				fmt.Printf("  (Archive directory: %s)\n", archiveDir)
+			} else {
+				fmt.Print(wal.FormatArchiveStats(stats))
+			}
+		} else {
+			fmt.Println()
+			fmt.Println("WAL Archive Statistics:")
+			fmt.Println("======================================================")
+			fmt.Println("  (Use 'dbbackup wal list --archive-dir <dir>' to view archives)")
+		}
 	}
 
 	return nil
@@ -1308,4 +1321,37 @@ func runMySQLPITREnable(cmd *cobra.Command, args []string) error {
 	log.Info("  dbbackup restore pitr <backup> --target-time '2024-01-15 14:30:00'")
 
 	return nil
+}
+
+// extractArchiveDirFromCommand attempts to extract the archive directory
+// from a PostgreSQL archive_command string
+// Example: "dbbackup wal archive %p %f --archive-dir=/mnt/wal" → "/mnt/wal"
+func extractArchiveDirFromCommand(command string) string {
+	// Look for common patterns:
+	// 1. --archive-dir=/path
+	// 2. --archive-dir /path
+	// 3. Plain path argument
+
+	parts := strings.Fields(command)
+	for i, part := range parts {
+		// Pattern: --archive-dir=/path
+		if strings.HasPrefix(part, "--archive-dir=") {
+			return strings.TrimPrefix(part, "--archive-dir=")
+		}
+		// Pattern: --archive-dir /path
+		if part == "--archive-dir" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+
+	// If command contains dbbackup, the last argument might be the archive dir
+	if strings.Contains(command, "dbbackup") && len(parts) > 2 {
+		lastArg := parts[len(parts)-1]
+		// Check if it looks like a path
+		if strings.HasPrefix(lastArg, "/") || strings.HasPrefix(lastArg, "./") {
+			return lastArg
+		}
+	}
+
+	return ""
 }

@@ -367,6 +367,11 @@ type ArchiveStats struct {
 	TotalSize       int64     `json:"total_size"`
 	OldestArchive   time.Time `json:"oldest_archive"`
 	NewestArchive   time.Time `json:"newest_archive"`
+	OldestWAL       string    `json:"oldest_wal,omitempty"`
+	NewestWAL       string    `json:"newest_wal,omitempty"`
+	TimeSpan        string    `json:"time_span,omitempty"`
+	AvgFileSize     int64     `json:"avg_file_size,omitempty"`
+	CompressionRate float64   `json:"compression_rate,omitempty"`
 }
 
 // FormatSize returns human-readable size
@@ -388,4 +393,200 @@ func (s *ArchiveStats) FormatSize() string {
 	default:
 		return fmt.Sprintf("%d B", s.TotalSize)
 	}
+}
+
+// GetArchiveStats scans a WAL archive directory and returns comprehensive statistics
+func GetArchiveStats(archiveDir string) (*ArchiveStats, error) {
+	stats := &ArchiveStats{
+		OldestArchive: time.Now(),
+		NewestArchive: time.Time{},
+	}
+
+	// Check if directory exists
+	if _, err := os.Stat(archiveDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("archive directory does not exist: %s", archiveDir)
+	}
+
+	type walFileInfo struct {
+		name    string
+		size    int64
+		modTime time.Time
+	}
+
+	var walFiles []walFileInfo
+	var compressedSize int64
+	var originalSize int64
+
+	// Walk the archive directory
+	err := filepath.Walk(archiveDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip files we can't read
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Check if this is a WAL file (including compressed/encrypted variants)
+		name := info.Name()
+		if !isWALFileName(name) {
+			return nil
+		}
+
+		stats.TotalFiles++
+		stats.TotalSize += info.Size()
+
+		// Track compressed/encrypted files
+		if strings.HasSuffix(name, ".gz") || strings.HasSuffix(name, ".zst") || strings.HasSuffix(name, ".lz4") {
+			stats.CompressedFiles++
+			compressedSize += info.Size()
+			// Estimate original size (WAL files are typically 16MB)
+			originalSize += 16 * 1024 * 1024
+		}
+		if strings.HasSuffix(name, ".enc") || strings.Contains(name, ".encrypted") {
+			stats.EncryptedFiles++
+		}
+
+		// Track oldest/newest
+		if info.ModTime().Before(stats.OldestArchive) {
+			stats.OldestArchive = info.ModTime()
+			stats.OldestWAL = name
+		}
+		if info.ModTime().After(stats.NewestArchive) {
+			stats.NewestArchive = info.ModTime()
+			stats.NewestWAL = name
+		}
+
+		// Store file info for additional calculations
+		walFiles = append(walFiles, walFileInfo{
+			name:    name,
+			size:    info.Size(),
+			modTime: info.ModTime(),
+		})
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan archive directory: %w", err)
+	}
+
+	// Return early if no WAL files found
+	if stats.TotalFiles == 0 {
+		return stats, nil
+	}
+
+	// Calculate average file size
+	stats.AvgFileSize = stats.TotalSize / int64(stats.TotalFiles)
+
+	// Calculate compression rate if we have compressed files
+	if stats.CompressedFiles > 0 && originalSize > 0 {
+		stats.CompressionRate = (1.0 - float64(compressedSize)/float64(originalSize)) * 100.0
+	}
+
+	// Calculate time span
+	duration := stats.NewestArchive.Sub(stats.OldestArchive)
+	stats.TimeSpan = formatDuration(duration)
+
+	return stats, nil
+}
+
+// isWALFileName checks if a filename looks like a PostgreSQL WAL file
+func isWALFileName(name string) bool {
+	// Strip compression/encryption extensions
+	baseName := name
+	baseName = strings.TrimSuffix(baseName, ".gz")
+	baseName = strings.TrimSuffix(baseName, ".zst")
+	baseName = strings.TrimSuffix(baseName, ".lz4")
+	baseName = strings.TrimSuffix(baseName, ".enc")
+	baseName = strings.TrimSuffix(baseName, ".encrypted")
+
+	// PostgreSQL WAL files are 24 hex characters (e.g., 000000010000000000000001)
+	// Also accept .backup and .history files
+	if len(baseName) == 24 {
+		// Check if all hex
+		for _, c := range baseName {
+			if !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// Accept .backup and .history files
+	if strings.HasSuffix(baseName, ".backup") || strings.HasSuffix(baseName, ".history") {
+		return true
+	}
+
+	return false
+}
+
+// formatDuration formats a duration into a human-readable string
+func formatDuration(d time.Duration) string {
+	if d < time.Hour {
+		return fmt.Sprintf("%.0f minutes", d.Minutes())
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%.1f hours", d.Hours())
+	}
+	days := d.Hours() / 24
+	if days < 30 {
+		return fmt.Sprintf("%.1f days", days)
+	}
+	if days < 365 {
+		return fmt.Sprintf("%.1f months", days/30)
+	}
+	return fmt.Sprintf("%.1f years", days/365)
+}
+
+// FormatArchiveStats formats archive statistics for display
+func FormatArchiveStats(stats *ArchiveStats) string {
+	if stats.TotalFiles == 0 {
+		return "  No WAL files found in archive"
+	}
+
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("  Total Files:      %d\n", stats.TotalFiles))
+	sb.WriteString(fmt.Sprintf("  Total Size:       %s\n", stats.FormatSize()))
+
+	if stats.AvgFileSize > 0 {
+		const (
+			KB = 1024
+			MB = 1024 * KB
+		)
+		avgSize := float64(stats.AvgFileSize)
+		if avgSize >= MB {
+			sb.WriteString(fmt.Sprintf("  Average Size:     %.2f MB\n", avgSize/MB))
+		} else {
+			sb.WriteString(fmt.Sprintf("  Average Size:     %.2f KB\n", avgSize/KB))
+		}
+	}
+
+	if stats.CompressedFiles > 0 {
+		sb.WriteString(fmt.Sprintf("  Compressed:       %d files", stats.CompressedFiles))
+		if stats.CompressionRate > 0 {
+			sb.WriteString(fmt.Sprintf(" (%.1f%% saved)", stats.CompressionRate))
+		}
+		sb.WriteString("\n")
+	}
+
+	if stats.EncryptedFiles > 0 {
+		sb.WriteString(fmt.Sprintf("  Encrypted:        %d files\n", stats.EncryptedFiles))
+	}
+
+	if stats.OldestWAL != "" {
+		sb.WriteString(fmt.Sprintf("\n  Oldest WAL:       %s\n", stats.OldestWAL))
+		sb.WriteString(fmt.Sprintf("    Created:        %s\n", stats.OldestArchive.Format("2006-01-02 15:04:05")))
+	}
+	if stats.NewestWAL != "" {
+		sb.WriteString(fmt.Sprintf("  Newest WAL:       %s\n", stats.NewestWAL))
+		sb.WriteString(fmt.Sprintf("    Created:        %s\n", stats.NewestArchive.Format("2006-01-02 15:04:05")))
+	}
+	if stats.TimeSpan != "" {
+		sb.WriteString(fmt.Sprintf("  Time Span:        %s\n", stats.TimeSpan))
+	}
+
+	return sb.String()
 }

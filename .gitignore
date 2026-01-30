@@ -12,6 +12,7 @@ logs/
 # Ignore built binaries (built fresh via build_all.sh on release)
 /dbbackup
 /dbbackup_*
+/dbbackup-*
 !dbbackup.png
 bin/
 

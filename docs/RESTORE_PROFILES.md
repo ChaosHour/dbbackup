@@ -67,10 +67,10 @@ dbbackup restore cluster backup.tar.gz --profile=balanced --confirm
 dbbackup restore cluster backup.tar.gz --profile=aggressive --confirm
 ```
 
-### Potato Profile (`--profile=potato`) 🥔
+### Potato Profile (`--profile=potato`)
 **Easter egg:** Same as conservative, for servers running on a potato.
 
-### Turbo Profile (`--profile=turbo`) 🚀
+### Turbo Profile (`--profile=turbo`)
 **NEW! Best for:** Maximum restore speed - matches native pg_restore -j8 performance.
 
 **Settings:**
@@ -98,7 +98,7 @@ dbbackup restore cluster backup.tar.gz --profile=turbo --confirm
 
 ## Profile Comparison
 
-| Setting | Conservative | Balanced | Performance | Turbo 🚀 |
+| Setting | Conservative | Balanced | Performance | Turbo |
 |---------|-------------|----------|-------------|----------|
 | Parallel DBs | 1 | 2 | 4 | 2 |
 | pg_restore Jobs | 1 | 2 | 4 | 8 |

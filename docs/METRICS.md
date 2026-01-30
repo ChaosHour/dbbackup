@@ -240,7 +240,7 @@ dbbackup_pitr_chain_valid == 0
 
 ### `dbbackup_build_info`
 **Type:** Gauge  
-**Labels:** `server`, `version`, `commit`  
+**Labels:** `server`, `version`, `commit`, `build_time`  
 **Description:** Build information for the dbbackup exporter. Value is always 1.
 
 This metric is useful for:
@@ -254,10 +254,22 @@ This metric is useful for:
 group by (version) (dbbackup_build_info)
 
 # Find servers not on latest version
-dbbackup_build_info{version!="4.1.1"}
+dbbackup_build_info{version!="4.1.4"}
 
 # Alert on version drift
 count(count by (version) (dbbackup_build_info)) > 1
+
+# PITR archive lag
+dbbackup_pitr_archive_lag_seconds > 600
+
+# Check PITR chain integrity
+dbbackup_pitr_chain_valid == 1
+
+# Estimate available PITR window (in minutes)
+dbbackup_pitr_recovery_window_minutes
+
+# PITR gaps detected
+dbbackup_pitr_gap_count > 0
 ```
 
 ---

@@ -16,17 +16,17 @@ DBBackup now includes a modular backup engine system with multiple strategies:
 ## Quick Start
 
 ```bash
-# List available engines
+# List available engines for your MySQL/MariaDB environment
 dbbackup engine list
 
-# Auto-select best engine for your environment
-dbbackup engine select
+# Get detailed information on a specific engine
+dbbackup engine info clone
 
-# Perform physical backup with auto-selection
-dbbackup physical-backup --output /backups/db.tar.gz
+# Get engine info for current environment
+dbbackup engine info
 
-# Stream directly to S3 (no local storage needed)
-dbbackup stream-backup --target s3://bucket/backups/db.tar.gz --workers 8
+# Use engines with backup commands (auto-detection)
+dbbackup backup single mydb --db-type mysql
 ```
 
 ## Engine Descriptions
@@ -36,7 +36,7 @@ dbbackup stream-backup --target s3://bucket/backups/db.tar.gz --workers 8
 Traditional logical backup using mysqldump. Works with all MySQL/MariaDB versions.
 
 ```bash
-dbbackup physical-backup --engine mysqldump --output backup.sql.gz
+dbbackup backup single mydb --db-type mysql
 ```
 
 Features:

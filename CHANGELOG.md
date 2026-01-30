@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [4.1.4] - 2026-01-29
 
 ### Added
-- **New `turbo` restore profile** 🚀 - Maximum restore speed, matches native `pg_restore -j8`
+- **New `turbo` restore profile** - Maximum restore speed, matches native `pg_restore -j8`
   - `ClusterParallelism = 2` (restore 2 DBs concurrently)
   - `Jobs = 8` (8 parallel pg_restore jobs)
   - `BufferedIO = true` (32KB write buffers for faster extraction)
@@ -348,7 +348,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Good default for most scenarios
   - **Aggressive** (`--profile=aggressive`): Maximum parallelism, all available resources
     - Best for dedicated database servers with ample resources
-  - **Potato** (`--profile=potato`): Easter egg 🥔, same as conservative
+  - **Potato** (`--profile=potato`): Easter egg, same as conservative
 - **Profile system applies to both CLI and TUI**:
   - CLI: `dbbackup restore cluster backup.tar.gz --profile=conservative --confirm`
   - TUI: Automatically uses conservative profile for safer interactive operation
@@ -855,7 +855,7 @@ dbbackup metrics serve --port 9399
 
 ## [3.41.0] - 2026-01-07 "The Pre-Flight Check"
 
-### Added - 🛡️ Pre-Restore Validation
+### Added - Pre-Restore Validation
 
 **Automatic Dump Validation Before Restore:**
 - SQL dump files are now validated BEFORE attempting restore
@@ -942,7 +942,7 @@ dbbackup metrics serve --port 9399
 
 ## [3.2.0] - 2025-12-13 "The Margin Eraser"
 
-### Added - 🚀 Physical Backup Revolution
+### Added - Physical Backup Revolution
 
 **MySQL Clone Plugin Integration:**
 - Native physical backup using MySQL 8.0.17+ Clone Plugin

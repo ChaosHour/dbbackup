@@ -110,25 +110,24 @@ jobs:
           CREATE SEQUENCE test_seq START 1000;
           "
           
-          # Test legacy backup
-          mkdir -p /tmp/backups
-          ./dbbackup backup single testdb --db-type postgres --host postgres --user postgres --backup-dir /tmp/backups --no-config --allow-root --insecure
-          echo "Legacy backup files:"
-          ls -la /tmp/backups/
-          
-          # Test native engine backup
+          # Test ONLY native engine backup (no external tools needed)
+          echo "=== Testing Native Engine Backup ==="
           mkdir -p /tmp/native-backups
           ./dbbackup backup single testdb --db-type postgres --host postgres --user postgres --backup-dir /tmp/native-backups --native --compression 0 --no-config --allow-root --insecure
           echo "Native backup files:"
           ls -la /tmp/native-backups/
           
           # Verify native backup content contains our test data
-          echo "Verifying native backup content:"
-          cat /tmp/native-backups/testdb_*.sql
-          # Check for expected content
-          grep -q "users" /tmp/native-backups/testdb_*.sql && echo "PASSED: Contains users table" || echo "FAILED: Missing users table"
-          grep -q "active_users" /tmp/native-backups/testdb_*.sql && echo "PASSED: Contains active_users view" || echo "FAILED: Missing active_users view"
-          grep -q "alice" /tmp/native-backups/testdb_*.sql && echo "PASSED: Contains user data" || echo "FAILED: Missing user data"
+          echo "=== Verifying Native Backup Content ==="
+          BACKUP_FILE=$(ls /tmp/native-backups/testdb_*.sql | head -1)
+          echo "Analyzing backup file: $BACKUP_FILE"
+          cat "$BACKUP_FILE"
+          echo ""
+          echo "=== Content Validation ==="
+          grep -q "users" "$BACKUP_FILE" && echo "PASSED: Contains users table" || echo "FAILED: Missing users table"
+          grep -q "active_users" "$BACKUP_FILE" && echo "PASSED: Contains active_users view" || echo "FAILED: Missing active_users view"  
+          grep -q "alice" "$BACKUP_FILE" && echo "PASSED: Contains user data" || echo "FAILED: Missing user data"
+          grep -q "test_seq" "$BACKUP_FILE" && echo "PASSED: Contains sequence" || echo "FAILED: Missing sequence"
 
       - name: Test MySQL backup/restore
         env:
@@ -157,27 +156,24 @@ jobs:
           SELECT customer_name, total, status FROM orders WHERE is_priority = TRUE;
           "
           
-          # Test legacy backup
-          mkdir -p /tmp/mysql_backups
-          ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --database testdb --backup-dir /tmp/mysql_backups --no-config --allow-root --insecure || echo "Legacy MySQL backup failed - external tools not available"
-          echo "Legacy backup files:"
-          ls -la /tmp/mysql_backups/ || echo "No legacy backups created"
-          
-          # Test native engine backup 
+          # Test ONLY native engine backup (no external tools needed)
+          echo "=== Testing Native Engine MySQL Backup ==="
           mkdir -p /tmp/mysql-native-backups
-          MYSQL_PWD=mysql ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --backup-dir /tmp/mysql-native-backups --native --compression 0 --no-config --allow-root --insecure || echo "Native MySQL backup failed - authentication issue expected in CI"
-          echo "Native backup files:"
-          ls -la /tmp/mysql-native-backups/ || echo "No native backups created"
+          MYSQL_PWD=mysql ./dbbackup backup single testdb --db-type mysql --host mysql --port 3306 --user root --backup-dir /tmp/mysql-native-backups --native --compression 0 --no-config --allow-root --insecure
+          echo "Native MySQL backup files:"
+          ls -la /tmp/mysql-native-backups/
           
-          # If native backup succeeded, verify content
-          if ls /tmp/mysql-native-backups/testdb_*.sql 2>/dev/null; then
-            echo "Verifying native MySQL backup content:"
-            cat /tmp/mysql-native-backups/testdb_*.sql
-            # Check for expected content
-            grep -q "orders" /tmp/mysql-native-backups/testdb_*.sql && echo "PASSED: Contains orders table" || echo "FAILED: Missing orders table"
-            grep -q "priority_orders" /tmp/mysql-native-backups/testdb_*.sql && echo "PASSED: Contains priority_orders view" || echo "FAILED: Missing priority_orders view"
-            grep -q "Alice Johnson" /tmp/mysql-native-backups/testdb_*.sql && echo "PASSED: Contains order data" || echo "FAILED: Missing order data"
-          fi
+          # Verify native backup content
+          echo "=== Verifying Native MySQL Backup Content ==="
+          BACKUP_FILE=$(ls /tmp/mysql-native-backups/testdb_*.sql | head -1)
+          echo "Analyzing backup file: $BACKUP_FILE"
+          cat "$BACKUP_FILE"
+          echo ""
+          echo "=== Content Validation ==="
+          grep -q "orders" "$BACKUP_FILE" && echo "PASSED: Contains orders table" || echo "FAILED: Missing orders table"
+          grep -q "priority_orders" "$BACKUP_FILE" && echo "PASSED: Contains priority_orders view" || echo "FAILED: Missing priority_orders view"
+          grep -q "Alice Johnson" "$BACKUP_FILE" && echo "PASSED: Contains order data" || echo "FAILED: Missing order data"
+          grep -q "0x" "$BACKUP_FILE" && echo "PASSED: Contains binary data (hex)" || echo "FAILED: Missing binary data"
 
       - name: Test verify-locks command
         env:

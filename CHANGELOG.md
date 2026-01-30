@@ -5,13 +5,26 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.1] - 2026-01-30
+
+### Fixed - Quality Improvements
+
+- **PostgreSQL COPY Format**: Fixed format mismatch - now uses native TEXT format compatible with `COPY FROM stdin`
+- **MySQL Restore Security**: Fixed potential SQL injection in restore by properly escaping backticks in database names
+- **MySQL 8.0.22+ Compatibility**: Added fallback for `SHOW BINARY LOG STATUS` (MySQL 8.0.22+) with graceful fallback to `SHOW MASTER STATUS` for older versions
+- **Duration Calculation**: Fixed backup duration tracking to accurately capture elapsed time
+
+---
+
 ## [5.0.0] - 2026-01-30
 
 ### 🚀 MAJOR RELEASE - Native Engine Implementation
 
-**🎯 BREAKING THROUGH: Complete Independence from External Database Tools**
+**🎯 BREAKTHROUGH: We Built Our Own Database Engines**
 
-This release represents a **fundamental architectural shift** - dbbackup now operates with **ZERO external tool dependencies**. We've achieved complete independence by implementing native Go database engines that communicate directly with PostgreSQL and MySQL using their native protocols.
+**This is a really big step.** We're no longer calling external tools - **we built our own machines**.
+
+dbbackup v5.0.0 represents a **fundamental architectural revolution**. We've eliminated ALL external tool dependencies by implementing pure Go database engines that speak directly to PostgreSQL and MySQL using their native wire protocols. No more pg_dump. No more mysqldump. No more shelling out. **Our code, our engines, our control.**
 
 ### Added - Native Database Engines
 

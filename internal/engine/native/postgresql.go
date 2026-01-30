@@ -138,6 +138,8 @@ func (e *PostgreSQLNativeEngine) Backup(ctx context.Context, outputWriter io.Wri
 
 // backupPlainFormat creates SQL script backup
 func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Writer, result *BackupResult) (*BackupResult, error) {
+	backupStartTime := time.Now()
+
 	// Write SQL header
 	if err := e.writeSQLHeader(w); err != nil {
 		return nil, err
@@ -180,13 +182,13 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 		return nil, err
 	}
 
-	result.Duration = time.Since(time.Now()) // This will be near zero, but consistent
+	result.Duration = time.Since(backupStartTime)
 	return result, nil
 }
 
 // copyTableData uses COPY TO for efficient data export
 func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer, schema, table string) (int64, error) {
-	// Write COPY statement header
+	// Write COPY statement header (matches the TEXT format we're using)
 	copyHeader := fmt.Sprintf("COPY %s.%s FROM stdin;\n",
 		e.quoteIdentifier(schema),
 		e.quoteIdentifier(table))
@@ -195,8 +197,8 @@ func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer,
 		return 0, err
 	}
 
-	// Use COPY TO STDOUT with proper format
-	copySQL := fmt.Sprintf("COPY %s.%s TO STDOUT WITH (FORMAT csv, HEADER false, DELIMITER E'\\t', NULL '\\\\N')",
+	// Use COPY TO STDOUT with TEXT format (PostgreSQL native format, compatible with FROM stdin)
+	copySQL := fmt.Sprintf("COPY %s.%s TO STDOUT",
 		e.quoteIdentifier(schema),
 		e.quoteIdentifier(table))
 

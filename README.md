@@ -4,20 +4,22 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v5.0.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v5.0.1-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
 
 ## Features
 
-### 🚀 NEW in 5.0.0: Native Database Engines
+### 🚀 NEW in 5.0: We Built Our Own Database Engines
 
-- **Zero External Dependencies**: Pure Go implementation eliminates pg_dump, mysqldump, and all external tools
-- **Native Protocol Communication**: Direct PostgreSQL (pgx) and MySQL (go-sql-driver) protocol support  
-- **Advanced Data Type Handling**: Proper support for arrays, JSON, binary data, and complex types
-- **Production Performance**: Configurable batch processing and optimized streaming
-- **Seamless Integration**: Drop-in replacement with `--native` flag
+**This is a really big step.** We're no longer calling external tools - **we built our own machines.**
+
+- **🔧 Our Own Engines**: Pure Go implementation - we speak directly to databases using their native wire protocols
+- **🚫 No External Tools**: Goodbye pg_dump, mysqldump, pg_restore, mysql, psql, mysqlbinlog - we don't need them anymore
+- **⚡ Native Protocol**: Direct PostgreSQL (pgx) and MySQL (go-sql-driver) communication - no shell, no pipes, no parsing
+- **🎯 Full Control**: Our code generates the SQL, handles the types, manages the connections
+- **🔒 Production Ready**: Advanced data type handling, proper escaping, binary support, batch processing
 
 ### Core Database Features
 

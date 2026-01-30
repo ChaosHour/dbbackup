@@ -419,9 +419,15 @@ func (e *MySQLNativeEngine) getBinlogPosition(ctx context.Context) (*BinlogPosit
 	var file string
 	var position int64
 
-	row := e.db.QueryRowContext(ctx, "SHOW MASTER STATUS")
-	if err := row.Scan(&file, &position, nil, nil, nil); err != nil {
-		return nil, fmt.Errorf("failed to get master status: %w", err)
+	// Try MySQL 8.0.22+ syntax first, then fall back to legacy
+	row := e.db.QueryRowContext(ctx, "SHOW BINARY LOG STATUS")
+	err := row.Scan(&file, &position, nil, nil, nil)
+	if err != nil {
+		// Fall back to legacy syntax for older MySQL versions
+		row = e.db.QueryRowContext(ctx, "SHOW MASTER STATUS")
+		if err = row.Scan(&file, &position, nil, nil, nil); err != nil {
+			return nil, fmt.Errorf("failed to get binlog status: %w", err)
+		}
 	}
 
 	// Try to get GTID set (MySQL 5.6+)
@@ -1111,7 +1117,9 @@ func (e *MySQLNativeEngine) Restore(ctx context.Context, inputReader io.Reader, 
 
 	// Use database if specified
 	if targetDB != "" {
-		if _, err := e.db.ExecContext(ctx, "USE `"+targetDB+"`"); err != nil {
+		// Escape backticks to prevent SQL injection
+		safeDB := strings.ReplaceAll(targetDB, "`", "``")
+		if _, err := e.db.ExecContext(ctx, "USE `"+safeDB+"`"); err != nil {
 			return fmt.Errorf("failed to use database %s: %w", targetDB, err)
 		}
 	}

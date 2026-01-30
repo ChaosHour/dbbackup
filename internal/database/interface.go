@@ -117,6 +117,10 @@ func (b *baseDatabase) Close() error {
 	return nil
 }
 
+func (b *baseDatabase) GetConn() *sql.DB {
+	return b.db
+}
+
 func (b *baseDatabase) Ping(ctx context.Context) error {
 	if b.db == nil {
 		return fmt.Errorf("database not connected")

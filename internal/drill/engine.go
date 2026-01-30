@@ -4,12 +4,15 @@ package drill
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"dbbackup/internal/logger"
+
+	"github.com/klauspost/pgzip"
 )
 
 // Engine executes DR drills
@@ -237,14 +240,62 @@ func (e *Engine) buildContainerConfig(config *DrillConfig) *ContainerConfig {
 	}
 }
 
+// decompressWithPgzip decompresses a .gz file using in-process pgzip
+func (e *Engine) decompressWithPgzip(srcPath string) (string, error) {
+	if !strings.HasSuffix(srcPath, ".gz") {
+		return srcPath, nil // Not compressed
+	}
+
+	dstPath := strings.TrimSuffix(srcPath, ".gz")
+	e.log.Info("Decompressing with pgzip", "src", srcPath, "dst", dstPath)
+
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open source: %w", err)
+	}
+	defer srcFile.Close()
+
+	gz, err := pgzip.NewReader(srcFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to create pgzip reader: %w", err)
+	}
+	defer gz.Close()
+
+	dstFile, err := os.Create(dstPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create destination: %w", err)
+	}
+	defer dstFile.Close()
+
+	if _, err := io.Copy(dstFile, gz); err != nil {
+		os.Remove(dstPath)
+		return "", fmt.Errorf("decompression failed: %w", err)
+	}
+
+	return dstPath, nil
+}
+
 // restoreBackup restores the backup into the container
 func (e *Engine) restoreBackup(ctx context.Context, config *DrillConfig, containerID string, containerConfig *ContainerConfig) error {
+	backupPath := config.BackupPath
+
+	// Decompress on host with pgzip before copying to container
+	if strings.HasSuffix(backupPath, ".gz") {
+		e.log.Info("[DECOMPRESS] Decompressing backup with pgzip on host...")
+		decompressedPath, err := e.decompressWithPgzip(backupPath)
+		if err != nil {
+			return fmt.Errorf("failed to decompress backup: %w", err)
+		}
+		backupPath = decompressedPath
+		defer os.Remove(decompressedPath) // Clean up temp file
+	}
+
 	// Copy backup to container
-	backupName := filepath.Base(config.BackupPath)
+	backupName := filepath.Base(backupPath)
 	containerBackupPath := "/tmp/" + backupName
 
 	e.log.Info("[DIR] Copying backup to container...")
-	if err := e.docker.CopyToContainer(ctx, containerID, config.BackupPath, containerBackupPath); err != nil {
+	if err := e.docker.CopyToContainer(ctx, containerID, backupPath, containerBackupPath); err != nil {
 		return fmt.Errorf("failed to copy backup: %w", err)
 	}
 
@@ -264,20 +315,11 @@ func (e *Engine) restoreBackup(ctx context.Context, config *DrillConfig, contain
 func (e *Engine) executeRestore(ctx context.Context, config *DrillConfig, containerID, backupPath string, containerConfig *ContainerConfig) error {
 	var cmd []string
 
+	// Note: Decompression is now done on host with pgzip before copying to container
+	// So backupPath should never end with .gz at this point
+
 	switch config.DatabaseType {
 	case "postgresql", "postgres":
-		// Decompress if needed
-		if strings.HasSuffix(backupPath, ".gz") {
-			decompressedPath := strings.TrimSuffix(backupPath, ".gz")
-			_, err := e.docker.ExecCommand(ctx, containerID, []string{
-				"sh", "-c", fmt.Sprintf("gunzip -c %s > %s", backupPath, decompressedPath),
-			})
-			if err != nil {
-				return fmt.Errorf("decompression failed: %w", err)
-			}
-			backupPath = decompressedPath
-		}
-
 		// Create database
 		_, err := e.docker.ExecCommand(ctx, containerID, []string{
 			"psql", "-U", "postgres", "-c", fmt.Sprintf("CREATE DATABASE %s", config.DatabaseName),
@@ -296,32 +338,9 @@ func (e *Engine) executeRestore(ctx context.Context, config *DrillConfig, contai
 		}
 
 	case "mysql":
-		// Decompress if needed
-		if strings.HasSuffix(backupPath, ".gz") {
-			decompressedPath := strings.TrimSuffix(backupPath, ".gz")
-			_, err := e.docker.ExecCommand(ctx, containerID, []string{
-				"sh", "-c", fmt.Sprintf("gunzip -c %s > %s", backupPath, decompressedPath),
-			})
-			if err != nil {
-				return fmt.Errorf("decompression failed: %w", err)
-			}
-			backupPath = decompressedPath
-		}
-
 		cmd = []string{"sh", "-c", fmt.Sprintf("mysql -u root --password=root %s < %s", config.DatabaseName, backupPath)}
 
 	case "mariadb":
-		if strings.HasSuffix(backupPath, ".gz") {
-			decompressedPath := strings.TrimSuffix(backupPath, ".gz")
-			_, err := e.docker.ExecCommand(ctx, containerID, []string{
-				"sh", "-c", fmt.Sprintf("gunzip -c %s > %s", backupPath, decompressedPath),
-			})
-			if err != nil {
-				return fmt.Errorf("decompression failed: %w", err)
-			}
-			backupPath = decompressedPath
-		}
-
 		cmd = []string{"sh", "-c", fmt.Sprintf("mariadb -u root --password=root %s < %s", config.DatabaseName, backupPath)}
 
 	default:

@@ -135,34 +135,25 @@ func outputVersionJSON(info versionInfo) {
 
 func outputTable(info versionInfo) {
 	fmt.Println()
-	fmt.Println("╔═══════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                    dbbackup Version Info                       ║")
-	fmt.Println("╠═══════════════════════════════════════════════════════════════╣")
-	fmt.Printf("║  %-20s %-40s ║\n", "Version:", info.Version)
-	fmt.Printf("║  %-20s %-40s ║\n", "Build Time:", info.BuildTime)
+	fmt.Println("dbbackup Version Info")
+	fmt.Println("=====================================================")
+	fmt.Printf("  Version:         %s\n", info.Version)
+	fmt.Printf("  Build Time:      %s\n", info.BuildTime)
+	fmt.Printf("  Git Commit:      %s\n", info.GitCommit)
+	fmt.Println()
+	fmt.Printf("  Go Version:      %s\n", info.GoVersion)
+	fmt.Printf("  OS/Arch:         %s/%s\n", info.OS, info.Arch)
+	fmt.Printf("  CPU Cores:       %d\n", info.NumCPU)
 	
-	// Truncate commit if too long
-	commit := info.GitCommit
-	if len(commit) > 40 {
-		commit = commit[:40]
-	}
-	fmt.Printf("║  %-20s %-40s ║\n", "Git Commit:", commit)
-	fmt.Println("╠═══════════════════════════════════════════════════════════════╣")
-	fmt.Printf("║  %-20s %-40s ║\n", "Go Version:", info.GoVersion)
-	fmt.Printf("║  %-20s %-40s ║\n", "OS/Arch:", fmt.Sprintf("%s/%s", info.OS, info.Arch))
-	fmt.Printf("║  %-20s %-40d ║\n", "CPU Cores:", info.NumCPU)
-	fmt.Println("╠═══════════════════════════════════════════════════════════════╣")
-	fmt.Println("║  Database Tools                                                ║")
-	fmt.Println("╟───────────────────────────────────────────────────────────────╢")
-	
-	if len(info.DatabaseTools) == 0 {
-		fmt.Println("║    (none detected)                                            ║")
-	} else {
+	if len(info.DatabaseTools) > 0 {
+		fmt.Println()
+		fmt.Println("Database Tools")
+		fmt.Println("-----------------------------------------------------")
 		for tool, version := range info.DatabaseTools {
-			fmt.Printf("║    %-18s %-41s ║\n", tool+":", version)
+			fmt.Printf("  %-18s %s\n", tool+":", version)
 		}
 	}
 	
-	fmt.Println("╚═══════════════════════════════════════════════════════════════╝")
+	fmt.Println("=====================================================")
 	fmt.Println()
 }

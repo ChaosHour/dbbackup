@@ -178,6 +178,35 @@ Examples:
 	RunE: runCatalogInfo,
 }
 
+var catalogPruneCmd = &cobra.Command{
+	Use:   "prune",
+	Short: "Remove old or invalid entries from catalog",
+	Long: `Clean up the catalog by removing entries that meet specified criteria.
+
+This command can remove:
+  - Entries for backups that no longer exist on disk
+  - Entries older than a specified retention period
+  - Failed or corrupted backups
+  - Entries marked as deleted
+
+Examples:
+  # Remove entries for missing backup files
+  dbbackup catalog prune --missing
+
+  # Remove entries older than 90 days
+  dbbackup catalog prune --older-than 90d
+
+  # Remove failed backups
+  dbbackup catalog prune --status failed
+
+  # Dry run (preview without deleting)
+  dbbackup catalog prune --missing --dry-run
+
+  # Combined: remove missing and old entries
+  dbbackup catalog prune --missing --older-than 30d`,
+	RunE: runCatalogPrune,
+}
+
 func init() {
 	rootCmd.AddCommand(catalogCmd)
 
@@ -197,6 +226,7 @@ func init() {
 	catalogCmd.AddCommand(catalogGapsCmd)
 	catalogCmd.AddCommand(catalogSearchCmd)
 	catalogCmd.AddCommand(catalogInfoCmd)
+	catalogCmd.AddCommand(catalogPruneCmd)
 
 	// Sync flags
 	catalogSyncCmd.Flags().BoolVarP(&catalogVerbose, "verbose", "v", false, "Show detailed output")
@@ -221,6 +251,13 @@ func init() {
 	catalogSearchCmd.Flags().Bool("verified", false, "Only verified backups")
 	catalogSearchCmd.Flags().Bool("encrypted", false, "Only encrypted backups")
 	catalogSearchCmd.Flags().Bool("drill-tested", false, "Only drill-tested backups")
+
+	// Prune flags
+	catalogPruneCmd.Flags().Bool("missing", false, "Remove entries for missing backup files")
+	catalogPruneCmd.Flags().String("older-than", "", "Remove entries older than duration (e.g., 90d, 6m, 1y)")
+	catalogPruneCmd.Flags().String("status", "", "Remove entries with specific status (failed, corrupted, deleted)")
+	catalogPruneCmd.Flags().Bool("dry-run", false, "Preview changes without actually deleting")
+	catalogPruneCmd.Flags().StringVar(&catalogDatabase, "database", "", "Only prune entries for specific database")
 }
 
 func getDefaultConfigDir() string {
@@ -723,6 +760,146 @@ func runCatalogInfo(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\n=====================================================\n")
 
 	return nil
+}
+
+func runCatalogPrune(cmd *cobra.Command, args []string) error {
+	cat, err := openCatalog()
+	if err != nil {
+		return err
+	}
+	defer cat.Close()
+
+	ctx := context.Background()
+
+	// Parse flags
+	missing, _ := cmd.Flags().GetBool("missing")
+	olderThan, _ := cmd.Flags().GetString("older-than")
+	status, _ := cmd.Flags().GetString("status")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+	// Validate that at least one criterion is specified
+	if !missing && olderThan == "" && status == "" {
+		return fmt.Errorf("at least one prune criterion must be specified (--missing, --older-than, or --status)")
+	}
+
+	// Parse olderThan duration
+	var cutoffTime *time.Time
+	if olderThan != "" {
+		duration, err := parseDuration(olderThan)
+		if err != nil {
+			return fmt.Errorf("invalid duration: %w", err)
+		}
+		t := time.Now().Add(-duration)
+		cutoffTime = &t
+	}
+
+	// Validate status
+	if status != "" && status != "failed" && status != "corrupted" && status != "deleted" {
+		return fmt.Errorf("invalid status: %s (must be: failed, corrupted, or deleted)", status)
+	}
+
+	pruneConfig := &catalog.PruneConfig{
+		CheckMissing: missing,
+		OlderThan:    cutoffTime,
+		Status:       status,
+		Database:     catalogDatabase,
+		DryRun:       dryRun,
+	}
+
+	fmt.Printf("=====================================================\n")
+	if dryRun {
+		fmt.Printf("  Catalog Prune (DRY RUN)\n")
+	} else {
+		fmt.Printf("  Catalog Prune\n")
+	}
+	fmt.Printf("=====================================================\n\n")
+
+	if catalogDatabase != "" {
+		fmt.Printf("[DIR] Database filter: %s\n", catalogDatabase)
+	}
+	if missing {
+		fmt.Printf("[CHK] Checking for missing backup files...\n")
+	}
+	if cutoffTime != nil {
+		fmt.Printf("[TIME]  Removing entries older than: %s (%s)\n", cutoffTime.Format("2006-01-02"), olderThan)
+	}
+	if status != "" {
+		fmt.Printf("[LOG] Removing entries with status: %s\n", status)
+	}
+	fmt.Println()
+
+	result, err := cat.PruneAdvanced(ctx, pruneConfig)
+	if err != nil {
+		return err
+	}
+
+	if result.TotalChecked == 0 {
+		fmt.Printf("[INFO] No entries found matching criteria\n")
+		return nil
+	}
+
+	// Show results
+	fmt.Printf("=====================================================\n")
+	fmt.Printf("  Prune Results\n")
+	fmt.Printf("=====================================================\n")
+	fmt.Printf("  [CHK] Checked:  %d entries\n", result.TotalChecked)
+	if dryRun {
+		fmt.Printf("  [WAIT] Would remove: %d entries\n", result.Removed)
+	} else {
+		fmt.Printf("  [DEL]  Removed:  %d entries\n", result.Removed)
+	}
+	fmt.Printf("  [TIME]   Duration: %.2fs\n", result.Duration)
+	fmt.Printf("=====================================================\n")
+
+	if len(result.Details) > 0 {
+		fmt.Printf("\nRemoved entries:\n")
+		for _, detail := range result.Details {
+			fmt.Printf("  • %s\n", detail)
+		}
+	}
+
+	if result.SpaceFreed > 0 {
+		fmt.Printf("\n[SAVE] Estimated space freed: %s\n", catalog.FormatSize(result.SpaceFreed))
+	}
+
+	if dryRun {
+		fmt.Printf("\n[INFO] This was a dry run. Run without --dry-run to actually delete entries.\n")
+	}
+
+	return nil
+}
+
+// parseDuration extends time.ParseDuration to support days, months, years
+func parseDuration(s string) (time.Duration, error) {
+	if len(s) < 2 {
+		return 0, fmt.Errorf("invalid duration: %s", s)
+	}
+
+	unit := s[len(s)-1]
+	value := s[:len(s)-1]
+
+	var multiplier time.Duration
+	switch unit {
+	case 'd': // days
+		multiplier = 24 * time.Hour
+	case 'w': // weeks
+		multiplier = 7 * 24 * time.Hour
+	case 'm': // months (approximate)
+		multiplier = 30 * 24 * time.Hour
+	case 'y': // years (approximate)
+		multiplier = 365 * 24 * time.Hour
+	default:
+		// Try standard time.ParseDuration
+		return time.ParseDuration(s)
+	}
+
+	var num int
+	_, err := fmt.Sscanf(value, "%d", &num)
+	if err != nil {
+		return 0, fmt.Errorf("invalid duration value: %s", value)
+	}
+
+	return time.Duration(num) * multiplier, nil
 }
 
 func truncateString(s string, maxLen int) string {

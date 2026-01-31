@@ -53,11 +53,11 @@ var (
 )
 
 type ValidationResult struct {
-	Valid      bool               `json:"valid"`
-	Issues     []ValidationIssue  `json:"issues"`
-	Warnings   []ValidationIssue  `json:"warnings"`
-	Checks     []ValidationCheck  `json:"checks"`
-	Summary    string             `json:"summary"`
+	Valid    bool              `json:"valid"`
+	Issues   []ValidationIssue `json:"issues"`
+	Warnings []ValidationIssue `json:"warnings"`
+	Checks   []ValidationCheck `json:"checks"`
+	Summary  string            `json:"summary"`
 }
 
 type ValidationIssue struct {

@@ -59,25 +59,25 @@ var (
 )
 
 type ForecastResult struct {
-	Database          string              `json:"database"`
-	CurrentSize       int64               `json:"current_size_bytes"`
-	TotalBackups      int                 `json:"total_backups"`
-	OldestBackup      time.Time           `json:"oldest_backup"`
-	NewestBackup      time.Time           `json:"newest_backup"`
-	ObservationPeriod time.Duration       `json:"observation_period_seconds"`
-	DailyGrowthRate   float64             `json:"daily_growth_bytes"`
-	DailyGrowthPct    float64             `json:"daily_growth_percent"`
+	Database          string               `json:"database"`
+	CurrentSize       int64                `json:"current_size_bytes"`
+	TotalBackups      int                  `json:"total_backups"`
+	OldestBackup      time.Time            `json:"oldest_backup"`
+	NewestBackup      time.Time            `json:"newest_backup"`
+	ObservationPeriod time.Duration        `json:"observation_period_seconds"`
+	DailyGrowthRate   float64              `json:"daily_growth_bytes"`
+	DailyGrowthPct    float64              `json:"daily_growth_percent"`
 	Projections       []ForecastProjection `json:"projections"`
-	TimeToLimit       *time.Duration      `json:"time_to_limit_seconds,omitempty"`
-	SizeAtLimit       *time.Time          `json:"date_reaching_limit,omitempty"`
-	Confidence        string              `json:"confidence"` // "high", "medium", "low"
+	TimeToLimit       *time.Duration       `json:"time_to_limit_seconds,omitempty"`
+	SizeAtLimit       *time.Time           `json:"date_reaching_limit,omitempty"`
+	Confidence        string               `json:"confidence"` // "high", "medium", "low"
 }
 
 type ForecastProjection struct {
-	Days         int       `json:"days_from_now"`
-	Date         time.Time `json:"date"`
-	PredictedSize int64    `json:"predicted_size_bytes"`
-	Confidence   float64   `json:"confidence_percent"`
+	Days          int       `json:"days_from_now"`
+	Date          time.Time `json:"date"`
+	PredictedSize int64     `json:"predicted_size_bytes"`
+	Confidence    float64   `json:"confidence_percent"`
 }
 
 func init() {
@@ -197,10 +197,10 @@ func calculateForecast(ctx context.Context, cat *catalog.SQLiteCatalog, database
 	firstSize := entries[0].SizeBytes
 	lastSize := entries[len(entries)-1].SizeBytes
 	sizeDelta := float64(lastSize - firstSize)
-	
+
 	daysObserved := observationPeriod.Hours() / 24
 	dailyGrowthRate := sizeDelta / daysObserved
-	
+
 	// Calculate daily growth percentage
 	var dailyGrowthPct float64
 	if firstSize > 0 {
@@ -213,7 +213,7 @@ func calculateForecast(ctx context.Context, cat *catalog.SQLiteCatalog, database
 	// Generate projections
 	projections := make([]ForecastProjection, 0)
 	projectionDates := []int{7, 30, 60, 90, 180, 365}
-	
+
 	if forecastDays > 0 {
 		// Use user-specified days
 		projectionDates = []int{forecastDays}
@@ -317,13 +317,13 @@ func printForecast(f *ForecastResult, limitBytes int64) {
 	fmt.Printf("\n[CURRENT STATE]\n")
 	fmt.Printf("  Size:         %s\n", catalog.FormatSize(f.CurrentSize))
 	fmt.Printf("  Backups:      %d backups\n", f.TotalBackups)
-	fmt.Printf("  Observed:     %s (%.0f days)\n", 
+	fmt.Printf("  Observed:     %s (%.0f days)\n",
 		formatForecastDuration(f.ObservationPeriod),
 		f.ObservationPeriod.Hours()/24)
 
 	fmt.Printf("\n[GROWTH RATE]\n")
 	if f.DailyGrowthRate > 0 {
-		fmt.Printf("  Daily:        +%s/day (%.2f%%/day)\n", 
+		fmt.Printf("  Daily:        +%s/day (%.2f%%/day)\n",
 			catalog.FormatSize(int64(f.DailyGrowthRate)), f.DailyGrowthPct)
 		fmt.Printf("  Weekly:       +%s/week\n", catalog.FormatSize(int64(f.DailyGrowthRate*7)))
 		fmt.Printf("  Monthly:      +%s/month\n", catalog.FormatSize(int64(f.DailyGrowthRate*30)))
@@ -340,7 +340,7 @@ func printForecast(f *ForecastResult, limitBytes int64) {
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintf(w, "  Days\tDate\tPredicted Size\tConfidence\n")
 		fmt.Fprintf(w, "  ----\t----\t--------------\t----------\n")
-		
+
 		for _, proj := range f.Projections {
 			fmt.Fprintf(w, "  %d\t%s\t%s\t%.0f%%\n",
 				proj.Days,
@@ -355,7 +355,7 @@ func printForecast(f *ForecastResult, limitBytes int64) {
 	if limitBytes > 0 {
 		fmt.Printf("\n[CAPACITY LIMIT]\n")
 		fmt.Printf("  Limit:        %s\n", catalog.FormatSize(limitBytes))
-		
+
 		currentPct := float64(f.CurrentSize) / float64(limitBytes) * 100
 		fmt.Printf("  Current:      %.1f%% used\n", currentPct)
 
@@ -371,12 +371,12 @@ func printForecast(f *ForecastResult, limitBytes int64) {
 		if f.DailyGrowthRate > 0 {
 			remaining := limitBytes - f.CurrentSize
 			daysToLimit := float64(remaining) / f.DailyGrowthRate
-			
+
 			if daysToLimit > 0 && daysToLimit < 1000 {
 				dateAtLimit := f.NewestBackup.Add(time.Duration(daysToLimit*24) * time.Hour)
-				fmt.Printf("  Estimated:    Limit reached in %.0f days (%s)\n", 
+				fmt.Printf("  Estimated:    Limit reached in %.0f days (%s)\n",
 					daysToLimit, dateAtLimit.Format("2006-01-02"))
-				
+
 				if daysToLimit < 30 {
 					fmt.Printf("  Alert:        [CRITICAL] Less than 30 days remaining!\n")
 				} else if daysToLimit < 90 {
@@ -413,10 +413,10 @@ func formatForecastDuration(d time.Duration) string {
 func parseSize(s string) (int64, error) {
 	// Simple size parser (supports KB, MB, GB, TB)
 	s = strings.ToUpper(strings.TrimSpace(s))
-	
+
 	var multiplier int64 = 1
 	var numStr string
-	
+
 	if strings.HasSuffix(s, "TB") {
 		multiplier = 1024 * 1024 * 1024 * 1024
 		numStr = strings.TrimSuffix(s, "TB")
@@ -432,12 +432,12 @@ func parseSize(s string) (int64, error) {
 	} else {
 		numStr = s
 	}
-	
+
 	var num float64
 	_, err := fmt.Sscanf(numStr, "%f", &num)
 	if err != nil {
 		return 0, fmt.Errorf("invalid size format: %s", s)
 	}
-	
+
 	return int64(num * float64(multiplier)), nil
 }

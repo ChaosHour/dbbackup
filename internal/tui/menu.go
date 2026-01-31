@@ -455,6 +455,7 @@ func (m *MenuModel) handleDiagnoseBackup() (tea.Model, tea.Cmd) {
 	browser := NewArchiveBrowser(m.config, m.logger, m, m.ctx, "diagnose")
 	return browser, browser.Init()
 }
+
 // handleSchedule shows backup schedule
 func (m *MenuModel) handleSchedule() (tea.Model, tea.Cmd) {
 	schedule := NewScheduleView(m.config, m.logger, m)
@@ -466,6 +467,7 @@ func (m *MenuModel) handleChain() (tea.Model, tea.Cmd) {
 	chain := NewChainView(m.config, m.logger, m)
 	return chain, chain.Init()
 }
+
 // handleTools opens the tools submenu
 func (m *MenuModel) handleTools() (tea.Model, tea.Cmd) {
 	tools := NewToolsMenu(m.config, m.logger, m, m.ctx)

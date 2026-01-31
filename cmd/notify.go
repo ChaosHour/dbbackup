@@ -116,11 +116,11 @@ func runNotifyTest(cmd *cobra.Command, args []string) error {
 		SMTPTo:       cfg.NotifySMTPTo,
 		SMTPTLS:      cfg.NotifySMTPTLS,
 		SMTPStartTLS: cfg.NotifySMTPStartTLS,
-		
+
 		WebhookEnabled: hasWebhook,
 		WebhookURL:     cfg.NotifyWebhookURL,
 		WebhookMethod:  "POST",
-		
+
 		OnSuccess: true,
 		OnFailure: true,
 	}
@@ -139,7 +139,7 @@ func runNotifyTest(cmd *cobra.Command, args []string) error {
 
 	// Send notification
 	fmt.Println("[SEND] Sending test notification...")
-	
+
 	ctx := context.Background()
 	if err := manager.NotifySync(ctx, event); err != nil {
 		fmt.Printf("[FAIL] Notification failed: %v\n", err)
@@ -149,6 +149,6 @@ func runNotifyTest(cmd *cobra.Command, args []string) error {
 	fmt.Println("[OK] Notification sent successfully")
 	fmt.Println()
 	fmt.Println("Check your notification endpoint to confirm delivery.")
-	
+
 	return nil
 }

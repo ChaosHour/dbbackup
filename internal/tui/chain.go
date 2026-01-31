@@ -62,7 +62,7 @@ func (c *ChainView) loadChains() tea.Msg {
 	// Open catalog - use default path
 	home, _ := os.UserHomeDir()
 	catalogPath := filepath.Join(home, ".dbbackup", "catalog.db")
-	
+
 	cat, err := catalog.NewSQLiteCatalog(catalogPath)
 	if err != nil {
 		return chainLoadedMsg{err: fmt.Errorf("failed to open catalog: %w", err)}
@@ -230,7 +230,7 @@ func (c *ChainView) View() string {
 
 		if len(chain.Incrementals) > 0 {
 			b.WriteString(fmt.Sprintf("  [CHAIN] %d Incremental(s)\n", len(chain.Incrementals)))
-			
+
 			// Show first few
 			limit := 3
 			for i, inc := range chain.Incrementals {

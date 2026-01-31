@@ -108,7 +108,7 @@ func runSchedule(cmd *cobra.Command, args []string) error {
 func getSystemdTimers() ([]TimerInfo, error) {
 	// Run systemctl list-timers --all --no-pager
 	cmdArgs := []string{"list-timers", "--all", "--no-pager"}
-	
+
 	output, err := exec.Command("systemctl", cmdArgs...).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list timers: %w\nOutput: %s", err, string(output))
@@ -137,7 +137,7 @@ func parseTimerList(output string) []TimerInfo {
 
 		// Extract timer info
 		timer := TimerInfo{}
-		
+
 		// Check if NEXT field is "n/a" (inactive timer)
 		if fields[0] == "n/a" {
 			timer.NextRun = "n/a"
@@ -227,11 +227,11 @@ func filterTimers(timers []TimerInfo) []TimerInfo {
 
 		// Default: filter for backup-related timers
 		name := strings.ToLower(timer.Unit)
-		if strings.Contains(name, "backup") || 
-		   strings.Contains(name, "dbbackup") ||
-		   strings.Contains(name, "postgres") ||
-		   strings.Contains(name, "mysql") ||
-		   strings.Contains(name, "mariadb") {
+		if strings.Contains(name, "backup") ||
+			strings.Contains(name, "dbbackup") ||
+			strings.Contains(name, "postgres") ||
+			strings.Contains(name, "mysql") ||
+			strings.Contains(name, "mariadb") {
 			filtered = append(filtered, timer)
 		}
 	}
@@ -243,7 +243,7 @@ func outputTimerTable(timers []TimerInfo) {
 	fmt.Println()
 	fmt.Println("Scheduled Backups")
 	fmt.Println("=====================================================")
-	
+
 	for _, timer := range timers {
 		name := timer.Unit
 		if strings.HasSuffix(name, ".timer") {
@@ -252,7 +252,7 @@ func outputTimerTable(timers []TimerInfo) {
 
 		fmt.Printf("\n[TIMER] %s\n", name)
 		fmt.Printf("  Status:     %s\n", timer.Active)
-		
+
 		if timer.Active == "active" && timer.NextRun != "" && timer.NextRun != "n/a" {
 			fmt.Printf("  Next Run:   %s\n", timer.NextRun)
 			if timer.Left != "" {
@@ -261,7 +261,7 @@ func outputTimerTable(timers []TimerInfo) {
 		} else {
 			fmt.Printf("  Next Run:   Not scheduled (timer inactive)\n")
 		}
-		
+
 		if timer.LastRun != "" && timer.LastRun != "n/a" {
 			fmt.Printf("  Last Run:   %s\n", timer.LastRun)
 		}

@@ -14,21 +14,21 @@ import (
 
 // ScheduleView displays systemd timer schedules
 type ScheduleView struct {
-	config    *config.Config
-	logger    logger.Logger
-	parent    tea.Model
-	timers    []TimerInfo
-	loading   bool
-	error     string
-	quitting  bool
+	config   *config.Config
+	logger   logger.Logger
+	parent   tea.Model
+	timers   []TimerInfo
+	loading  bool
+	error    string
+	quitting bool
 }
 
 type TimerInfo struct {
-	Name     string
-	NextRun  string
-	Left     string
-	LastRun  string
-	Active   string
+	Name    string
+	NextRun string
+	Left    string
+	LastRun string
+	Active  string
 }
 
 func NewScheduleView(cfg *config.Config, log logger.Logger, parent tea.Model) *ScheduleView {
@@ -66,16 +66,16 @@ func (s *ScheduleView) loadTimers() tea.Msg {
 	}
 
 	timers := parseTimerList(string(output))
-	
+
 	// Filter for backup-related timers
 	var filtered []TimerInfo
 	for _, timer := range timers {
 		name := strings.ToLower(timer.Name)
-		if strings.Contains(name, "backup") || 
-		   strings.Contains(name, "dbbackup") ||
-		   strings.Contains(name, "postgres") ||
-		   strings.Contains(name, "mysql") ||
-		   strings.Contains(name, "mariadb") {
+		if strings.Contains(name, "backup") ||
+			strings.Contains(name, "dbbackup") ||
+			strings.Contains(name, "postgres") ||
+			strings.Contains(name, "mysql") ||
+			strings.Contains(name, "mariadb") {
 			filtered = append(filtered, timer)
 		}
 	}

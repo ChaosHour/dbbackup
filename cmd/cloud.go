@@ -125,7 +125,7 @@ func init() {
 	cloudCmd.AddCommand(cloudUploadCmd, cloudDownloadCmd, cloudListCmd, cloudDeleteCmd)
 
 	// Cloud configuration flags
-	for _, cmd := range []*cobra.Command{cloudUploadCmd, cloudDownloadCmd, cloudListCmd, cloudDeleteCmd} {
+	for _, cmd := range []*cobra.Command{cloudUploadCmd, cloudDownloadCmd, cloudListCmd, cloudDeleteCmd, cloudStatusCmd} {
 		cmd.Flags().StringVar(&cloudProvider, "cloud-provider", getEnv("DBBACKUP_CLOUD_PROVIDER", "s3"), "Cloud provider (s3, minio, b2)")
 		cmd.Flags().StringVar(&cloudBucket, "cloud-bucket", getEnv("DBBACKUP_CLOUD_BUCKET", ""), "Bucket name")
 		cmd.Flags().StringVar(&cloudRegion, "cloud-region", getEnv("DBBACKUP_CLOUD_REGION", "us-east-1"), "Region")

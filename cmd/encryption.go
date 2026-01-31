@@ -7,7 +7,28 @@ import (
 	"strings"
 
 	"dbbackup/internal/crypto"
+	"github.com/spf13/cobra"
 )
+
+var encryptionCmd = &cobra.Command{
+	Use:   "encryption",
+	Short: "Encryption key management",
+	Long: `Manage encryption keys for database backups.
+
+This command group provides encryption key management utilities:
+  - rotate: Generate new encryption keys and rotate existing ones
+
+Examples:
+  # Generate new encryption key
+  dbbackup encryption rotate
+
+  # Show rotation workflow
+  dbbackup encryption rotate --show-reencrypt`,
+}
+
+func init() {
+	rootCmd.AddCommand(encryptionCmd)
+}
 
 // loadEncryptionKey loads encryption key from file or environment variable
 func loadEncryptionKey(keyFile, keyEnvVar string) ([]byte, error) {

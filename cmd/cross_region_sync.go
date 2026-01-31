@@ -19,22 +19,22 @@ import (
 
 var (
 	// Source cloud configuration
-	sourceProvider   string
-	sourceBucket     string
-	sourceRegion     string
-	sourceEndpoint   string
-	sourceAccessKey  string
-	sourceSecretKey  string
-	sourcePrefix     string
+	sourceProvider  string
+	sourceBucket    string
+	sourceRegion    string
+	sourceEndpoint  string
+	sourceAccessKey string
+	sourceSecretKey string
+	sourcePrefix    string
 
 	// Destination cloud configuration
-	destProvider   string
-	destBucket     string
-	destRegion     string
-	destEndpoint   string
-	destAccessKey  string
-	destSecretKey  string
-	destPrefix     string
+	destProvider  string
+	destBucket    string
+	destRegion    string
+	destEndpoint  string
+	destAccessKey string
+	destSecretKey string
+	destPrefix    string
 
 	// Sync options
 	crossSyncDryRun    bool
@@ -242,7 +242,7 @@ func runCrossRegionSync(cmd *cobra.Command, args []string) error {
 
 	for _, srcBackup := range sourceBackups {
 		destBackup, existsInDest := destMap[srcBackup.Name]
-		
+
 		if !existsInDest {
 			// File doesn't exist in destination - needs copy
 			toCopy = append(toCopy, srcBackup)
@@ -253,7 +253,7 @@ func runCrossRegionSync(cmd *cobra.Command, args []string) error {
 			// Size mismatch - needs copy
 			toCopy = append(toCopy, srcBackup)
 		}
-		
+
 		// Mark as found in source
 		delete(destMap, srcBackup.Name)
 	}
@@ -384,7 +384,7 @@ func createCloudBackend(label string, cfg *cloud.Config) (cloud.Backend, error) 
 
 func filterBackups(backups []cloud.BackupInfo, database string, ageInDays int) []cloud.BackupInfo {
 	filtered := make([]cloud.BackupInfo, 0, len(backups))
-	
+
 	cutoffTime := time.Time{}
 	if ageInDays > 0 {
 		cutoffTime = time.Now().AddDate(0, 0, -ageInDays)

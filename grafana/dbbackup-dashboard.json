@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "Comprehensive monitoring dashboard for DBBackup - tracks backup status, RPO, deduplication, and verification across all database servers.",
+  "description": "DBBackup monitoring - backup status, RPO, deduplication, verification",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -41,7 +41,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Shows SUCCESS if RPO is under 7 days, FAILED otherwise. Green = healthy backup schedule.",
+      "description": "Green if backup within 7 days",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -123,7 +123,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Time elapsed since the last successful backup. Green < 12h, Yellow < 24h, Red > 24h.",
+      "description": "Time since last backup. Green <12h, Yellow <24h, Red >24h",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -194,7 +194,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Whether the most recent backup was verified successfully. 1 = verified and valid.",
+      "description": "Backup verification status",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -276,7 +276,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total count of successful backup completions.",
+      "description": "Total successful backups",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -338,7 +338,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total count of failed backup attempts. Any value > 0 warrants investigation.",
+      "description": "Total failed backups",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -404,7 +404,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Recovery Point Objective over time. Shows how long since the last successful backup. Red line at 24h threshold.",
+      "description": "RPO trend with 24h threshold",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -499,7 +499,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Size of each backup over time. Useful for capacity planning and detecting unexpected growth.",
+      "description": "Backup size over time",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -590,7 +590,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "How long each backup takes. Monitor for trends that may indicate database growth or performance issues.",
+      "description": "Backup duration trend",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -681,7 +681,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Summary table showing current status of all databases with color-coded RPO and backup sizes.",
+      "description": "All databases with RPO and size",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -908,7 +908,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Overall deduplication efficiency (0-1). Higher values mean more duplicate data eliminated. 0.5 = 50% space savings.",
+      "description": "Deduplication efficiency (0-1)",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -969,7 +969,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total bytes saved by deduplication across all backups.",
+      "description": "Bytes saved by deduplication",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1030,7 +1030,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Actual disk usage of the chunk store after deduplication.",
+      "description": "Chunk store disk usage",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1091,7 +1091,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total number of unique content-addressed chunks in the dedup store.",
+      "description": "Unique chunks in store",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1152,7 +1152,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Compression ratio achieved (0-1). Higher = better compression of chunk data.",
+      "description": "Compression ratio (0-1)",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1213,7 +1213,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Timestamp of the oldest chunk - useful for monitoring retention policy.",
+      "description": "Oldest chunk age",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1274,7 +1274,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Timestamp of the newest chunk - confirms dedup is working on recent backups.",
+      "description": "Newest chunk age",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1335,7 +1335,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Per-database deduplication efficiency over time. Compare databases to identify which benefit most from dedup.",
+      "description": "Dedup efficiency per database",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1428,7 +1428,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Storage trends: compare space saved by dedup vs actual disk usage over time.",
+      "description": "Space saved vs disk usage",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1528,7 +1528,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": "30s",
+  "refresh": "1m",
   "schemaVersion": 38,
   "tags": [
     "dbbackup",
@@ -1581,7 +1581,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "DBBackup Overview",
+  "title": "DBBackup",
   "uid": "dbbackup-overview",
   "version": 1,
   "weekStart": ""

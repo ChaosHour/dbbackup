@@ -59,21 +59,21 @@ var retentionSimulatorCompareCmd = &cobra.Command{
 }
 
 var (
-	simRetentionDays   int
-	simMinBackups      int
-	simStrategy        string
-	simFormat          string
-	simBackupDir       string
-	simGFSDaily        int
-	simGFSWeekly       int
-	simGFSMonthly      int
-	simGFSYearly       int
-	simCompareDays     []int
+	simRetentionDays int
+	simMinBackups    int
+	simStrategy      string
+	simFormat        string
+	simBackupDir     string
+	simGFSDaily      int
+	simGFSWeekly     int
+	simGFSMonthly    int
+	simGFSYearly     int
+	simCompareDays   []int
 )
 
 func init() {
 	rootCmd.AddCommand(retentionSimulatorCmd)
-	
+
 	// Default command is simulate
 	retentionSimulatorCmd.RunE = runRetentionSimulator
 
@@ -196,18 +196,18 @@ func runRetentionCompare(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("Based on your backup history:")
 	fmt.Println()
-	
+
 	// Calculate backup frequency
 	if len(backups) > 1 {
 		oldest := getOldestBackup(backups)
 		newest := getNewestBackup(backups)
 		duration := newest.Sub(oldest)
 		avgInterval := duration / time.Duration(len(backups)-1)
-		
+
 		fmt.Printf("• Average backup interval: %s\n", formatRetentionDuration(avgInterval))
 		fmt.Printf("• Total storage used: %s\n", formatRetentionBytes(totalSize))
 		fmt.Println()
-		
+
 		// Recommend based on frequency
 		if avgInterval < 24*time.Hour {
 			fmt.Println("✓ Recommended for daily backups:")
@@ -231,12 +231,12 @@ func runRetentionCompare(cmd *cobra.Command, args []string) error {
 }
 
 type SimulationResult struct {
-	Strategy       string              `json:"strategy"`
-	TotalBackups   int                 `json:"total_backups"`
-	KeptBackups    []BackupInfo        `json:"kept_backups"`
-	DeletedBackups []BackupInfo        `json:"deleted_backups"`
-	SpaceFreed     int64               `json:"space_freed"`
-	Parameters     map[string]int      `json:"parameters"`
+	Strategy       string         `json:"strategy"`
+	TotalBackups   int            `json:"total_backups"`
+	KeptBackups    []BackupInfo   `json:"kept_backups"`
+	DeletedBackups []BackupInfo   `json:"deleted_backups"`
+	SpaceFreed     int64          `json:"space_freed"`
+	Parameters     map[string]int `json:"parameters"`
 }
 
 type BackupInfo struct {
@@ -372,7 +372,7 @@ func printSimulationResults(sim *SimulationResult) {
 		fmt.Println("──────────────────────────────────────────────────────────────────")
 		fmt.Printf("%-22s %-20s %-12s %s\n", "Date", "Database", "Size", "Reason")
 		fmt.Println("──────────────────────────────────────────────────────────────────")
-		
+
 		// Sort deleted by timestamp
 		sort.Slice(sim.DeletedBackups, func(i, j int) bool {
 			return sim.DeletedBackups[i].Timestamp.Before(sim.DeletedBackups[j].Timestamp)
@@ -393,7 +393,7 @@ func printSimulationResults(sim *SimulationResult) {
 		fmt.Println("──────────────────────────────────────────────────────────────────")
 		fmt.Printf("%-22s %-20s %-12s %s\n", "Date", "Database", "Size", "Reason")
 		fmt.Println("──────────────────────────────────────────────────────────────────")
-		
+
 		// Sort kept by timestamp (newest first)
 		sort.Slice(sim.KeptBackups, func(i, j int) bool {
 			return sim.KeptBackups[i].Timestamp.After(sim.KeptBackups[j].Timestamp)

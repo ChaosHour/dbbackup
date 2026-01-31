@@ -194,24 +194,27 @@ func saveKeyToFile(path string, key string) error {
 }
 
 func showReencryptCommands() {
+	// Use explicit string to avoid go vet warnings about % in shell parameter expansion
+	pctEnc := "${backup%.enc}"
+	
 	fmt.Println("   # Option A: Re-encrypt with openssl")
 	fmt.Println("   for backup in /path/to/backups/*.enc; do")
 	fmt.Println("     # Decrypt with old key")
 	fmt.Println("     openssl enc -aes-256-cbc -d \\")
 	fmt.Println("       -in \"$backup\" \\")
-	fmt.Println("       -out \"${backup%.enc}.tmp\" \\")
+	fmt.Printf("       -out \"%s.tmp\" \\\n", pctEnc)
 	fmt.Println("       -k \"$OLD_KEY\"")
 	fmt.Println()
 	fmt.Println("     # Encrypt with new key")
 	fmt.Println("     openssl enc -aes-256-cbc \\")
-	fmt.Println("       -in \"${backup%.enc}.tmp\" \\")
+	fmt.Printf("       -in \"%s.tmp\" \\\n", pctEnc)
 	fmt.Println("       -out \"${backup}.new\" \\")
 	fmt.Println("       -k \"$DBBACKUP_ENCRYPTION_KEY\"")
 	fmt.Println()
 	fmt.Println("     # Verify and replace")
 	fmt.Println("     if [ -f \"${backup}.new\" ]; then")
 	fmt.Println("       mv \"${backup}.new\" \"$backup\"")
-	fmt.Println("       rm \"${backup%.enc}.tmp\"")
+	fmt.Printf("       rm \"%s.tmp\"\n", pctEnc)
 	fmt.Println("     fi")
 	fmt.Println("   done")
 	fmt.Println()

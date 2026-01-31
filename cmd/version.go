@@ -45,19 +45,19 @@ func init() {
 }
 
 type versionInfo struct {
-	Version     string            `json:"version"`
-	BuildTime   string            `json:"build_time"`
-	GitCommit   string            `json:"git_commit"`
-	GoVersion   string            `json:"go_version"`
-	OS          string            `json:"os"`
-	Arch        string            `json:"arch"`
-	NumCPU      int               `json:"num_cpu"`
+	Version       string            `json:"version"`
+	BuildTime     string            `json:"build_time"`
+	GitCommit     string            `json:"git_commit"`
+	GoVersion     string            `json:"go_version"`
+	OS            string            `json:"os"`
+	Arch          string            `json:"arch"`
+	NumCPU        int               `json:"num_cpu"`
 	DatabaseTools map[string]string `json:"database_tools"`
 }
 
 func runVersionCmd(cmd *cobra.Command, args []string) {
 	info := collectVersionInfo()
-	
+
 	switch versionOutputFormat {
 	case "json":
 		outputVersionJSON(info)
@@ -79,7 +79,7 @@ func collectVersionInfo() versionInfo {
 		NumCPU:        runtime.NumCPU(),
 		DatabaseTools: make(map[string]string),
 	}
-	
+
 	// Check database tools
 	tools := []struct {
 		name    string
@@ -93,14 +93,14 @@ func collectVersionInfo() versionInfo {
 		{"mysql", "mysql", []string{"--version"}},
 		{"mariadb-dump", "mariadb-dump", []string{"--version"}},
 	}
-	
+
 	for _, tool := range tools {
 		version := getToolVersion(tool.command, tool.args)
 		if version != "" {
 			info.DatabaseTools[tool.name] = version
 		}
 	}
-	
+
 	return info
 }
 
@@ -110,11 +110,11 @@ func getToolVersion(command string, args []string) string {
 	if err != nil {
 		return ""
 	}
-	
+
 	// Parse first line and extract version
 	line := strings.Split(string(output), "\n")[0]
 	line = strings.TrimSpace(line)
-	
+
 	// Try to extract just the version number
 	// e.g., "pg_dump (PostgreSQL) 16.1" -> "16.1"
 	// e.g., "mysqldump  Ver 8.0.35" -> "8.0.35"
@@ -123,7 +123,7 @@ func getToolVersion(command string, args []string) string {
 		// Return last part which is usually the version
 		return parts[len(parts)-1]
 	}
-	
+
 	return line
 }
 
@@ -144,7 +144,7 @@ func outputTable(info versionInfo) {
 	fmt.Printf("  Go Version:      %s\n", info.GoVersion)
 	fmt.Printf("  OS/Arch:         %s/%s\n", info.OS, info.Arch)
 	fmt.Printf("  CPU Cores:       %d\n", info.NumCPU)
-	
+
 	if len(info.DatabaseTools) > 0 {
 		fmt.Println()
 		fmt.Println("Database Tools")
@@ -153,7 +153,7 @@ func outputTable(info versionInfo) {
 			fmt.Printf("  %-18s %s\n", tool+":", version)
 		}
 	}
-	
+
 	fmt.Println("=====================================================")
 	fmt.Println()
 }

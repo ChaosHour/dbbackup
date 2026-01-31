@@ -5,6 +5,53 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.14] - 2026-01-31
+
+### Added - Quick Win Features
+
+- **Cross-Region Sync** (`cloud cross-region-sync`)
+  - Sync backups between cloud regions for disaster recovery
+  - Support for S3, MinIO, Azure Blob, Google Cloud Storage
+  - Parallel transfers with configurable concurrency
+  - Dry-run mode to preview sync plan
+  - Filter by database name or backup age
+  - Delete orphaned files with `--delete` flag
+
+- **Retention Policy Simulator** (`retention-simulator`)
+  - Preview retention policy effects without deleting backups
+  - Simulate simple age-based and GFS retention strategies
+  - Compare multiple retention periods side-by-side (7, 14, 30, 60, 90 days)
+  - Calculate space savings and backup counts
+  - Analyze backup frequency and provide recommendations
+
+- **Catalog Dashboard** (`catalog dashboard`)
+  - Interactive TUI for browsing backup catalog
+  - Sort by date, size, database, or type
+  - Filter backups with search
+  - Detailed view with backup metadata
+  - Keyboard navigation (vim-style keys supported)
+
+- **Parallel Restore Analysis** (`parallel-restore`)
+  - Analyze system for optimal parallel restore settings
+  - Benchmark disk I/O performance
+  - Simulate restore with different parallelism levels
+  - Provide recommendations based on CPU and memory
+
+- **Progress Webhooks** (`progress-webhooks`)
+  - Configure webhook notifications for backup/restore progress
+  - Periodic progress updates during long operations
+  - Test mode to verify webhook connectivity
+  - Environment variable configuration (DBBACKUP_WEBHOOK_URL)
+
+- **Encryption Key Rotation** (`encryption rotate`)
+  - Generate new encryption keys (128, 192, 256-bit)
+  - Save keys to file with secure permissions (0600)
+  - Support for base64 and hex output formats
+
+### Changed
+- Updated version to 5.1.14
+- Removed development files from repository (.dbbackup.conf, TODO_SESSION.md, test-backups/)
+
 ## [5.1.0] - 2026-01-30
 
 ### Fixed

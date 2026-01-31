@@ -9,19 +9,19 @@ import (
 
 // ProgressTracker tracks backup/restore progress and sends periodic updates
 type ProgressTracker struct {
-	manager       *Manager
-	database      string
-	operation     string
-	startTime     time.Time
-	ticker        *time.Ticker
-	stopCh        chan struct{}
-	mu            sync.RWMutex
-	bytesTotal    int64
-	bytesProcessed int64
-	tablesTotal   int
+	manager         *Manager
+	database        string
+	operation       string
+	startTime       time.Time
+	ticker          *time.Ticker
+	stopCh          chan struct{}
+	mu              sync.RWMutex
+	bytesTotal      int64
+	bytesProcessed  int64
+	tablesTotal     int
 	tablesProcessed int
-	currentPhase  string
-	enabled       bool
+	currentPhase    string
+	enabled         bool
 }
 
 // NewProgressTracker creates a new progress tracker
@@ -43,7 +43,7 @@ func (pt *ProgressTracker) Start(interval time.Duration) {
 	}
 
 	pt.ticker = time.NewTicker(interval)
-	
+
 	go func() {
 		for {
 			select {
@@ -99,7 +99,7 @@ func (pt *ProgressTracker) GetProgress() ProgressInfo {
 	defer pt.mu.RUnlock()
 
 	elapsed := time.Since(pt.startTime)
-	
+
 	var percentBytes, percentTables float64
 	if pt.bytesTotal > 0 {
 		percentBytes = float64(pt.bytesProcessed) / float64(pt.bytesTotal) * 100
@@ -135,7 +135,7 @@ func (pt *ProgressTracker) GetProgress() ProgressInfo {
 // sendProgressUpdate sends a progress notification
 func (pt *ProgressTracker) sendProgressUpdate() {
 	progress := pt.GetProgress()
-	
+
 	message := fmt.Sprintf("%s of database '%s' in progress: %s",
 		pt.operation, pt.database, progress.FormatSummary())
 
@@ -179,7 +179,7 @@ func (pi *ProgressInfo) FormatSummary() string {
 			pi.TablesProcessed, pi.TablesTotal, pi.PercentTables,
 			formatDuration(pi.ElapsedTime))
 	}
-	
+
 	if pi.BytesTotal > 0 {
 		return fmt.Sprintf("%s/%s (%.1f%%), %s elapsed, %s remaining",
 			formatBytes(pi.BytesProcessed), formatBytes(pi.BytesTotal),

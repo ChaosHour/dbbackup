@@ -401,7 +401,7 @@ func estimateRestoreTime(file string, jobs int) string {
 	}
 
 	sizeGB := float64(info.Size()) / (1024 * 1024 * 1024)
-	baseTime := sizeGB * 120 // ~2 minutes per GB baseline
+	baseTime := sizeGB * 120                       // ~2 minutes per GB baseline
 	parallelTime := baseTime / float64(jobs) * 0.7 // 70% efficiency
 
 	if parallelTime < 60 {

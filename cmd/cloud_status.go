@@ -49,26 +49,26 @@ Examples:
 }
 
 var (
-	cloudStatusFormat  string
-	cloudStatusQuick   bool
+	cloudStatusFormat string
+	cloudStatusQuick  bool
 	// cloudStatusVerbose uses the global cloudVerbose flag from cloud.go
 )
 
 type CloudStatus struct {
-	Provider      string                 `json:"provider"`
-	Bucket        string                 `json:"bucket"`
-	Region        string                 `json:"region,omitempty"`
-	Endpoint      string                 `json:"endpoint,omitempty"`
-	Connected     bool                   `json:"connected"`
-	BucketExists  bool                   `json:"bucket_exists"`
-	CanList       bool                   `json:"can_list"`
-	CanUpload     bool                   `json:"can_upload"`
-	ObjectCount   int                    `json:"object_count,omitempty"`
-	TotalSize     int64                  `json:"total_size_bytes,omitempty"`
-	LatencyMs     int64                  `json:"latency_ms,omitempty"`
-	Error         string                 `json:"error,omitempty"`
-	Checks        []CloudStatusCheck     `json:"checks"`
-	Details       map[string]interface{} `json:"details,omitempty"`
+	Provider     string                 `json:"provider"`
+	Bucket       string                 `json:"bucket"`
+	Region       string                 `json:"region,omitempty"`
+	Endpoint     string                 `json:"endpoint,omitempty"`
+	Connected    bool                   `json:"connected"`
+	BucketExists bool                   `json:"bucket_exists"`
+	CanList      bool                   `json:"can_list"`
+	CanUpload    bool                   `json:"can_upload"`
+	ObjectCount  int                    `json:"object_count,omitempty"`
+	TotalSize    int64                  `json:"total_size_bytes,omitempty"`
+	LatencyMs    int64                  `json:"latency_ms,omitempty"`
+	Error        string                 `json:"error,omitempty"`
+	Checks       []CloudStatusCheck     `json:"checks"`
+	Details      map[string]interface{} `json:"details,omitempty"`
 }
 
 type CloudStatusCheck struct {
@@ -127,9 +127,9 @@ func runCloudStatus(cmd *cobra.Command, args []string) error {
 
 	// Initialize cloud storage
 	ctx := context.Background()
-	
+
 	startTime := time.Now()
-	
+
 	// Create cloud config
 	cloudCfg := &cloud.Config{
 		Provider:   cfg.CloudProvider,
@@ -144,7 +144,7 @@ func runCloudStatus(cmd *cobra.Command, args []string) error {
 		Timeout:    300,
 		MaxRetries: 3,
 	}
-	
+
 	backend, err := cloud.NewBackend(cloudCfg)
 	if err != nil {
 		status.Connected = false
@@ -154,11 +154,11 @@ func runCloudStatus(cmd *cobra.Command, args []string) error {
 			Status: "fail",
 			Error:  err.Error(),
 		})
-		
+
 		printStatus(status)
 		return fmt.Errorf("cloud storage initialization failed: %w", err)
 	}
-	
+
 	initDuration := time.Since(startTime)
 	status.Details["init_time_ms"] = initDuration.Milliseconds()
 
@@ -184,8 +184,8 @@ func runCloudStatus(cmd *cobra.Command, args []string) error {
 		checkUploadPermissions(ctx, backend, status)
 	} else {
 		status.Checks = append(status.Checks, CloudStatusCheck{
-			Name:   "Upload",
-			Status: "skip",
+			Name:    "Upload",
+			Status:  "skip",
 			Message: "Skipped (--quick mode)",
 		})
 	}
@@ -248,7 +248,7 @@ func checkConfig(status *CloudStatus) {
 
 func checkBucketAccess(ctx context.Context, backend cloud.Backend, status *CloudStatus) {
 	fmt.Print("[TEST] Checking bucket access... ")
-	
+
 	startTime := time.Now()
 	// Try to list - this will fail if bucket doesn't exist or no access
 	_, err := backend.List(ctx, "")
@@ -335,21 +335,21 @@ func checkUploadPermissions(ctx context.Context, backend cloud.Backend, status *
 	if err != nil {
 		fmt.Printf("[FAIL] Could not create test file: %v\n", err)
 		status.Checks = append(status.Checks, CloudStatusCheck{
-			Name:  "Upload Test",
+			Name:   "Upload Test",
 			Status: "fail",
-			Error: fmt.Sprintf("temp file creation failed: %v", err),
+			Error:  fmt.Sprintf("temp file creation failed: %v", err),
 		})
 		return
 	}
 	defer os.Remove(tmpFile.Name())
-	
+
 	if _, err := tmpFile.Write(testData); err != nil {
 		tmpFile.Close()
 		fmt.Printf("[FAIL] Could not write test file: %v\n", err)
 		status.Checks = append(status.Checks, CloudStatusCheck{
-			Name:  "Upload Test",
+			Name:   "Upload Test",
 			Status: "fail",
-			Error: fmt.Sprintf("test file write failed: %v", err),
+			Error:  fmt.Sprintf("test file write failed: %v", err),
 		})
 		return
 	}
@@ -389,10 +389,10 @@ func checkUploadPermissions(ctx context.Context, backend cloud.Backend, status *
 		fmt.Printf("[OK] Test file deleted (%s)\n", deleteDuration.Round(time.Millisecond))
 		status.CanUpload = true
 		status.Checks = append(status.Checks, CloudStatusCheck{
-			Name:    "Upload/Delete Test",
-			Status:  "pass",
-			Message: fmt.Sprintf("Both successful (upload: %s, delete: %s)", 
-				uploadDuration.Round(time.Millisecond), 
+			Name:   "Upload/Delete Test",
+			Status: "pass",
+			Message: fmt.Sprintf("Both successful (upload: %s, delete: %s)",
+				uploadDuration.Round(time.Millisecond),
 				deleteDuration.Round(time.Millisecond)),
 		})
 	}

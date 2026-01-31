@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"dbbackup/internal/notify"
+
 	"github.com/spf13/cobra"
 )
 
@@ -93,7 +94,7 @@ func runProgressWebhooksStatus(cmd *cobra.Command, args []string) error {
 	webhookURL := os.Getenv("DBBACKUP_WEBHOOK_URL")
 	smtpHost := os.Getenv("DBBACKUP_SMTP_HOST")
 	progressIntervalEnv := os.Getenv("DBBACKUP_PROGRESS_INTERVAL")
-	
+
 	var interval time.Duration
 	if progressIntervalEnv != "" {
 		if d, err := time.ParseDuration(progressIntervalEnv); err == nil {
@@ -133,14 +134,14 @@ func runProgressWebhooksStatus(cmd *cobra.Command, args []string) error {
 
 	fmt.Println("[NOTIFICATION BACKENDS]")
 	fmt.Println("==========================================")
-	
+
 	if status.WebhookURL != "" {
 		fmt.Println("✓ Webhook:       Configured")
 		fmt.Printf("  URL:           %s\n", maskURL(status.WebhookURL))
 	} else {
 		fmt.Println("✗ Webhook:       Not configured")
 	}
-	
+
 	if status.SMTPEnabled {
 		fmt.Println("✓ Email (SMTP):  Configured")
 	} else {
@@ -252,7 +253,7 @@ func runProgressWebhooksTest(cmd *cobra.Command, args []string) error {
 	}
 
 	manager := notify.NewManager(notifyCfg)
-	
+
 	// Create progress tracker
 	tracker := notify.NewProgressTracker(manager, "testdb", "Backup")
 	tracker.SetTotals(1024*1024*1024, 10) // 1GB, 10 tables
@@ -268,10 +269,10 @@ func runProgressWebhooksTest(cmd *cobra.Command, args []string) error {
 	for i := 1; i <= steps; i++ {
 		phase := fmt.Sprintf("Processing table %d/%d", i*2, totalTables)
 		tracker.SetPhase(phase)
-		
+
 		bytesProcessed := totalBytes * int64(i) / int64(steps)
 		tablesProcessed := totalTables * i / steps
-		
+
 		tracker.UpdateBytes(bytesProcessed)
 		tracker.UpdateTables(tablesProcessed)
 

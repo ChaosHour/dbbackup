@@ -16,6 +16,18 @@ logs/
 !dbbackup.png
 bin/
 
+# Ignore local configuration (may contain IPs/credentials)
+.dbbackup.conf
+
+# Ignore session/development notes
+TODO_SESSION.md
+QUICK.md
+QUICK_WINS.md
+
+# Ignore test backups
+test-backups/
+test-backups-*/
+
 # Ignore development artifacts
 *.swp
 *.swo

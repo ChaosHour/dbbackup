@@ -81,7 +81,7 @@ func runEncryptionRotate(cmd *cobra.Command, args []string) error {
 
 	// Generate new key
 	fmt.Printf("[GENERATE] Creating new %d-bit encryption key...\n", rotateKeySize)
-	
+
 	key := make([]byte, keyBytes)
 	if _, err := rand.Read(key); err != nil {
 		return fmt.Errorf("failed to generate random key: %w", err)

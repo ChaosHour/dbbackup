@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v5.1.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v5.1.14-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -58,12 +58,17 @@ chmod +x dbbackup-linux-amd64
 ### Enterprise DBA Features
 
 - **Backup Catalog**: SQLite-based catalog tracking all backups with gap detection
+- **Catalog Dashboard**: Interactive TUI for browsing and managing backups
 - **DR Drill Testing**: Automated disaster recovery testing in Docker containers
 - **Smart Notifications**: Batched alerts with escalation policies
+- **Progress Webhooks**: Real-time backup/restore progress notifications
 - **Compliance Reports**: SOC2, GDPR, HIPAA, PCI-DSS, ISO27001 report generation
 - **RTO/RPO Calculator**: Recovery objective analysis and recommendations
 - **Replica-Aware Backup**: Automatic backup from replicas to reduce primary load
 - **Parallel Table Backup**: Concurrent table dumps for faster backups
+- **Retention Simulator**: Preview retention policy effects before applying
+- **Cross-Region Sync**: Sync backups between cloud regions for disaster recovery
+- **Encryption Key Rotation**: Secure key management with rotation support
 
 ## Installation
 

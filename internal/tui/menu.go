@@ -102,6 +102,8 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
 			"Restore Cluster Backup",
 			"Diagnose Backup File",
 			"List & Manage Backups",
+			"View Backup Schedule",
+			"View Backup Chain",
 			"--------------------------------",
 			"Tools",
 			"View Active Operations",
@@ -277,21 +279,25 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleDiagnoseBackup()
 			case 7: // List & Manage Backups
 				return m.handleBackupManager()
-			case 8: // Separator
+			case 8: // View Backup Schedule
+				return m.handleSchedule()
+			case 9: // View Backup Chain
+				return m.handleChain()
+			case 10: // Separator
 				// Do nothing
-			case 9: // Tools
+			case 11: // Tools
 				return m.handleTools()
-			case 10: // View Active Operations
+			case 12: // View Active Operations
 				return m.handleViewOperations()
-			case 11: // Show Operation History
+			case 13: // Show Operation History
 				return m.handleOperationHistory()
-			case 12: // Database Status
+			case 14: // Database Status
 				return m.handleStatus()
-			case 13: // Settings
+			case 15: // Settings
 				return m.handleSettings()
-			case 14: // Clear History
+			case 16: // Clear History
 				m.message = "[DEL] History cleared"
-			case 15: // Quit
+			case 17: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -449,7 +455,17 @@ func (m *MenuModel) handleDiagnoseBackup() (tea.Model, tea.Cmd) {
 	browser := NewArchiveBrowser(m.config, m.logger, m, m.ctx, "diagnose")
 	return browser, browser.Init()
 }
+// handleSchedule shows backup schedule
+func (m *MenuModel) handleSchedule() (tea.Model, tea.Cmd) {
+	schedule := NewScheduleView(m.config, m.logger, m)
+	return schedule, schedule.Init()
+}
 
+// handleChain shows backup chain
+func (m *MenuModel) handleChain() (tea.Model, tea.Cmd) {
+	chain := NewChainView(m.config, m.logger, m)
+	return chain, chain.Init()
+}
 // handleTools opens the tools submenu
 func (m *MenuModel) handleTools() (tea.Model, tea.Cmd) {
 	tools := NewToolsMenu(m.config, m.logger, m, m.ctx)

@@ -36,13 +36,3 @@ Edit `configmap.yaml` to configure:
 - Retention policy
 - Cloud storage
 
-## Helm Chart
-
-For more complex deployments, use the Helm chart:
-
-```bash
-helm install dbbackup ./helm/dbbackup \
-  --set database.host=postgres.default.svc \
-  --set database.password=secret \
-  --set schedule="0 2 * * *"
-```

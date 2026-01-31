@@ -15,10 +15,14 @@ deploy/
 ├── kubernetes/           # Kubernetes manifests
 │   ├── cronjob.yaml      # Scheduled backup CronJob
 │   ├── configmap.yaml    # Configuration
-│   └── helm/             # Helm chart
+│   ├── pvc.yaml          # Persistent volume claim
+│   ├── secret.yaml.example # Secrets template
+│   └── servicemonitor.yaml # Prometheus ServiceMonitor
+├── prometheus/           # Prometheus configuration
+│   ├── alerting-rules.yaml
+│   └── scrape-config.yaml
 ├── terraform/            # Infrastructure as Code
-│   ├── aws/              # AWS deployment
-│   └── gcp/              # GCP deployment
+│   └── aws/              # AWS deployment (S3 bucket)
 └── scripts/              # Helper scripts
     ├── backup-rotation.sh
     └── health-check.sh
@@ -36,8 +40,6 @@ ansible-playbook -i inventory enterprise.yml
 ### Kubernetes
 ```bash
 kubectl apply -f kubernetes/
-# or with Helm
-helm install dbbackup kubernetes/helm/dbbackup
 ```
 
 ### Terraform (AWS)

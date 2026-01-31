@@ -78,7 +78,7 @@ func GatherErrorContext(backupDir string, db *sql.DB) *ErrorContext {
 	if runtime.GOOS != "windows" {
 		var rLimit syscall.Rlimit
 		if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err == nil {
-			ctx.MaxFileDescriptors = rLimit.Cur
+			ctx.MaxFileDescriptors = uint64(rLimit.Cur) // explicit cast for FreeBSD compatibility (int64 vs uint64)
 			// Try to get current open FDs (this is platform-specific)
 			if fds, err := countOpenFileDescriptors(); err == nil {
 				ctx.OpenFileDescriptors = fds

@@ -3,6 +3,7 @@ package prometheus
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -62,6 +63,22 @@ type BackupMetrics struct {
 	FullCount      int    // Count of full backups
 	IncrCount      int    // Count of incremental backups
 	PITRBaseCount  int    // Count of PITR base backups
+}
+
+// RestoreMetrics holds metrics for restore operations
+type RestoreMetrics struct {
+	Database       string
+	Engine         string
+	LastRestore    time.Time
+	LastDuration   time.Duration
+	LastSize       int64
+	ParallelJobs   int    // Number of parallel jobs used (--jobs)
+	Profile        string // Profile used (turbo, balanced, etc.)
+	TotalRestores  int
+	SuccessCount   int
+	FailureCount   int
+	LastStatus     string // "success", "failure"
+	SourceArchive  string // Path/name of source archive
 }
 
 // PITRMetrics holds PITR-specific metrics for a database
@@ -195,6 +212,154 @@ func (m *MetricsWriter) collectMetrics() ([]BackupMetrics, error) {
 	return result, nil
 }
 
+// collectRestoreMetrics collects restore operation metrics from catalog
+func (m *MetricsWriter) collectRestoreMetrics() []RestoreMetrics {
+	if m.catalog == nil {
+		return nil
+	}
+
+	// Try to get restore history from catalog
+	ctx := context.Background()
+	entries, err := m.catalog.List(ctx, "", 0)
+	if err != nil {
+		m.log.Warn("Failed to list catalog for restore metrics", "error", err)
+		return nil
+	}
+
+	// Group by database - look for restore entries
+	byDB := make(map[string]*RestoreMetrics)
+
+	for _, e := range entries {
+		// Check if this is a restore operation (has restore metadata)
+		if e.RestoreInfo == nil {
+			continue
+		}
+
+		dbName := e.Database
+		if dbName == "" {
+			dbName = "cluster"
+		}
+
+		rm, exists := byDB[dbName]
+		if !exists {
+			rm = &RestoreMetrics{
+				Database: dbName,
+				Engine:   e.DatabaseType,
+			}
+			byDB[dbName] = rm
+		}
+
+		rm.TotalRestores++
+		if e.RestoreInfo.Success {
+			rm.SuccessCount++
+			if e.RestoreInfo.CompletedAt.After(rm.LastRestore) {
+				rm.LastRestore = e.RestoreInfo.CompletedAt
+				rm.LastDuration = e.RestoreInfo.Duration
+				rm.LastSize = e.SizeBytes
+				rm.ParallelJobs = e.RestoreInfo.ParallelJobs
+				rm.Profile = e.RestoreInfo.Profile
+				rm.LastStatus = "success"
+				rm.SourceArchive = e.Path
+			}
+		} else {
+			rm.FailureCount++
+			if e.RestoreInfo.CompletedAt.After(rm.LastRestore) {
+				rm.LastRestore = e.RestoreInfo.CompletedAt
+				rm.LastStatus = "failure"
+			}
+		}
+	}
+
+	// Also read from restore_metrics.json file (written by restore engine)
+	m.loadRestoreMetricsFromFile(byDB)
+
+	// Convert to slice
+	result := make([]RestoreMetrics, 0, len(byDB))
+	for _, rm := range byDB {
+		result = append(result, *rm)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Database < result[j].Database
+	})
+
+	return result
+}
+
+// loadRestoreMetricsFromFile reads restore metrics from JSON file
+func (m *MetricsWriter) loadRestoreMetricsFromFile(byDB map[string]*RestoreMetrics) {
+	// Try common locations for restore_metrics.json
+	homeDir, _ := os.UserHomeDir()
+	paths := []string{
+		filepath.Join(homeDir, ".dbbackup", "restore_metrics.json"),
+		"/var/lib/dbbackup/restore_metrics.json",
+	}
+
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		var metricsFile struct {
+			Records []struct {
+				Database     string        `json:"database"`
+				Engine       string        `json:"engine"`
+				CompletedAt  time.Time     `json:"completed_at"`
+				Duration     time.Duration `json:"duration_ns"`
+				DurationSecs float64       `json:"duration_seconds"`
+				SizeBytes    int64         `json:"size_bytes"`
+				ParallelJobs int           `json:"parallel_jobs"`
+				Profile      string        `json:"profile"`
+				Success      bool          `json:"success"`
+				SourceFile   string        `json:"source_file"`
+			} `json:"records"`
+		}
+
+		if err := json.Unmarshal(data, &metricsFile); err != nil {
+			m.log.Warn("Failed to parse restore_metrics.json", "error", err)
+			continue
+		}
+
+		// Process records
+		for _, rec := range metricsFile.Records {
+			dbName := rec.Database
+			if dbName == "" {
+				dbName = "unknown"
+			}
+
+			rm, exists := byDB[dbName]
+			if !exists {
+				rm = &RestoreMetrics{
+					Database: dbName,
+					Engine:   rec.Engine,
+				}
+				byDB[dbName] = rm
+			}
+
+			rm.TotalRestores++
+			if rec.Success {
+				rm.SuccessCount++
+				if rec.CompletedAt.After(rm.LastRestore) {
+					rm.LastRestore = rec.CompletedAt
+					rm.LastDuration = time.Duration(rec.DurationSecs * float64(time.Second))
+					rm.LastSize = rec.SizeBytes
+					rm.ParallelJobs = rec.ParallelJobs
+					rm.Profile = rec.Profile
+					rm.LastStatus = "success"
+					rm.SourceArchive = rec.SourceFile
+				}
+			} else {
+				rm.FailureCount++
+				if rec.CompletedAt.After(rm.LastRestore) {
+					rm.LastRestore = rec.CompletedAt
+					rm.LastStatus = "failure"
+				}
+			}
+		}
+		break // Found and processed file
+	}
+}
+
 // formatMetrics formats metrics in Prometheus exposition format
 func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 	var b strings.Builder
@@ -316,6 +481,64 @@ func (m *MetricsWriter) formatMetrics(metrics []BackupMetrics) string {
 		}
 		b.WriteString(fmt.Sprintf("dbbackup_backup_verified{server=%q,database=%q} %d\n",
 			m.instance, met.Database, verified))
+	}
+	b.WriteString("\n")
+
+	// ========== RESTORE METRICS ==========
+	restoreMetrics := m.collectRestoreMetrics()
+
+	// dbbackup_restore_total
+	b.WriteString("# HELP dbbackup_restore_total Total number of restore operations by status\n")
+	b.WriteString("# TYPE dbbackup_restore_total counter\n")
+	for _, rm := range restoreMetrics {
+		b.WriteString(fmt.Sprintf("dbbackup_restore_total{server=%q,database=%q,status=\"success\"} %d\n",
+			m.instance, rm.Database, rm.SuccessCount))
+		b.WriteString(fmt.Sprintf("dbbackup_restore_total{server=%q,database=%q,status=\"failure\"} %d\n",
+			m.instance, rm.Database, rm.FailureCount))
+	}
+	b.WriteString("\n")
+
+	// dbbackup_restore_duration_seconds
+	b.WriteString("# HELP dbbackup_restore_duration_seconds Duration of last restore operation in seconds\n")
+	b.WriteString("# TYPE dbbackup_restore_duration_seconds gauge\n")
+	for _, rm := range restoreMetrics {
+		if rm.LastDuration > 0 {
+			b.WriteString(fmt.Sprintf("dbbackup_restore_duration_seconds{server=%q,database=%q,profile=%q,parallel_jobs=\"%d\"} %.2f\n",
+				m.instance, rm.Database, rm.Profile, rm.ParallelJobs, rm.LastDuration.Seconds()))
+		}
+	}
+	b.WriteString("\n")
+
+	// dbbackup_restore_parallel_jobs
+	b.WriteString("# HELP dbbackup_restore_parallel_jobs Number of parallel jobs used in last restore\n")
+	b.WriteString("# TYPE dbbackup_restore_parallel_jobs gauge\n")
+	for _, rm := range restoreMetrics {
+		if rm.ParallelJobs > 0 {
+			b.WriteString(fmt.Sprintf("dbbackup_restore_parallel_jobs{server=%q,database=%q,profile=%q} %d\n",
+				m.instance, rm.Database, rm.Profile, rm.ParallelJobs))
+		}
+	}
+	b.WriteString("\n")
+
+	// dbbackup_restore_size_bytes
+	b.WriteString("# HELP dbbackup_restore_size_bytes Size of last restored archive in bytes\n")
+	b.WriteString("# TYPE dbbackup_restore_size_bytes gauge\n")
+	for _, rm := range restoreMetrics {
+		if rm.LastSize > 0 {
+			b.WriteString(fmt.Sprintf("dbbackup_restore_size_bytes{server=%q,database=%q} %d\n",
+				m.instance, rm.Database, rm.LastSize))
+		}
+	}
+	b.WriteString("\n")
+
+	// dbbackup_restore_last_timestamp
+	b.WriteString("# HELP dbbackup_restore_last_timestamp Unix timestamp of last restore operation\n")
+	b.WriteString("# TYPE dbbackup_restore_last_timestamp gauge\n")
+	for _, rm := range restoreMetrics {
+		if !rm.LastRestore.IsZero() {
+			b.WriteString(fmt.Sprintf("dbbackup_restore_last_timestamp{server=%q,database=%q,status=%q} %d\n",
+				m.instance, rm.Database, rm.LastStatus, rm.LastRestore.Unix()))
+		}
 	}
 	b.WriteString("\n")
 

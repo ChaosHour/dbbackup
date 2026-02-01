@@ -5,6 +5,28 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.22] - 2026-02-01
+
+### Added
+- **Restore Metrics for Prometheus/Grafana** - Now you can monitor restore performance!
+  - `dbbackup_restore_total{status="success|failure"}` - Total restore count
+  - `dbbackup_restore_duration_seconds{profile, parallel_jobs}` - Restore duration
+  - `dbbackup_restore_parallel_jobs{profile}` - Jobs used (shows if turbo=8 is working!)
+  - `dbbackup_restore_size_bytes` - Restored archive size
+  - `dbbackup_restore_last_timestamp` - Last restore time
+  
+- **Grafana Dashboard: Restore Operations Section**
+  - Total Successful/Failed Restores
+  - Parallel Jobs Used (RED if 1=SLOW, GREEN if 8=TURBO)
+  - Last Restore Duration with thresholds
+  - Restore Duration Over Time graph
+  - Parallel Jobs per Restore bar chart
+
+- **Restore Engine Metrics Recording**
+  - All single database and cluster restores now record metrics
+  - Stored in `~/.dbbackup/restore_metrics.json`
+  - Prometheus exporter reads and exposes these metrics
+
 ## [5.1.21] - 2026-02-01
 
 ### Fixed

@@ -31,6 +31,19 @@ type Entry struct {
 	RetentionPolicy string            `json:"retention_policy,omitempty"` // daily, weekly, monthly, yearly
 	Tags            map[string]string `json:"tags,omitempty"`
 	Metadata        map[string]string `json:"metadata,omitempty"`
+	RestoreInfo     *RestoreInfo      `json:"restore_info,omitempty"` // Info about restore operations
+	Path            string            `json:"path,omitempty"`         // Alias for BackupPath
+}
+
+// RestoreInfo contains information about a restore operation
+type RestoreInfo struct {
+	Success      bool          `json:"success"`
+	CompletedAt  time.Time     `json:"completed_at"`
+	Duration     time.Duration `json:"duration"`
+	ParallelJobs int           `json:"parallel_jobs"`
+	Profile      string        `json:"profile"`
+	TargetDB     string        `json:"target_db,omitempty"`
+	ErrorMessage string        `json:"error_message,omitempty"`
 }
 
 // BackupStatus represents the state of a backup

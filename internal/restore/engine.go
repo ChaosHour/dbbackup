@@ -188,6 +188,7 @@ func (la *loggerAdapter) Debug(msg string, args ...any) {
 // RestoreSingle restores a single database from an archive
 func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string, cleanFirst, createIfMissing bool) error {
 	operation := e.log.StartOperation("Single Database Restore")
+	startTime := time.Now()
 
 	// Validate and sanitize archive path
 	validArchivePath, pathErr := security.ValidateArchivePath(archivePath)
@@ -196,6 +197,12 @@ func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string
 		return fmt.Errorf("invalid archive path: %w", pathErr)
 	}
 	archivePath = validArchivePath
+
+	// Get archive size for metrics
+	var archiveSize int64
+	if fi, err := os.Stat(archivePath); err == nil {
+		archiveSize = fi.Size()
+	}
 
 	// Validate archive exists
 	if _, err := os.Stat(archivePath); os.IsNotExist(err) {
@@ -267,6 +274,33 @@ func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string
 	default:
 		operation.Fail("Unsupported archive format")
 		return fmt.Errorf("unsupported archive format: %s", format)
+	}
+
+	// Record restore metrics for Prometheus
+	duration := time.Since(startTime)
+	dbType := "postgresql"
+	if format == FormatMySQLSQL || format == FormatMySQLSQLGz {
+		dbType = "mysql"
+	}
+	record := RestoreRecord{
+		Database:     targetDB,
+		Engine:       dbType,
+		StartedAt:    startTime,
+		CompletedAt:  time.Now(),
+		Duration:     duration,
+		SizeBytes:    archiveSize,
+		ParallelJobs: e.cfg.Jobs,
+		Profile:      e.cfg.ResourceProfile,
+		Success:      err == nil,
+		SourceFile:   filepath.Base(archivePath),
+		TargetDB:     targetDB,
+		IsCluster:    false,
+	}
+	if err != nil {
+		record.ErrorMessage = err.Error()
+	}
+	if recordErr := RecordRestore(record); recordErr != nil {
+		e.log.Warn("Failed to record restore metrics", "error", recordErr)
 	}
 
 	if err != nil {
@@ -1056,6 +1090,7 @@ func (e *Engine) RestoreSingleFromCluster(ctx context.Context, clusterArchivePat
 // This avoids double extraction when ValidateAndExtractCluster was already called
 func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtractedPath ...string) error {
 	operation := e.log.StartOperation("Cluster Restore")
+	clusterStartTime := time.Now()
 
 	// 🚀 LOG ACTUAL PERFORMANCE SETTINGS - helps debug slow restores
 	profile := e.cfg.GetCurrentProfile()
@@ -1829,12 +1864,58 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 		e.progress.Fail(fmt.Sprintf("Cluster restore: %d succeeded, %d failed out of %d total", successCountFinal, failCountFinal, totalDBs))
 		operation.Complete(fmt.Sprintf("Partial restore: %d/%d databases succeeded", successCountFinal, totalDBs))
 
+		// Record cluster restore metrics (partial failure)
+		e.recordClusterRestoreMetrics(clusterStartTime, archivePath, totalDBs, successCountFinal, false, restoreErrors.Error())
+
 		return fmt.Errorf("cluster restore completed with %d failures:\n%s", failCountFinal, restoreErrors.Error())
 	}
 
 	e.progress.Complete(fmt.Sprintf("Cluster restored successfully: %d databases", successCountFinal))
 	operation.Complete(fmt.Sprintf("Restored %d databases from cluster archive", successCountFinal))
+
+	// Record cluster restore metrics (success)
+	e.recordClusterRestoreMetrics(clusterStartTime, archivePath, totalDBs, successCountFinal, true, "")
+
 	return nil
+}
+
+// recordClusterRestoreMetrics records metrics for cluster restore operations
+func (e *Engine) recordClusterRestoreMetrics(startTime time.Time, archivePath string, totalDBs, successCount int, success bool, errorMsg string) {
+	duration := time.Since(startTime)
+
+	// Get archive size
+	var archiveSize int64
+	if fi, err := os.Stat(archivePath); err == nil {
+		archiveSize = fi.Size()
+	}
+
+	record := RestoreRecord{
+		Database:     "cluster",
+		Engine:       "postgresql",
+		StartedAt:    startTime,
+		CompletedAt:  time.Now(),
+		Duration:     duration,
+		SizeBytes:    archiveSize,
+		ParallelJobs: e.cfg.Jobs,
+		Profile:      e.cfg.ResourceProfile,
+		Success:      success,
+		SourceFile:   filepath.Base(archivePath),
+		IsCluster:    true,
+		ErrorMessage: errorMsg,
+	}
+
+	if recordErr := RecordRestore(record); recordErr != nil {
+		e.log.Warn("Failed to record cluster restore metrics", "error", recordErr)
+	}
+
+	// Log performance summary
+	e.log.Info("📊 RESTORE PERFORMANCE SUMMARY",
+		"total_duration", duration.Round(time.Second),
+		"databases", totalDBs,
+		"successful", successCount,
+		"parallel_jobs", e.cfg.Jobs,
+		"profile", e.cfg.ResourceProfile,
+		"avg_per_db", (duration / time.Duration(totalDBs)).Round(time.Second))
 }
 
 // extractArchive extracts a tar.gz archive with progress reporting

@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.18] - 2026-02-01
+
+### Fixed
+- **CRITICAL: Profile Jobs setting now ALWAYS respected** - Removed multiple code paths that were overriding user's profile Jobs setting:
+  - `restoreSection()` for phased restores now uses `--jobs` flag (was missing entirely!)
+  - Removed auto-fallback that forced `Jobs=1` when PostgreSQL locks couldn't be boosted
+  - Removed auto-fallback that forced `Jobs=1` on low memory detection
+  - User's profile choice (turbo, performance, etc.) is now respected - only warnings are logged
+  - This was causing restores to take 9+ hours instead of ~4 hours with turbo profile
+
 ## [5.1.17] - 2026-02-01
 
 ### Fixed

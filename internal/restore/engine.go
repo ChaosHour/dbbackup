@@ -432,6 +432,14 @@ func (e *Engine) restoreSection(ctx context.Context, archivePath, targetDB, sect
 	}
 	args = append(args, "-U", e.cfg.User)
 
+	// CRITICAL: Use configured Jobs for parallel restore (fixes slow phased restores)
+	parallelJobs := e.cfg.Jobs
+	if parallelJobs <= 0 {
+		parallelJobs = 1
+	}
+	args = append(args, fmt.Sprintf("--jobs=%d", parallelJobs))
+	e.log.Info("Phased restore section", "section", section, "parallel_jobs", parallelJobs)
+
 	// Section-specific restore
 	args = append(args, "--section="+section)
 
@@ -1328,11 +1336,15 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			e.log.Warn("Proceeding but OOM failure is likely - consider adding swap")
 		}
 		if memCheck.LowMemory {
-			e.log.Warn("⚠️ LOW MEMORY DETECTED - Enabling low-memory mode",
+			e.log.Warn("⚠️ LOW MEMORY DETECTED - Consider reducing parallelism",
 				"available_gb", fmt.Sprintf("%.1f", memCheck.AvailableRAMGB),
-				"backup_gb", fmt.Sprintf("%.1f", memCheck.BackupSizeGB))
-			e.cfg.Jobs = 1
-			e.cfg.ClusterParallelism = 1
+				"backup_gb", fmt.Sprintf("%.1f", memCheck.BackupSizeGB),
+				"current_jobs", e.cfg.Jobs,
+				"current_parallelism", e.cfg.ClusterParallelism)
+			// DO NOT override user settings - just warn
+			// User explicitly chose their profile, respect that choice
+			e.log.Warn("User settings preserved: jobs=%d, cluster-parallelism=%d", e.cfg.Jobs, e.cfg.ClusterParallelism)
+			e.log.Warn("If restore fails with OOM, reduce --jobs or use --profile conservative")
 		}
 		if memCheck.NeedsMoreSwap {
 			e.log.Warn("⚠️ SWAP RECOMMENDATION", "action", memCheck.Recommendation)
@@ -1402,45 +1414,39 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			"boost_successful", originalSettings.MaxLocks >= lockBoostValue)
 	}
 
-	// CRITICAL: Verify locks were actually increased
-	// Even in conservative mode (--jobs=1), a single massive database can exhaust locks
-	// SOLUTION: If boost failed, AUTOMATICALLY switch to ultra-conservative mode (jobs=1, parallel-dbs=1)
+	// INFORMATIONAL: Check if locks are sufficient, but DO NOT override user's Jobs setting
+	// The user explicitly chose their profile/jobs - respect that choice
 	if originalSettings.MaxLocks < lockBoostValue {
-		e.log.Warn("PostgreSQL locks insufficient - AUTO-ENABLING single-threaded mode",
+		e.log.Warn("⚠️ PostgreSQL locks may be insufficient for optimal restore",
 			"current_locks", originalSettings.MaxLocks,
-			"optimal_locks", lockBoostValue,
-			"auto_action", "forcing sequential restore (jobs=1, cluster-parallelism=1)")
+			"recommended_locks", lockBoostValue,
+			"user_jobs", e.cfg.Jobs,
+			"user_parallelism", e.cfg.ClusterParallelism)
 
 		if e.cfg.DebugLocks {
-			e.log.Info("🔍 [LOCK-DEBUG] Lock verification FAILED - enabling AUTO-FALLBACK",
+			e.log.Info("🔍 [LOCK-DEBUG] Lock verification WARNING (user settings preserved)",
 				"actual_locks", originalSettings.MaxLocks,
-				"required_locks", lockBoostValue,
+				"recommended_locks", lockBoostValue,
 				"delta", lockBoostValue-originalSettings.MaxLocks,
-				"verdict", "FORCE SINGLE-THREADED MODE")
+				"verdict", "PROCEEDING WITH USER SETTINGS")
 		}
 
-		// AUTOMATICALLY force single-threaded mode to work with available locks
+		// WARN but DO NOT override user's settings
 		e.log.Warn("=" + strings.Repeat("=", 70))
-		e.log.Warn("AUTO-RECOVERY ENABLED:")
-		e.log.Warn("Insufficient locks detected (have: %d, optimal: %d)", originalSettings.MaxLocks, lockBoostValue)
-		e.log.Warn("Automatically switching to SEQUENTIAL mode (all parallelism disabled)")
-		e.log.Warn("This will be SLOWER but GUARANTEED to complete successfully")
+		e.log.Warn("LOCK WARNING (user settings preserved):")
+		e.log.Warn("Current locks: %d, Recommended: %d", originalSettings.MaxLocks, lockBoostValue)
+		e.log.Warn("Using user-configured: jobs=%d, cluster-parallelism=%d", e.cfg.Jobs, e.cfg.ClusterParallelism)
+		e.log.Warn("If restore fails with lock errors, reduce --jobs or use --profile conservative")
 		e.log.Warn("=" + strings.Repeat("=", 70))
 
-		// Force conservative settings to match available locks
-		e.cfg.Jobs = 1
-		e.cfg.ClusterParallelism = 1 // CRITICAL: This controls parallel database restores in cluster mode
-		strategy.UseConservative = true
+		// DO NOT force Jobs=1 anymore - respect user's choice!
+		// The previous code here was overriding e.cfg.Jobs = 1 which broke turbo/performance profiles
 
-		// Recalculate lockBoostValue based on what's actually available
-		// With jobs=1 and cluster-parallelism=1, we need MUCH fewer locks
-		lockBoostValue = originalSettings.MaxLocks // Use what we have
-
-		e.log.Info("Single-threaded mode activated",
+		e.log.Info("Proceeding with user settings",
 			"jobs", e.cfg.Jobs,
 			"cluster_parallelism", e.cfg.ClusterParallelism,
 			"available_locks", originalSettings.MaxLocks,
-			"note", "All parallelism disabled - restore will proceed sequentially")
+			"note", "User profile settings respected")
 	}
 
 	e.log.Info("PostgreSQL tuning verified - locks sufficient for restore",

@@ -283,8 +283,13 @@ func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string
 // restorePostgreSQLDump restores from PostgreSQL custom dump format
 func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetDB string, compressed bool, cleanFirst bool) error {
 	// Build restore command
+	// Use configured Jobs count for parallel pg_restore (matches pg_restore -j behavior)
+	parallelJobs := e.cfg.Jobs
+	if parallelJobs <= 0 {
+		parallelJobs = 1 // Default fallback
+	}
 	opts := database.RestoreOptions{
-		Parallel:          1,
+		Parallel:          parallelJobs,
 		Clean:             cleanFirst,
 		NoOwner:           true,
 		NoPrivileges:      true,
@@ -335,8 +340,13 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 	}
 
 	// Standard restore for dumps without large objects
+	// Use configured Jobs count for parallel pg_restore (matches pg_restore -j behavior)
+	parallelJobs := e.cfg.Jobs
+	if parallelJobs <= 0 {
+		parallelJobs = 1 // Default fallback
+	}
 	opts := database.RestoreOptions{
-		Parallel:          1,
+		Parallel:          parallelJobs,
 		Clean:             false,              // We already dropped the database
 		NoOwner:           !preserveOwnership, // Preserve ownership if we're superuser
 		NoPrivileges:      !preserveOwnership, // Preserve privileges if we're superuser
@@ -346,6 +356,7 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 
 	e.log.Info("Restoring database",
 		"database", targetDB,
+		"parallel_jobs", parallelJobs,
 		"preserveOwnership", preserveOwnership,
 		"noOwner", opts.NoOwner,
 		"noPrivileges", opts.NoPrivileges)

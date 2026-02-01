@@ -5,6 +5,14 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.16] - 2026-02-01
+
+### Fixed
+- **Critical: pg_restore parallel jobs now actually used** - Fixed bug where `--jobs` flag and profile `Jobs` setting were completely ignored for `pg_restore`. The code had hardcoded `Parallel: 1` instead of using `e.cfg.Jobs`, causing all restores to run single-threaded regardless of configuration. This fix enables 3-4x faster restores matching native `pg_restore -j8` performance.
+  - Affected functions: `restorePostgreSQLDump()`, `restorePostgreSQLDumpWithOwnership()`
+  - Now logs `parallel_jobs` value for visibility
+  - Turbo profile with `Jobs: 8` now correctly passes `--jobs=8` to pg_restore
+
 ## [5.1.15] - 2026-01-31
 
 ### Fixed

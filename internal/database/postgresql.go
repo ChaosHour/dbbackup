@@ -391,7 +391,8 @@ func (p *PostgreSQL) BuildRestoreCommand(database, inputFile string, options Res
 	cmd = append(cmd, "-U", p.cfg.User)
 
 	// Parallel jobs (incompatible with --single-transaction per PostgreSQL docs)
-	if options.Parallel > 1 && !options.SingleTransaction {
+	// ALWAYS set --jobs if > 0, even if 1 (for explicit control)
+	if options.Parallel > 0 && !options.SingleTransaction {
 		cmd = append(cmd, "--jobs="+strconv.Itoa(options.Parallel))
 	}
 

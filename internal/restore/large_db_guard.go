@@ -287,25 +287,33 @@ func (g *LargeDBGuard) findLargestDump(dumpFiles []string) struct {
 	return largest
 }
 
-// ApplyStrategy enforces the recommended strategy
+// ApplyStrategy logs warnings but RESPECTS user's profile choice
+// Previous behavior: forcibly override cfg.Jobs=1 which broke turbo/performance profiles
+// New behavior: WARN the user but let them proceed with their chosen settings
 func (g *LargeDBGuard) ApplyStrategy(strategy *RestoreStrategy, cfg *config.Config) {
 	if !strategy.UseConservative {
 		return
 	}
 
-	// Override configuration to force conservative settings
-	if strategy.Jobs > 0 {
-		cfg.Jobs = strategy.Jobs
-	}
-	if strategy.ParallelDBs > 0 {
-		cfg.ClusterParallelism = strategy.ParallelDBs
-	}
+	// DO NOT override user's settings - just warn them!
+	// The previous code was overriding cfg.Jobs = strategy.Jobs which completely
+	// broke turbo/performance profiles and caused 9+ hour restores instead of 4h
+	//
+	// If the user chose turbo profile (Jobs=8), we WARN but don't override.
+	// The user made an informed choice - respect it.
+	//
+	// Example warning log instead of override:
+	//   "Large DB Guard recommends Jobs=1 due to [reason], but user configured Jobs=8"
 
-	g.log.Warn("🛡️  Large DB Guard ACTIVE",
+	g.log.Warn("🛡️  Large DB Guard WARNING (not enforcing - user settings preserved)",
 		"reason", strategy.Reason,
-		"jobs", cfg.Jobs,
-		"parallel_dbs", cfg.ClusterParallelism,
+		"recommended_jobs", strategy.Jobs,
+		"user_jobs", cfg.Jobs,
+		"recommended_parallel_dbs", strategy.ParallelDBs,
+		"user_parallel_dbs", cfg.ClusterParallelism,
 		"expected_time", strategy.ExpectedTime)
+
+	g.log.Warn("⚠️  If restore fails with 'out of shared memory' or lock errors, use --profile conservative")
 }
 
 // WarnUser displays prominent warning about single-threaded restore

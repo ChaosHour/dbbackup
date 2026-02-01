@@ -783,7 +783,36 @@ func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	m.message = successStyle.Render("[OK] Settings validated and saved")
+	// Persist config to disk unless disabled
+	if !m.config.NoSaveConfig {
+		localCfg := &config.LocalConfig{
+			DBType:          m.config.DatabaseType,
+			Host:            m.config.Host,
+			Port:            m.config.Port,
+			User:            m.config.User,
+			Database:        m.config.Database,
+			SSLMode:         m.config.SSLMode,
+			BackupDir:       m.config.BackupDir,
+			WorkDir:         m.config.WorkDir,
+			Compression:     m.config.CompressionLevel,
+			Jobs:            m.config.Jobs,
+			DumpJobs:        m.config.DumpJobs,
+			CPUWorkload:     m.config.CPUWorkloadType,
+			MaxCores:        m.config.MaxCores,
+			ClusterTimeout:  m.config.ClusterTimeoutMinutes,
+			ResourceProfile: m.config.ResourceProfile,
+			LargeDBMode:     m.config.LargeDBMode,
+			RetentionDays:   m.config.RetentionDays,
+			MinBackups:      m.config.MinBackups,
+			MaxRetries:      m.config.MaxRetries,
+		}
+		if err := config.SaveLocalConfig(localCfg); err != nil {
+			m.message = errorStyle.Render(fmt.Sprintf("[FAIL] Failed to save config: %s", err.Error()))
+			return m, nil
+		}
+	}
+
+	m.message = successStyle.Render("[OK] Settings validated and saved to .dbbackup.conf")
 	return m, nil
 }
 

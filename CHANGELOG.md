@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.17] - 2026-02-01
+
+### Fixed
+- **TUI Settings now persist to disk** - Settings changes in TUI are now saved to `.dbbackup.conf` file, not just in-memory
+- **Native Engine is now the default** - Pure Go engine (no external tools required) is now the default instead of external tools mode
+
 ## [5.1.16] - 2026-02-01
 
 ### Fixed

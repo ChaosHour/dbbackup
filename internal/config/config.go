@@ -52,7 +52,7 @@ type Config struct {
 	MemoryInfo  *cpu.MemoryInfo // System memory information
 
 	// Native engine options
-	UseNativeEngine   bool // Use pure Go native engines instead of external tools
+	UseNativeEngine   bool // Use pure Go native engines instead of external tools (default: true)
 	FallbackToTools   bool // Fallback to external tools if native engine fails
 	NativeEngineDebug bool // Enable detailed native engine debugging
 
@@ -291,6 +291,10 @@ func New() *Config {
 		CloudSecretKey:  getEnvString("CLOUD_SECRET_KEY", getEnvString("AWS_SECRET_ACCESS_KEY", "")),
 		CloudPrefix:     getEnvString("CLOUD_PREFIX", ""),
 		CloudAutoUpload: getEnvBool("CLOUD_AUTO_UPLOAD", false),
+
+		// Native engine defaults (pure Go, no external tools required)
+		UseNativeEngine: getEnvBool("USE_NATIVE_ENGINE", true),
+		FallbackToTools: getEnvBool("FALLBACK_TO_TOOLS", true),
 	}
 
 	// Ensure canonical defaults are enforced

@@ -56,8 +56,29 @@ func GetRestoreProfile(profileName string) (*RestoreProfile, error) {
 			MemoryConservative: true,
 		}, nil
 
+	case "turbo":
+		// TURBO MODE: Maximum parallelism for fastest restore
+		// Matches native pg_restore -j8 performance
+		return &RestoreProfile{
+			Name:               "turbo",
+			ParallelDBs:        2,  // 2 DBs in parallel (I/O balanced)
+			Jobs:               8,  // pg_restore --jobs=8
+			DisableProgress:    false,
+			MemoryConservative: false,
+		}, nil
+
+	case "max-performance":
+		// Maximum performance for high-end servers
+		return &RestoreProfile{
+			Name:               "max-performance",
+			ParallelDBs:        4,
+			Jobs:               8,
+			DisableProgress:    false,
+			MemoryConservative: false,
+		}, nil
+
 	default:
-		return nil, fmt.Errorf("unknown profile: %s (valid: conservative, balanced, aggressive)", profileName)
+		return nil, fmt.Errorf("unknown profile: %s (valid: conservative, balanced, aggressive, turbo, max-performance)", profileName)
 	}
 }
 

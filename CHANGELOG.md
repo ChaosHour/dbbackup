@@ -5,6 +5,18 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.20] - 2026-02-01
+
+### Fixed
+- **CRITICAL: "turbo" and "max-performance" profiles were NOT recognized in restore command!**
+  - `profile.go` only had: conservative, balanced, aggressive, potato
+  - "turbo" profile returned ERROR "unknown profile" and SILENTLY fell back to "balanced"
+  - "balanced" profile has `Jobs: 0` which became `Jobs: 1` after default fallback
+  - **Result: --profile turbo was IGNORED and restore ran with --jobs=1 (single-threaded)**
+  - Added turbo profile: Jobs=8, ParallelDBs=2
+  - Added max-performance profile: Jobs=8, ParallelDBs=4
+  - NOW `--profile turbo` correctly uses `pg_restore --jobs=8`
+
 ## [5.1.19] - 2026-02-01
 
 ### Fixed

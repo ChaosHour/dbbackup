@@ -32,7 +32,7 @@ var (
 	restoreCreate        bool
 	restoreJobs          int
 	restoreParallelDBs   int    // Number of parallel database restores
-	restoreProfile       string // Resource profile: conservative, balanced, aggressive
+	restoreProfile       string // Resource profile: conservative, balanced, aggressive, turbo, max-performance
 	restoreTarget        string
 	restoreVerbose       bool
 	restoreNoProgress    bool
@@ -186,6 +186,9 @@ Examples:
 	# Maximum performance (dedicated server)
 	dbbackup restore cluster cluster_backup.tar.gz --profile=aggressive --confirm
 
+	# TURBO: 8 parallel jobs for fastest restore (like pg_restore -j8)
+	dbbackup restore cluster cluster_backup.tar.gz --profile=turbo --confirm
+
 	# Use parallel decompression
 	dbbackup restore cluster cluster_backup.tar.gz --jobs 4 --confirm
 
@@ -319,7 +322,7 @@ func init() {
 	restoreSingleCmd.Flags().BoolVar(&restoreClean, "clean", false, "Drop and recreate target database")
 	restoreSingleCmd.Flags().BoolVar(&restoreCreate, "create", false, "Create target database if it doesn't exist")
 	restoreSingleCmd.Flags().StringVar(&restoreTarget, "target", "", "Target database name (defaults to original)")
-	restoreSingleCmd.Flags().StringVar(&restoreProfile, "profile", "balanced", "Resource profile: conservative (--parallel=1, low memory), balanced, aggressive (max performance)")
+	restoreSingleCmd.Flags().StringVar(&restoreProfile, "profile", "balanced", "Resource profile: conservative, balanced, turbo (--jobs=8), max-performance")
 	restoreSingleCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
@@ -337,7 +340,7 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreDryRun, "dry-run", false, "Show what would be done without executing")
 	restoreClusterCmd.Flags().BoolVar(&restoreForce, "force", false, "Skip safety checks and confirmations")
 	restoreClusterCmd.Flags().BoolVar(&restoreCleanCluster, "clean-cluster", false, "Drop all existing user databases before restore (disaster recovery)")
-	restoreClusterCmd.Flags().StringVar(&restoreProfile, "profile", "conservative", "Resource profile: conservative (single-threaded, prevents lock issues), balanced (auto-detect), aggressive (max speed)")
+	restoreClusterCmd.Flags().StringVar(&restoreProfile, "profile", "conservative", "Resource profile: conservative, balanced, turbo (--jobs=8), max-performance")
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto, overrides profile)")
 	restoreClusterCmd.Flags().IntVar(&restoreParallelDBs, "parallel-dbs", 0, "Number of databases to restore in parallel (0 = use profile, 1 = sequential, -1 = auto-detect, overrides profile)")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")

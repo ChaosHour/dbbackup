@@ -5,6 +5,15 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.21] - 2026-02-01
+
+### Fixed
+- **Complete verification of profile system** - Full code path analysis confirms TURBO works:
+  - CLI: `--profile turbo` → `config.ApplyProfile()` → `cfg.Jobs=8` → `pg_restore --jobs=8`
+  - TUI: Settings → `ApplyResourceProfile()` → `cpu.GetProfileByName("turbo")` → `cfg.Jobs=8`
+  - Updated help text for `restore cluster` command to show turbo example
+  - Updated flag description to list all profiles: conservative, balanced, turbo, max-performance
+
 ## [5.1.20] - 2026-02-01
 
 ### Fixed

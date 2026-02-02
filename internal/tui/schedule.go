@@ -223,10 +223,7 @@ func (s *ScheduleView) View() string {
 
 	// Display timers
 	for _, timer := range s.timers {
-		name := timer.Name
-		if strings.HasSuffix(name, ".timer") {
-			name = strings.TrimSuffix(name, ".timer")
-		}
+		name := strings.TrimSuffix(timer.Name, ".timer")
 
 		b.WriteString(successStyle.Render(fmt.Sprintf("[TIMER] %s", name)))
 		b.WriteString("\n")

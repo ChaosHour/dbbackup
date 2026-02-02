@@ -189,28 +189,3 @@ func (pi *ProgressInfo) FormatSummary() string {
 
 	return fmt.Sprintf("%s elapsed", formatDuration(pi.ElapsedTime))
 }
-
-// Helper function to format bytes
-func formatProgressBytes(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
-
-// Helper function to format duration
-func formatProgressDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%.0fs", d.Seconds())
-	}
-	if d < time.Hour {
-		return fmt.Sprintf("%.1fm", d.Minutes())
-	}
-	return fmt.Sprintf("%.1fh", d.Hours())
-}

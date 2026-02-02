@@ -44,13 +44,6 @@ Examples:
   dbbackup retention-simulator --days 30 --format json`,
 }
 
-var retentionSimulatorRunCmd = &cobra.Command{
-	Use:   "simulate",
-	Short: "Run retention simulation",
-	Long:  `Run retention policy simulation and show results.`,
-	RunE:  runRetentionSimulator,
-}
-
 var retentionSimulatorCompareCmd = &cobra.Command{
 	Use:   "compare",
 	Short: "Compare multiple retention strategies",

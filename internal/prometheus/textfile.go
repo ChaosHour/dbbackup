@@ -67,18 +67,18 @@ type BackupMetrics struct {
 
 // RestoreMetrics holds metrics for restore operations
 type RestoreMetrics struct {
-	Database       string
-	Engine         string
-	LastRestore    time.Time
-	LastDuration   time.Duration
-	LastSize       int64
-	ParallelJobs   int    // Number of parallel jobs used (--jobs)
-	Profile        string // Profile used (turbo, balanced, etc.)
-	TotalRestores  int
-	SuccessCount   int
-	FailureCount   int
-	LastStatus     string // "success", "failure"
-	SourceArchive  string // Path/name of source archive
+	Database      string
+	Engine        string
+	LastRestore   time.Time
+	LastDuration  time.Duration
+	LastSize      int64
+	ParallelJobs  int    // Number of parallel jobs used (--jobs)
+	Profile       string // Profile used (turbo, balanced, etc.)
+	TotalRestores int
+	SuccessCount  int
+	FailureCount  int
+	LastStatus    string // "success", "failure"
+	SourceArchive string // Path/name of source archive
 }
 
 // PITRMetrics holds PITR-specific metrics for a database

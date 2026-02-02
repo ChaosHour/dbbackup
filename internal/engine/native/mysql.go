@@ -927,8 +927,10 @@ func (e *MySQLNativeEngine) backupRoutines(ctx context.Context, w io.Writer, dat
 			continue // Skip routines we can't read
 		}
 
-		// Write routine header
-		header := fmt.Sprintf("\n--\n-- %s `%s`\n--\n\n", strings.Title(strings.ToLower(routineType)), routineName)
+		// Write routine header (capitalize first letter manually to avoid deprecated strings.Title)
+		routineTypeLower := strings.ToLower(routineType)
+		routineTypeTitle := strings.ToUpper(routineTypeLower[:1]) + routineTypeLower[1:]
+		header := fmt.Sprintf("\n--\n-- %s `%s`\n--\n\n", routineTypeTitle, routineName)
 		if _, err := w.Write([]byte(header)); err != nil {
 			return err
 		}

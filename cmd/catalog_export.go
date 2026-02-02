@@ -437,14 +437,6 @@ func formatBool(b *bool) string {
 	return "false"
 }
 
-// formatExportDuration formats *time.Duration to string
-func formatExportDuration(d *time.Duration) string {
-	if d == nil {
-		return ""
-	}
-	return d.String()
-}
-
 // formatTimeSpan formats a duration in human-readable form
 func formatTimeSpan(d time.Duration) string {
 	days := int(d.Hours() / 24)

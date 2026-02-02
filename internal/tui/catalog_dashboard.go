@@ -17,7 +17,7 @@ import (
 
 // CatalogDashboardView displays an interactive catalog browser
 type CatalogDashboardView struct {
-	catalog     catalog.Catalog
+	_           catalog.Catalog // Stored for future use
 	entries     []*catalog.Entry
 	databases   []string
 	cursor      int

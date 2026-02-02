@@ -245,10 +245,7 @@ func outputTimerTable(timers []TimerInfo) {
 	fmt.Println("=====================================================")
 
 	for _, timer := range timers {
-		name := timer.Unit
-		if strings.HasSuffix(name, ".timer") {
-			name = strings.TrimSuffix(name, ".timer")
-		}
+		name := strings.TrimSuffix(timer.Unit, ".timer")
 
 		fmt.Printf("\n[TIMER] %s\n", name)
 		fmt.Printf("  Status:     %s\n", timer.Active)

@@ -100,9 +100,8 @@ func runGenerateMan(cmd *cobra.Command, args []string) error {
 			}
 		}()
 
-		filename := filepath.Join(outputDir, c.CommandPath()+".1")
 		// Replace spaces with hyphens for filename
-		filename = filepath.Join(outputDir, filepath.Base(c.CommandPath())+".1")
+		filename := filepath.Join(outputDir, filepath.Base(c.CommandPath())+".1")
 
 		f, err := os.Create(filename)
 		if err != nil {

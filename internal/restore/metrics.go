@@ -155,7 +155,7 @@ func FormatPrometheusMetrics() string {
 	}
 
 	var b strings.Builder
-	
+
 	// Aggregate totals
 	successByDB := make(map[string]int)
 	failureByDB := make(map[string]int)

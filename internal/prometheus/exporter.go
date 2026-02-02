@@ -3,12 +3,16 @@ package prometheus
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"dbbackup/internal/catalog"
+	"dbbackup/internal/dedup"
 	"dbbackup/internal/logger"
 )
 
@@ -20,6 +24,11 @@ type Exporter struct {
 	port      int
 	version   string
 	gitCommit string
+
+	// Optional paths for PITR and dedup metrics
+	pitrConfigPaths []string // Paths to check for pitr_config.json
+	dedupBasePath   string   // Base path for dedup store
+	dedupIndexPath  string   // Path to dedup index DB (for NFS/CIFS)
 
 	mu          sync.RWMutex
 	cachedData  string
@@ -40,14 +49,41 @@ func NewExporter(log logger.Logger, cat catalog.Catalog, instance string, port i
 
 // NewExporterWithVersion creates a new Prometheus exporter with version info
 func NewExporterWithVersion(log logger.Logger, cat catalog.Catalog, instance string, port int, version, gitCommit string) *Exporter {
+	// Auto-detect PITR and dedup paths based on hostname
+	hostname, _ := os.Hostname()
+	shortHostname := hostname
+	if idx := len(hostname); idx > 0 {
+		// Extract short hostname (e.g., mysql01 from mysql01.uuxo.net)
+		for i, c := range hostname {
+			if c == '.' {
+				shortHostname = hostname[:i]
+				break
+			}
+		}
+	}
+
+	// Common PITR config locations
+	pitrPaths := []string{
+		fmt.Sprintf("/mnt/smb-%s/backups/binlog_archive/pitr_config.json", shortHostname),
+		fmt.Sprintf("/mnt/smb-%s/backups/wal_archive/pitr_config.json", shortHostname),
+		"/var/lib/dbbackup/pitr_config.json",
+	}
+
+	// Common dedup locations
+	dedupBase := fmt.Sprintf("/mnt/smb-%s/backups/dedup", shortHostname)
+	dedupIndex := "/var/lib/dbbackup/dedup-index.db"
+
 	return &Exporter{
-		log:        log,
-		catalog:    cat,
-		instance:   instance,
-		port:       port,
-		version:    version,
-		gitCommit:  gitCommit,
-		refreshTTL: 30 * time.Second,
+		log:             log,
+		catalog:         cat,
+		instance:        instance,
+		port:            port,
+		version:         version,
+		gitCommit:       gitCommit,
+		refreshTTL:      30 * time.Second,
+		pitrConfigPaths: pitrPaths,
+		dedupBasePath:   dedupBase,
+		dedupIndexPath:  dedupIndex,
 	}
 }
 
@@ -179,6 +215,19 @@ func (e *Exporter) refresh() error {
 		return err
 	}
 
+	// Collect PITR metrics if available
+	pitrMetrics := e.collectPITRMetrics()
+	if len(pitrMetrics) > 0 {
+		pitrWriter := NewPITRMetricsWriter(e.log, e.instance)
+		data += "\n" + pitrWriter.FormatPITRMetrics(pitrMetrics)
+	}
+
+	// Collect dedup metrics if available
+	dedupData := e.collectDedupMetrics()
+	if dedupData != "" {
+		data += "\n" + dedupData
+	}
+
 	e.mu.Lock()
 	e.cachedData = data
 	e.lastRefresh = time.Now()
@@ -186,4 +235,142 @@ func (e *Exporter) refresh() error {
 
 	e.log.Debug("Refreshed metrics cache")
 	return nil
+}
+
+// PITRConfigFile represents the PITR configuration file structure
+type PITRConfigFile struct {
+	ArchiveDir      string    `json:"archive_dir"`
+	ArchiveInterval string    `json:"archive_interval"`
+	Compression     bool      `json:"compression"`
+	CreatedAt       time.Time `json:"created_at"`
+	Enabled         bool      `json:"enabled"`
+	Encryption      bool      `json:"encryption"`
+	GTIDMode        bool      `json:"gtid_mode"`
+	RetentionDays   int       `json:"retention_days"`
+	ServerID        int       `json:"server_id"`
+	ServerType      string    `json:"server_type"`
+	ServerVersion   string    `json:"server_version"`
+}
+
+// collectPITRMetrics collects PITR metrics from config files and archive directories
+func (e *Exporter) collectPITRMetrics() []PITRMetrics {
+	var metrics []PITRMetrics
+
+	for _, configPath := range e.pitrConfigPaths {
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			continue // Config not found at this path
+		}
+
+		var config PITRConfigFile
+		if err := json.Unmarshal(data, &config); err != nil {
+			e.log.Warn("Failed to parse PITR config", "path", configPath, "error", err)
+			continue
+		}
+
+		if !config.Enabled {
+			continue
+		}
+
+		// Get archive directory stats
+		archiveDir := config.ArchiveDir
+		if archiveDir == "" {
+			archiveDir = filepath.Dir(configPath)
+		}
+
+		// Count archive files and get timestamps
+		archiveCount := 0
+		var archiveSize int64
+		var oldestArchive, newestArchive time.Time
+		var gapCount int
+
+		entries, err := os.ReadDir(archiveDir)
+		if err == nil {
+			var lastSeq int
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				name := entry.Name()
+				// Match binlog/WAL files (mysql-bin.*, mariadb-bin.*, or WAL segment names)
+				if len(name) > 4 && (name[:4] == "mysq" || name[:4] == "mari" || len(name) == 24) {
+					archiveCount++
+					info, err := entry.Info()
+					if err == nil {
+						archiveSize += info.Size()
+						modTime := info.ModTime()
+						if oldestArchive.IsZero() || modTime.Before(oldestArchive) {
+							oldestArchive = modTime
+						}
+						if newestArchive.IsZero() || modTime.After(newestArchive) {
+							newestArchive = modTime
+						}
+					}
+					// Simple gap detection for binlog files
+					var seq int
+					if _, err := fmt.Sscanf(name, "mysql-bin.%d", &seq); err == nil {
+						if lastSeq > 0 && seq > lastSeq+1 {
+							gapCount++
+						}
+						lastSeq = seq
+					}
+				}
+			}
+		}
+
+		// Calculate archive lag
+		archiveLag := float64(0)
+		if !newestArchive.IsZero() {
+			archiveLag = time.Since(newestArchive).Seconds()
+		}
+
+		// Calculate recovery window (time between oldest and newest archive)
+		recoveryMinutes := float64(0)
+		if !oldestArchive.IsZero() && !newestArchive.IsZero() {
+			recoveryMinutes = newestArchive.Sub(oldestArchive).Minutes()
+		}
+
+		// Determine database name from archive path
+		dbName := "cluster"
+		if config.ServerType == "mariadb" || config.ServerType == "mysql" {
+			dbName = "mysql"
+		} else if config.ServerType == "postgres" {
+			dbName = "postgres"
+		}
+
+		metrics = append(metrics, PITRMetrics{
+			Database:        dbName,
+			Engine:          config.ServerType,
+			Enabled:         config.Enabled,
+			LastArchived:    newestArchive,
+			ArchiveLag:      archiveLag,
+			ArchiveCount:    archiveCount,
+			ArchiveSize:     archiveSize,
+			ChainValid:      gapCount == 0,
+			GapCount:        gapCount,
+			RecoveryMinutes: recoveryMinutes,
+		})
+
+		e.log.Debug("Collected PITR metrics", "database", dbName, "archives", archiveCount, "lag", archiveLag)
+	}
+
+	return metrics
+}
+
+// collectDedupMetrics collects deduplication metrics if dedup store exists
+func (e *Exporter) collectDedupMetrics() string {
+	// Check if dedup directory exists
+	if _, err := os.Stat(e.dedupBasePath); os.IsNotExist(err) {
+		return ""
+	}
+
+	// Try to collect dedup metrics
+	metrics, err := dedup.CollectMetrics(e.dedupBasePath, e.dedupIndexPath)
+	if err != nil {
+		e.log.Debug("Could not collect dedup metrics", "error", err)
+		return ""
+	}
+
+	// Format as Prometheus metrics
+	return dedup.FormatPrometheusMetrics(metrics, e.instance)
 }

@@ -93,7 +93,12 @@ func (v *RichClusterProgressView) renderHeader(snapshot *progress.ProgressSnapsh
 	}
 
 	title := "Cluster Restore Progress"
-	separator := strings.Repeat("━", maxInt(0, v.width-len(title)-4))
+	// Cap separator at 40 chars to avoid long lines on wide terminals
+	sepLen := maxInt(0, v.width-len(title)-4)
+	if sepLen > 40 {
+		sepLen = 40
+	}
+	separator := strings.Repeat("━", sepLen)
 
 	return fmt.Sprintf("%s %s\n  Elapsed: %s | %s",
 		title, separator,

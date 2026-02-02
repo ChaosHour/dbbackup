@@ -61,8 +61,8 @@ func GetRestoreProfile(profileName string) (*RestoreProfile, error) {
 		// Matches native pg_restore -j8 performance
 		return &RestoreProfile{
 			Name:               "turbo",
-			ParallelDBs:        4,  // 4 DBs in parallel (balanced I/O)
-			Jobs:               8,  // pg_restore --jobs=8
+			ParallelDBs:        4, // 4 DBs in parallel (balanced I/O)
+			Jobs:               8, // pg_restore --jobs=8
 			DisableProgress:    false,
 			MemoryConservative: false,
 		}, nil
@@ -72,8 +72,8 @@ func GetRestoreProfile(profileName string) (*RestoreProfile, error) {
 		// Use for dedicated restore operations where speed is critical
 		return &RestoreProfile{
 			Name:               "max-performance",
-			ParallelDBs:        8,  // 8 DBs in parallel
-			Jobs:               16, // pg_restore --jobs=16
+			ParallelDBs:        8,    // 8 DBs in parallel
+			Jobs:               16,   // pg_restore --jobs=16
 			DisableProgress:    true, // Reduce TUI overhead
 			MemoryConservative: false,
 		}, nil

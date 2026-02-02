@@ -3,7 +3,6 @@ package backup
 import (
 	"archive/tar"
 	"bufio"
-	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -1272,7 +1271,7 @@ func (e *Engine) verifyClusterArchive(ctx context.Context, archivePath string) e
 	}
 
 	// Verify tar.gz structure by reading header
-	gzipReader, err := gzip.NewReader(file)
+	gzipReader, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("invalid gzip format: %w", err)
 	}

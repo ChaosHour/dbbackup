@@ -641,13 +641,15 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("disk space check failed: %w", err)
 		}
 
-		// Verify tools
-		dbType := "postgres"
-		if format.IsMySQL() {
-			dbType = "mysql"
-		}
-		if err := safety.VerifyTools(dbType); err != nil {
-			return fmt.Errorf("tool verification failed: %w", err)
+		// Verify tools (skip if using native engine)
+		if !cfg.UseNativeEngine {
+			dbType := "postgres"
+			if format.IsMySQL() {
+				dbType = "mysql"
+			}
+			if err := safety.VerifyTools(dbType); err != nil {
+				return fmt.Errorf("tool verification failed: %w", err)
+			}
 		}
 	}
 
@@ -1069,9 +1071,11 @@ func runFullClusterRestore(archivePath string) error {
 			return fmt.Errorf("disk space check failed: %w", err)
 		}
 
-		// Verify tools (assume PostgreSQL for cluster backups)
-		if err := safety.VerifyTools("postgres"); err != nil {
-			return fmt.Errorf("tool verification failed: %w", err)
+		// Verify tools (skip if using native engine)
+		if !cfg.UseNativeEngine {
+			if err := safety.VerifyTools("postgres"); err != nil {
+				return fmt.Errorf("tool verification failed: %w", err)
+			}
 		}
 	} // Create database instance for pre-checks
 	db, err := database.New(cfg, log)

@@ -168,14 +168,14 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 		for _, obj := range objects {
 			if obj.Type == "table_data" {
 				e.log.Debug("Copying table data", "schema", obj.Schema, "table", obj.Name)
-				
+
 				// Write table data header
 				header := fmt.Sprintf("\n--\n-- Data for table %s.%s\n--\n\n",
 					e.quoteIdentifier(obj.Schema), e.quoteIdentifier(obj.Name))
 				if _, err := w.Write([]byte(header)); err != nil {
 					return nil, err
 				}
-				
+
 				bytesWritten, err := e.copyTableData(ctx, w, obj.Schema, obj.Name)
 				if err != nil {
 					e.log.Warn("Failed to copy table data", "table", obj.Name, "error", err)
@@ -700,6 +700,7 @@ func (e *PostgreSQLNativeEngine) getSequences(ctx context.Context, schema string
 		// Get sequence definition
 		createSQL, err := e.getSequenceCreateSQL(ctx, schema, seqName)
 		if err != nil {
+			e.log.Warn("Failed to get sequence definition, skipping", "sequence", seqName, "error", err)
 			continue // Skip sequences we can't read
 		}
 
@@ -769,8 +770,14 @@ func (e *PostgreSQLNativeEngine) getSequenceCreateSQL(ctx context.Context, schem
 	}
 	defer conn.Release()
 
+	// Use pg_sequences view which returns proper numeric types, or cast from information_schema
 	query := `
-		SELECT start_value, minimum_value, maximum_value, increment, cycle_option
+		SELECT 
+			COALESCE(start_value::bigint, 1),
+			COALESCE(minimum_value::bigint, 1),
+			COALESCE(maximum_value::bigint, 9223372036854775807),
+			COALESCE(increment::bigint, 1),
+			cycle_option
 		FROM information_schema.sequences
 		WHERE sequence_schema = $1 AND sequence_name = $2`
 
@@ -882,35 +889,95 @@ func (e *PostgreSQLNativeEngine) ValidateConfiguration() error {
 	return nil
 }
 
-// Restore performs native PostgreSQL restore
+// Restore performs native PostgreSQL restore with proper COPY handling
 func (e *PostgreSQLNativeEngine) Restore(ctx context.Context, inputReader io.Reader, targetDB string) error {
 	e.log.Info("Starting native PostgreSQL restore", "target", targetDB)
 
+	// Use pool for restore to handle COPY operations properly
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
 	// Read SQL script and execute statements
 	scanner := bufio.NewScanner(inputReader)
-	var sqlBuffer strings.Builder
+	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024) // 10MB max line
+
+	var (
+		stmtBuffer    strings.Builder
+		inCopyMode    bool
+		copyTableName string
+		copyData      strings.Builder
+		stmtCount     int64
+		rowsRestored  int64
+	)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 
-		// Skip comments and empty lines
+		// Handle COPY data mode
+		if inCopyMode {
+			if line == "\\." {
+				// End of COPY data - execute the COPY FROM
+				if copyData.Len() > 0 {
+					copySQL := fmt.Sprintf("COPY %s FROM STDIN", copyTableName)
+					tag, copyErr := conn.Conn().PgConn().CopyFrom(ctx, strings.NewReader(copyData.String()), copySQL)
+					if copyErr != nil {
+						e.log.Warn("COPY failed, continuing", "table", copyTableName, "error", copyErr)
+					} else {
+						rowsRestored += tag.RowsAffected()
+					}
+				}
+				copyData.Reset()
+				inCopyMode = false
+				copyTableName = ""
+				continue
+			}
+			copyData.WriteString(line)
+			copyData.WriteByte('\n')
+			continue
+		}
+
+		// Check for COPY statement start
 		trimmed := strings.TrimSpace(line)
+		upperTrimmed := strings.ToUpper(trimmed)
+		if strings.HasPrefix(upperTrimmed, "COPY ") && strings.HasSuffix(trimmed, "FROM stdin;") {
+			// Extract table name from COPY statement
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				copyTableName = parts[1]
+				inCopyMode = true
+				stmtCount++
+				continue
+			}
+		}
+
+		// Skip comments and empty lines for regular statements
 		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
 			continue
 		}
 
-		sqlBuffer.WriteString(line)
-		sqlBuffer.WriteString("\n")
+		// Accumulate statement
+		stmtBuffer.WriteString(line)
+		stmtBuffer.WriteByte('\n')
 
-		// Execute statement if it ends with semicolon
+		// Check if statement is complete (ends with ;)
 		if strings.HasSuffix(trimmed, ";") {
-			stmt := sqlBuffer.String()
-			sqlBuffer.Reset()
+			stmt := stmtBuffer.String()
+			stmtBuffer.Reset()
 
-			if _, err := e.conn.Exec(ctx, stmt); err != nil {
-				e.log.Warn("Failed to execute statement", "error", err, "statement", stmt[:100])
+			// Execute the statement
+			if _, execErr := conn.Exec(ctx, stmt); execErr != nil {
+				// Truncate statement for logging (safe length check)
+				logStmt := stmt
+				if len(logStmt) > 100 {
+					logStmt = logStmt[:100] + "..."
+				}
+				e.log.Warn("Failed to execute statement", "error", execErr, "statement", logStmt)
 				// Continue with next statement (non-fatal errors)
 			}
+			stmtCount++
 		}
 	}
 
@@ -918,7 +985,7 @@ func (e *PostgreSQLNativeEngine) Restore(ctx context.Context, inputReader io.Rea
 		return fmt.Errorf("error reading input: %w", err)
 	}
 
-	e.log.Info("Native PostgreSQL restore completed")
+	e.log.Info("Native PostgreSQL restore completed", "statements", stmtCount, "rows", rowsRestored)
 	return nil
 }
 

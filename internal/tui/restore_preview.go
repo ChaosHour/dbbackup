@@ -175,19 +175,24 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		}
 		checks = append(checks, check)
 
-		// 4. Required tools
+		// 4. Required tools (skip if using native engine)
 		check = SafetyCheck{Name: "Required tools", Status: "checking", Critical: true}
-		dbType := "postgres"
-		if archive.Format.IsMySQL() {
-			dbType = "mysql"
-		}
-		if err := safety.VerifyTools(dbType); err != nil {
-			check.Status = "failed"
-			check.Message = err.Error()
-			canProceed = false
-		} else {
+		if cfg.UseNativeEngine {
 			check.Status = "passed"
-			check.Message = "All required tools available"
+			check.Message = "Native engine mode - no external tools required"
+		} else {
+			dbType := "postgres"
+			if archive.Format.IsMySQL() {
+				dbType = "mysql"
+			}
+			if err := safety.VerifyTools(dbType); err != nil {
+				check.Status = "failed"
+				check.Message = err.Error()
+				canProceed = false
+			} else {
+				check.Status = "passed"
+				check.Message = "All required tools available"
+			}
 		}
 		checks = append(checks, check)
 

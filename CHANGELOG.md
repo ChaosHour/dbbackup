@@ -5,6 +5,36 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.1] - 2026-02-02
+
+### Fixed
+- **CRITICAL: Native Engine Restore Fixed** - Restore now connects to target database correctly
+  - Previously connected to source database, causing data to be written to wrong database
+  - Now creates engine with target database for proper restore
+
+- **CRITICAL: Native Engine Backup - Sequences Now Exported**
+  - Fixed: Sequences were silently skipped due to type mismatch in PostgreSQL query
+  - Cast `information_schema.sequences` string values to bigint
+  - Sequences now properly created BEFORE tables that reference them
+
+- **CRITICAL: Native Engine COPY Handling**
+  - Fixed: COPY FROM stdin data blocks now properly parsed and executed
+  - Replaced simple line-by-line SQL execution with proper COPY protocol handling
+  - Uses pgx `CopyFrom` for bulk data loading (100k+ rows/sec)
+
+- **Tool Verification Bypass for Native Mode**
+  - Skip pg_restore/psql check when `--native` flag is used
+  - Enables truly zero-dependency deployment
+
+- **Panic Fix: Slice Bounds Error**
+  - Fixed runtime panic when logging short SQL statements during errors
+
+### Technical Details
+- `internal/engine/native/manager.go`: Create new engine with target database for restore
+- `internal/engine/native/postgresql.go`: Fixed Restore() to handle COPY protocol, fixed getSequenceCreateSQL() type casting
+- `cmd/restore.go`: Skip VerifyTools when cfg.UseNativeEngine is true
+- `internal/tui/restore_preview.go`: Show "Native engine mode" instead of tool check
+
 ## [5.5.0] - 2026-02-02
 
 ### Added

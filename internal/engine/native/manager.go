@@ -199,26 +199,42 @@ func (m *EngineManager) BackupWithNativeEngine(ctx context.Context, outputWriter
 func (m *EngineManager) RestoreWithNativeEngine(ctx context.Context, inputReader io.Reader, targetDB string) error {
 	dbType := m.detectDatabaseType()
 
-	engine, err := m.GetEngine(dbType)
-	if err != nil {
-		return fmt.Errorf("native engine not available: %w", err)
-	}
-
 	m.log.Info("Using native engine for restore", "database", dbType, "target", targetDB)
 
-	// Connect to database
-	if err := engine.Connect(ctx); err != nil {
-		return fmt.Errorf("failed to connect with native engine: %w", err)
-	}
-	defer engine.Close()
+	// Create a new engine specifically for the target database
+	if dbType == "postgresql" {
+		pgCfg := &PostgreSQLNativeConfig{
+			Host:     m.cfg.Host,
+			Port:     m.cfg.Port,
+			User:     m.cfg.User,
+			Password: m.cfg.Password,
+			Database: targetDB, // Use target database, not source
+			SSLMode:  m.cfg.SSLMode,
+			Format:   "plain",
+			Parallel: 1,
+		}
 
-	// Perform restore
-	if err := engine.Restore(ctx, inputReader, targetDB); err != nil {
-		return fmt.Errorf("native restore failed: %w", err)
+		restoreEngine, err := NewPostgreSQLNativeEngine(pgCfg, m.log)
+		if err != nil {
+			return fmt.Errorf("failed to create restore engine: %w", err)
+		}
+
+		// Connect to target database
+		if err := restoreEngine.Connect(ctx); err != nil {
+			return fmt.Errorf("failed to connect to target database %s: %w", targetDB, err)
+		}
+		defer restoreEngine.Close()
+
+		// Perform restore
+		if err := restoreEngine.Restore(ctx, inputReader, targetDB); err != nil {
+			return fmt.Errorf("native restore failed: %w", err)
+		}
+
+		m.log.Info("Native restore completed")
+		return nil
 	}
 
-	m.log.Info("Native restore completed")
-	return nil
+	return fmt.Errorf("native restore not supported for database type: %s", dbType)
 }
 
 // detectDatabaseType determines database type from configuration

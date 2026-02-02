@@ -1689,19 +1689,54 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			preserveOwnership := isSuperuser
 			isCompressedSQL := strings.HasSuffix(dumpFile, ".sql.gz")
 
+			// Get expected size for this database for progress estimation
+			expectedDBSize := dbSizes[dbName]
+
 			// Start heartbeat ticker to show progress during long-running restore
-			// Use 15s interval to reduce mutex contention during parallel restores
+			// CRITICAL FIX: Report progress to TUI callbacks so large DB restores show updates
 			heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
-			heartbeatTicker := time.NewTicker(15 * time.Second)
+			heartbeatTicker := time.NewTicker(5 * time.Second) // More frequent updates (was 15s)
+			heartbeatCount := int64(0)
 			go func() {
 				for {
 					select {
 					case <-heartbeatTicker.C:
+						heartbeatCount++
 						elapsed := time.Since(dbRestoreStart)
 						mu.Lock()
 						statusMsg := fmt.Sprintf("Restoring %s (%d/%d) - elapsed: %s",
 							dbName, idx+1, totalDBs, formatDuration(elapsed))
 						e.progress.Update(statusMsg)
+
+						// CRITICAL: Report activity to TUI callbacks during long-running restore
+						// Use time-based progress estimation: assume ~10MB/s average throughput
+						// This gives visual feedback even when pg_restore hasn't completed
+						estimatedBytesPerSec := int64(10 * 1024 * 1024) // 10 MB/s conservative estimate
+						estimatedBytesDone := elapsed.Milliseconds() / 1000 * estimatedBytesPerSec
+						if expectedDBSize > 0 && estimatedBytesDone > expectedDBSize {
+							estimatedBytesDone = expectedDBSize * 95 / 100 // Cap at 95%
+						}
+
+						// Calculate current progress including in-flight database
+						currentBytesEstimate := bytesCompleted + estimatedBytesDone
+
+						// Report to TUI with estimated progress
+						e.reportDatabaseProgressByBytes(currentBytesEstimate, totalBytes, dbName, int(atomic.LoadInt32(&successCount)), totalDBs)
+
+						// Also report timing info
+						phaseElapsed := time.Since(restorePhaseStart)
+						var avgPerDB time.Duration
+						completedDBTimesMu.Lock()
+						if len(completedDBTimes) > 0 {
+							var total time.Duration
+							for _, d := range completedDBTimes {
+								total += d
+							}
+							avgPerDB = total / time.Duration(len(completedDBTimes))
+						}
+						completedDBTimesMu.Unlock()
+						e.reportDatabaseProgressWithTiming(idx, totalDBs, dbName, phaseElapsed, avgPerDB)
+
 						mu.Unlock()
 					case <-heartbeatCtx.Done():
 						return

@@ -227,11 +227,21 @@ func (v *RichClusterProgressView) renderPhaseDetails(snapshot *progress.Progress
 			bar := v.renderMiniProgressBar(pct)
 
 			phaseElapsed := time.Since(snapshot.PhaseStartTime)
-			b.WriteString(fmt.Sprintf("     %s %-20s %s %3d%%\n",
-				spinner, truncateString(snapshot.CurrentDB, 20), bar, pct))
-			b.WriteString(fmt.Sprintf("        └─ %s / %s (running %s)\n",
-				FormatBytes(snapshot.CurrentDBBytes), FormatBytes(snapshot.CurrentDBTotal),
-				formatDuration(phaseElapsed)))
+			
+			// Better display when we have progress info vs when we're waiting
+			if snapshot.CurrentDBTotal > 0 {
+				b.WriteString(fmt.Sprintf("     %s %-20s %s %3d%%\n",
+					spinner, truncateString(snapshot.CurrentDB, 20), bar, pct))
+				b.WriteString(fmt.Sprintf("        └─ %s / %s (running %s)\n",
+					FormatBytes(snapshot.CurrentDBBytes), FormatBytes(snapshot.CurrentDBTotal),
+					formatDuration(phaseElapsed)))
+			} else {
+				// No byte-level progress available - show activity indicator with elapsed time
+				b.WriteString(fmt.Sprintf("     %s %-20s [restoring...] running %s\n",
+					spinner, truncateString(snapshot.CurrentDB, 20),
+					formatDuration(phaseElapsed)))
+				b.WriteString(fmt.Sprintf("        └─ pg_restore in progress (progress updates every 5s)\n"))
+			}
 		}
 
 		// Show remaining count

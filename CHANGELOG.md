@@ -5,6 +5,26 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.6] - 2026-02-02
+
+### Fixed
+- **CRITICAL: Progress Tracking for Large Database Restores**
+  - Fixed "no progress" issue where TUI showed 0% for hours during large single-DB restore
+  - Root cause: Progress only updated after database *completed*, not during restore
+  - Heartbeat now reports estimated progress every 5 seconds (was 15s, text-only)
+  - Time-based progress estimation: ~10MB/s throughput assumption
+  - Progress capped at 95% until actual completion (prevents jumping to 100% too early)
+  
+- **Improved TUI Feedback During Long Restores**
+  - Shows spinner + elapsed time when byte-level progress not available
+  - Displays "pg_restore in progress (progress updates every 5s)" message
+  - Better visual feedback that restore is actively running
+
+### Technical Details
+- `reportDatabaseProgressByBytes()` now called during restore, not just after completion
+- Heartbeat interval reduced from 15s to 5s for more responsive feedback
+- TUI gracefully handles `CurrentDBTotal=0` case with activity indicator
+
 ## [5.4.5] - 2026-02-02
 
 ### Fixed

@@ -93,10 +93,16 @@ func (e *PostgreSQLNativeEngine) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to parse connection string: %w", err)
 	}
 
-	// Optimize pool for backup operations
-	poolConfig.MaxConns = int32(e.cfg.Parallel)
-	poolConfig.MinConns = 1
-	poolConfig.MaxConnLifetime = 30 * time.Minute
+	// Optimize pool for backup/restore operations
+	parallel := e.cfg.Parallel
+	if parallel < 4 {
+		parallel = 4 // Minimum for good performance
+	}
+	poolConfig.MaxConns = int32(parallel + 2) // +2 for metadata queries
+	poolConfig.MinConns = int32(parallel)     // Keep connections warm
+	poolConfig.MaxConnLifetime = 1 * time.Hour
+	poolConfig.MaxConnIdleTime = 5 * time.Minute
+	poolConfig.HealthCheckPeriod = 1 * time.Minute
 
 	e.pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

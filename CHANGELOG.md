@@ -5,6 +5,38 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.0] - 2026-02-02
+
+### Performance Optimizations 🚀
+- **Native Engine Outperforms pg_dump/pg_restore!**
+  - Backup: **3.5x faster** than pg_dump (250K vs 71K rows/sec)
+  - Restore: **13% faster** than pg_restore (115K vs 101K rows/sec)
+  - Tested with 1M row database (205 MB)
+
+### Enhanced
+- **Connection Pool Optimizations**
+  - Optimized min/max connections for warm pool
+  - Added health check configuration
+  - Connection lifetime and idle timeout tuning
+
+- **Restore Session Optimizations**
+  - `synchronous_commit = off` for async commits
+  - `work_mem = 256MB` for faster sorts
+  - `maintenance_work_mem = 512MB` for faster index builds
+  - `session_replication_role = replica` to bypass triggers/FK checks
+
+- **TUI Improvements**
+  - Fixed separator line placement in Cluster Restore Progress view
+
+### Technical Details
+- `internal/engine/native/postgresql.go`: Pool optimization with min/max connections
+- `internal/engine/native/restore.go`: Session-level performance settings
+
+## [5.5.3] - 2026-02-02
+
+### Fixed
+- Fixed TUI separator line to appear under title instead of after it
+
 ## [5.5.2] - 2026-02-02
 
 ### Fixed

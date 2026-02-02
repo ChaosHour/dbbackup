@@ -113,6 +113,24 @@ func (r *PostgreSQLRestoreEngine) Restore(ctx context.Context, source io.Reader,
 	}
 	defer conn.Release()
 
+	// Apply performance optimizations for bulk loading
+	optimizations := []string{
+		"SET synchronous_commit = 'off'",     // Async commits (HUGE speedup)
+		"SET work_mem = '256MB'",             // Faster sorts
+		"SET maintenance_work_mem = '512MB'", // Faster index builds
+		"SET session_replication_role = 'replica'", // Disable triggers/FK checks
+	}
+	for _, sql := range optimizations {
+		if _, err := conn.Exec(ctx, sql); err != nil {
+			r.engine.log.Debug("Optimization not available", "sql", sql, "error", err)
+		}
+	}
+	// Restore settings at end
+	defer func() {
+		conn.Exec(ctx, "SET synchronous_commit = 'on'")
+		conn.Exec(ctx, "SET session_replication_role = 'origin'")
+	}()
+
 	// Parse and execute SQL statements from the backup
 	scanner := bufio.NewScanner(source)
 	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024) // 10MB max line

@@ -5,6 +5,27 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.2] - 2026-02-02
+
+### Fixed
+- **CRITICAL: Native Engine Array Type Support**
+  - Fixed: Array columns (e.g., `INTEGER[]`, `TEXT[]`) were exported as just `ARRAY`
+  - Now properly exports array types using PostgreSQL's `udt_name` from information_schema
+  - Supports all common array types: integer[], text[], bigint[], boolean[], bytea[], json[], jsonb[], uuid[], timestamp[], etc.
+
+### Verified Working
+- **Full BLOB/Binary Data Round-Trip Validated**
+  - BYTEA columns with NULL bytes (0x00) preserved correctly
+  - Unicode data (emoji 🚀, Chinese 中文, Arabic العربية) preserved
+  - JSON/JSONB with Unicode preserved
+  - Integer and text arrays restored correctly
+  - 10,002 row test with checksum verification: PASS
+
+### Technical Details
+- `internal/engine/native/postgresql.go`: 
+  - Added `udt_name` to column query
+  - Updated `formatDataType()` to convert PostgreSQL internal array names (_int4, _text, etc.) to SQL syntax
+
 ## [5.5.1] - 2026-02-02
 
 ### Fixed

@@ -401,10 +401,12 @@ func (e *PostgreSQLNativeEngine) getTableCreateSQL(ctx context.Context, schema, 
 	defer conn.Release()
 
 	// Get column definitions
+	// Include udt_name for array type detection (e.g., _int4 for integer[])
 	colQuery := `
 		SELECT 
 			c.column_name,
 			c.data_type,
+			c.udt_name,
 			c.character_maximum_length,
 			c.numeric_precision,
 			c.numeric_scale,
@@ -422,16 +424,16 @@ func (e *PostgreSQLNativeEngine) getTableCreateSQL(ctx context.Context, schema, 
 
 	var columns []string
 	for rows.Next() {
-		var colName, dataType, nullable string
+		var colName, dataType, udtName, nullable string
 		var maxLen, precision, scale *int
 		var defaultVal *string
 
-		if err := rows.Scan(&colName, &dataType, &maxLen, &precision, &scale, &nullable, &defaultVal); err != nil {
+		if err := rows.Scan(&colName, &dataType, &udtName, &maxLen, &precision, &scale, &nullable, &defaultVal); err != nil {
 			return "", err
 		}
 
 		// Build column definition
-		colDef := fmt.Sprintf("    %s %s", e.quoteIdentifier(colName), e.formatDataType(dataType, maxLen, precision, scale))
+		colDef := fmt.Sprintf("    %s %s", e.quoteIdentifier(colName), e.formatDataType(dataType, udtName, maxLen, precision, scale))
 
 		if nullable == "NO" {
 			colDef += " NOT NULL"
@@ -458,8 +460,66 @@ func (e *PostgreSQLNativeEngine) getTableCreateSQL(ctx context.Context, schema, 
 }
 
 // formatDataType formats PostgreSQL data types properly
-func (e *PostgreSQLNativeEngine) formatDataType(dataType string, maxLen, precision, scale *int) string {
+// udtName is used for array types - PostgreSQL stores them with _ prefix (e.g., _int4 for integer[])
+func (e *PostgreSQLNativeEngine) formatDataType(dataType, udtName string, maxLen, precision, scale *int) string {
 	switch dataType {
+	case "ARRAY":
+		// Convert PostgreSQL internal array type names to SQL syntax
+		// udtName starts with _ for array types
+		if len(udtName) > 1 && udtName[0] == '_' {
+			elementType := udtName[1:]
+			switch elementType {
+			case "int2":
+				return "smallint[]"
+			case "int4":
+				return "integer[]"
+			case "int8":
+				return "bigint[]"
+			case "float4":
+				return "real[]"
+			case "float8":
+				return "double precision[]"
+			case "numeric":
+				return "numeric[]"
+			case "bool":
+				return "boolean[]"
+			case "text":
+				return "text[]"
+			case "varchar":
+				return "character varying[]"
+			case "bpchar":
+				return "character[]"
+			case "bytea":
+				return "bytea[]"
+			case "date":
+				return "date[]"
+			case "time":
+				return "time[]"
+			case "timetz":
+				return "time with time zone[]"
+			case "timestamp":
+				return "timestamp[]"
+			case "timestamptz":
+				return "timestamp with time zone[]"
+			case "uuid":
+				return "uuid[]"
+			case "json":
+				return "json[]"
+			case "jsonb":
+				return "jsonb[]"
+			case "inet":
+				return "inet[]"
+			case "cidr":
+				return "cidr[]"
+			case "macaddr":
+				return "macaddr[]"
+			default:
+				// For unknown types, use the element name directly with []
+				return elementType + "[]"
+			}
+		}
+		// Fallback - shouldn't happen
+		return "text[]"
 	case "character varying":
 		if maxLen != nil {
 			return fmt.Sprintf("character varying(%d)", *maxLen)

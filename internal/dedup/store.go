@@ -311,9 +311,11 @@ func (s *ChunkStore) LoadIndex() error {
 }
 
 // compressData compresses data using parallel gzip
+// Uses DefaultCompression (level 6) for good balance between speed and size
+// Level 9 (BestCompression) is 2-3x slower with only 2-5% size reduction
 func (s *ChunkStore) compressData(data []byte) ([]byte, error) {
 	var buf []byte
-	w, err := pgzip.NewWriterLevel((*bytesBuffer)(&buf), pgzip.BestCompression)
+	w, err := pgzip.NewWriterLevel((*bytesBuffer)(&buf), pgzip.DefaultCompression)
 	if err != nil {
 		return nil, err
 	}

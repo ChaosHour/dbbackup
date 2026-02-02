@@ -28,7 +28,7 @@ func ChecksumFile(path string) (string, error) {
 func VerifyChecksum(path string, expectedChecksum string) error {
 	actualChecksum, err := ChecksumFile(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify checksum for %s: %w", path, err)
 	}
 
 	if actualChecksum != expectedChecksum {
@@ -84,7 +84,7 @@ func LoadAndVerifyChecksum(archivePath string) error {
 		if os.IsNotExist(err) {
 			return nil // Checksum file doesn't exist, skip verification
 		}
-		return err
+		return fmt.Errorf("load checksum for %s: %w", archivePath, err)
 	}
 
 	return VerifyChecksum(archivePath, expectedChecksum)

@@ -62,7 +62,15 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 	}
 
 	// Optimize connection pool for backup workloads
-	config.MaxConns = 10                       // Max concurrent connections
+	// Use jobs + 2 for max connections (extra for control queries)
+	maxConns := int32(10) // default
+	if p.cfg.Jobs > 0 {
+		maxConns = int32(p.cfg.Jobs + 2)
+		if maxConns < 5 {
+			maxConns = 5 // minimum pool size
+		}
+	}
+	config.MaxConns = maxConns                 // Max concurrent connections based on --jobs
 	config.MinConns = 2                        // Keep minimum connections ready
 	config.MaxConnLifetime = 0                 // No limit on connection lifetime
 	config.MaxConnIdleTime = 0                 // No idle timeout
@@ -461,6 +469,16 @@ func (p *PostgreSQL) ValidateBackupTools() error {
 	}
 
 	return nil
+}
+
+// GetPasswordEnvVar returns the PGPASSWORD environment variable string.
+// PostgreSQL prefers using .pgpass file or PGPASSWORD env var.
+// This avoids exposing the password in the process list (ps aux).
+func (p *PostgreSQL) GetPasswordEnvVar() string {
+	if p.cfg.Password != "" {
+		return "PGPASSWORD=" + p.cfg.Password
+	}
+	return ""
 }
 
 // buildPgxDSN builds a connection string for pgx

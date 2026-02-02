@@ -1052,9 +1052,7 @@ func runDedupBackupDB(cmd *cobra.Command, args []string) error {
 		if backupDBUser != "" {
 			dumpArgs = append(dumpArgs, "-u", backupDBUser)
 		}
-		if backupDBPassword != "" {
-			dumpArgs = append(dumpArgs, "-p"+backupDBPassword)
-		}
+		// Password passed via MYSQL_PWD env var (security: avoid process list exposure)
 		dumpArgs = append(dumpArgs, dbName)
 
 	case "mariadb":
@@ -1075,9 +1073,7 @@ func runDedupBackupDB(cmd *cobra.Command, args []string) error {
 		if backupDBUser != "" {
 			dumpArgs = append(dumpArgs, "-u", backupDBUser)
 		}
-		if backupDBPassword != "" {
-			dumpArgs = append(dumpArgs, "-p"+backupDBPassword)
-		}
+		// Password passed via MYSQL_PWD env var (security: avoid process list exposure)
 		dumpArgs = append(dumpArgs, dbName)
 
 	default:
@@ -1131,9 +1127,15 @@ func runDedupBackupDB(cmd *cobra.Command, args []string) error {
 	// Start the dump command
 	dumpExec := exec.Command(dumpCmd, dumpArgs...)
 
-	// Set password via environment for postgres
-	if dbType == "postgres" && backupDBPassword != "" {
-		dumpExec.Env = append(os.Environ(), "PGPASSWORD="+backupDBPassword)
+	// Set password via environment (security: avoid process list exposure)
+	dumpExec.Env = os.Environ()
+	if backupDBPassword != "" {
+		switch dbType {
+		case "postgres":
+			dumpExec.Env = append(dumpExec.Env, "PGPASSWORD="+backupDBPassword)
+		case "mysql", "mariadb":
+			dumpExec.Env = append(dumpExec.Env, "MYSQL_PWD="+backupDBPassword)
+		}
 	}
 
 	stdout, err := dumpExec.StdoutPipe()

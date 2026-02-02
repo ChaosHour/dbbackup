@@ -878,13 +878,18 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 		cmd = exec.CommandContext(ctx, "psql", args...)
 		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 	} else {
-		// MySQL
-		args := []string{"-u", e.cfg.User, "-p" + e.cfg.Password}
+		// MySQL - use MYSQL_PWD env var to avoid password in process list
+		args := []string{"-u", e.cfg.User}
 		if e.cfg.Host != "localhost" && e.cfg.Host != "" {
 			args = append(args, "-h", e.cfg.Host)
 		}
 		args = append(args, "-P", fmt.Sprintf("%d", e.cfg.Port), targetDB)
 		cmd = exec.CommandContext(ctx, "mysql", args...)
+		// Pass password via environment variable to avoid process list exposure
+		cmd.Env = os.Environ()
+		if e.cfg.Password != "" {
+			cmd.Env = append(cmd.Env, "MYSQL_PWD="+e.cfg.Password)
+		}
 	}
 
 	// Pipe decompressed data to restore command stdin
@@ -2357,7 +2362,7 @@ func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error 
 
 // ensureMySQLDatabaseExists checks if a MySQL database exists and creates it if not
 func (e *Engine) ensureMySQLDatabaseExists(ctx context.Context, dbName string) error {
-	// Build mysql command
+	// Build mysql command - use environment variable for password (security: avoid process list exposure)
 	args := []string{
 		"-h", e.cfg.Host,
 		"-P", fmt.Sprintf("%d", e.cfg.Port),
@@ -2365,11 +2370,11 @@ func (e *Engine) ensureMySQLDatabaseExists(ctx context.Context, dbName string) e
 		"-e", fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`", dbName),
 	}
 
-	if e.cfg.Password != "" {
-		args = append(args, fmt.Sprintf("-p%s", e.cfg.Password))
-	}
-
 	cmd := exec.CommandContext(ctx, "mysql", args...)
+	cmd.Env = os.Environ()
+	if e.cfg.Password != "" {
+		cmd.Env = append(cmd.Env, "MYSQL_PWD="+e.cfg.Password)
+	}
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		e.log.Warn("MySQL database creation failed", "name", dbName, "error", err, "output", string(output))

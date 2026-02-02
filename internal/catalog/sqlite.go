@@ -28,10 +28,20 @@ func NewSQLiteCatalog(dbPath string) (*SQLiteCatalog, error) {
 		return nil, fmt.Errorf("failed to create catalog directory: %w", err)
 	}
 
-	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_foreign_keys=ON")
+	// SQLite connection with performance optimizations:
+	// - WAL mode: better concurrency (multiple readers + one writer)
+	// - foreign_keys: enforce referential integrity
+	// - busy_timeout: wait up to 5s for locks instead of failing immediately
+	// - cache_size: 64MB cache for faster queries with large catalogs
+	// - synchronous=NORMAL: good durability with better performance than FULL
+	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_foreign_keys=ON&_busy_timeout=5000&_cache_size=-65536&_synchronous=NORMAL")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open catalog database: %w", err)
 	}
+
+	// Configure connection pool for concurrent access
+	db.SetMaxOpenConns(1) // SQLite only supports one writer
+	db.SetMaxIdleConns(1)
 
 	catalog := &SQLiteCatalog{
 		db:   db,
@@ -77,9 +87,12 @@ func (c *SQLiteCatalog) initialize() error {
 
 	CREATE INDEX IF NOT EXISTS idx_backups_database ON backups(database);
 	CREATE INDEX IF NOT EXISTS idx_backups_created_at ON backups(created_at);
+	CREATE INDEX IF NOT EXISTS idx_backups_created_at_desc ON backups(created_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_backups_status ON backups(status);
 	CREATE INDEX IF NOT EXISTS idx_backups_host ON backups(host);
 	CREATE INDEX IF NOT EXISTS idx_backups_database_type ON backups(database_type);
+	CREATE INDEX IF NOT EXISTS idx_backups_database_status ON backups(database, status);
+	CREATE INDEX IF NOT EXISTS idx_backups_database_created ON backups(database, created_at DESC);
 
 	CREATE TABLE IF NOT EXISTS catalog_meta (
 		key TEXT PRIMARY KEY,
@@ -589,8 +602,10 @@ func (c *SQLiteCatalog) MarkVerified(ctx context.Context, id int64, valid bool) 
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, valid, status, id)
-
-	return err
+	if err != nil {
+		return fmt.Errorf("mark verified failed for backup %d: %w", id, err)
+	}
+	return nil
 }
 
 // MarkDrillTested updates the drill test status of a backup
@@ -602,8 +617,10 @@ func (c *SQLiteCatalog) MarkDrillTested(ctx context.Context, id int64, success b
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, success, id)
-
-	return err
+	if err != nil {
+		return fmt.Errorf("mark drill tested failed for backup %d: %w", id, err)
+	}
+	return nil
 }
 
 // Prune removes entries older than the given time
@@ -623,10 +640,16 @@ func (c *SQLiteCatalog) Prune(ctx context.Context, before time.Time) (int, error
 // Vacuum optimizes the database
 func (c *SQLiteCatalog) Vacuum(ctx context.Context) error {
 	_, err := c.db.ExecContext(ctx, "VACUUM")
-	return err
+	if err != nil {
+		return fmt.Errorf("vacuum catalog database failed: %w", err)
+	}
+	return nil
 }
 
 // Close closes the database connection
 func (c *SQLiteCatalog) Close() error {
-	return c.db.Close()
+	if err := c.db.Close(); err != nil {
+		return fmt.Errorf("close catalog database failed: %w", err)
+	}
+	return nil
 }

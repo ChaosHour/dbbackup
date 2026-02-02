@@ -395,7 +395,7 @@ func (s *S3Backend) BucketExists(ctx context.Context) (bool, error) {
 func (s *S3Backend) CreateBucket(ctx context.Context) error {
 	exists, err := s.BucketExists(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("check bucket existence failed: %w", err)
 	}
 
 	if exists {

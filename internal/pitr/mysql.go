@@ -387,9 +387,7 @@ func (m *MySQLPITR) CreateBackup(ctx context.Context, opts BackupOptions) (*PITR
 	if m.config.User != "" {
 		dumpArgs = append(dumpArgs, "-u", m.config.User)
 	}
-	if m.config.Password != "" {
-		dumpArgs = append(dumpArgs, "-p"+m.config.Password)
-	}
+	// Note: Password passed via MYSQL_PWD env var to avoid process list exposure
 	if m.config.Socket != "" {
 		dumpArgs = append(dumpArgs, "-S", m.config.Socket)
 	}
@@ -415,6 +413,11 @@ func (m *MySQLPITR) CreateBackup(ctx context.Context, opts BackupOptions) (*PITR
 
 	// Run mysqldump
 	cmd := exec.CommandContext(ctx, "mysqldump", dumpArgs...)
+	// Pass password via environment variable to avoid process list exposure
+	cmd.Env = os.Environ()
+	if m.config.Password != "" {
+		cmd.Env = append(cmd.Env, "MYSQL_PWD="+m.config.Password)
+	}
 
 	// Create output file
 	outFile, err := os.Create(backupPath)
@@ -586,9 +589,7 @@ func (m *MySQLPITR) restoreBaseBackup(ctx context.Context, backup *PITRBackupInf
 	if m.config.User != "" {
 		mysqlArgs = append(mysqlArgs, "-u", m.config.User)
 	}
-	if m.config.Password != "" {
-		mysqlArgs = append(mysqlArgs, "-p"+m.config.Password)
-	}
+	// Note: Password passed via MYSQL_PWD env var to avoid process list exposure
 	if m.config.Socket != "" {
 		mysqlArgs = append(mysqlArgs, "-S", m.config.Socket)
 	}
@@ -615,6 +616,11 @@ func (m *MySQLPITR) restoreBaseBackup(ctx context.Context, backup *PITRBackupInf
 
 	// Run mysql
 	cmd := exec.CommandContext(ctx, "mysql", mysqlArgs...)
+	// Pass password via environment variable to avoid process list exposure
+	cmd.Env = os.Environ()
+	if m.config.Password != "" {
+		cmd.Env = append(cmd.Env, "MYSQL_PWD="+m.config.Password)
+	}
 	cmd.Stdin = input
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

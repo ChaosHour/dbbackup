@@ -20,6 +20,7 @@ import (
 	"dbbackup/internal/progress"
 	"dbbackup/internal/restore"
 	"dbbackup/internal/security"
+	"dbbackup/internal/validation"
 
 	"github.com/spf13/cobra"
 )
@@ -503,6 +504,11 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 		log.Info("Using restore profile", "profile", restoreProfile)
 	}
 
+	// Validate restore parameters
+	if err := validateRestoreParams(cfg, restoreTarget, restoreJobs); err != nil {
+		return fmt.Errorf("validation error: %w", err)
+	}
+
 	// Check if this is a cloud URI
 	var cleanupFunc func() error
 
@@ -933,6 +939,11 @@ func runFullClusterRestore(archivePath string) error {
 	}
 	if cfg.Debug || restoreProfile != "balanced" {
 		log.Info("Using restore profile", "profile", restoreProfile, "parallel_dbs", cfg.ClusterParallelism, "jobs", cfg.Jobs)
+	}
+
+	// Validate restore parameters
+	if err := validateRestoreParams(cfg, restoreTarget, restoreJobs); err != nil {
+		return fmt.Errorf("validation error: %w", err)
 	}
 
 	// Convert to absolute path
@@ -1444,5 +1455,58 @@ func runRestorePITR(cmd *cobra.Command, args []string) error {
 	}
 
 	log.Info("[OK] PITR restore completed successfully")
+	return nil
+}
+
+// validateRestoreParams performs comprehensive input validation for restore parameters
+func validateRestoreParams(cfg *config.Config, targetDB string, jobs int) error {
+	var errs []string
+
+	// Validate target database name if specified
+	if targetDB != "" {
+		if err := validation.ValidateDatabaseName(targetDB, cfg.DatabaseType); err != nil {
+			errs = append(errs, fmt.Sprintf("target database: %s", err))
+		}
+	}
+
+	// Validate job count
+	if jobs > 0 {
+		if err := validation.ValidateJobs(jobs); err != nil {
+			errs = append(errs, fmt.Sprintf("jobs: %s", err))
+		}
+	}
+
+	// Validate host
+	if cfg.Host != "" {
+		if err := validation.ValidateHost(cfg.Host); err != nil {
+			errs = append(errs, fmt.Sprintf("host: %s", err))
+		}
+	}
+
+	// Validate port
+	if cfg.Port > 0 {
+		if err := validation.ValidatePort(cfg.Port); err != nil {
+			errs = append(errs, fmt.Sprintf("port: %s", err))
+		}
+	}
+
+	// Validate workdir if specified
+	if restoreWorkdir != "" {
+		if err := validation.ValidateBackupDir(restoreWorkdir); err != nil {
+			errs = append(errs, fmt.Sprintf("workdir: %s", err))
+		}
+	}
+
+	// Validate output dir if specified
+	if restoreOutputDir != "" {
+		if err := validation.ValidateBackupDir(restoreOutputDir); err != nil {
+			errs = append(errs, fmt.Sprintf("output directory: %s", err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("validation failed: %s", strings.Join(errs, "; "))
+	}
+
 	return nil
 }

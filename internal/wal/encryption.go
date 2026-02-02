@@ -33,6 +33,10 @@ func NewEncryptor(log logger.Logger) *Encryptor {
 	}
 }
 
+// MaxWALFileSize is the maximum size of a WAL file we'll encrypt in memory (256MB)
+// WAL files are typically 16MB, but we allow up to 256MB as a safety limit
+const MaxWALFileSize = 256 * 1024 * 1024
+
 // EncryptWALFile encrypts a WAL file using AES-256-GCM
 func (e *Encryptor) EncryptWALFile(sourcePath, destPath string, opts EncryptionOptions) (int64, error) {
 	e.log.Debug("Encrypting WAL file", "source", sourcePath, "dest", destPath)
@@ -54,8 +58,18 @@ func (e *Encryptor) EncryptWALFile(sourcePath, destPath string, opts EncryptionO
 	}
 	defer srcFile.Close()
 
+	// Check file size before reading into memory
+	stat, err := srcFile.Stat()
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat source file: %w", err)
+	}
+	if stat.Size() > MaxWALFileSize {
+		return 0, fmt.Errorf("WAL file too large for encryption: %d bytes (max %d)", stat.Size(), MaxWALFileSize)
+	}
+
 	// Read entire file (WAL files are typically 16MB, manageable in memory)
-	plaintext, err := io.ReadAll(srcFile)
+	// Use LimitReader as an additional safeguard
+	plaintext, err := io.ReadAll(io.LimitReader(srcFile, MaxWALFileSize+1))
 	if err != nil {
 		return 0, fmt.Errorf("failed to read source file: %w", err)
 	}
@@ -134,6 +148,17 @@ func (e *Encryptor) DecryptWALFile(sourcePath, destPath string, opts EncryptionO
 	}
 	defer srcFile.Close()
 
+	// Check file size before reading into memory
+	stat, err := srcFile.Stat()
+	if err != nil {
+		return 0, fmt.Errorf("failed to stat encrypted file: %w", err)
+	}
+	// Encrypted files are slightly larger due to nonce and auth tag
+	maxEncryptedSize := MaxWALFileSize + 1024 // Allow overhead for header + nonce + auth tag
+	if stat.Size() > int64(maxEncryptedSize) {
+		return 0, fmt.Errorf("encrypted WAL file too large: %d bytes (max %d)", stat.Size(), maxEncryptedSize)
+	}
+
 	// Read and verify header
 	header := make([]byte, 8)
 	if _, err := io.ReadFull(srcFile, header); err != nil {
@@ -143,8 +168,8 @@ func (e *Encryptor) DecryptWALFile(sourcePath, destPath string, opts EncryptionO
 		return 0, fmt.Errorf("not an encrypted WAL file or unsupported version")
 	}
 
-	// Read encrypted data
-	ciphertext, err := io.ReadAll(srcFile)
+	// Read encrypted data with size limit as safeguard
+	ciphertext, err := io.ReadAll(io.LimitReader(srcFile, int64(maxEncryptedSize)))
 	if err != nil {
 		return 0, fmt.Errorf("failed to read encrypted data: %w", err)
 	}

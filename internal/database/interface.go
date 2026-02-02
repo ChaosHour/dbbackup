@@ -38,6 +38,11 @@ type Database interface {
 	BuildRestoreCommand(database, inputFile string, options RestoreOptions) []string
 	BuildSampleQuery(database, table string, strategy SampleStrategy) string
 
+	// GetPasswordEnvVar returns the environment variable for passing the password
+	// to external commands (e.g., MYSQL_PWD, PGPASSWORD). Returns empty if password
+	// should be passed differently (e.g., via .pgpass file) or is not set.
+	GetPasswordEnvVar() string
+
 	// Validation
 	ValidateBackupTools() error
 }

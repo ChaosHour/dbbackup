@@ -42,9 +42,17 @@ func (m *MySQL) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to open MySQL connection: %w", err)
 	}
 
-	// Configure connection pool
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
+	// Configure connection pool based on jobs setting
+	// Use jobs + 2 for max connections (extra for control queries)
+	maxConns := 10 // default
+	if m.cfg.Jobs > 0 {
+		maxConns = m.cfg.Jobs + 2
+		if maxConns < 5 {
+			maxConns = 5 // minimum pool size
+		}
+	}
+	db.SetMaxOpenConns(maxConns)
+	db.SetMaxIdleConns(maxConns / 2)
 	db.SetConnMaxLifetime(time.Hour) // Close connections after 1 hour
 
 	// Test connection with proper timeout
@@ -293,9 +301,8 @@ func (m *MySQL) BuildBackupCommand(database, outputFile string, options BackupOp
 		cmd = append(cmd, "-u", m.cfg.User)
 	}
 
-	if m.cfg.Password != "" {
-		cmd = append(cmd, "-p"+m.cfg.Password)
-	}
+	// Note: Password is passed via MYSQL_PWD environment variable to avoid
+	// exposing it in process list (ps aux). See ExecuteBackupCommand.
 
 	// SSL options
 	if m.cfg.Insecure {
@@ -357,9 +364,8 @@ func (m *MySQL) BuildRestoreCommand(database, inputFile string, options RestoreO
 		cmd = append(cmd, "-u", m.cfg.User)
 	}
 
-	if m.cfg.Password != "" {
-		cmd = append(cmd, "-p"+m.cfg.Password)
-	}
+	// Note: Password is passed via MYSQL_PWD environment variable to avoid
+	// exposing it in process list (ps aux). See ExecuteRestoreCommand.
 
 	// SSL options
 	if m.cfg.Insecure {
@@ -409,6 +415,16 @@ func (m *MySQL) ValidateBackupTools() error {
 	}
 
 	return nil
+}
+
+// GetPasswordEnvVar returns the MYSQL_PWD environment variable string.
+// This is used to pass the password to mysqldump/mysql commands without
+// exposing it in the process list (ps aux).
+func (m *MySQL) GetPasswordEnvVar() string {
+	if m.cfg.Password != "" {
+		return "MYSQL_PWD=" + m.cfg.Password
+	}
+	return ""
 }
 
 // buildDSN constructs MySQL connection string

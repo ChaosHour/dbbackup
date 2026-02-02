@@ -14,6 +14,7 @@ import (
 	"dbbackup/internal/database"
 	"dbbackup/internal/notify"
 	"dbbackup/internal/security"
+	"dbbackup/internal/validation"
 )
 
 // runClusterBackup performs a full cluster backup
@@ -28,6 +29,11 @@ func runClusterBackup(ctx context.Context) error {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("configuration error: %w", err)
+	}
+
+	// Validate input parameters with comprehensive security checks
+	if err := validateBackupParams(cfg); err != nil {
+		return fmt.Errorf("validation error: %w", err)
 	}
 
 	// Handle dry-run mode
@@ -171,6 +177,11 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("configuration error: %w", err)
+	}
+
+	// Validate input parameters with comprehensive security checks
+	if err := validateBackupParams(cfg); err != nil {
+		return fmt.Errorf("validation error: %w", err)
 	}
 
 	// Handle dry-run mode
@@ -403,6 +414,11 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("configuration error: %w", err)
+	}
+
+	// Validate input parameters with comprehensive security checks
+	if err := validateBackupParams(cfg); err != nil {
+		return fmt.Errorf("validation error: %w", err)
 	}
 
 	// Handle dry-run mode
@@ -658,6 +674,64 @@ func runBackupPreflight(ctx context.Context, databaseName string) error {
 	// Return appropriate exit code
 	if !result.AllPassed {
 		return fmt.Errorf("preflight checks failed")
+	}
+
+	return nil
+}
+
+// validateBackupParams performs comprehensive input validation for backup parameters
+func validateBackupParams(cfg *config.Config) error {
+	var errs []string
+
+	// Validate backup directory
+	if cfg.BackupDir != "" {
+		if err := validation.ValidateBackupDir(cfg.BackupDir); err != nil {
+			errs = append(errs, fmt.Sprintf("backup directory: %s", err))
+		}
+	}
+
+	// Validate job count
+	if cfg.Jobs > 0 {
+		if err := validation.ValidateJobs(cfg.Jobs); err != nil {
+			errs = append(errs, fmt.Sprintf("jobs: %s", err))
+		}
+	}
+
+	// Validate database name
+	if cfg.Database != "" {
+		if err := validation.ValidateDatabaseName(cfg.Database, cfg.DatabaseType); err != nil {
+			errs = append(errs, fmt.Sprintf("database name: %s", err))
+		}
+	}
+
+	// Validate host
+	if cfg.Host != "" {
+		if err := validation.ValidateHost(cfg.Host); err != nil {
+			errs = append(errs, fmt.Sprintf("host: %s", err))
+		}
+	}
+
+	// Validate port
+	if cfg.Port > 0 {
+		if err := validation.ValidatePort(cfg.Port); err != nil {
+			errs = append(errs, fmt.Sprintf("port: %s", err))
+		}
+	}
+
+	// Validate retention days
+	if cfg.RetentionDays > 0 {
+		if err := validation.ValidateRetentionDays(cfg.RetentionDays); err != nil {
+			errs = append(errs, fmt.Sprintf("retention days: %s", err))
+		}
+	}
+
+	// Validate compression level
+	if err := validation.ValidateCompressionLevel(cfg.CompressionLevel); err != nil {
+		errs = append(errs, fmt.Sprintf("compression level: %s", err))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("validation failed: %s", strings.Join(errs, "; "))
 	}
 
 	return nil

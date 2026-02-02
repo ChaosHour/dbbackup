@@ -6,11 +6,11 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 )
@@ -572,7 +572,7 @@ func (g *LargeDBGuard) RevertMySQLSettings() []string {
 // Uses pg_restore -l which outputs a line-by-line listing, then streams through it
 func (g *LargeDBGuard) StreamCountBLOBs(ctx context.Context, dumpFile string) (int, error) {
 	// pg_restore -l outputs text listing, one line per object
-	cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
+	cmd := cleanup.SafeCommand(ctx, "pg_restore", "-l", dumpFile)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -609,7 +609,7 @@ func (g *LargeDBGuard) StreamCountBLOBs(ctx context.Context, dumpFile string) (i
 // StreamAnalyzeDump analyzes a dump file using streaming to avoid memory issues
 // Returns: blobCount, estimatedObjects, error
 func (g *LargeDBGuard) StreamAnalyzeDump(ctx context.Context, dumpFile string) (blobCount, totalObjects int, err error) {
-	cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
+	cmd := cleanup.SafeCommand(ctx, "pg_restore", "-l", dumpFile)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

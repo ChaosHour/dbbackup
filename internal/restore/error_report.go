@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 
@@ -568,7 +568,7 @@ func getCommandVersion(cmd string, arg string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	output, err := exec.CommandContext(ctx, cmd, arg).CombinedOutput()
+	output, err := cleanup.SafeCommand(ctx, cmd, arg).CombinedOutput()
 	if err != nil {
 		return ""
 	}

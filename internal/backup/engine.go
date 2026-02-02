@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"dbbackup/internal/checks"
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/cloud"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
@@ -650,7 +650,7 @@ func (e *Engine) executeCommandWithProgress(ctx context.Context, cmdArgs []strin
 
 	e.log.Debug("Executing backup command with progress", "cmd", cmdArgs[0], "args", cmdArgs[1:])
 
-	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	cmd := cleanup.SafeCommand(ctx, cmdArgs[0], cmdArgs[1:]...)
 
 	// Set environment variables for database tools
 	cmd.Env = os.Environ()
@@ -696,9 +696,9 @@ func (e *Engine) executeCommandWithProgress(ctx context.Context, cmdArgs []strin
 	case cmdErr = <-cmdDone:
 		// Command completed (success or failure)
 	case <-ctx.Done():
-		// Context cancelled - kill process to unblock
-		e.log.Warn("Backup cancelled - killing process")
-		cmd.Process.Kill()
+		// Context cancelled - kill entire process group
+		e.log.Warn("Backup cancelled - killing process group")
+		cleanup.KillCommandGroup(cmd)
 		<-cmdDone // Wait for goroutine to finish
 		cmdErr = ctx.Err()
 	}
@@ -754,7 +754,7 @@ func (e *Engine) monitorCommandProgress(stderr io.ReadCloser, tracker *progress.
 // Uses in-process pgzip for parallel compression (2-4x faster on multi-core systems)
 func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmdArgs []string, outputFile string, tracker *progress.OperationTracker) error {
 	// Create mysqldump command
-	dumpCmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	dumpCmd := cleanup.SafeCommand(ctx, cmdArgs[0], cmdArgs[1:]...)
 	dumpCmd.Env = os.Environ()
 	if e.cfg.Password != "" {
 		dumpCmd.Env = append(dumpCmd.Env, "MYSQL_PWD="+e.cfg.Password)
@@ -816,8 +816,8 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	case dumpErr = <-dumpDone:
 		// mysqldump completed
 	case <-ctx.Done():
-		e.log.Warn("Backup cancelled - killing mysqldump")
-		dumpCmd.Process.Kill()
+		e.log.Warn("Backup cancelled - killing mysqldump process group")
+		cleanup.KillCommandGroup(dumpCmd)
 		<-dumpDone
 		return ctx.Err()
 	}
@@ -846,7 +846,7 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 // Uses in-process pgzip for parallel compression (2-4x faster on multi-core systems)
 func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []string, outputFile string) error {
 	// Create mysqldump command
-	dumpCmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	dumpCmd := cleanup.SafeCommand(ctx, cmdArgs[0], cmdArgs[1:]...)
 	dumpCmd.Env = os.Environ()
 	if e.cfg.Password != "" {
 		dumpCmd.Env = append(dumpCmd.Env, "MYSQL_PWD="+e.cfg.Password)
@@ -895,8 +895,8 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	case dumpErr = <-dumpDone:
 		// mysqldump completed
 	case <-ctx.Done():
-		e.log.Warn("Backup cancelled - killing mysqldump")
-		dumpCmd.Process.Kill()
+		e.log.Warn("Backup cancelled - killing mysqldump process group")
+		cleanup.KillCommandGroup(dumpCmd)
 		<-dumpDone
 		return ctx.Err()
 	}
@@ -951,7 +951,7 @@ func (e *Engine) createSampleBackup(ctx context.Context, databaseName, outputFil
 			Format:     "plain",
 		})
 
-		cmd := exec.CommandContext(ctx, schemaCmd[0], schemaCmd[1:]...)
+		cmd := cleanup.SafeCommand(ctx, schemaCmd[0], schemaCmd[1:]...)
 		cmd.Env = os.Environ()
 		if e.cfg.Password != "" {
 			cmd.Env = append(cmd.Env, "PGPASSWORD="+e.cfg.Password)
@@ -990,7 +990,7 @@ func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 	globalsFile := filepath.Join(tempDir, "globals.sql")
 
 	// CRITICAL: Always pass port even for localhost - user may have non-standard port
-	cmd := exec.CommandContext(ctx, "pg_dumpall", "--globals-only",
+	cmd := cleanup.SafeCommand(ctx, "pg_dumpall", "--globals-only",
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
 		"-U", e.cfg.User)
 
@@ -1034,8 +1034,8 @@ func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 	case cmdErr = <-cmdDone:
 		// Command completed normally
 	case <-ctx.Done():
-		e.log.Warn("Globals backup cancelled - killing pg_dumpall")
-		cmd.Process.Kill()
+		e.log.Warn("Globals backup cancelled - killing pg_dumpall process group")
+		cleanup.KillCommandGroup(cmd)
 		<-cmdDone
 		return ctx.Err()
 	}
@@ -1430,7 +1430,7 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 
 	// For custom format, pg_dump handles everything (writes directly to file)
 	// NO GO BUFFERING - pg_dump writes directly to disk
-	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	cmd := cleanup.SafeCommand(ctx, cmdArgs[0], cmdArgs[1:]...)
 
 	// Start heartbeat ticker for backup progress
 	backupStart := time.Now()
@@ -1499,9 +1499,9 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 	case cmdErr = <-cmdDone:
 		// Command completed (success or failure)
 	case <-ctx.Done():
-		// Context cancelled - kill process to unblock
-		e.log.Warn("Backup cancelled - killing pg_dump process")
-		cmd.Process.Kill()
+		// Context cancelled - kill entire process group
+		e.log.Warn("Backup cancelled - killing pg_dump process group")
+		cleanup.KillCommandGroup(cmd)
 		<-cmdDone // Wait for goroutine to finish
 		cmdErr = ctx.Err()
 	}
@@ -1536,7 +1536,7 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	}
 
 	// Create pg_dump command
-	dumpCmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	dumpCmd := cleanup.SafeCommand(ctx, cmdArgs[0], cmdArgs[1:]...)
 	dumpCmd.Env = os.Environ()
 	if e.cfg.Password != "" && e.cfg.IsPostgreSQL() {
 		dumpCmd.Env = append(dumpCmd.Env, "PGPASSWORD="+e.cfg.Password)
@@ -1612,9 +1612,9 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	case dumpErr = <-dumpDone:
 		// pg_dump completed (success or failure)
 	case <-ctx.Done():
-		// Context cancelled/timeout - kill pg_dump to unblock
-		e.log.Warn("Backup timeout - killing pg_dump process")
-		dumpCmd.Process.Kill()
+		// Context cancelled/timeout - kill pg_dump process group
+		e.log.Warn("Backup timeout - killing pg_dump process group")
+		cleanup.KillCommandGroup(dumpCmd)
 		<-dumpDone // Wait for goroutine to finish
 		dumpErr = ctx.Err()
 	}

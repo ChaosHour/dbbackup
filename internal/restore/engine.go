@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"dbbackup/internal/checks"
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/fs"
@@ -499,7 +500,7 @@ func (e *Engine) checkDumpHasLargeObjects(archivePath string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "pg_restore", "-l", archivePath)
+	cmd := cleanup.SafeCommand(ctx, "pg_restore", "-l", archivePath)
 	output, err := cmd.Output()
 
 	if err != nil {
@@ -592,7 +593,7 @@ func (e *Engine) executeRestoreCommand(ctx context.Context, cmdArgs []string) er
 func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs []string, archivePath, targetDB string, format ArchiveFormat) error {
 	e.log.Info("Executing restore command", "command", strings.Join(cmdArgs, " "))
 
-	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
+	cmd := cleanup.SafeCommand(ctx, cmdArgs[0], cmdArgs[1:]...)
 
 	// Set environment variables
 	cmd.Env = append(os.Environ(),
@@ -662,9 +663,9 @@ func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs [
 	case cmdErr = <-cmdDone:
 		// Command completed (success or failure)
 	case <-ctx.Done():
-		// Context cancelled - kill process
-		e.log.Warn("Restore cancelled - killing process")
-		cmd.Process.Kill()
+		// Context cancelled - kill entire process group
+		e.log.Warn("Restore cancelled - killing process group")
+		cleanup.KillCommandGroup(cmd)
 		<-cmdDone
 		cmdErr = ctx.Err()
 	}
@@ -772,7 +773,7 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	defer gz.Close()
 
 	// Start restore command
-	cmd := exec.CommandContext(ctx, restoreCmd[0], restoreCmd[1:]...)
+	cmd := cleanup.SafeCommand(ctx, restoreCmd[0], restoreCmd[1:]...)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password),
 		fmt.Sprintf("MYSQL_PWD=%s", e.cfg.Password),
@@ -876,7 +877,7 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 		if e.cfg.Host != "localhost" && e.cfg.Host != "" {
 			args = append([]string{"-h", e.cfg.Host}, args...)
 		}
-		cmd = exec.CommandContext(ctx, "psql", args...)
+		cmd = cleanup.SafeCommand(ctx, "psql", args...)
 		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 	} else {
 		// MySQL - use MYSQL_PWD env var to avoid password in process list
@@ -885,7 +886,7 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 			args = append(args, "-h", e.cfg.Host)
 		}
 		args = append(args, "-P", fmt.Sprintf("%d", e.cfg.Port), targetDB)
-		cmd = exec.CommandContext(ctx, "mysql", args...)
+		cmd = cleanup.SafeCommand(ctx, "mysql", args...)
 		// Pass password via environment variable to avoid process list exposure
 		cmd.Env = os.Environ()
 		if e.cfg.Password != "" {
@@ -1322,7 +1323,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			}
 		} else if strings.HasSuffix(dumpFile, ".dump") {
 			// Validate custom format dumps using pg_restore --list
-			cmd := exec.CommandContext(ctx, "pg_restore", "--list", dumpFile)
+			cmd := cleanup.SafeCommand(ctx, "pg_restore", "--list", dumpFile)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				dbName := strings.TrimSuffix(entry.Name(), ".dump")
@@ -2121,7 +2122,7 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 		args = append([]string{"-h", e.cfg.Host}, args...)
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 
@@ -2183,8 +2184,8 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 	case cmdErr = <-cmdDone:
 		// Command completed
 	case <-ctx.Done():
-		e.log.Warn("Globals restore cancelled - killing process")
-		cmd.Process.Kill()
+		e.log.Warn("Globals restore cancelled - killing process group")
+		cleanup.KillCommandGroup(cmd)
 		<-cmdDone
 		cmdErr = ctx.Err()
 	}
@@ -2225,7 +2226,7 @@ func (e *Engine) checkSuperuser(ctx context.Context) (bool, error) {
 		args = append([]string{"-h", e.cfg.Host}, args...)
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 
 	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
@@ -2260,7 +2261,7 @@ func (e *Engine) terminateConnections(ctx context.Context, dbName string) error 
 		args = append([]string{"-h", e.cfg.Host}, args...)
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 
 	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
 	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
@@ -2296,7 +2297,7 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
 		revokeArgs = append([]string{"-h", e.cfg.Host}, revokeArgs...)
 	}
-	revokeCmd := exec.CommandContext(ctx, "psql", revokeArgs...)
+	revokeCmd := cleanup.SafeCommand(ctx, "psql", revokeArgs...)
 	revokeCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 	revokeCmd.Run() // Ignore errors - database might not exist
 
@@ -2315,7 +2316,7 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
 		forceArgs = append([]string{"-h", e.cfg.Host}, forceArgs...)
 	}
-	forceCmd := exec.CommandContext(ctx, "psql", forceArgs...)
+	forceCmd := cleanup.SafeCommand(ctx, "psql", forceArgs...)
 	forceCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 
 	output, err := forceCmd.CombinedOutput()
@@ -2338,7 +2339,7 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 			args = append([]string{"-h", e.cfg.Host}, args...)
 		}
 
-		cmd := exec.CommandContext(ctx, "psql", args...)
+		cmd := cleanup.SafeCommand(ctx, "psql", args...)
 		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 
 		output, err = cmd.CombinedOutput()
@@ -2372,7 +2373,7 @@ func (e *Engine) ensureMySQLDatabaseExists(ctx context.Context, dbName string) e
 		"-e", fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`", dbName),
 	}
 
-	cmd := exec.CommandContext(ctx, "mysql", args...)
+	cmd := cleanup.SafeCommand(ctx, "mysql", args...)
 	cmd.Env = os.Environ()
 	if e.cfg.Password != "" {
 		cmd.Env = append(cmd.Env, "MYSQL_PWD="+e.cfg.Password)
@@ -2410,7 +2411,7 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 			args = append([]string{"-h", e.cfg.Host}, args...)
 		}
 
-		cmd := exec.CommandContext(ctx, "psql", args...)
+		cmd := cleanup.SafeCommand(ctx, "psql", args...)
 
 		// Always set PGPASSWORD (empty string is fine for peer/ident auth)
 		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
@@ -2467,7 +2468,7 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 		createArgs = append([]string{"-h", e.cfg.Host}, createArgs...)
 	}
 
-	createCmd := exec.CommandContext(ctx, "psql", createArgs...)
+	createCmd := cleanup.SafeCommand(ctx, "psql", createArgs...)
 
 	// Always set PGPASSWORD (empty string is fine for peer/ident auth)
 	createCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
@@ -2487,7 +2488,7 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 			simpleArgs = append([]string{"-h", e.cfg.Host}, simpleArgs...)
 		}
 
-		simpleCmd := exec.CommandContext(ctx, "psql", simpleArgs...)
+		simpleCmd := cleanup.SafeCommand(ctx, "psql", simpleArgs...)
 		simpleCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 
 		output, err = simpleCmd.CombinedOutput()
@@ -2552,7 +2553,7 @@ func (e *Engine) detectLargeObjectsInDumps(dumpsDir string, entries []os.DirEntr
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
+		cmd := cleanup.SafeCommand(ctx, "pg_restore", "-l", dumpFile)
 		output, err := cmd.Output()
 
 		if err != nil {
@@ -2876,7 +2877,7 @@ func (e *Engine) canRestartPostgreSQL() bool {
 		// Try a quick sudo check - if this fails, we can't restart
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, "sudo", "-n", "true")
+		cmd := cleanup.SafeCommand(ctx, "sudo", "-n", "true")
 		cmd.Stdin = nil
 		if err := cmd.Run(); err != nil {
 			e.log.Info("Running as postgres user without sudo access - cannot restart PostgreSQL",
@@ -2906,7 +2907,7 @@ func (e *Engine) tryRestartPostgreSQL(ctx context.Context) bool {
 	runWithTimeout := func(args ...string) bool {
 		cmdCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(cmdCtx, args[0], args[1:]...)
+		cmd := cleanup.SafeCommand(cmdCtx, args[0], args[1:]...)
 		// Set stdin to /dev/null to prevent sudo from waiting for password
 		cmd.Stdin = nil
 		return cmd.Run() == nil

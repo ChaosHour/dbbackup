@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
@@ -419,7 +420,7 @@ func (s *Safety) checkPostgresDatabaseExists(ctx context.Context, dbName string)
 	}
 	args = append([]string{"-h", host}, args...)
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 
 	// Set password if provided
 	if s.cfg.Password != "" {
@@ -447,7 +448,7 @@ func (s *Safety) checkMySQLDatabaseExists(ctx context.Context, dbName string) (b
 		args = append([]string{"-h", s.cfg.Host}, args...)
 	}
 
-	cmd := exec.CommandContext(ctx, "mysql", args...)
+	cmd := cleanup.SafeCommand(ctx, "mysql", args...)
 
 	if s.cfg.Password != "" {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("MYSQL_PWD=%s", s.cfg.Password))
@@ -493,7 +494,7 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 	}
 	args = append([]string{"-h", host}, args...)
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 
 	// Set password - check config first, then environment
 	env := os.Environ()
@@ -542,7 +543,7 @@ func (s *Safety) listMySQLUserDatabases(ctx context.Context) ([]string, error) {
 		args = append([]string{"-h", s.cfg.Host}, args...)
 	}
 
-	cmd := exec.CommandContext(ctx, "mysql", args...)
+	cmd := cleanup.SafeCommand(ctx, "mysql", args...)
 
 	if s.cfg.Password != "" {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("MYSQL_PWD=%s", s.cfg.Password))

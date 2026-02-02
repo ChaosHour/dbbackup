@@ -1,18 +1,22 @@
 package restore
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"dbbackup/internal/cleanup"
+
 	"github.com/dustin/go-humanize"
+	"github.com/klauspost/pgzip"
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
@@ -381,7 +385,7 @@ func (e *Engine) countBlobsInDump(ctx context.Context, dumpFile string) int {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpFile)
+	cmd := cleanup.SafeCommand(ctx, "pg_restore", "-l", dumpFile)
 	output, err := cmd.Output()
 	if err != nil {
 		return 0
@@ -398,24 +402,51 @@ func (e *Engine) countBlobsInDump(ctx context.Context, dumpFile string) int {
 }
 
 // estimateBlobsInSQL samples compressed SQL for lo_create patterns
+// Uses in-process pgzip decompression (NO external gzip process)
 func (e *Engine) estimateBlobsInSQL(sqlFile string) int {
-	// Use zgrep for efficient searching in gzipped files
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Count lo_create calls (each = one large object)
-	cmd := exec.CommandContext(ctx, "zgrep", "-c", "lo_create", sqlFile)
-	output, err := cmd.Output()
+	// Open the gzipped file
+	f, err := os.Open(sqlFile)
 	if err != nil {
-		// Also try SELECT lo_create pattern
-		cmd2 := exec.CommandContext(ctx, "zgrep", "-c", "SELECT.*lo_create", sqlFile)
-		output, err = cmd2.Output()
-		if err != nil {
-			return 0
-		}
+		e.log.Debug("Cannot open SQL file for BLOB estimation", "file", sqlFile, "error", err)
+		return 0
+	}
+	defer f.Close()
+
+	// Create pgzip reader for parallel decompression
+	gzReader, err := pgzip.NewReader(f)
+	if err != nil {
+		e.log.Debug("Cannot create pgzip reader", "file", sqlFile, "error", err)
+		return 0
+	}
+	defer gzReader.Close()
+
+	// Scan for lo_create patterns
+	// We use a regex to match both "lo_create" and "SELECT lo_create" patterns
+	loCreatePattern := regexp.MustCompile(`lo_create`)
+	
+	scanner := bufio.NewScanner(gzReader)
+	// Use larger buffer for potentially long lines
+	buf := make([]byte, 0, 256*1024)
+	scanner.Buffer(buf, 10*1024*1024)
+
+	count := 0
+	linesScanned := 0
+	maxLines := 1000000 // Limit scanning for very large files
+
+	for scanner.Scan() && linesScanned < maxLines {
+		line := scanner.Text()
+		linesScanned++
+		
+		// Count all lo_create occurrences in the line
+		matches := loCreatePattern.FindAllString(line, -1)
+		count += len(matches)
 	}
 
-	count, _ := strconv.Atoi(strings.TrimSpace(string(output)))
+	if err := scanner.Err(); err != nil {
+		e.log.Debug("Error scanning SQL file", "file", sqlFile, "error", err, "lines_scanned", linesScanned)
+	}
+
+	e.log.Debug("BLOB estimation from SQL file", "file", sqlFile, "lo_create_count", count, "lines_scanned", linesScanned)
 	return count
 }
 

@@ -3,11 +3,11 @@ package restore
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"time"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/database"
 )
 
@@ -54,7 +54,7 @@ func GetDumpFileVersion(dumpPath string) (*VersionInfo, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "pg_restore", "-l", dumpPath)
+	cmd := cleanup.SafeCommand(ctx, "pg_restore", "-l", dumpPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read dump file metadata: %w (output: %s)", err, string(output))

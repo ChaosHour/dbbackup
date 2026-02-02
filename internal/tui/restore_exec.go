@@ -16,6 +16,7 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/progress"
 	"dbbackup/internal/restore"
 )
 
@@ -75,6 +76,13 @@ type RestoreExecutionModel struct {
 	overallPhase   int // 1=Extracting, 2=Globals, 3=Databases
 	extractionDone bool
 
+	// Rich progress view for cluster restores
+	richProgressView *RichClusterProgressView
+	unifiedProgress  *progress.UnifiedClusterProgress
+	useRichProgress  bool // Whether to use the rich progress view
+	termWidth        int  // Terminal width for rich progress
+	termHeight       int  // Terminal height for rich progress
+
 	// Results
 	done       bool
 	cancelling bool // True when user has requested cancellation
@@ -108,6 +116,11 @@ func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model
 		details:           []string{},
 		spinnerFrames:     spinnerFrames, // Use package-level constant
 		spinnerFrame:      0,
+		// Initialize rich progress view for cluster restores
+		richProgressView: NewRichClusterProgressView(),
+		useRichProgress:  restoreType == "restore-cluster",
+		termWidth:        80,
+		termHeight:       24,
 	}
 }
 
@@ -176,6 +189,9 @@ type sharedProgressState struct {
 	// Throttling to prevent excessive updates (memory optimization)
 	lastSpeedSampleTime time.Time     // Last time we added a speed sample
 	minSampleInterval   time.Duration // Minimum interval between samples (100ms)
+
+	// Unified progress tracker for rich display
+	unifiedProgress *progress.UnifiedClusterProgress
 }
 
 type restoreSpeedSample struct {
@@ -229,6 +245,18 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 		currentRestoreProgressState.extractionDone,
 		currentRestoreProgressState.dbBytesTotal, currentRestoreProgressState.dbBytesDone,
 		currentRestoreProgressState.phase3StartTime
+}
+
+// getUnifiedProgress returns the unified progress tracker if available
+func getUnifiedProgress() *progress.UnifiedClusterProgress {
+	currentRestoreProgressMu.Lock()
+	defer currentRestoreProgressMu.Unlock()
+
+	if currentRestoreProgressState == nil {
+		return nil
+	}
+
+	return currentRestoreProgressState.unifiedProgress
 }
 
 // calculateRollingSpeed calculates speed from recent samples (last 5 seconds)
@@ -332,6 +360,11 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		progressState := &sharedProgressState{
 			speedSamples: make([]restoreSpeedSample, 0, 100),
 		}
+
+		// Initialize unified progress tracker for cluster restores
+		if restoreType == "restore-cluster" {
+			progressState.unifiedProgress = progress.NewUnifiedClusterProgress("restore", archive.Path)
+		}
 		engine.SetProgressCallback(func(current, total int64, description string) {
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
@@ -342,10 +375,19 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.overallPhase = 1
 			progressState.extractionDone = false
 
+			// Update unified progress tracker
+			if progressState.unifiedProgress != nil {
+				progressState.unifiedProgress.SetPhase(progress.PhaseExtracting)
+				progressState.unifiedProgress.SetExtractProgress(current, total)
+			}
+
 			// Check if extraction is complete
 			if current >= total && total > 0 {
 				progressState.extractionDone = true
 				progressState.overallPhase = 2
+				if progressState.unifiedProgress != nil {
+					progressState.unifiedProgress.SetPhase(progress.PhaseGlobals)
+				}
 			}
 
 			// Throttle speed samples to prevent memory bloat (max 10 samples/sec)
@@ -384,6 +426,13 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			// Clear byte progress when switching to db progress
 			progressState.bytesTotal = 0
 			progressState.bytesDone = 0
+
+			// Update unified progress tracker
+			if progressState.unifiedProgress != nil {
+				progressState.unifiedProgress.SetPhase(progress.PhaseDatabases)
+				progressState.unifiedProgress.SetDatabasesTotal(total, nil)
+				progressState.unifiedProgress.StartDatabase(dbName, 0)
+			}
 		})
 
 		// Set up timing-aware database progress callback for cluster restore ETA
@@ -406,6 +455,13 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			// Clear byte progress when switching to db progress
 			progressState.bytesTotal = 0
 			progressState.bytesDone = 0
+
+			// Update unified progress tracker
+			if progressState.unifiedProgress != nil {
+				progressState.unifiedProgress.SetPhase(progress.PhaseDatabases)
+				progressState.unifiedProgress.SetDatabasesTotal(total, nil)
+				progressState.unifiedProgress.StartDatabase(dbName, 0)
+			}
 		})
 
 		// Set up weighted (bytes-based) progress callback for accurate cluster restore progress
@@ -423,6 +479,14 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			// Set phase 3 start time on first callback (for realtime ETA calculation)
 			if progressState.phase3StartTime.IsZero() {
 				progressState.phase3StartTime = time.Now()
+			}
+
+			// Update unified progress tracker
+			if progressState.unifiedProgress != nil {
+				progressState.unifiedProgress.SetPhase(progress.PhaseDatabases)
+				progressState.unifiedProgress.SetDatabasesTotal(dbTotal, nil)
+				progressState.unifiedProgress.StartDatabase(dbName, bytesTotal)
+				progressState.unifiedProgress.UpdateDatabaseProgress(bytesDone)
 			}
 		})
 
@@ -489,10 +553,29 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// Update terminal dimensions for rich progress view
+		m.termWidth = msg.Width
+		m.termHeight = msg.Height
+		if m.richProgressView != nil {
+			m.richProgressView.SetSize(msg.Width, msg.Height)
+		}
+		return m, nil
+
 	case restoreTickMsg:
 		if !m.done {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(m.spinnerFrames)
 			m.elapsed = time.Since(m.startTime)
+
+			// Advance spinner for rich progress view
+			if m.richProgressView != nil {
+				m.richProgressView.AdvanceSpinner()
+			}
+
+			// Update unified progress reference
+			if m.useRichProgress && m.unifiedProgress == nil {
+				m.unifiedProgress = getUnifiedProgress()
+			}
 
 			// Poll shared progress state for real-time updates
 			// Note: dbPhaseElapsed is now calculated in realtime inside getCurrentRestoreProgress()
@@ -782,7 +865,16 @@ func (m RestoreExecutionModel) View() string {
 	} else {
 		// Show unified progress for cluster restore
 		if m.restoreType == "restore-cluster" {
-			// Calculate overall progress across all phases
+			// Use rich progress view when we have unified progress data
+			if m.useRichProgress && m.unifiedProgress != nil {
+				// Render using the rich cluster progress view
+				s.WriteString(m.richProgressView.RenderUnified(m.unifiedProgress))
+				s.WriteString("\n")
+				s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C to cancel"))
+				return s.String()
+			}
+
+			// Fallback: Calculate overall progress across all phases
 			// Phase 1: Extraction (0-60%)
 			// Phase 2: Globals (60-65%)
 			// Phase 3: Databases (65-100%)

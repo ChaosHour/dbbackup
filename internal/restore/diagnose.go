@@ -8,12 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 
@@ -568,7 +568,7 @@ func (d *Diagnoser) verifyWithPgRestore(filePath string, result *DiagnoseResult)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "pg_restore", "--list", filePath)
+	cmd := cleanup.SafeCommand(ctx, "pg_restore", "--list", filePath)
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {

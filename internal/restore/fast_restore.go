@@ -5,11 +5,11 @@ package restore
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 )
@@ -124,7 +124,7 @@ func ApplySessionOptimizations(ctx context.Context, cfg *config.Config, log logg
 
 	for _, sql := range safeOptimizations {
 		cmdArgs := append(args, "-c", sql)
-		cmd := exec.CommandContext(ctx, "psql", cmdArgs...)
+		cmd := cleanup.SafeCommand(ctx, "psql", cmdArgs...)
 		cmd.Env = append(cmd.Environ(), fmt.Sprintf("PGPASSWORD=%s", cfg.Password))
 
 		if err := cmd.Run(); err != nil {

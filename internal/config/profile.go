@@ -37,7 +37,7 @@ func GetRestoreProfile(profileName string) (*RestoreProfile, error) {
 			MemoryConservative: false,
 		}, nil
 
-	case "aggressive", "performance", "max":
+	case "aggressive", "performance":
 		return &RestoreProfile{
 			Name:               "aggressive",
 			ParallelDBs:        -1, // Auto-detect based on resources
@@ -61,19 +61,20 @@ func GetRestoreProfile(profileName string) (*RestoreProfile, error) {
 		// Matches native pg_restore -j8 performance
 		return &RestoreProfile{
 			Name:               "turbo",
-			ParallelDBs:        2, // 2 DBs in parallel (I/O balanced)
-			Jobs:               8, // pg_restore --jobs=8
+			ParallelDBs:        4,  // 4 DBs in parallel (balanced I/O)
+			Jobs:               8,  // pg_restore --jobs=8
 			DisableProgress:    false,
 			MemoryConservative: false,
 		}, nil
 
-	case "max-performance":
+	case "max-performance", "maxperformance", "max":
 		// Maximum performance for high-end servers
+		// Use for dedicated restore operations where speed is critical
 		return &RestoreProfile{
 			Name:               "max-performance",
-			ParallelDBs:        4,
-			Jobs:               8,
-			DisableProgress:    false,
+			ParallelDBs:        8,  // 8 DBs in parallel
+			Jobs:               16, // pg_restore --jobs=16
+			DisableProgress:    true, // Reduce TUI overhead
 			MemoryConservative: false,
 		}, nil
 
@@ -126,13 +127,17 @@ func GetProfileDescription(profileName string) string {
 
 	switch profile.Name {
 	case "conservative":
-		return "Conservative: --parallel=1, single-threaded, minimal memory usage. Best for resource-constrained servers or when other services are running."
+		return "Conservative: --jobs=1, single-threaded, minimal memory usage. Best for resource-constrained servers."
 	case "potato":
 		return "Potato Mode: Same as conservative, for servers running on a potato 🥔"
 	case "balanced":
 		return "Balanced: Auto-detect resources, moderate parallelism. Good default for most scenarios."
 	case "aggressive":
-		return "Aggressive: Maximum parallelism, all available resources. Best for dedicated database servers with ample resources."
+		return "Aggressive: Maximum parallelism, all available resources. Best for dedicated database servers."
+	case "turbo":
+		return "Turbo: --jobs=8, 4 parallel DBs. Matches pg_restore -j8 speed. Great for production restores."
+	case "max-performance":
+		return "Max-Performance: --jobs=16, 8 parallel DBs, TUI disabled. For dedicated restore operations."
 	default:
 		return profile.Name
 	}
@@ -141,9 +146,11 @@ func GetProfileDescription(profileName string) string {
 // ListProfiles returns a list of all available profiles with descriptions
 func ListProfiles() map[string]string {
 	return map[string]string{
-		"conservative": GetProfileDescription("conservative"),
-		"balanced":     GetProfileDescription("balanced"),
-		"aggressive":   GetProfileDescription("aggressive"),
-		"potato":       GetProfileDescription("potato"),
+		"conservative":    GetProfileDescription("conservative"),
+		"balanced":        GetProfileDescription("balanced"),
+		"turbo":           GetProfileDescription("turbo"),
+		"max-performance": GetProfileDescription("max-performance"),
+		"aggressive":      GetProfileDescription("aggressive"),
+		"potato":          GetProfileDescription("potato"),
 	}
 }

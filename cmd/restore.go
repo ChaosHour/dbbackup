@@ -37,6 +37,8 @@ var (
 	restoreTarget        string
 	restoreVerbose       bool
 	restoreNoProgress    bool
+	restoreNoTUI         bool // Disable TUI for maximum performance (benchmark mode)
+	restoreQuiet         bool // Suppress all output except errors
 	restoreWorkdir       string
 	restoreCleanCluster  bool
 	restoreDiagnose      bool   // Run diagnosis before restore
@@ -326,6 +328,9 @@ func init() {
 	restoreSingleCmd.Flags().StringVar(&restoreProfile, "profile", "balanced", "Resource profile: conservative, balanced, turbo (--jobs=8), max-performance")
 	restoreSingleCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
+	restoreSingleCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
+	restoreSingleCmd.Flags().BoolVar(&restoreQuiet, "quiet", false, "Suppress all output except errors")
+	restoreSingleCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel pg_restore jobs (0 = auto, like pg_restore -j)")
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
 	restoreSingleCmd.Flags().BoolVar(&restoreDiagnose, "diagnose", false, "Run deep diagnosis before restore to detect corruption/truncation")
@@ -347,6 +352,8 @@ func init() {
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
+	restoreClusterCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
+	restoreClusterCmd.Flags().BoolVar(&restoreQuiet, "quiet", false, "Suppress all output except errors")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
 	restoreClusterCmd.Flags().StringVar(&restoreEncryptionKeyEnv, "encryption-key-env", "DBBACKUP_ENCRYPTION_KEY", "Environment variable containing encryption key")
 	restoreClusterCmd.Flags().BoolVar(&restoreDiagnose, "diagnose", false, "Run deep diagnosis on all dumps before restore")

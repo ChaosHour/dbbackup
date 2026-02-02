@@ -121,7 +121,7 @@ func (m RestoreExecutionModel) Init() tea.Cmd {
 type restoreTickMsg time.Time
 
 func restoreTickCmd() tea.Cmd {
-	return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+	return tea.Tick(time.Millisecond*250, func(t time.Time) tea.Msg {
 		return restoreTickMsg(t)
 	})
 }

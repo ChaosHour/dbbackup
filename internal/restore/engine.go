@@ -333,13 +333,14 @@ func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetD
 
 	cmd := e.db.BuildRestoreCommand(targetDB, archivePath, opts)
 
-	// Start heartbeat ticker for restore progress
+	// Start heartbeat ticker for restore progress (10s interval to reduce overhead)
 	restoreStart := time.Now()
 	heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
-	heartbeatTicker := time.NewTicker(5 * time.Second)
+	heartbeatTicker := time.NewTicker(10 * time.Second)
 	defer heartbeatTicker.Stop()
 	defer cancelHeartbeat()
 
+	// Run heartbeat in background - no mutex needed as progress.Update is thread-safe
 	go func() {
 		for {
 			select {
@@ -1688,8 +1689,9 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			isCompressedSQL := strings.HasSuffix(dumpFile, ".sql.gz")
 
 			// Start heartbeat ticker to show progress during long-running restore
+			// Use 15s interval to reduce mutex contention during parallel restores
 			heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
-			heartbeatTicker := time.NewTicker(5 * time.Second)
+			heartbeatTicker := time.NewTicker(15 * time.Second)
 			go func() {
 				for {
 					select {

@@ -22,6 +22,7 @@ import (
 	"dbbackup/internal/cloud"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/engine/native"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
@@ -542,6 +543,109 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			format := "custom"
 			parallel := e.cfg.DumpJobs
 
+			// USE NATIVE ENGINE if configured
+			// This creates .sql.gz files using pure Go (no pg_dump)
+			if e.cfg.UseNativeEngine {
+				sqlFile := filepath.Join(tempDir, "dumps", name+".sql.gz")
+				mu.Lock()
+				e.printf("       Using native Go engine (pure Go, no pg_dump)\n")
+				mu.Unlock()
+
+				// Create native engine for this database
+				nativeCfg := &native.PostgreSQLNativeConfig{
+					Host:        e.cfg.Host,
+					Port:        e.cfg.Port,
+					User:        e.cfg.User,
+					Password:    e.cfg.Password,
+					Database:    name,
+					SSLMode:     e.cfg.SSLMode,
+					Format:      "sql",
+					Compression: compressionLevel,
+					Parallel:    e.cfg.Jobs,
+					Blobs:       true,
+					Verbose:     e.cfg.Debug,
+				}
+
+				nativeEngine, nativeErr := native.NewPostgreSQLNativeEngine(nativeCfg, e.log)
+				if nativeErr != nil {
+					if e.cfg.FallbackToTools {
+						mu.Lock()
+						e.log.Warn("Native engine failed, falling back to pg_dump", "database", name, "error", nativeErr)
+						e.printf("       [WARN] Native engine failed, using pg_dump fallback\n")
+						mu.Unlock()
+						// Fall through to use pg_dump below
+					} else {
+						e.log.Error("Failed to create native engine", "database", name, "error", nativeErr)
+						mu.Lock()
+						e.printf("   [FAIL] Failed to create native engine for %s: %v\n", name, nativeErr)
+						mu.Unlock()
+						atomic.AddInt32(&failCount, 1)
+						return
+					}
+				} else {
+					// Connect and backup with native engine
+					if connErr := nativeEngine.Connect(ctx); connErr != nil {
+						if e.cfg.FallbackToTools {
+							mu.Lock()
+							e.log.Warn("Native engine connection failed, falling back to pg_dump", "database", name, "error", connErr)
+							mu.Unlock()
+						} else {
+							e.log.Error("Native engine connection failed", "database", name, "error", connErr)
+							atomic.AddInt32(&failCount, 1)
+							nativeEngine.Close()
+							return
+						}
+					} else {
+						// Create output file with compression
+						outFile, fileErr := os.Create(sqlFile)
+						if fileErr != nil {
+							e.log.Error("Failed to create output file", "file", sqlFile, "error", fileErr)
+							atomic.AddInt32(&failCount, 1)
+							nativeEngine.Close()
+							return
+						}
+
+						// Use pgzip for parallel compression
+						gzWriter, _ := pgzip.NewWriterLevel(outFile, compressionLevel)
+
+						result, backupErr := nativeEngine.Backup(ctx, gzWriter)
+						gzWriter.Close()
+						outFile.Close()
+						nativeEngine.Close()
+
+						if backupErr != nil {
+							os.Remove(sqlFile) // Clean up partial file
+							if e.cfg.FallbackToTools {
+								mu.Lock()
+								e.log.Warn("Native backup failed, falling back to pg_dump", "database", name, "error", backupErr)
+								e.printf("       [WARN] Native backup failed, using pg_dump fallback\n")
+								mu.Unlock()
+								// Fall through to use pg_dump below
+							} else {
+								e.log.Error("Native backup failed", "database", name, "error", backupErr)
+								atomic.AddInt32(&failCount, 1)
+								return
+							}
+						} else {
+							// Native backup succeeded!
+							if info, statErr := os.Stat(sqlFile); statErr == nil {
+								mu.Lock()
+								e.printf("   [OK] Completed %s (%s) [native]\n", name, formatBytes(info.Size()))
+								mu.Unlock()
+								e.log.Info("Native backup completed",
+									"database", name,
+									"size", info.Size(),
+									"duration", result.Duration,
+									"engine", result.EngineUsed)
+							}
+							atomic.AddInt32(&successCount, 1)
+							return // Skip pg_dump path
+						}
+					}
+				}
+			}
+
+			// Standard pg_dump path (for non-native mode or fallback)
 			if size, err := e.db.GetDatabaseSize(ctx, name); err == nil {
 				if size > 5*1024*1024*1024 {
 					format = "plain"

@@ -34,8 +34,16 @@ Examples:
 var clusterCmd = &cobra.Command{
 	Use:   "cluster",
 	Short: "Create full cluster backup (PostgreSQL only)",
-	Long:  `Create a complete backup of the entire PostgreSQL cluster including all databases and global objects (roles, tablespaces, etc.)`,
-	Args:  cobra.NoArgs,
+	Long: `Create a complete backup of the entire PostgreSQL cluster including all databases and global objects (roles, tablespaces, etc.).
+
+Native Engine:
+  --native           - Use pure Go native engine (SQL format, no pg_dump required)
+  --fallback-tools   - Fall back to external tools if native engine fails
+
+By default, cluster backup uses PostgreSQL custom format (.dump) for efficiency.
+With --native, all databases are backed up in SQL format (.sql.gz) using the 
+native Go engine, eliminating the need for pg_dump.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runClusterBackup(cmd.Context())
 	},
@@ -112,6 +120,24 @@ func init() {
 	backupCmd.AddCommand(clusterCmd)
 	backupCmd.AddCommand(singleCmd)
 	backupCmd.AddCommand(sampleCmd)
+
+	// Native engine flags for cluster backup
+	clusterCmd.Flags().Bool("native", false, "Use pure Go native engine (SQL format, no external tools)")
+	clusterCmd.Flags().Bool("fallback-tools", false, "Fall back to external tools if native engine fails")
+	clusterCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Changed("native") {
+			native, _ := cmd.Flags().GetBool("native")
+			cfg.UseNativeEngine = native
+			if native {
+				log.Info("Native engine mode enabled for cluster backup - using SQL format")
+			}
+		}
+		if cmd.Flags().Changed("fallback-tools") {
+			fallback, _ := cmd.Flags().GetBool("fallback-tools")
+			cfg.FallbackToTools = fallback
+		}
+		return nil
+	}
 
 	// Incremental backup flags (single backup only) - using global vars to avoid initialization cycle
 	singleCmd.Flags().StringVar(&backupTypeFlag, "backup-type", "full", "Backup type: full or incremental")

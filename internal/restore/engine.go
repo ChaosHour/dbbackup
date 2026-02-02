@@ -20,6 +20,7 @@ import (
 	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/engine/native"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/progress"
@@ -533,7 +534,23 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 		return fmt.Errorf("dump validation failed: %w - the backup file may be truncated or corrupted", err)
 	}
 
-	// Use psql for SQL scripts
+	// USE NATIVE ENGINE if configured
+	// This uses pure Go (pgx) instead of psql
+	if e.cfg.UseNativeEngine {
+		e.log.Info("Using native Go engine for restore", "database", targetDB, "file", archivePath)
+		nativeErr := e.restoreWithNativeEngine(ctx, archivePath, targetDB, compressed)
+		if nativeErr != nil {
+			if e.cfg.FallbackToTools {
+				e.log.Warn("Native restore failed, falling back to psql", "database", targetDB, "error", nativeErr)
+			} else {
+				return fmt.Errorf("native restore failed: %w", nativeErr)
+			}
+		} else {
+			return nil // Native restore succeeded!
+		}
+	}
+
+	// Use psql for SQL scripts (fallback or non-native mode)
 	var cmd []string
 
 	// For localhost, omit -h to use Unix socket (avoids Ident auth issues)
@@ -568,6 +585,69 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 	}
 
 	return e.executeRestoreCommand(ctx, cmd)
+}
+
+// restoreWithNativeEngine restores a SQL file using the pure Go native engine
+func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targetDB string, compressed bool) error {
+	// Create native engine config
+	nativeCfg := &native.PostgreSQLNativeConfig{
+		Host:     e.cfg.Host,
+		Port:     e.cfg.Port,
+		User:     e.cfg.User,
+		Password: e.cfg.Password,
+		Database: targetDB, // Connect to target database
+		SSLMode:  e.cfg.SSLMode,
+	}
+
+	// Create restore engine
+	restoreEngine, err := native.NewPostgreSQLRestoreEngine(nativeCfg, e.log)
+	if err != nil {
+		return fmt.Errorf("failed to create native restore engine: %w", err)
+	}
+	defer restoreEngine.Close()
+
+	// Open input file
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to open backup file: %w", err)
+	}
+	defer file.Close()
+
+	var reader io.Reader = file
+
+	// Handle compression
+	if compressed {
+		gzReader, err := pgzip.NewReader(file)
+		if err != nil {
+			return fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	// Restore with progress tracking
+	options := &native.RestoreOptions{
+		Database:        targetDB,
+		ContinueOnError: true, // Be resilient like pg_restore
+		ProgressCallback: func(progress *native.RestoreProgress) {
+			e.log.Debug("Native restore progress",
+				"operation", progress.Operation,
+				"objects", progress.ObjectsCompleted,
+				"rows", progress.RowsProcessed)
+		},
+	}
+
+	result, err := restoreEngine.Restore(ctx, reader, options)
+	if err != nil {
+		return fmt.Errorf("native restore failed: %w", err)
+	}
+
+	e.log.Info("Native restore completed",
+		"database", targetDB,
+		"objects", result.ObjectsProcessed,
+		"duration", result.Duration)
+
+	return nil
 }
 
 // restoreMySQLSQL restores from MySQL SQL script

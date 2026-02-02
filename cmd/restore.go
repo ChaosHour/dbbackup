@@ -336,6 +336,8 @@ func init() {
 	restoreSingleCmd.Flags().BoolVar(&restoreDiagnose, "diagnose", false, "Run deep diagnosis before restore to detect corruption/truncation")
 	restoreSingleCmd.Flags().StringVar(&restoreSaveDebugLog, "save-debug-log", "", "Save detailed error report to file on failure (e.g., /tmp/restore-debug.json)")
 	restoreSingleCmd.Flags().BoolVar(&restoreDebugLocks, "debug-locks", false, "Enable detailed lock debugging (captures PostgreSQL config, Guard decisions, boost attempts)")
+	restoreSingleCmd.Flags().Bool("native", false, "Use pure Go native engine (no psql/pg_restore required)")
+	restoreSingleCmd.Flags().Bool("fallback-tools", false, "Fall back to external tools if native engine fails")
 
 	// Cluster restore flags
 	restoreClusterCmd.Flags().BoolVar(&restoreListDBs, "list-databases", false, "List databases in cluster backup and exit")
@@ -363,6 +365,32 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreCreate, "create", false, "Create target database if it doesn't exist (for single DB restore)")
 	restoreClusterCmd.Flags().BoolVar(&restoreOOMProtection, "oom-protection", false, "Enable OOM protection: disable swap, tune PostgreSQL memory, protect from OOM killer")
 	restoreClusterCmd.Flags().BoolVar(&restoreLowMemory, "low-memory", false, "Force low-memory mode: single-threaded restore with minimal memory (use for <8GB RAM or very large backups)")
+	restoreClusterCmd.Flags().Bool("native", false, "Use pure Go native engine for .sql.gz files (no psql/pg_restore required)")
+	restoreClusterCmd.Flags().Bool("fallback-tools", false, "Fall back to external tools if native engine fails")
+
+	// Handle native engine flags for restore commands
+	for _, cmd := range []*cobra.Command{restoreSingleCmd, restoreClusterCmd} {
+		originalPreRun := cmd.PreRunE
+		cmd.PreRunE = func(c *cobra.Command, args []string) error {
+			if originalPreRun != nil {
+				if err := originalPreRun(c, args); err != nil {
+					return err
+				}
+			}
+			if c.Flags().Changed("native") {
+				native, _ := c.Flags().GetBool("native")
+				cfg.UseNativeEngine = native
+				if native {
+					log.Info("Native engine mode enabled for restore")
+				}
+			}
+			if c.Flags().Changed("fallback-tools") {
+				fallback, _ := c.Flags().GetBool("fallback-tools")
+				cfg.FallbackToTools = fallback
+			}
+			return nil
+		}
+	}
 
 	// PITR restore flags
 	restorePITRCmd.Flags().StringVar(&pitrBaseBackup, "base-backup", "", "Path to base backup file (.tar.gz) (required)")

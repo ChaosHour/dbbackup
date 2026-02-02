@@ -227,7 +227,7 @@ func (v *RichClusterProgressView) renderPhaseDetails(snapshot *progress.Progress
 			bar := v.renderMiniProgressBar(pct)
 
 			phaseElapsed := time.Since(snapshot.PhaseStartTime)
-			
+
 			// Better display when we have progress info vs when we're waiting
 			if snapshot.CurrentDBTotal > 0 {
 				b.WriteString(fmt.Sprintf("     %s %-20s %s %3d%%\n",

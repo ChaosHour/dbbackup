@@ -423,7 +423,7 @@ func (e *Engine) estimateBlobsInSQL(sqlFile string) int {
 	// Scan for lo_create patterns
 	// We use a regex to match both "lo_create" and "SELECT lo_create" patterns
 	loCreatePattern := regexp.MustCompile(`lo_create`)
-	
+
 	scanner := bufio.NewScanner(gzReader)
 	// Use larger buffer for potentially long lines
 	buf := make([]byte, 0, 256*1024)
@@ -436,7 +436,7 @@ func (e *Engine) estimateBlobsInSQL(sqlFile string) int {
 	for scanner.Scan() && linesScanned < maxLines {
 		line := scanner.Text()
 		linesScanned++
-		
+
 		// Count all lo_create occurrences in the line
 		matches := loCreatePattern.FindAllString(line, -1)
 		count += len(matches)

@@ -5,6 +5,38 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.0] - 2026-02-02
+
+### Added
+- **🚀 Native Engine Support for Cluster Backup/Restore**
+  - NEW: `--native` flag for cluster backup creates SQL format (.sql.gz) using pure Go
+  - NEW: `--native` flag for cluster restore uses pure Go engine for .sql.gz files
+  - Zero external tool dependencies when using native mode
+  - Single-binary deployment now possible without pg_dump/pg_restore installed
+  
+- **Native Cluster Backup** (`dbbackup backup cluster --native`)
+  - Creates .sql.gz files instead of .dump files
+  - Uses pgx wire protocol for data export
+  - Parallel gzip compression with pgzip
+  - Automatic fallback to pg_dump if `--fallback-tools` is set
+  
+- **Native Cluster Restore** (`dbbackup restore cluster --native --confirm`)
+  - Restores .sql.gz files using pure Go (pgx CopyFrom)
+  - No psql or pg_restore required
+  - Automatic detection: uses native for .sql.gz, pg_restore for .dump
+  - Fallback support with `--fallback-tools`
+
+### Updated
+- **NATIVE_ENGINE_SUMMARY.md** - Complete rewrite with accurate documentation
+- Native engine matrix now shows full cluster support with `--native` flag
+
+### Technical Details
+- `internal/backup/engine.go`: Added native engine path in BackupCluster()
+- `internal/restore/engine.go`: Added `restoreWithNativeEngine()` function
+- `cmd/backup.go`: Added `--native` and `--fallback-tools` flags to cluster command
+- `cmd/restore.go`: Added `--native` and `--fallback-tools` flags with PreRunE handlers
+- Version bumped to 5.5.0 (new feature release)
+
 ## [5.4.6] - 2026-02-02
 
 ### Fixed

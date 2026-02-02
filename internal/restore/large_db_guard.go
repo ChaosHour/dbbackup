@@ -358,6 +358,14 @@ func (g *LargeDBGuard) WarnUser(strategy *RestoreStrategy, silentMode bool) {
 
 // CheckSystemMemory validates system has enough memory for restore
 func (g *LargeDBGuard) CheckSystemMemory(backupSizeBytes int64) *MemoryCheck {
+	return g.CheckSystemMemoryWithType(backupSizeBytes, false)
+}
+
+// CheckSystemMemoryWithType validates system memory with archive type awareness
+// isClusterArchive: true for .tar.gz cluster backups (contain pre-compressed .dump files)
+//
+//	false for single .sql.gz files (compressed SQL that expands significantly)
+func (g *LargeDBGuard) CheckSystemMemoryWithType(backupSizeBytes int64, isClusterArchive bool) *MemoryCheck {
 	check := &MemoryCheck{
 		BackupSizeGB: float64(backupSizeBytes) / (1024 * 1024 * 1024),
 	}
@@ -374,8 +382,18 @@ func (g *LargeDBGuard) CheckSystemMemory(backupSizeBytes int64) *MemoryCheck {
 	check.SwapTotalGB = float64(memInfo.SwapTotal) / (1024 * 1024 * 1024)
 	check.SwapFreeGB = float64(memInfo.SwapFree) / (1024 * 1024 * 1024)
 
-	// Estimate uncompressed size (typical compression ratio 5:1 to 10:1)
-	estimatedUncompressedGB := check.BackupSizeGB * 7 // Conservative estimate
+	// Estimate uncompressed size based on archive type:
+	// - Cluster archives (.tar.gz): contain pre-compressed .dump files, ratio ~1.2x
+	// - Single SQL files (.sql.gz): compressed SQL expands significantly, ratio ~5-7x
+	var compressionMultiplier float64
+	if isClusterArchive {
+		compressionMultiplier = 1.2 // tar.gz with already-compressed .dump files
+		g.log.Debug("Using cluster archive compression ratio", "multiplier", compressionMultiplier)
+	} else {
+		compressionMultiplier = 5.0 // Conservative for gzipped SQL (was 7, reduced to 5)
+		g.log.Debug("Using single file compression ratio", "multiplier", compressionMultiplier)
+	}
+	estimatedUncompressedGB := check.BackupSizeGB * compressionMultiplier
 
 	// Memory requirements
 	// - PostgreSQL needs ~2-4GB for shared_buffers

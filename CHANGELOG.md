@@ -5,6 +5,35 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.5] - 2026-02-02
+
+### Fixed
+- **Accurate Disk Space Estimation for Cluster Archives**
+  - Fixed WARNING showing 836GB for 119GB archive - was using wrong compression multiplier
+  - Cluster archives (.tar.gz) contain pre-compressed .dump files → now uses 1.2x multiplier
+  - Single SQL files (.sql.gz) still use 5x multiplier (was 7x, slightly optimized)
+  - New `CheckSystemMemoryWithType(size, isClusterArchive)` method for accurate estimates
+  - 119GB cluster archive now correctly estimates ~143GB instead of ~833GB
+
+## [5.4.4] - 2026-02-02
+
+### Fixed
+- **TUI Header Separator Fix** - Capped separator length at 40 chars to prevent line overflow on wide terminals
+
+## [5.4.3] - 2026-02-02
+
+### Fixed
+- **Bulletproof SIGINT Handling** - Zero zombie processes guaranteed
+  - All external commands now use `cleanup.SafeCommand()` with process group isolation
+  - `KillCommandGroup()` sends signals to entire process group (-pgid)
+  - No more orphaned pg_restore/pg_dump/psql/pigz processes on Ctrl+C
+  - 16 files updated with proper signal handling
+
+- **Eliminated External gzip Process** - The `zgrep` command was spawning `gzip -cdfq`
+  - Replaced with in-process pgzip decompression in `preflight.go`
+  - `estimateBlobsInSQL()` now uses pure Go pgzip.NewReader
+  - Zero external gzip processes during restore
+
 ## [5.1.22] - 2026-02-01
 
 ### Added

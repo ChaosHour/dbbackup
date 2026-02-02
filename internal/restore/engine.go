@@ -1371,7 +1371,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	if statErr == nil && archiveStats != nil {
 		backupSizeBytes = archiveStats.Size()
 	}
-	memCheck := guard.CheckSystemMemory(backupSizeBytes)
+	memCheck := guard.CheckSystemMemoryWithType(backupSizeBytes, true) // true = cluster archive with pre-compressed dumps
 	if memCheck != nil {
 		if memCheck.Critical {
 			e.log.Error("🚨 CRITICAL MEMORY WARNING", "error", memCheck.Recommendation)

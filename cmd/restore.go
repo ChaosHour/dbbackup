@@ -720,6 +720,23 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 			WithDetail("archive", filepath.Base(archivePath)))
 	}
 
+	// Check if native engine should be used for restore
+	if cfg.UseNativeEngine {
+		log.Info("Using native engine for restore", "database", targetDB)
+		err = runNativeRestore(ctx, db, archivePath, targetDB, restoreClean, restoreCreate, startTime, user)
+
+		if err != nil && cfg.FallbackToTools {
+			log.Warn("Native engine restore failed, falling back to external tools", "error", err)
+			// Continue with tool-based restore below
+		} else {
+			// Native engine succeeded or no fallback configured
+			if err == nil {
+				log.Info("[OK] Restore completed successfully (native engine)", "database", targetDB)
+			}
+			return err
+		}
+	}
+
 	if err := engine.RestoreSingle(ctx, archivePath, targetDB, restoreClean, restoreCreate); err != nil {
 		auditLogger.LogRestoreFailed(user, targetDB, err)
 		// Notify: restore failed

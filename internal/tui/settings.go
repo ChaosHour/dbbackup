@@ -94,6 +94,11 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				c.CPUWorkloadType = workloads[nextIdx]
 
 				// Recalculate Jobs and DumpJobs based on workload type
+				// If CPUInfo is nil, try to detect it first
+				if c.CPUInfo == nil && c.AutoDetectCores {
+					_ = c.OptimizeForCPU() // This will detect CPU and set CPUInfo
+				}
+
 				if c.CPUInfo != nil && c.AutoDetectCores {
 					switch c.CPUWorkloadType {
 					case "cpu-intensive":

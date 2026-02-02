@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -12,6 +11,8 @@ import (
 	"dbbackup/internal/database"
 	"dbbackup/internal/engine/native"
 	"dbbackup/internal/notify"
+
+	"github.com/klauspost/pgzip"
 )
 
 // runNativeBackup executes backup using native Go engines
@@ -58,10 +59,13 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 	}
 	defer file.Close()
 
-	// Wrap with compression if enabled
+	// Wrap with compression if enabled (use pgzip for parallel compression)
 	var writer io.Writer = file
 	if cfg.CompressionLevel > 0 {
-		gzWriter := gzip.NewWriter(file)
+		gzWriter, err := pgzip.NewWriterLevel(file, cfg.CompressionLevel)
+		if err != nil {
+			return fmt.Errorf("failed to create gzip writer: %w", err)
+		}
 		defer gzWriter.Close()
 		writer = gzWriter
 	}

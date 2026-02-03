@@ -398,7 +398,7 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		} else if m.done {
-			return m.parent, tea.Quit
+			return m.parent, nil // Return to menu, not quit app
 		}
 		return m, nil
 

@@ -957,7 +957,19 @@ func (e *PostgreSQLNativeEngine) ValidateConfiguration() error {
 
 // Restore performs native PostgreSQL restore with proper COPY handling
 func (e *PostgreSQLNativeEngine) Restore(ctx context.Context, inputReader io.Reader, targetDB string) error {
+	// CRITICAL: Add panic recovery to prevent crashes
+	defer func() {
+		if r := recover(); r != nil {
+			e.log.Error("PostgreSQL native restore panic recovered", "panic", r, "targetDB", targetDB)
+		}
+	}()
+	
 	e.log.Info("Starting native PostgreSQL restore", "target", targetDB)
+
+	// Check context before starting
+	if ctx.Err() != nil {
+		return fmt.Errorf("context cancelled before restore: %w", ctx.Err())
+	}
 
 	// Use pool for restore to handle COPY operations properly
 	conn, err := e.pool.Acquire(ctx)
@@ -980,6 +992,14 @@ func (e *PostgreSQLNativeEngine) Restore(ctx context.Context, inputReader io.Rea
 	)
 
 	for scanner.Scan() {
+		// CRITICAL: Check for context cancellation
+		select {
+		case <-ctx.Done():
+			e.log.Info("Native restore cancelled by context", "targetDB", targetDB)
+			return ctx.Err()
+		default:
+		}
+		
 		line := scanner.Text()
 
 		// Handle COPY data mode

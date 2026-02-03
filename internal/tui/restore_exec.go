@@ -218,9 +218,22 @@ func clearCurrentRestoreProgress() {
 }
 
 func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration, currentDB string, overallPhase int, extractionDone bool, dbBytesTotal, dbBytesDone int64, phase3StartTime time.Time) {
+	// CRITICAL: Add panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			// Return safe defaults if panic occurs
+			return
+		}
+	}()
+	
 	currentRestoreProgressMu.Lock()
 	defer currentRestoreProgressMu.Unlock()
 
+	if currentRestoreProgressState == nil {
+		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false, 0, 0, time.Time{}
+	}
+
+	// Double-check state isn't nil after lock
 	if currentRestoreProgressState == nil {
 		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false, 0, 0, time.Time{}
 	}
@@ -296,9 +309,27 @@ func calculateRollingSpeed(samples []restoreSpeedSample) float64 {
 
 func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool) tea.Cmd {
 	return func() tea.Msg {
+		// CRITICAL: Add panic recovery to prevent TUI crashes on context cancellation
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error("Restore execution panic recovered", "panic", r, "database", targetDB)
+				// Return error message instead of crashing
+				// Note: We can't return from defer, so this just logs
+			}
+		}()
+
 		// Use the parent context directly - it's already cancellable from the model
 		// DO NOT create a new context here as it breaks Ctrl+C cancellation
 		ctx := parentCtx
+
+		// Check if context is already cancelled
+		if ctx.Err() != nil {
+			return restoreCompleteMsg{
+				result:  "",
+				err:     fmt.Errorf("operation cancelled: %w", ctx.Err()),
+				elapsed: 0,
+			}
+		}
 
 		start := time.Now()
 
@@ -366,6 +397,18 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			progressState.unifiedProgress = progress.NewUnifiedClusterProgress("restore", archive.Path)
 		}
 		engine.SetProgressCallback(func(current, total int64, description string) {
+			// CRITICAL: Panic recovery to prevent nil pointer crashes
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warn("Progress callback panic recovered", "panic", r, "current", current, "total", total)
+				}
+			}()
+			
+			// Check if context is cancelled before accessing state
+			if ctx.Err() != nil {
+				return // Exit early if context is cancelled
+			}
+			
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
 			progressState.bytesDone = current
@@ -410,6 +453,18 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 		// Set up database progress callback for cluster restore
 		engine.SetDatabaseProgressCallback(func(done, total int, dbName string) {
+			// CRITICAL: Panic recovery to prevent nil pointer crashes
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warn("Database progress callback panic recovered", "panic", r, "db", dbName)
+				}
+			}()
+			
+			// Check if context is cancelled before accessing state
+			if ctx.Err() != nil {
+				return // Exit early if context is cancelled
+			}
+			
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
 			progressState.dbDone = done
@@ -437,6 +492,18 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 		// Set up timing-aware database progress callback for cluster restore ETA
 		engine.SetDatabaseProgressWithTimingCallback(func(done, total int, dbName string, phaseElapsed, avgPerDB time.Duration) {
+			// CRITICAL: Panic recovery to prevent nil pointer crashes
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warn("Timing progress callback panic recovered", "panic", r, "db", dbName)
+				}
+			}()
+			
+			// Check if context is cancelled before accessing state
+			if ctx.Err() != nil {
+				return // Exit early if context is cancelled
+			}
+			
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
 			progressState.dbDone = done
@@ -466,6 +533,18 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 		// Set up weighted (bytes-based) progress callback for accurate cluster restore progress
 		engine.SetDatabaseProgressByBytesCallback(func(bytesDone, bytesTotal int64, dbName string, dbDone, dbTotal int) {
+			// CRITICAL: Panic recovery to prevent nil pointer crashes
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warn("Bytes progress callback panic recovered", "panic", r, "db", dbName)
+				}
+			}()
+			
+			// Check if context is cancelled before accessing state
+			if ctx.Err() != nil {
+				return // Exit early if context is cancelled
+			}
+			
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
 			progressState.dbBytesDone = bytesDone

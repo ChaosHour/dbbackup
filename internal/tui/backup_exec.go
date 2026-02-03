@@ -96,9 +96,22 @@ func clearCurrentBackupProgress() {
 }
 
 func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhase int, phaseDesc string, hasUpdate bool, dbPhaseElapsed, dbAvgPerDB time.Duration, phase2StartTime time.Time) {
+	// CRITICAL: Add panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			// Return safe defaults if panic occurs
+			return
+		}
+	}()
+	
 	currentBackupProgressMu.Lock()
 	defer currentBackupProgressMu.Unlock()
 
+	if currentBackupProgressState == nil {
+		return 0, 0, "", 0, "", false, 0, 0, time.Time{}
+	}
+
+	// Double-check state isn't nil after lock
 	if currentBackupProgressState == nil {
 		return 0, 0, "", 0, "", false, 0, 0, time.Time{}
 	}
@@ -169,9 +182,24 @@ type backupCompleteMsg struct {
 
 func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
 	return func() tea.Msg {
+		// CRITICAL: Add panic recovery to prevent TUI crashes on context cancellation
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error("Backup execution panic recovered", "panic", r, "database", dbName)
+			}
+		}()
+
 		// Use the parent context directly - it's already cancellable from the model
 		// DO NOT create a new context here as it breaks Ctrl+C cancellation
 		ctx := parentCtx
+
+		// Check if context is already cancelled
+		if ctx.Err() != nil {
+			return backupCompleteMsg{
+				result: "",
+				err:    fmt.Errorf("operation cancelled: %w", ctx.Err()),
+			}
+		}
 
 		start := time.Now()
 
@@ -201,6 +229,18 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 
 		// Set database progress callback for cluster backups
 		engine.SetDatabaseProgressCallback(func(done, total int, currentDB string) {
+			// CRITICAL: Panic recovery to prevent nil pointer crashes
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warn("Backup database progress callback panic recovered", "panic", r, "db", currentDB)
+				}
+			}()
+			
+			// Check if context is cancelled before accessing state
+			if ctx.Err() != nil {
+				return // Exit early if context is cancelled
+			}
+			
 			progressState.mu.Lock()
 			progressState.dbDone = done
 			progressState.dbTotal = total
@@ -264,7 +304,23 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 
 			// Poll for database progress updates from callbacks
-			dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, dbPhaseElapsed, dbAvgPerDB, _ := getCurrentBackupProgress()
+			// CRITICAL: Use defensive approach with recovery
+			var dbTotal, dbDone int
+			var dbName string
+			var overallPhase int
+			var phaseDesc string
+			var hasUpdate bool
+			var dbPhaseElapsed, dbAvgPerDB time.Duration
+			
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						m.logger.Warn("Backup progress polling panic recovered", "panic", r)
+					}
+				}()
+				dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, dbPhaseElapsed, dbAvgPerDB, _ = getCurrentBackupProgress()
+			}()
+			
 			if hasUpdate {
 				m.dbTotal = dbTotal
 				m.dbDone = dbDone

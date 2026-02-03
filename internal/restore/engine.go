@@ -147,6 +147,13 @@ func (e *Engine) reportProgress(current, total int64, description string) {
 
 // reportDatabaseProgress safely calls the database progress callback if set
 func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
+	// CRITICAL: Add panic recovery to prevent crashes during TUI shutdown
+	defer func() {
+		if r := recover(); r != nil {
+			e.log.Warn("Database progress callback panic recovered", "panic", r, "db", dbName)
+		}
+	}()
+	
 	if e.dbProgressCallback != nil {
 		e.dbProgressCallback(done, total, dbName)
 	}
@@ -154,6 +161,13 @@ func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
 
 // reportDatabaseProgressWithTiming safely calls the timing-aware callback if set
 func (e *Engine) reportDatabaseProgressWithTiming(done, total int, dbName string, phaseElapsed, avgPerDB time.Duration) {
+	// CRITICAL: Add panic recovery to prevent crashes during TUI shutdown
+	defer func() {
+		if r := recover(); r != nil {
+			e.log.Warn("Database timing progress callback panic recovered", "panic", r, "db", dbName)
+		}
+	}()
+	
 	if e.dbProgressTimingCallback != nil {
 		e.dbProgressTimingCallback(done, total, dbName, phaseElapsed, avgPerDB)
 	}
@@ -161,6 +175,13 @@ func (e *Engine) reportDatabaseProgressWithTiming(done, total int, dbName string
 
 // reportDatabaseProgressByBytes safely calls the bytes-weighted callback if set
 func (e *Engine) reportDatabaseProgressByBytes(bytesDone, bytesTotal int64, dbName string, dbDone, dbTotal int) {
+	// CRITICAL: Add panic recovery to prevent crashes during TUI shutdown
+	defer func() {
+		if r := recover(); r != nil {
+			e.log.Warn("Database bytes progress callback panic recovered", "panic", r, "db", dbName)
+		}
+	}()
+	
 	if e.dbProgressByBytesCallback != nil {
 		e.dbProgressByBytesCallback(bytesDone, bytesTotal, dbName, dbDone, dbTotal)
 	}

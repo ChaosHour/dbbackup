@@ -113,6 +113,13 @@ func (e *Engine) SetDatabaseProgressCallback(cb DatabaseProgressCallback) {
 
 // reportDatabaseProgress reports database count progress to the callback if set
 func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
+	// CRITICAL: Add panic recovery to prevent crashes during TUI shutdown
+	defer func() {
+		if r := recover(); r != nil {
+			e.log.Warn("Backup database progress callback panic recovered", "panic", r, "db", dbName)
+		}
+	}()
+	
 	if e.dbProgressCallback != nil {
 		e.dbProgressCallback(done, total, dbName)
 	}

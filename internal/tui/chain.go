@@ -57,7 +57,9 @@ func (c *ChainView) Init() tea.Cmd {
 }
 
 func (c *ChainView) loadChains() tea.Msg {
-	ctx := context.Background()
+	// CRITICAL: Add timeout to prevent hanging
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	// Open catalog - use default path
 	home, _ := os.UserHomeDir()

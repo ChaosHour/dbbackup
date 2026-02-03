@@ -501,6 +501,17 @@ func (m *MenuModel) applyDatabaseSelection() {
 
 // RunInteractiveMenu starts the simple TUI
 func RunInteractiveMenu(cfg *config.Config, log logger.Logger) error {
+	// CRITICAL: Add panic recovery to prevent crashes
+	defer func() {
+		if r := recover(); r != nil {
+			if log != nil {
+				log.Error("Interactive menu panic recovered", "panic", r)
+			}
+			fmt.Fprintf(os.Stderr, "\n[ERROR] Interactive menu crashed: %v\n", r)
+			fmt.Fprintln(os.Stderr, "[INFO] Use CLI commands instead: dbbackup backup single <database>")
+		}
+	}()
+
 	// Check for interactive terminal
 	// Non-interactive terminals (screen backgrounded, pipes, etc.) cause scrambled output
 	if !IsInteractiveTerminal() {
@@ -515,6 +526,13 @@ func RunInteractiveMenu(cfg *config.Config, log logger.Logger) error {
 
 	m := NewMenuModel(cfg, log)
 	p := tea.NewProgram(m)
+
+	// Ensure cleanup on exit
+	defer func() {
+		if m != nil {
+			m.Close()
+		}
+	}()
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running interactive menu: %w", err)

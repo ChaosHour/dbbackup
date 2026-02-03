@@ -225,7 +225,7 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 			return
 		}
 	}()
-	
+
 	currentRestoreProgressMu.Lock()
 	defer currentRestoreProgressMu.Unlock()
 
@@ -403,12 +403,12 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 					log.Warn("Progress callback panic recovered", "panic", r, "current", current, "total", total)
 				}
 			}()
-			
+
 			// Check if context is cancelled before accessing state
 			if ctx.Err() != nil {
 				return // Exit early if context is cancelled
 			}
-			
+
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
 			progressState.bytesDone = current
@@ -459,12 +459,12 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 					log.Warn("Database progress callback panic recovered", "panic", r, "db", dbName)
 				}
 			}()
-			
+
 			// Check if context is cancelled before accessing state
 			if ctx.Err() != nil {
 				return // Exit early if context is cancelled
 			}
-			
+
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
 			progressState.dbDone = done
@@ -498,12 +498,12 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 					log.Warn("Timing progress callback panic recovered", "panic", r, "db", dbName)
 				}
 			}()
-			
+
 			// Check if context is cancelled before accessing state
 			if ctx.Err() != nil {
 				return // Exit early if context is cancelled
 			}
-			
+
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
 			progressState.dbDone = done
@@ -539,12 +539,12 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 					log.Warn("Bytes progress callback panic recovered", "panic", r, "db", dbName)
 				}
 			}()
-			
+
 			// Check if context is cancelled before accessing state
 			if ctx.Err() != nil {
 				return // Exit early if context is cancelled
 			}
-			
+
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
 			progressState.dbBytesDone = bytesDone
@@ -862,10 +862,14 @@ func (m RestoreExecutionModel) View() string {
 	s.WriteString(titleStyle.Render(title))
 	s.WriteString("\n\n")
 
-	// Archive info
+	// Archive info with system resources
 	s.WriteString(fmt.Sprintf("Archive: %s\n", m.archive.Name))
 	if m.restoreType == "restore-single" || m.restoreType == "restore-cluster-single" {
 		s.WriteString(fmt.Sprintf("Target: %s\n", m.targetDB))
+	}
+	// Show system resource profile summary
+	if profileSummary := GetCompactProfileSummary(); profileSummary != "" {
+		s.WriteString(fmt.Sprintf("Resources: %s\n", profileSummary))
 	}
 	s.WriteString("\n")
 

@@ -1001,7 +1001,7 @@ func (e *PostgreSQLNativeEngine) Restore(ctx context.Context, inputReader io.Rea
 			e.log.Error("PostgreSQL native restore panic recovered", "panic", r, "targetDB", targetDB)
 		}
 	}()
-	
+
 	e.log.Info("Starting native PostgreSQL restore", "target", targetDB)
 
 	// Check context before starting
@@ -1037,7 +1037,7 @@ func (e *PostgreSQLNativeEngine) Restore(ctx context.Context, inputReader io.Rea
 			return ctx.Err()
 		default:
 		}
-		
+
 		line := scanner.Text()
 
 		// Handle COPY data mode

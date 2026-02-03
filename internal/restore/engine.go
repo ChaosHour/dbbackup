@@ -153,7 +153,7 @@ func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
 			e.log.Warn("Database progress callback panic recovered", "panic", r, "db", dbName)
 		}
 	}()
-	
+
 	if e.dbProgressCallback != nil {
 		e.dbProgressCallback(done, total, dbName)
 	}
@@ -167,7 +167,7 @@ func (e *Engine) reportDatabaseProgressWithTiming(done, total int, dbName string
 			e.log.Warn("Database timing progress callback panic recovered", "panic", r, "db", dbName)
 		}
 	}()
-	
+
 	if e.dbProgressTimingCallback != nil {
 		e.dbProgressTimingCallback(done, total, dbName, phaseElapsed, avgPerDB)
 	}
@@ -181,7 +181,7 @@ func (e *Engine) reportDatabaseProgressByBytes(bytesDone, bytesTotal int64, dbNa
 			e.log.Warn("Database bytes progress callback panic recovered", "panic", r, "db", dbName)
 		}
 	}()
-	
+
 	if e.dbProgressByBytesCallback != nil {
 		e.dbProgressByBytesCallback(bytesDone, bytesTotal, dbName, dbDone, dbTotal)
 	}

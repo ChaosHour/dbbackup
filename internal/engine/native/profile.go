@@ -84,7 +84,7 @@ type SystemProfile struct {
 	Category ResourceCategory
 
 	// Detection metadata
-	DetectedAt time.Time
+	DetectedAt        time.Time
 	DetectionDuration time.Duration
 }
 

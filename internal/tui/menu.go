@@ -105,6 +105,7 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
 			"View Backup Schedule",
 			"View Backup Chain",
 			"--------------------------------",
+			"System Resource Profile",
 			"Tools",
 			"View Active Operations",
 			"Show Operation History",
@@ -283,21 +284,23 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleSchedule()
 			case 9: // View Backup Chain
 				return m.handleChain()
-			case 10: // Separator
+			case 10: // System Resource Profile
+				return m.handleProfile()
+			case 11: // Separator
 				// Do nothing
-			case 11: // Tools
+			case 12: // Tools
 				return m.handleTools()
-			case 12: // View Active Operations
+			case 13: // View Active Operations
 				return m.handleViewOperations()
-			case 13: // Show Operation History
+			case 14: // Show Operation History
 				return m.handleOperationHistory()
-			case 14: // Database Status
+			case 15: // Database Status
 				return m.handleStatus()
-			case 15: // Settings
+			case 16: // Settings
 				return m.handleSettings()
-			case 16: // Clear History
+			case 17: // Clear History
 				m.message = "[DEL] History cleared"
-			case 17: // Quit
+			case 18: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -344,7 +347,13 @@ func (m *MenuModel) View() string {
 	// Database info
 	dbInfo := infoStyle.Render(fmt.Sprintf("Database: %s@%s:%d (%s)",
 		m.config.User, m.config.Host, m.config.Port, m.config.DisplayDatabaseType()))
-	s += fmt.Sprintf("%s\n\n", dbInfo)
+	s += fmt.Sprintf("%s\n", dbInfo)
+	
+	// System resource profile badge
+	if profileBadge := GetCompactProfileBadge(); profileBadge != "" {
+		s += infoStyle.Render(fmt.Sprintf("System: %s", profileBadge)) + "\n"
+	}
+	s += "\n"
 
 	// Menu items
 	for i, choice := range m.choices {
@@ -472,6 +481,12 @@ func (m *MenuModel) handleChain() (tea.Model, tea.Cmd) {
 func (m *MenuModel) handleTools() (tea.Model, tea.Cmd) {
 	tools := NewToolsMenu(m.config, m.logger, m, m.ctx)
 	return tools, tools.Init()
+}
+
+// handleProfile opens the system resource profile view
+func (m *MenuModel) handleProfile() (tea.Model, tea.Cmd) {
+	profile := NewProfileModel(m.config, m.logger, m)
+	return profile, profile.Init()
 }
 
 func (m *MenuModel) applyDatabaseSelection() {

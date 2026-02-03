@@ -387,6 +387,12 @@ func (m RestorePreviewModel) View() string {
 	s.WriteString(titleStyle.Render(title))
 	s.WriteString("\n\n")
 
+	// System resource profile summary
+	if profileSummary := GetCompactProfileSummary(); profileSummary != "" {
+		s.WriteString(infoStyle.Render(fmt.Sprintf("System: %s", profileSummary)))
+		s.WriteString("\n\n")
+	}
+
 	// Archive Information
 	s.WriteString(archiveHeaderStyle.Render("[ARCHIVE] Information"))
 	s.WriteString("\n")

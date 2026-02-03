@@ -119,7 +119,7 @@ func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
 			e.log.Warn("Backup database progress callback panic recovered", "panic", r, "db", dbName)
 		}
 	}()
-	
+
 	if e.dbProgressCallback != nil {
 		e.dbProgressCallback(done, total, dbName)
 	}

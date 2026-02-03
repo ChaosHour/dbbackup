@@ -17,11 +17,11 @@ import (
 
 // Native backup configuration flags
 var (
-	nativeAutoProfile   bool = true  // Auto-detect optimal settings
-	nativeWorkers       int          // Manual worker count (0 = auto)
-	nativePoolSize      int          // Manual pool size (0 = auto)
-	nativeBufferSizeKB  int          // Manual buffer size in KB (0 = auto)
-	nativeBatchSize     int          // Manual batch size (0 = auto)
+	nativeAutoProfile  bool = true // Auto-detect optimal settings
+	nativeWorkers      int         // Manual worker count (0 = auto)
+	nativePoolSize     int         // Manual pool size (0 = auto)
+	nativeBufferSizeKB int         // Manual buffer size in KB (0 = auto)
+	nativeBatchSize    int         // Manual batch size (0 = auto)
 )
 
 // runNativeBackup executes backup using native Go engines

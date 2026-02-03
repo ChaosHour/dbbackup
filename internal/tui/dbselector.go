@@ -145,6 +145,11 @@ func (m DatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 
+		case "p":
+			// Show system profile before backup
+			profile := NewProfileModel(m.config, m.logger, m)
+			return profile, profile.Init()
+
 		case "enter":
 			if !m.loading && m.err == nil && len(m.databases) > 0 {
 				m.selected = m.databases[m.cursor]
@@ -203,7 +208,7 @@ func (m DatabaseSelectorModel) View() string {
 		s.WriteString(fmt.Sprintf("\n%s\n", m.message))
 	}
 
-	s.WriteString("\n[KEYS]  Up/Down: Navigate | Enter: Select | ESC: Back | q: Quit\n")
+	s.WriteString("\n[KEYS]  Up/Down: Navigate | Enter: Select | p: Profile | ESC: Back | q: Quit\n")
 
 	return s.String()
 }

@@ -252,6 +252,11 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				diagnoseView := NewDiagnoseView(m.config, m.logger, m, m.ctx, selected)
 				return diagnoseView, diagnoseView.Init()
 			}
+
+		case "p":
+			// Show system profile before restore
+			profile := NewProfileModel(m.config, m.logger, m)
+			return profile, profile.Init()
 		}
 	}
 
@@ -362,7 +367,7 @@ func (m ArchiveBrowserModel) View() string {
 	s.WriteString(infoStyle.Render(fmt.Sprintf("Total: %d archive(s) | Selected: %d/%d",
 		len(m.archives), m.cursor+1, len(m.archives))))
 	s.WriteString("\n")
-	s.WriteString(infoStyle.Render("[KEY]  ↑/↓: Navigate | Enter: Select | s: Single DB from Cluster | d: Diagnose | f: Filter | i: Info | Esc: Back"))
+	s.WriteString(infoStyle.Render("[KEY]  ↑/↓: Navigate | Enter: Select | s: Single DB | p: Profile | d: Diagnose | f: Filter | Esc: Back"))
 
 	return s.String()
 }

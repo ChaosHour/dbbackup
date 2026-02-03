@@ -54,13 +54,13 @@ type BackupExecutionModel struct {
 	spinnerFrame int
 
 	// Database count progress (for cluster backup)
-	dbTotal         int
-	dbDone          int
-	dbName          string        // Current database being backed up
-	overallPhase    int           // 1=globals, 2=databases, 3=compressing
-	phaseDesc       string        // Description of current phase
-	dbPhaseElapsed  time.Duration // Elapsed time since database backup phase started
-	dbAvgPerDB      time.Duration // Average time per database backup
+	dbTotal        int
+	dbDone         int
+	dbName         string        // Current database being backed up
+	overallPhase   int           // 1=globals, 2=databases, 3=compressing
+	phaseDesc      string        // Description of current phase
+	dbPhaseElapsed time.Duration // Elapsed time since database backup phase started
+	dbAvgPerDB     time.Duration // Average time per database backup
 }
 
 // sharedBackupProgressState holds progress state that can be safely accessed from callbacks
@@ -103,7 +103,7 @@ func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhas
 			return
 		}
 	}()
-	
+
 	currentBackupProgressMu.Lock()
 	defer currentBackupProgressMu.Unlock()
 
@@ -235,12 +235,12 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 					log.Warn("Backup database progress callback panic recovered", "panic", r, "db", currentDB)
 				}
 			}()
-			
+
 			// Check if context is cancelled before accessing state
 			if ctx.Err() != nil {
 				return // Exit early if context is cancelled
 			}
-			
+
 			progressState.mu.Lock()
 			progressState.dbDone = done
 			progressState.dbTotal = total
@@ -311,7 +311,7 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var phaseDesc string
 			var hasUpdate bool
 			var dbPhaseElapsed, dbAvgPerDB time.Duration
-			
+
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -320,7 +320,7 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}()
 				dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, dbPhaseElapsed, dbAvgPerDB, _ = getCurrentBackupProgress()
 			}()
-			
+
 			if hasUpdate {
 				m.dbTotal = dbTotal
 				m.dbDone = dbDone
@@ -487,6 +487,11 @@ func (m BackupExecutionModel) View() string {
 	}
 	if m.ratio > 0 {
 		s.WriteString(fmt.Sprintf("  %-10s %d\n", "Sample:", m.ratio))
+	}
+
+	// Show system resource profile summary
+	if profileSummary := GetCompactProfileSummary(); profileSummary != "" {
+		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Resources:", profileSummary))
 	}
 	s.WriteString("\n")
 

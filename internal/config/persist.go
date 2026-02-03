@@ -245,29 +245,32 @@ func SaveLocalConfig(cfg *LocalConfig) error {
 	return nil
 }
 
-// ApplyLocalConfig applies loaded local config to the main config if values are not already set
+// ApplyLocalConfig applies loaded local config to the main config.
+// All non-empty/non-zero values from the config file are applied.
+// CLI flag overrides are handled separately in root.go after this function.
 func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local == nil {
 		return
 	}
 
-	// Only apply if not already set via flags
-	if cfg.DatabaseType == "postgres" && local.DBType != "" {
+	// Apply all non-empty values from config file
+	// CLI flags override these in root.go after ApplyLocalConfig is called
+	if local.DBType != "" {
 		cfg.DatabaseType = local.DBType
 	}
-	if cfg.Host == "localhost" && local.Host != "" {
+	if local.Host != "" {
 		cfg.Host = local.Host
 	}
-	if cfg.Port == 5432 && local.Port != 0 {
+	if local.Port != 0 {
 		cfg.Port = local.Port
 	}
-	if cfg.User == "root" && local.User != "" {
+	if local.User != "" {
 		cfg.User = local.User
 	}
 	if local.Database != "" {
 		cfg.Database = local.Database
 	}
-	if cfg.SSLMode == "prefer" && local.SSLMode != "" {
+	if local.SSLMode != "" {
 		cfg.SSLMode = local.SSLMode
 	}
 	if local.BackupDir != "" {
@@ -276,7 +279,7 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.WorkDir != "" {
 		cfg.WorkDir = local.WorkDir
 	}
-	if cfg.CompressionLevel == 6 && local.Compression != 0 {
+	if local.Compression != 0 {
 		cfg.CompressionLevel = local.Compression
 	}
 	if local.Jobs != 0 {
@@ -285,31 +288,28 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.DumpJobs != 0 {
 		cfg.DumpJobs = local.DumpJobs
 	}
-	if cfg.CPUWorkloadType == "balanced" && local.CPUWorkload != "" {
+	if local.CPUWorkload != "" {
 		cfg.CPUWorkloadType = local.CPUWorkload
 	}
 	if local.MaxCores != 0 {
 		cfg.MaxCores = local.MaxCores
 	}
-	// Apply cluster timeout from config file (overrides default)
 	if local.ClusterTimeout != 0 {
 		cfg.ClusterTimeoutMinutes = local.ClusterTimeout
 	}
-	// Apply resource profile settings
 	if local.ResourceProfile != "" {
 		cfg.ResourceProfile = local.ResourceProfile
 	}
-	// LargeDBMode is a boolean - apply if true in config
 	if local.LargeDBMode {
 		cfg.LargeDBMode = true
 	}
-	if cfg.RetentionDays == 30 && local.RetentionDays != 0 {
+	if local.RetentionDays != 0 {
 		cfg.RetentionDays = local.RetentionDays
 	}
-	if cfg.MinBackups == 5 && local.MinBackups != 0 {
+	if local.MinBackups != 0 {
 		cfg.MinBackups = local.MinBackups
 	}
-	if cfg.MaxRetries == 3 && local.MaxRetries != 0 {
+	if local.MaxRetries != 0 {
 		cfg.MaxRetries = local.MaxRetries
 	}
 }

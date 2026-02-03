@@ -205,10 +205,11 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return diagnoseView, diagnoseView.Init()
 				}
 
-				// For restore-cluster mode: MUST be a .tar.gz cluster archive
-				// Single .sql/.dump files are NOT valid cluster backups
+				// For restore-cluster mode: MUST be a .tar.gz cluster archive created by this tool
+				// pg_dumpall SQL files should be restored via CLI: psql -f <file.sql>
 				if m.mode == "restore-cluster" && !selected.Format.IsClusterBackup() {
-					m.message = errorStyle.Render(fmt.Sprintf("⚠️  Not a cluster backup: %s is a single database backup (%s). Use 'Restore Single' mode instead, or select a .tar.gz cluster archive.", selected.Name, selected.Format.String()))
+					m.message = errorStyle.Render(fmt.Sprintf("⚠️  %s is not a dbbackup cluster archive (.tar.gz).\n\n   If this is a pg_dumpall SQL file, restore it via CLI:\n   psql -h %s -p %d -U %s -f %s",
+						selected.Name, m.config.Host, m.config.Port, m.config.User, selected.Path))
 					return m, nil
 				}
 

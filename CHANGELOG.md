@@ -5,6 +5,30 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.9] - 2026-02-03
+
+### Fixed
+- **Encryption Detection**: Fixed `IsBackupEncrypted()` not detecting single-database encrypted backups
+  - Was incorrectly treating single backups as cluster backups with empty database list
+  - Now properly checks `len(clusterMeta.Databases) > 0` before treating as cluster
+- **In-Place Decryption**: Fixed critical bug where in-place decryption corrupted files
+  - `DecryptFile()` with same input/output path would truncate file before reading
+  - Now uses temp file pattern for safe in-place decryption
+- **Metadata Update**: Fixed encryption metadata not being saved correctly
+  - `metadata.Load()` was called with wrong path (already had `.meta.json` suffix)
+
+### Tested
+- Full encryption round-trip: backup → encrypt → decrypt → restore (88 tables)
+- PostgreSQL DR Drill with `--no-owner --no-acl` flags
+- All 16+ core commands verified on dev.uuxo.net
+
+## [5.7.8] - 2026-02-03
+
+### Fixed
+- **DR Drill PostgreSQL**: Fixed restore failures on different host
+  - Added `--no-owner` and `--no-acl` flags to pg_restore
+  - Prevents role/permission errors when restoring to different PostgreSQL instance
+
 ## [5.7.7] - 2026-02-03
 
 ### Fixed

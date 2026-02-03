@@ -86,7 +86,7 @@ func init() {
 
 	// Generate command flags
 	reportGenerateCmd.Flags().StringVarP(&reportType, "type", "t", "soc2", "Report type (soc2, gdpr, hipaa, pci-dss, iso27001)")
-	reportGenerateCmd.Flags().IntVarP(&reportDays, "days", "d", 90, "Number of days to include in report")
+	reportGenerateCmd.Flags().IntVar(&reportDays, "days", 90, "Number of days to include in report")
 	reportGenerateCmd.Flags().StringVar(&reportStartDate, "start", "", "Start date (YYYY-MM-DD)")
 	reportGenerateCmd.Flags().StringVar(&reportEndDate, "end", "", "End date (YYYY-MM-DD)")
 	reportGenerateCmd.Flags().StringVarP(&reportFormat, "format", "f", "markdown", "Output format (json, markdown, html)")
@@ -97,7 +97,7 @@ func init() {
 
 	// Summary command flags
 	reportSummaryCmd.Flags().StringVarP(&reportType, "type", "t", "soc2", "Report type")
-	reportSummaryCmd.Flags().IntVarP(&reportDays, "days", "d", 90, "Number of days to include")
+	reportSummaryCmd.Flags().IntVar(&reportDays, "days", 90, "Number of days to include")
 	reportSummaryCmd.Flags().StringVar(&reportCatalog, "catalog", "", "Path to backup catalog database")
 }
 

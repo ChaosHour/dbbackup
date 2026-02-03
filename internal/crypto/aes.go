@@ -265,6 +265,13 @@ func (e *AESEncryptor) EncryptFile(inputPath, outputPath string, key []byte) err
 
 // DecryptFile decrypts a file
 func (e *AESEncryptor) DecryptFile(inputPath, outputPath string, key []byte) error {
+	// Handle in-place decryption (input == output)
+	inPlace := inputPath == outputPath
+	actualOutputPath := outputPath
+	if inPlace {
+		actualOutputPath = outputPath + ".decrypted.tmp"
+	}
+
 	// Open input file
 	inFile, err := os.Open(inputPath)
 	if err != nil {
@@ -273,7 +280,7 @@ func (e *AESEncryptor) DecryptFile(inputPath, outputPath string, key []byte) err
 	defer inFile.Close()
 
 	// Create output file
-	outFile, err := os.Create(outputPath)
+	outFile, err := os.Create(actualOutputPath)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
@@ -287,7 +294,28 @@ func (e *AESEncryptor) DecryptFile(inputPath, outputPath string, key []byte) err
 
 	// Copy decrypted data to output file
 	if _, err := io.Copy(outFile, decReader); err != nil {
+		// Clean up temp file on failure
+		if inPlace {
+			os.Remove(actualOutputPath)
+		}
 		return fmt.Errorf("failed to write decrypted data: %w", err)
+	}
+
+	// For in-place decryption, replace original file
+	if inPlace {
+		outFile.Close() // Close before rename
+		inFile.Close()  // Close before remove
+
+		// Remove original encrypted file
+		if err := os.Remove(inputPath); err != nil {
+			os.Remove(actualOutputPath)
+			return fmt.Errorf("failed to remove original file: %w", err)
+		}
+
+		// Rename decrypted file to original name
+		if err := os.Rename(actualOutputPath, outputPath); err != nil {
+			return fmt.Errorf("failed to rename decrypted file: %w", err)
+		}
 	}
 
 	return nil

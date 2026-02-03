@@ -36,8 +36,8 @@ func EncryptBackupFile(backupPath string, key []byte, log logger.Logger) error {
 	// Update metadata to indicate encryption
 	metaPath := backupPath + ".meta.json"
 	if _, err := os.Stat(metaPath); err == nil {
-		// Load existing metadata
-		meta, err := metadata.Load(metaPath)
+		// Load existing metadata (Load expects backup path, not meta path)
+		meta, err := metadata.Load(backupPath)
 		if err != nil {
 			log.Warn("Failed to load metadata for encryption update", "error", err)
 		} else {
@@ -45,7 +45,7 @@ func EncryptBackupFile(backupPath string, key []byte, log logger.Logger) error {
 			meta.Encrypted = true
 			meta.EncryptionAlgorithm = string(crypto.AlgorithmAES256GCM)
 
-			// Save updated metadata
+			// Save updated metadata (Save expects meta path)
 			if err := metadata.Save(metaPath, meta); err != nil {
 				log.Warn("Failed to update metadata with encryption info", "error", err)
 			}
@@ -70,8 +70,8 @@ func EncryptBackupFile(backupPath string, key []byte, log logger.Logger) error {
 // IsBackupEncrypted checks if a backup file is encrypted
 func IsBackupEncrypted(backupPath string) bool {
 	// Check metadata first - try cluster metadata (for cluster backups)
-	// Try cluster metadata first
-	if clusterMeta, err := metadata.LoadCluster(backupPath); err == nil {
+	// Only treat as cluster if it actually has databases
+	if clusterMeta, err := metadata.LoadCluster(backupPath); err == nil && len(clusterMeta.Databases) > 0 {
 		// For cluster backups, check if ANY database is encrypted
 		for _, db := range clusterMeta.Databases {
 			if db.Encrypted {

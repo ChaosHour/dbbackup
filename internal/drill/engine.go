@@ -334,7 +334,9 @@ func (e *Engine) executeRestore(ctx context.Context, config *DrillConfig, contai
 		// Detect restore method based on file content
 		isCustomFormat := strings.Contains(backupPath, ".dump") || strings.Contains(backupPath, ".custom")
 		if isCustomFormat {
-			cmd = []string{"pg_restore", "-U", "postgres", "-d", config.DatabaseName, "-v", backupPath}
+			// Use --no-owner and --no-acl to avoid OWNER/GRANT errors in container
+			// (original owner/roles don't exist in isolated container)
+			cmd = []string{"pg_restore", "-U", "postgres", "-d", config.DatabaseName, "-v", "--no-owner", "--no-acl", backupPath}
 		} else {
 			cmd = []string{"sh", "-c", fmt.Sprintf("psql -U postgres -d %s < %s", config.DatabaseName, backupPath)}
 		}

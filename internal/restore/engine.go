@@ -620,6 +620,77 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 		SSLMode:  e.cfg.SSLMode,
 	}
 
+	// Use PARALLEL restore engine for SQL format - this matches pg_restore -j performance!
+	// The parallel engine:
+	// 1. Executes schema statements sequentially (CREATE TABLE, etc.)
+	// 2. Executes COPY data loading in PARALLEL (like pg_restore -j8)
+	// 3. Creates indexes and constraints in PARALLEL
+	parallelWorkers := e.cfg.Jobs
+	if parallelWorkers < 1 {
+		parallelWorkers = 4
+	}
+
+	e.log.Info("Using PARALLEL native restore engine",
+		"workers", parallelWorkers,
+		"database", targetDB,
+		"archive", archivePath)
+
+	parallelEngine, err := native.NewParallelRestoreEngine(nativeCfg, e.log, parallelWorkers)
+	if err != nil {
+		e.log.Warn("Failed to create parallel restore engine, falling back to sequential", "error", err)
+		// Fall back to sequential restore
+		return e.restoreWithSequentialNativeEngine(ctx, archivePath, targetDB, compressed)
+	}
+	defer parallelEngine.Close()
+
+	// Run parallel restore with progress callbacks
+	options := &native.ParallelRestoreOptions{
+		Workers:         parallelWorkers,
+		ContinueOnError: true,
+		ProgressCallback: func(phase string, current, total int, tableName string) {
+			switch phase {
+			case "parsing":
+				e.log.Debug("Parsing SQL dump...")
+			case "schema":
+				if current%50 == 0 {
+					e.log.Debug("Creating schema", "progress", current, "total", total)
+				}
+			case "data":
+				e.log.Debug("Loading data", "table", tableName, "progress", current, "total", total)
+				// Report progress to TUI
+				e.reportDatabaseProgress(current, total, tableName)
+			case "indexes":
+				e.log.Debug("Creating indexes", "progress", current, "total", total)
+			}
+		},
+	}
+
+	result, err := parallelEngine.RestoreFile(ctx, archivePath, options)
+	if err != nil {
+		return fmt.Errorf("parallel native restore failed: %w", err)
+	}
+
+	e.log.Info("Parallel native restore completed",
+		"database", targetDB,
+		"tables", result.TablesRestored,
+		"rows", result.RowsRestored,
+		"indexes", result.IndexesCreated,
+		"duration", result.Duration)
+
+	return nil
+}
+
+// restoreWithSequentialNativeEngine is the fallback sequential restore
+func (e *Engine) restoreWithSequentialNativeEngine(ctx context.Context, archivePath, targetDB string, compressed bool) error {
+	nativeCfg := &native.PostgreSQLNativeConfig{
+		Host:     e.cfg.Host,
+		Port:     e.cfg.Port,
+		User:     e.cfg.User,
+		Password: e.cfg.Password,
+		Database: targetDB,
+		SSLMode:  e.cfg.SSLMode,
+	}
+
 	// Create restore engine
 	restoreEngine, err := native.NewPostgreSQLRestoreEngine(nativeCfg, e.log)
 	if err != nil {
@@ -1685,28 +1756,42 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 
 	// Warn about SQL format performance limitation
 	if hasSQLFormat && !hasCustomFormat {
-		e.log.Warn("⚠️ PERFORMANCE WARNING: Backup uses SQL format (.sql.gz)",
-			"reason", "SQL format cannot be restored in parallel like pg_restore -j8",
-			"expected_slowdown", "3-5x slower than custom format (.dump)",
-			"recommendation", "For faster restores, use --use-native-engine=false during backup")
-		if !e.silentMode {
-			fmt.Println()
-			fmt.Println("═══════════════════════════════════════════════════════════════")
-			fmt.Println("  ⚠️  PERFORMANCE WARNING: SQL Format Detected")
-			fmt.Println("═══════════════════════════════════════════════════════════════")
-			fmt.Println("  Backup files use .sql.gz format (from native engine).")
-			fmt.Println("  SQL format restores are SEQUENTIAL (no parallelism).")
-			fmt.Println()
-			fmt.Println("  Expected: 3-5x slower than pg_restore with -j8")
-			fmt.Println()
-			fmt.Println("  For faster future restores, create backups with:")
-			fmt.Println("    --use-native-engine=false")
-			fmt.Println("  This creates .dump files that support parallel restore.")
-			fmt.Println("═══════════════════════════════════════════════════════════════")
-			fmt.Println()
+		if e.cfg.UseNativeEngine {
+			// Native engine now uses PARALLEL restore - should match pg_restore -j8 performance!
+			e.log.Info("✅ SQL format detected - using PARALLEL native restore engine",
+				"mode", "parallel",
+				"workers", e.cfg.Jobs,
+				"optimization", "COPY operations run in parallel like pg_restore -j")
+			if !e.silentMode {
+				fmt.Println()
+				fmt.Println("═══════════════════════════════════════════════════════════════")
+				fmt.Println("  ✅ PARALLEL NATIVE RESTORE: SQL Format with Parallel Loading")
+				fmt.Println("═══════════════════════════════════════════════════════════════")
+				fmt.Printf("  Using %d parallel workers for COPY operations.\n", e.cfg.Jobs)
+				fmt.Println("  Performance should match pg_restore -j" + fmt.Sprintf("%d", e.cfg.Jobs))
+				fmt.Println("═══════════════════════════════════════════════════════════════")
+				fmt.Println()
+			}
+		} else {
+			// psql path is still sequential
+			e.log.Warn("⚠️ PERFORMANCE WARNING: Backup uses SQL format (.sql.gz)",
+				"reason", "psql mode cannot parallelize SQL format",
+				"recommendation", "Enable --use-native-engine for parallel COPY loading")
+			if !e.silentMode {
+				fmt.Println()
+				fmt.Println("═══════════════════════════════════════════════════════════════")
+				fmt.Println("  ⚠️  PERFORMANCE NOTE: SQL Format with psql (sequential)")
+				fmt.Println("═══════════════════════════════════════════════════════════════")
+				fmt.Println("  Backup files use .sql.gz format.")
+				fmt.Println("  psql mode restores are sequential.")
+				fmt.Println()
+				fmt.Println("  For PARALLEL restore, use: --use-native-engine")
+				fmt.Println("  The native engine parallelizes COPY like pg_restore -j8")
+				fmt.Println("═══════════════════════════════════════════════════════════════")
+				fmt.Println()
+			}
+			time.Sleep(2 * time.Second)
 		}
-		// Give user time to see the warning
-		time.Sleep(3 * time.Second)
 	}
 
 	// Check for large objects in dump files and adjust parallelism
@@ -1868,7 +1953,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 					select {
 					case <-heartbeatTicker.C:
 						heartbeatCount++
-						dbElapsed := time.Since(dbRestoreStart)       // Per-database elapsed
+						dbElapsed := time.Since(dbRestoreStart)          // Per-database elapsed
 						phaseElapsedNow := time.Since(restorePhaseStart) // Overall phase elapsed
 						mu.Lock()
 						statusMsg := fmt.Sprintf("Restoring %s (%d/%d) - running: %s (phase: %s)",

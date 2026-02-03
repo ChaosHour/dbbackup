@@ -165,6 +165,7 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logger.Info("Auto-selecting option", "cursor", m.cursor, "choice", m.choices[m.cursor])
 
 			// Trigger the selection based on cursor position
+			// IMPORTANT: Keep in sync with keyboard handler below!
 			switch m.cursor {
 			case 0: // Single Database Backup
 				return m.handleSingleBackup()
@@ -172,6 +173,8 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleSampleBackup()
 			case 2: // Cluster Backup
 				return m.handleClusterBackup()
+			case 3: // Separator - skip
+				return m, nil
 			case 4: // Restore Single Database
 				return m.handleRestoreSingle()
 			case 5: // Restore Cluster Backup
@@ -180,19 +183,27 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleDiagnoseBackup()
 			case 7: // List & Manage Backups
 				return m.handleBackupManager()
-			case 9: // Tools
+			case 8: // View Backup Schedule
+				return m.handleSchedule()
+			case 9: // View Backup Chain
+				return m.handleChain()
+			case 10: // Separator - skip
+				return m, nil
+			case 11: // System Resource Profile
+				return m.handleProfile()
+			case 12: // Tools
 				return m.handleTools()
-			case 10: // View Active Operations
+			case 13: // View Active Operations
 				return m.handleViewOperations()
-			case 11: // Show Operation History
+			case 14: // Show Operation History
 				return m.handleOperationHistory()
-			case 12: // Database Status
+			case 15: // Database Status
 				return m.handleStatus()
-			case 13: // Settings
+			case 16: // Settings
 				return m.handleSettings()
-			case 14: // Clear History
+			case 17: // Clear History
 				m.message = "[DEL] History cleared"
-			case 15: // Quit
+			case 18: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}

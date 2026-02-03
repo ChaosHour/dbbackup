@@ -47,7 +47,12 @@ func DetectArchiveFormat(filename string) ArchiveFormat {
 	lower := strings.ToLower(filename)
 
 	// Check for cluster archives first (most specific)
-	if strings.Contains(lower, "cluster") && strings.HasSuffix(lower, ".tar.gz") {
+	// A .tar.gz file is considered a cluster backup if:
+	// 1. Contains "cluster" in name, OR
+	// 2. Is a .tar.gz file (likely a cluster backup archive)
+	if strings.HasSuffix(lower, ".tar.gz") {
+		// All .tar.gz files are treated as cluster backups
+		// since that's the format used for cluster archives
 		return FormatClusterTarGz
 	}
 

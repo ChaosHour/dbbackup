@@ -207,10 +207,11 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Validate selection based on mode
 				if m.mode == "restore-cluster" && !selected.Format.IsClusterBackup() {
-					m.message = errorStyle.Render("[FAIL] Please select a cluster backup (.tar.gz)")
+					m.message = errorStyle.Render("[FAIL] Please select a cluster backup archive (.tar.gz)")
 					return m, nil
 				}
 
+				// For single restore mode, allow any PostgreSQL/MySQL format
 				if m.mode == "restore-single" && selected.Format.IsClusterBackup() {
 					// Cluster backup selected in single restore mode - offer to select individual database
 					clusterSelector := NewClusterDatabaseSelector(m.config, m.logger, m, m.ctx, selected, "single", false)

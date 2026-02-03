@@ -56,7 +56,10 @@ func (m InputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case inputAutoConfirmMsg:
 		// Use default value and proceed
 		if selector, ok := m.parent.(DatabaseSelectorModel); ok {
-			ratio, _ := strconv.Atoi(m.value)
+			ratio, err := strconv.Atoi(m.value)
+			if err != nil || ratio < 0 || ratio > 100 {
+				ratio = 10 // Safe default
+			}
 			executor := NewBackupExecution(selector.config, selector.logger, selector.parent, selector.ctx,
 				selector.backupType, selector.selected, ratio)
 			return executor, executor.Init()
@@ -83,7 +86,11 @@ func (m InputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// If this is from database selector, execute backup with ratio
 			if selector, ok := m.parent.(DatabaseSelectorModel); ok {
-				ratio, _ := strconv.Atoi(m.value)
+				ratio, err := strconv.Atoi(m.value)
+				if err != nil || ratio < 0 || ratio > 100 {
+					m.err = fmt.Errorf("ratio must be 0-100")
+					return m, nil
+				}
 				executor := NewBackupExecution(selector.config, selector.logger, selector.parent, selector.ctx,
 					selector.backupType, selector.selected, ratio)
 				return executor, executor.Init()

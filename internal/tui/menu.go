@@ -266,11 +266,19 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				// Skip separators
+				if strings.Contains(m.choices[m.cursor], "---") && m.cursor > 0 {
+					m.cursor--
+				}
 			}
 
 		case "down", "j":
 			if m.cursor < len(m.choices)-1 {
 				m.cursor++
+				// Skip separators
+				if strings.Contains(m.choices[m.cursor], "---") && m.cursor < len(m.choices)-1 {
+					m.cursor++
+				}
 			}
 
 		case "enter", " ":

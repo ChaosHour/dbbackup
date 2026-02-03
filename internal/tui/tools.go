@@ -5,10 +5,14 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 )
+
+// warnStyle for TODO/coming soon messages
+var warnStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
 
 // ToolsMenu represents the tools submenu
 type ToolsMenu struct {
@@ -147,7 +151,7 @@ func (t *ToolsMenu) handleBlobStats() (tea.Model, tea.Cmd) {
 
 // handleBlobExtract opens the blob extraction wizard
 func (t *ToolsMenu) handleBlobExtract() (tea.Model, tea.Cmd) {
-	t.message = infoStyle.Render("[INFO] Blob extraction coming soon - extracts large objects to dedup store")
+	t.message = warnStyle.Render("[TODO] Blob extraction - planned for v6.1")
 	return t, nil
 }
 
@@ -159,7 +163,7 @@ func (t *ToolsMenu) handleSystemHealth() (tea.Model, tea.Cmd) {
 
 // handleDedupAnalyze shows dedup store analysis
 func (t *ToolsMenu) handleDedupAnalyze() (tea.Model, tea.Cmd) {
-	t.message = infoStyle.Render("[INFO] Dedup analyze coming soon - shows storage savings and chunk distribution")
+	t.message = warnStyle.Render("[TODO] Dedup analyze - planned for v6.1")
 	return t, nil
 }
 
@@ -172,7 +176,7 @@ func (t *ToolsMenu) handleVerifyIntegrity() (tea.Model, tea.Cmd) {
 
 // handleCatalogSync synchronizes backup catalog
 func (t *ToolsMenu) handleCatalogSync() (tea.Model, tea.Cmd) {
-	t.message = infoStyle.Render("[INFO] Catalog sync coming soon - synchronizes local catalog with cloud storage")
+	t.message = warnStyle.Render("[TODO] Catalog sync TUI - use CLI: dbbackup catalog sync")
 	return t, nil
 }
 

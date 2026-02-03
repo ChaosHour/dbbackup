@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const ConfigFileName = ".dbbackup.conf"
@@ -159,87 +160,58 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 
 // SaveLocalConfig saves configuration to .dbbackup.conf in current directory
 func SaveLocalConfig(cfg *LocalConfig) error {
+	return SaveLocalConfigToPath(cfg, filepath.Join(".", ConfigFileName))
+}
+
+// SaveLocalConfigToPath saves configuration to a specific path
+func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	var sb strings.Builder
 
 	sb.WriteString("# dbbackup configuration\n")
-	sb.WriteString("# This file is auto-generated. Edit with care.\n\n")
+	sb.WriteString("# This file is auto-generated. Edit with care.\n")
+	sb.WriteString(fmt.Sprintf("# Saved: %s\n\n", time.Now().Format(time.RFC3339)))
 
-	// Database section
+	// Database section - ALWAYS write all values
 	sb.WriteString("[database]\n")
-	if cfg.DBType != "" {
-		sb.WriteString(fmt.Sprintf("type = %s\n", cfg.DBType))
-	}
-	if cfg.Host != "" {
-		sb.WriteString(fmt.Sprintf("host = %s\n", cfg.Host))
-	}
-	if cfg.Port != 0 {
-		sb.WriteString(fmt.Sprintf("port = %d\n", cfg.Port))
-	}
-	if cfg.User != "" {
-		sb.WriteString(fmt.Sprintf("user = %s\n", cfg.User))
-	}
-	if cfg.Database != "" {
-		sb.WriteString(fmt.Sprintf("database = %s\n", cfg.Database))
-	}
-	if cfg.SSLMode != "" {
-		sb.WriteString(fmt.Sprintf("ssl_mode = %s\n", cfg.SSLMode))
-	}
+	sb.WriteString(fmt.Sprintf("type = %s\n", cfg.DBType))
+	sb.WriteString(fmt.Sprintf("host = %s\n", cfg.Host))
+	sb.WriteString(fmt.Sprintf("port = %d\n", cfg.Port))
+	sb.WriteString(fmt.Sprintf("user = %s\n", cfg.User))
+	sb.WriteString(fmt.Sprintf("database = %s\n", cfg.Database))
+	sb.WriteString(fmt.Sprintf("ssl_mode = %s\n", cfg.SSLMode))
 	sb.WriteString("\n")
 
-	// Backup section
+	// Backup section - ALWAYS write all values (including 0)
 	sb.WriteString("[backup]\n")
-	if cfg.BackupDir != "" {
-		sb.WriteString(fmt.Sprintf("backup_dir = %s\n", cfg.BackupDir))
-	}
+	sb.WriteString(fmt.Sprintf("backup_dir = %s\n", cfg.BackupDir))
 	if cfg.WorkDir != "" {
 		sb.WriteString(fmt.Sprintf("work_dir = %s\n", cfg.WorkDir))
 	}
-	if cfg.Compression != 0 {
-		sb.WriteString(fmt.Sprintf("compression = %d\n", cfg.Compression))
-	}
-	if cfg.Jobs != 0 {
-		sb.WriteString(fmt.Sprintf("jobs = %d\n", cfg.Jobs))
-	}
-	if cfg.DumpJobs != 0 {
-		sb.WriteString(fmt.Sprintf("dump_jobs = %d\n", cfg.DumpJobs))
-	}
+	sb.WriteString(fmt.Sprintf("compression = %d\n", cfg.Compression))
+	sb.WriteString(fmt.Sprintf("jobs = %d\n", cfg.Jobs))
+	sb.WriteString(fmt.Sprintf("dump_jobs = %d\n", cfg.DumpJobs))
 	sb.WriteString("\n")
 
-	// Performance section
+	// Performance section - ALWAYS write all values
 	sb.WriteString("[performance]\n")
-	if cfg.CPUWorkload != "" {
-		sb.WriteString(fmt.Sprintf("cpu_workload = %s\n", cfg.CPUWorkload))
-	}
-	if cfg.MaxCores != 0 {
-		sb.WriteString(fmt.Sprintf("max_cores = %d\n", cfg.MaxCores))
-	}
-	if cfg.ClusterTimeout != 0 {
-		sb.WriteString(fmt.Sprintf("cluster_timeout = %d\n", cfg.ClusterTimeout))
-	}
+	sb.WriteString(fmt.Sprintf("cpu_workload = %s\n", cfg.CPUWorkload))
+	sb.WriteString(fmt.Sprintf("max_cores = %d\n", cfg.MaxCores))
+	sb.WriteString(fmt.Sprintf("cluster_timeout = %d\n", cfg.ClusterTimeout))
 	if cfg.ResourceProfile != "" {
 		sb.WriteString(fmt.Sprintf("resource_profile = %s\n", cfg.ResourceProfile))
 	}
-	if cfg.LargeDBMode {
-		sb.WriteString("large_db_mode = true\n")
-	}
+	sb.WriteString(fmt.Sprintf("large_db_mode = %t\n", cfg.LargeDBMode))
 	sb.WriteString("\n")
 
-	// Security section
+	// Security section - ALWAYS write all values
 	sb.WriteString("[security]\n")
-	if cfg.RetentionDays != 0 {
-		sb.WriteString(fmt.Sprintf("retention_days = %d\n", cfg.RetentionDays))
-	}
-	if cfg.MinBackups != 0 {
-		sb.WriteString(fmt.Sprintf("min_backups = %d\n", cfg.MinBackups))
-	}
-	if cfg.MaxRetries != 0 {
-		sb.WriteString(fmt.Sprintf("max_retries = %d\n", cfg.MaxRetries))
-	}
+	sb.WriteString(fmt.Sprintf("retention_days = %d\n", cfg.RetentionDays))
+	sb.WriteString(fmt.Sprintf("min_backups = %d\n", cfg.MinBackups))
+	sb.WriteString(fmt.Sprintf("max_retries = %d\n", cfg.MaxRetries))
 
-	configPath := filepath.Join(".", ConfigFileName)
-	// Use 0600 permissions for security (readable/writable only by owner)
-	if err := os.WriteFile(configPath, []byte(sb.String()), 0600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
+	// Use 0644 permissions for readability
+	if err := os.WriteFile(configPath, []byte(sb.String()), 0644); err != nil {
+		return fmt.Errorf("failed to write config file %s: %w", configPath, err)
 	}
 
 	return nil

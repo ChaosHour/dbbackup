@@ -205,20 +205,19 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return diagnoseView, diagnoseView.Init()
 				}
 
-				// Validate selection based on mode
-				if m.mode == "restore-cluster" && !selected.Format.IsClusterBackup() {
-					m.message = errorStyle.Render("[FAIL] Please select a cluster backup archive (.tar.gz)")
-					return m, nil
-				}
+				// For restore-cluster mode:
+				// - .tar.gz cluster archives → full cluster restore
+				// - .sql/.sql.gz files → single database restore (Native Engine supports these)
+				// - .dump/.dump.gz → single database restore (pg_restore)
+				// ALL formats are now allowed for restore operations!
 
-				// For single restore mode, allow any PostgreSQL/MySQL format
+				// For single restore mode with cluster backup selected - offer to select individual database
 				if m.mode == "restore-single" && selected.Format.IsClusterBackup() {
-					// Cluster backup selected in single restore mode - offer to select individual database
 					clusterSelector := NewClusterDatabaseSelector(m.config, m.logger, m, m.ctx, selected, "single", false)
 					return clusterSelector, clusterSelector.Init()
 				}
 
-				// Open restore preview
+				// Open restore preview for any valid format
 				preview := NewRestorePreview(m.config, m.logger, m.parent, m.ctx, selected, m.mode)
 				return preview, preview.Init()
 			}
@@ -383,6 +382,7 @@ func (m ArchiveBrowserModel) filterArchives(archives []ArchiveInfo) []ArchiveInf
 	for _, archive := range archives {
 		switch m.filterType {
 		case "postgres":
+			// Show all PostgreSQL formats (single DB)
 			if archive.Format.IsPostgreSQL() && !archive.Format.IsClusterBackup() {
 				filtered = append(filtered, archive)
 			}
@@ -391,6 +391,7 @@ func (m ArchiveBrowserModel) filterArchives(archives []ArchiveInfo) []ArchiveInf
 				filtered = append(filtered, archive)
 			}
 		case "cluster":
+			// Show .tar.gz cluster archives
 			if archive.Format.IsClusterBackup() {
 				filtered = append(filtered, archive)
 			}

@@ -220,3 +220,34 @@ func TestDetectArchiveFormatWithRealFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectArchiveFormatAll(t *testing.T) {
+	tests := []struct {
+		filename  string
+		want      ArchiveFormat
+		isCluster bool
+	}{
+		{"testdb.sql", FormatPostgreSQLSQL, false},
+		{"testdb.sql.gz", FormatPostgreSQLSQLGz, false},
+		{"testdb.dump", FormatPostgreSQLDump, false},
+		{"testdb.dump.gz", FormatPostgreSQLDumpGz, false},
+		{"cluster_backup.tar.gz", FormatClusterTarGz, true},
+		{"mybackup.tar.gz", FormatClusterTarGz, true},
+		{"testdb_20260130_204350_native.sql.gz", FormatPostgreSQLSQLGz, false},
+		{"mysql_backup.sql", FormatMySQLSQL, false},
+		{"mysql_dump.sql.gz", FormatMySQLSQLGz, false}, // Has "mysql" in name = MySQL
+		{"randomfile.txt", FormatUnknown, false},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.filename, func(t *testing.T) {
+			got := DetectArchiveFormat(tt.filename)
+			if got != tt.want {
+				t.Errorf("DetectArchiveFormat(%q) = %v, want %v", tt.filename, got, tt.want)
+			}
+			if got.IsClusterBackup() != tt.isCluster {
+				t.Errorf("DetectArchiveFormat(%q).IsClusterBackup() = %v, want %v", tt.filename, got.IsClusterBackup(), tt.isCluster)
+			}
+		})
+	}
+}

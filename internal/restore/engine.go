@@ -1342,9 +1342,14 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	}
 
 	format := DetectArchiveFormat(archivePath)
-	if format != FormatClusterTarGz {
+	if !format.CanBeClusterRestore() {
 		operation.Fail("Invalid cluster archive format")
-		return fmt.Errorf("not a cluster archive: %s (detected format: %s)", archivePath, format)
+		return fmt.Errorf("not a valid cluster restore format: %s (detected format: %s). Supported: .tar.gz, .sql, .sql.gz", archivePath, format)
+	}
+
+	// For SQL-based cluster restores, use a different restore path
+	if format == FormatPostgreSQLSQL || format == FormatPostgreSQLSQLGz {
+		return e.restoreClusterFromSQL(ctx, archivePath, operation)
 	}
 
 	// Check if we have a pre-extracted directory (optimization to avoid double extraction)
@@ -2177,6 +2182,45 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	return nil
 }
 
+// restoreClusterFromSQL restores a pg_dumpall SQL file using the native engine
+// This handles .sql and .sql.gz files containing full cluster dumps
+func (e *Engine) restoreClusterFromSQL(ctx context.Context, archivePath string, operation logger.OperationLogger) error {
+	e.log.Info("Restoring cluster from SQL file (pg_dumpall format)",
+		"file", filepath.Base(archivePath),
+		"native_engine", true)
+
+	clusterStartTime := time.Now()
+
+	// Determine if compressed
+	compressed := strings.HasSuffix(strings.ToLower(archivePath), ".gz")
+
+	// Use native engine to restore directly to postgres database (globals + all databases)
+	e.log.Info("Restoring SQL dump using native engine...",
+		"compressed", compressed,
+		"size", FormatBytes(getFileSize(archivePath)))
+
+	e.progress.Start("Restoring cluster from SQL dump...")
+
+	// For pg_dumpall, we restore to the 'postgres' database which then creates other databases
+	targetDB := "postgres"
+
+	err := e.restoreWithNativeEngine(ctx, archivePath, targetDB, compressed)
+	if err != nil {
+		operation.Fail(fmt.Sprintf("SQL cluster restore failed: %v", err))
+		e.recordClusterRestoreMetrics(clusterStartTime, archivePath, 0, 0, false, err.Error())
+		return fmt.Errorf("SQL cluster restore failed: %w", err)
+	}
+
+	duration := time.Since(clusterStartTime)
+	e.progress.Complete(fmt.Sprintf("Cluster restored successfully from SQL in %s", duration.Round(time.Second)))
+	operation.Complete("SQL cluster restore completed")
+
+	// Record metrics
+	e.recordClusterRestoreMetrics(clusterStartTime, archivePath, 1, 1, true, "")
+
+	return nil
+}
+
 // recordClusterRestoreMetrics records metrics for cluster restore operations
 func (e *Engine) recordClusterRestoreMetrics(startTime time.Time, archivePath string, totalDBs, successCount int, success bool, errorMsg string) {
 	duration := time.Since(startTime)
@@ -2922,6 +2966,15 @@ func (e *Engine) isIgnorableError(errorMsg string) bool {
 	}
 
 	return false
+}
+
+// getFileSize returns the size of a file, or 0 if it can't be read
+func getFileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 // FormatBytes formats bytes to human readable format

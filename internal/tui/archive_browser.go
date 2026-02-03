@@ -205,12 +205,19 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return diagnoseView, diagnoseView.Init()
 				}
 
-				// For restore-cluster mode: MUST be a .tar.gz cluster archive created by this tool
-				// pg_dumpall SQL files should be restored via CLI: psql -f <file.sql>
-				if m.mode == "restore-cluster" && !selected.Format.IsClusterBackup() {
-					m.message = errorStyle.Render(fmt.Sprintf("⚠️  %s is not a dbbackup cluster archive (.tar.gz).\n\n   If this is a pg_dumpall SQL file, restore it via CLI:\n   psql -h %s -p %d -U %s -f %s",
-						selected.Name, m.config.Host, m.config.Port, m.config.User, selected.Path))
+				// For restore-cluster mode: check if format can be used for cluster restore
+				// - .tar.gz: dbbackup cluster format (works with pg_restore)
+				// - .sql/.sql.gz: pg_dumpall format (works with native engine or psql)
+				if m.mode == "restore-cluster" && !selected.Format.CanBeClusterRestore() {
+					m.message = errorStyle.Render(fmt.Sprintf("⚠️  %s cannot be used for cluster restore.\n\n   Supported formats: .tar.gz (dbbackup), .sql, .sql.gz (pg_dumpall)",
+						selected.Name))
 					return m, nil
+				}
+
+				// For SQL-based cluster restore, enable native engine automatically
+				if m.mode == "restore-cluster" && !selected.Format.IsClusterBackup() {
+					// This is a .sql or .sql.gz file - use native engine
+					m.config.UseNativeEngine = true
 				}
 
 				// For single restore mode with cluster backup selected - offer to select individual database

@@ -168,9 +168,17 @@ func (f ArchiveFormat) IsCompressed() bool {
 		f == FormatClusterTarGz
 }
 
-// IsClusterBackup returns true if the archive is a cluster backup
+// IsClusterBackup returns true if the archive is a cluster backup (.tar.gz format created by dbbackup)
 func (f ArchiveFormat) IsClusterBackup() bool {
 	return f == FormatClusterTarGz
+}
+
+// CanBeClusterRestore returns true if the format can be used for cluster restore
+// This includes .tar.gz (dbbackup format) and .sql/.sql.gz (pg_dumpall format for native engine)
+func (f ArchiveFormat) CanBeClusterRestore() bool {
+	return f == FormatClusterTarGz ||
+		f == FormatPostgreSQLSQL ||
+		f == FormatPostgreSQLSQLGz
 }
 
 // IsPostgreSQL returns true if the archive is PostgreSQL format

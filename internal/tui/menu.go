@@ -348,7 +348,7 @@ func (m *MenuModel) View() string {
 	dbInfo := infoStyle.Render(fmt.Sprintf("Database: %s@%s:%d (%s)",
 		m.config.User, m.config.Host, m.config.Port, m.config.DisplayDatabaseType()))
 	s += fmt.Sprintf("%s\n", dbInfo)
-	
+
 	// System resource profile badge
 	if profileBadge := GetCompactProfileBadge(); profileBadge != "" {
 		s += infoStyle.Render(fmt.Sprintf("System: %s", profileBadge)) + "\n"

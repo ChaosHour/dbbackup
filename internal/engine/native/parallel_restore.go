@@ -418,7 +418,7 @@ func (e *ParallelRestoreEngine) executeStatement(ctx context.Context, sql string
 	return err
 }
 
-// executeCopy executes a COPY FROM STDIN operation
+// executeCopy executes a COPY FROM STDIN operation with BLOB optimization
 func (e *ParallelRestoreEngine) executeCopy(ctx context.Context, stmt *SQLStatement) (int64, error) {
 	conn, err := e.pool.Acquire(ctx)
 	if err != nil {
@@ -426,10 +426,15 @@ func (e *ParallelRestoreEngine) executeCopy(ctx context.Context, stmt *SQLStatem
 	}
 	defer conn.Release()
 
-	// Apply per-connection optimizations
+	// Apply per-connection BLOB-optimized settings
+	// PostgreSQL Specialist recommended settings for maximum BLOB throughput
 	optimizations := []string{
-		"SET synchronous_commit = 'off'",
-		"SET session_replication_role = 'replica'",
+		"SET synchronous_commit = 'off'",           // Don't wait for WAL sync
+		"SET session_replication_role = 'replica'", // Disable triggers during load
+		"SET work_mem = '256MB'",                   // More memory for sorting
+		"SET maintenance_work_mem = '512MB'",       // For constraint validation
+		"SET wal_buffers = '64MB'",                 // Larger WAL buffer
+		"SET checkpoint_completion_target = '0.9'", // Spread checkpoint I/O
 	}
 	for _, opt := range optimizations {
 		conn.Exec(ctx, opt)

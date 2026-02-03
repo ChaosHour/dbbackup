@@ -241,7 +241,7 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 	return result, nil
 }
 
-// copyTableData uses COPY TO for efficient data export
+// copyTableData uses COPY TO for efficient data export with BLOB optimization
 func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer, schema, table string) (int64, error) {
 	// Get a separate connection from the pool for COPY operation
 	conn, err := e.pool.Acquire(ctx)
@@ -249,6 +249,18 @@ func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer,
 		return 0, fmt.Errorf("failed to acquire connection: %w", err)
 	}
 	defer conn.Release()
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// BLOB-OPTIMIZED SESSION SETTINGS (PostgreSQL Specialist recommendations)
+	// ═══════════════════════════════════════════════════════════════════════
+	blobOptimizations := []string{
+		"SET work_mem = '256MB'",              // More memory for sorting/hashing
+		"SET maintenance_work_mem = '512MB'",  // For large operations
+		"SET temp_buffers = '64MB'",           // Temp table buffers
+	}
+	for _, opt := range blobOptimizations {
+		conn.Exec(ctx, opt)
+	}
 
 	// Check if table has any data
 	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s.%s",
@@ -277,7 +289,7 @@ func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer,
 
 	var bytesWritten int64
 
-	// Use proper pgx COPY TO protocol
+	// Use proper pgx COPY TO protocol - this streams BYTEA data efficiently
 	copySQL := fmt.Sprintf("COPY %s.%s TO STDOUT",
 		e.quoteIdentifier(schema),
 		e.quoteIdentifier(table))

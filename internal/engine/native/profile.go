@@ -2,12 +2,14 @@ package native
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"runtime"
 	"strings"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -355,6 +357,19 @@ func detectDiskProfile(ctx context.Context) (*DiskProfile, error) {
 
 // detectDatabaseProfile queries database for capabilities
 func detectDatabaseProfile(ctx context.Context, dsn string) (*DatabaseProfile, error) {
+	// Detect DSN type by format
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		return detectPostgresDatabaseProfile(ctx, dsn)
+	}
+	// MySQL DSN format: user:password@tcp(host:port)/dbname
+	if strings.Contains(dsn, "@tcp(") || strings.Contains(dsn, "@unix(") {
+		return detectMySQLDatabaseProfile(ctx, dsn)
+	}
+	return nil, fmt.Errorf("unsupported DSN format for database profiling")
+}
+
+// detectPostgresDatabaseProfile profiles PostgreSQL database
+func detectPostgresDatabaseProfile(ctx context.Context, dsn string) (*DatabaseProfile, error) {
 	// Create temporary pool with minimal connections
 	poolConfig, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -445,6 +460,104 @@ func detectDatabaseProfile(ctx context.Context, dsn string) (*DatabaseProfile, e
 		SELECT COALESCE(sum(n_live_tup), 0)
 		FROM pg_stat_user_tables
 	`).Scan(&profile.EstimatedRowCount)
+
+	return profile, nil
+}
+
+// detectMySQLDatabaseProfile profiles MySQL/MariaDB database
+func detectMySQLDatabaseProfile(ctx context.Context, dsn string) (*DatabaseProfile, error) {
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	// Configure connection pool
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(30 * time.Second)
+
+	if err := db.PingContext(ctx); err != nil {
+		return nil, fmt.Errorf("failed to connect to MySQL: %w", err)
+	}
+
+	profile := &DatabaseProfile{}
+
+	// Get MySQL version
+	err = db.QueryRowContext(ctx, "SELECT version()").Scan(&profile.Version)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get max_connections
+	var maxConns int
+	row := db.QueryRowContext(ctx, "SELECT @@max_connections")
+	if err := row.Scan(&maxConns); err == nil {
+		profile.MaxConnections = maxConns
+	}
+
+	// Get innodb_buffer_pool_size (equivalent to shared_buffers)
+	var bufferPoolSize uint64
+	row = db.QueryRowContext(ctx, "SELECT @@innodb_buffer_pool_size")
+	if err := row.Scan(&bufferPoolSize); err == nil {
+		profile.SharedBuffers = bufferPoolSize
+	}
+
+	// Get sort_buffer_size (somewhat equivalent to work_mem)
+	var sortBuffer uint64
+	row = db.QueryRowContext(ctx, "SELECT @@sort_buffer_size")
+	if err := row.Scan(&sortBuffer); err == nil {
+		profile.WorkMem = sortBuffer
+	}
+
+	// Estimate database size
+	var dbSize sql.NullInt64
+	row = db.QueryRowContext(ctx, `
+		SELECT SUM(data_length + index_length) 
+		FROM information_schema.tables 
+		WHERE table_schema = DATABASE()`)
+	if err := row.Scan(&dbSize); err == nil && dbSize.Valid {
+		profile.EstimatedSize = uint64(dbSize.Int64)
+	}
+
+	// Check for BLOB columns
+	var blobCount int
+	row = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) 
+		FROM information_schema.columns 
+		WHERE table_schema = DATABASE() 
+		AND data_type IN ('blob', 'mediumblob', 'longblob', 'text', 'mediumtext', 'longtext')`)
+	if err := row.Scan(&blobCount); err == nil {
+		profile.HasBLOBs = blobCount > 0
+	}
+
+	// Check for indexes
+	var indexCount int
+	row = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) 
+		FROM information_schema.statistics 
+		WHERE table_schema = DATABASE()`)
+	if err := row.Scan(&indexCount); err == nil {
+		profile.HasIndexes = indexCount > 0
+	}
+
+	// Count tables
+	row = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) 
+		FROM information_schema.tables 
+		WHERE table_schema = DATABASE() 
+		AND table_type = 'BASE TABLE'`)
+	row.Scan(&profile.TableCount)
+
+	// Estimate row count
+	var rowCount sql.NullInt64
+	row = db.QueryRowContext(ctx, `
+		SELECT SUM(table_rows) 
+		FROM information_schema.tables 
+		WHERE table_schema = DATABASE()`)
+	if err := row.Scan(&rowCount); err == nil && rowCount.Valid {
+		profile.EstimatedRowCount = rowCount.Int64
+	}
 
 	return profile, nil
 }

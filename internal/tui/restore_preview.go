@@ -441,6 +441,13 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(fmt.Sprintf("  Database: %s\n", m.targetDB))
 		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
 
+		// Show Engine Mode for single restore too
+		if m.config.UseNativeEngine {
+			s.WriteString(CheckPassedStyle.Render("  Engine Mode: Native Go (pure Go, no external tools)") + "\n")
+		} else {
+			s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (psql)\n"))
+		}
+
 		cleanIcon := "[N]"
 		if m.cleanFirst {
 			cleanIcon = "[Y]"
@@ -472,6 +479,13 @@ func (m RestorePreviewModel) View() string {
 		}
 		s.WriteString(fmt.Sprintf("  CPU Workload: %s\n", m.config.CPUWorkloadType))
 		s.WriteString(fmt.Sprintf("  Cluster Parallelism: %d databases\n", m.config.ClusterParallelism))
+
+		// Show Engine Mode - critical for understanding restore behavior
+		if m.config.UseNativeEngine {
+			s.WriteString(CheckPassedStyle.Render("  Engine Mode: Native Go (pure Go, no external tools)") + "\n")
+		} else {
+			s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (pg_restore, psql)\n"))
+		}
 
 		if m.existingDBError != "" {
 			// Show warning when database listing failed - but still allow cleanup toggle

@@ -592,18 +592,29 @@ func (e *PostgreSQLNativeEngine) formatDataType(dataType, udtName string, maxLen
 
 // Helper methods
 func (e *PostgreSQLNativeEngine) buildConnectionString() string {
+	// Check if host is a Unix socket path (starts with /)
+	isSocketPath := strings.HasPrefix(e.cfg.Host, "/")
+
 	parts := []string{
 		fmt.Sprintf("host=%s", e.cfg.Host),
-		fmt.Sprintf("port=%d", e.cfg.Port),
-		fmt.Sprintf("user=%s", e.cfg.User),
-		fmt.Sprintf("dbname=%s", e.cfg.Database),
 	}
+
+	// Only add port for TCP connections, not for Unix sockets
+	if !isSocketPath {
+		parts = append(parts, fmt.Sprintf("port=%d", e.cfg.Port))
+	}
+
+	parts = append(parts, fmt.Sprintf("user=%s", e.cfg.User))
+	parts = append(parts, fmt.Sprintf("dbname=%s", e.cfg.Database))
 
 	if e.cfg.Password != "" {
 		parts = append(parts, fmt.Sprintf("password=%s", e.cfg.Password))
 	}
 
-	if e.cfg.SSLMode != "" {
+	if isSocketPath {
+		// Unix socket connections don't use SSL
+		parts = append(parts, "sslmode=disable")
+	} else if e.cfg.SSLMode != "" {
 		parts = append(parts, fmt.Sprintf("sslmode=%s", e.cfg.SSLMode))
 	} else {
 		parts = append(parts, "sslmode=prefer")

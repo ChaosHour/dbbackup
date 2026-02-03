@@ -125,9 +125,15 @@ For help with specific commands, use: dbbackup [command] --help`,
 		}
 
 		// Auto-detect socket from --host path (if host starts with /)
+		// For MySQL/MariaDB: set Socket and reset Host to localhost
+		// For PostgreSQL: keep Host as socket path (pgx/libpq handle it correctly)
 		if strings.HasPrefix(cfg.Host, "/") && cfg.Socket == "" {
-			cfg.Socket = cfg.Host
-			cfg.Host = "localhost" // Reset host for socket connections
+			if cfg.IsMySQL() {
+				// MySQL uses separate Socket field, Host should be localhost
+				cfg.Socket = cfg.Host
+				cfg.Host = "localhost"
+			}
+			// For PostgreSQL, keep cfg.Host as the socket path - pgx handles this correctly
 		}
 
 		return cfg.SetDatabaseType(cfg.DatabaseType)
@@ -164,7 +170,16 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	rootCmd.PersistentFlags().StringVar(&cfg.User, "user", cfg.User, "Database user")
 	rootCmd.PersistentFlags().StringVar(&cfg.Database, "database", cfg.Database, "Database name")
 	// SECURITY: Password flag removed - use PGPASSWORD/MYSQL_PWD environment variable or .pgpass file
-	// rootCmd.PersistentFlags().StringVar(&cfg.Password, "password", cfg.Password, "Database password")
+	// Provide helpful error message for users expecting --password flag
+	var deprecatedPassword string
+	rootCmd.PersistentFlags().StringVar(&deprecatedPassword, "password", "", "DEPRECATED: Use MYSQL_PWD or PGPASSWORD environment variable instead")
+	rootCmd.PersistentFlags().MarkHidden("password")
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if deprecatedPassword != "" {
+			return fmt.Errorf("--password flag is not supported for security reasons. Use environment variables instead:\n  - MySQL/MariaDB: export MYSQL_PWD='your_password'\n  - PostgreSQL: export PGPASSWORD='your_password' or use .pgpass file")
+		}
+		return nil
+	}
 	rootCmd.PersistentFlags().StringVarP(&cfg.DatabaseType, "db-type", "d", cfg.DatabaseType, "Database type (postgres|mysql|mariadb)")
 	rootCmd.PersistentFlags().StringVar(&cfg.BackupDir, "backup-dir", cfg.BackupDir, "Backup directory")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoColor, "no-color", cfg.NoColor, "Disable colored output")

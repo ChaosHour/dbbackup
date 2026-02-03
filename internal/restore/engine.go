@@ -1848,7 +1848,11 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			var restoreErr error
 			if isCompressedSQL {
 				mu.Lock()
-				e.log.Info("Detected compressed SQL format, using psql + pgzip", "file", dumpFile, "database", dbName)
+				if e.cfg.UseNativeEngine {
+					e.log.Info("Detected compressed SQL format, using native Go engine", "file", dumpFile, "database", dbName)
+				} else {
+					e.log.Info("Detected compressed SQL format, using psql + pgzip", "file", dumpFile, "database", dbName)
+				}
 				mu.Unlock()
 				restoreErr = e.restorePostgreSQLSQL(ctx, dumpFile, dbName, true)
 			} else {

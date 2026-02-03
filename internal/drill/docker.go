@@ -147,9 +147,10 @@ func (dm *DockerManager) healthCheckCommand(dbType string) []string {
 	case "postgresql", "postgres":
 		return []string{"pg_isready", "-U", "postgres"}
 	case "mysql":
-		return []string{"mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=root"}
+		return []string{"mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "--password=root"}
 	case "mariadb":
-		return []string{"mariadb-admin", "ping", "-h", "localhost", "-u", "root", "--password=root"}
+		// Use mariadb-admin with TCP connection
+		return []string{"mariadb-admin", "ping", "-h", "127.0.0.1", "-u", "root", "--password=root"}
 	default:
 		return []string{"echo", "ok"}
 	}

@@ -54,19 +54,29 @@ func init() {
 }
 
 func runNotifyTest(cmd *cobra.Command, args []string) error {
-	if !cfg.NotifyEnabled {
-		fmt.Println("[WARN] Notifications are disabled")
-		fmt.Println("Enable with: --notify-enabled")
+	// Load notification config from environment variables (same as root.go)
+	notifyCfg := notify.ConfigFromEnv()
+
+	// Check if any notification method is configured
+	if !notifyCfg.SMTPEnabled && !notifyCfg.WebhookEnabled {
+		fmt.Println("[WARN] No notification endpoints configured")
 		fmt.Println()
-		fmt.Println("Example configuration:")
-		fmt.Println("  notify_enabled = true")
-		fmt.Println("  notify_on_success = true")
-		fmt.Println("  notify_on_failure = true")
-		fmt.Println("  notify_webhook_url = \"https://your-webhook-url\"")
-		fmt.Println("  # or")
-		fmt.Println("  notify_smtp_host = \"smtp.example.com\"")
-		fmt.Println("  notify_smtp_from = \"backups@example.com\"")
-		fmt.Println("  notify_smtp_to = \"admin@example.com\"")
+		fmt.Println("Configure via environment variables:")
+		fmt.Println()
+		fmt.Println("  SMTP Email:")
+		fmt.Println("    NOTIFY_SMTP_HOST=smtp.example.com")
+		fmt.Println("    NOTIFY_SMTP_PORT=587")
+		fmt.Println("    NOTIFY_SMTP_FROM=backups@example.com")
+		fmt.Println("    NOTIFY_SMTP_TO=admin@example.com")
+		fmt.Println()
+		fmt.Println("  Webhook:")
+		fmt.Println("    NOTIFY_WEBHOOK_URL=https://your-webhook-url")
+		fmt.Println()
+		fmt.Println("  Optional:")
+		fmt.Println("    NOTIFY_SMTP_USER=username")
+		fmt.Println("    NOTIFY_SMTP_PASSWORD=password")
+		fmt.Println("    NOTIFY_SMTP_STARTTLS=true")
+		fmt.Println("    NOTIFY_WEBHOOK_SECRET=hmac-secret")
 		return nil
 	}
 
@@ -79,51 +89,18 @@ func runNotifyTest(cmd *cobra.Command, args []string) error {
 	fmt.Println("[TEST] Testing notification configuration...")
 	fmt.Println()
 
-	// Check what's configured
-	hasWebhook := cfg.NotifyWebhookURL != ""
-	hasSMTP := cfg.NotifySMTPHost != ""
-
-	if !hasWebhook && !hasSMTP {
-		fmt.Println("[WARN] No notification endpoints configured")
-		fmt.Println()
-		fmt.Println("Configure at least one:")
-		fmt.Println("  --notify-webhook-url URL         # Generic webhook")
-		fmt.Println("  --notify-smtp-host HOST          # Email (requires SMTP settings)")
-		return nil
-	}
-
 	// Show what will be tested
-	if hasWebhook {
-		fmt.Printf("[INFO] Webhook configured: %s\n", cfg.NotifyWebhookURL)
+	if notifyCfg.WebhookEnabled {
+		fmt.Printf("[INFO] Webhook configured: %s\n", notifyCfg.WebhookURL)
 	}
-	if hasSMTP {
-		fmt.Printf("[INFO] SMTP configured: %s:%d\n", cfg.NotifySMTPHost, cfg.NotifySMTPPort)
-		fmt.Printf("       From: %s\n", cfg.NotifySMTPFrom)
-		if len(cfg.NotifySMTPTo) > 0 {
-			fmt.Printf("       To:   %v\n", cfg.NotifySMTPTo)
+	if notifyCfg.SMTPEnabled {
+		fmt.Printf("[INFO] SMTP configured: %s:%d\n", notifyCfg.SMTPHost, notifyCfg.SMTPPort)
+		fmt.Printf("       From: %s\n", notifyCfg.SMTPFrom)
+		if len(notifyCfg.SMTPTo) > 0 {
+			fmt.Printf("       To:   %v\n", notifyCfg.SMTPTo)
 		}
 	}
 	fmt.Println()
-
-	// Create notification config
-	notifyCfg := notify.Config{
-		SMTPEnabled:  hasSMTP,
-		SMTPHost:     cfg.NotifySMTPHost,
-		SMTPPort:     cfg.NotifySMTPPort,
-		SMTPUser:     cfg.NotifySMTPUser,
-		SMTPPassword: cfg.NotifySMTPPassword,
-		SMTPFrom:     cfg.NotifySMTPFrom,
-		SMTPTo:       cfg.NotifySMTPTo,
-		SMTPTLS:      cfg.NotifySMTPTLS,
-		SMTPStartTLS: cfg.NotifySMTPStartTLS,
-
-		WebhookEnabled: hasWebhook,
-		WebhookURL:     cfg.NotifyWebhookURL,
-		WebhookMethod:  "POST",
-
-		OnSuccess: true,
-		OnFailure: true,
-	}
 
 	// Create manager
 	manager := notify.NewManager(notifyCfg)

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"dbbackup/internal/database"
@@ -188,7 +189,7 @@ func detectDatabaseTypeFromConfig() string {
 	return "unknown"
 }
 
-// buildNativeDSN builds a PostgreSQL DSN from the global configuration
+// buildNativeDSN builds a DSN from the global configuration for the appropriate database type
 func buildNativeDSN(databaseName string) string {
 	if cfg == nil {
 		return ""
@@ -199,9 +200,39 @@ func buildNativeDSN(databaseName string) string {
 		host = "localhost"
 	}
 
+	dbName := databaseName
+	if dbName == "" {
+		dbName = cfg.Database
+	}
+
+	// Build MySQL DSN for MySQL/MariaDB
+	if cfg.IsMySQL() {
+		port := cfg.Port
+		if port == 0 {
+			port = 3306 // MySQL default port
+		}
+
+		user := cfg.User
+		if user == "" {
+			user = "root"
+		}
+
+		// MySQL DSN format: user:password@tcp(host:port)/dbname
+		dsn := user
+		if cfg.Password != "" {
+			dsn += ":" + cfg.Password
+		}
+		dsn += fmt.Sprintf("@tcp(%s:%d)/", host, port)
+		if dbName != "" {
+			dsn += dbName
+		}
+		return dsn
+	}
+
+	// Build PostgreSQL DSN (default)
 	port := cfg.Port
 	if port == 0 {
-		port = 5432
+		port = 5432 // PostgreSQL default port
 	}
 
 	user := cfg.User
@@ -209,25 +240,38 @@ func buildNativeDSN(databaseName string) string {
 		user = "postgres"
 	}
 
-	dbName := databaseName
-	if dbName == "" {
-		dbName = cfg.Database
-	}
 	if dbName == "" {
 		dbName = "postgres"
 	}
+
+	// Check if host is a Unix socket path (starts with /)
+	isSocketPath := strings.HasPrefix(host, "/")
 
 	dsn := fmt.Sprintf("postgres://%s", user)
 	if cfg.Password != "" {
 		dsn += ":" + cfg.Password
 	}
-	dsn += fmt.Sprintf("@%s:%d/%s", host, port, dbName)
+
+	if isSocketPath {
+		// Unix socket: use host parameter in query string
+		// pgx format: postgres://user@/dbname?host=/var/run/postgresql
+		dsn += fmt.Sprintf("@/%s", dbName)
+	} else {
+		// TCP connection: use host:port in authority
+		dsn += fmt.Sprintf("@%s:%d/%s", host, port, dbName)
+	}
 
 	sslMode := cfg.SSLMode
 	if sslMode == "" {
 		sslMode = "prefer"
 	}
-	dsn += "?sslmode=" + sslMode
+
+	if isSocketPath {
+		// For Unix sockets, add host parameter and disable SSL
+		dsn += fmt.Sprintf("?host=%s&sslmode=disable", host)
+	} else {
+		dsn += "?sslmode=" + sslMode
+	}
 
 	return dsn
 }

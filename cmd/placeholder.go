@@ -423,8 +423,13 @@ func runVerify(ctx context.Context, archiveName string) error {
 	fmt.Println(" Backup Archive Verification")
 	fmt.Println("==============================================================")
 
-	// Construct full path to archive
-	archivePath := filepath.Join(cfg.BackupDir, archiveName)
+	// Construct full path to archive - use as-is if already absolute
+	var archivePath string
+	if filepath.IsAbs(archiveName) {
+		archivePath = archiveName
+	} else {
+		archivePath = filepath.Join(cfg.BackupDir, archiveName)
+	}
 
 	// Check if archive exists
 	if _, err := os.Stat(archivePath); os.IsNotExist(err) {

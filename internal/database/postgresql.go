@@ -324,12 +324,21 @@ func (p *PostgreSQL) BuildBackupCommand(database, outputFile string, options Bac
 	cmd := []string{"pg_dump"}
 
 	// Connection parameters
-	// CRITICAL: Always pass port even for localhost - user may have non-standard port
-	if p.cfg.Host != "localhost" && p.cfg.Host != "127.0.0.1" && p.cfg.Host != "" {
+	// CRITICAL: For Unix socket paths (starting with /), use -h with socket dir but NO port
+	// This enables peer authentication via socket. Port would force TCP connection.
+	isSocketPath := strings.HasPrefix(p.cfg.Host, "/")
+	if isSocketPath {
+		// Unix socket: use -h with socket directory, no port needed
+		cmd = append(cmd, "-h", p.cfg.Host)
+	} else if p.cfg.Host != "localhost" && p.cfg.Host != "127.0.0.1" && p.cfg.Host != "" {
+		// Remote host: use -h and port
 		cmd = append(cmd, "-h", p.cfg.Host)
 		cmd = append(cmd, "--no-password")
+		cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
+	} else {
+		// localhost: always pass port for non-standard port configs
+		cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
 	}
-	cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
 	cmd = append(cmd, "-U", p.cfg.User)
 
 	// Format and compression
@@ -347,9 +356,10 @@ func (p *PostgreSQL) BuildBackupCommand(database, outputFile string, options Bac
 		cmd = append(cmd, "--compress="+strconv.Itoa(options.Compression))
 	}
 
-	// Parallel jobs (supported for directory and custom formats since PostgreSQL 9.3)
+	// Parallel jobs (ONLY supported for directory format in pg_dump)
+	// NOTE: custom format does NOT support --jobs despite PostgreSQL docs being unclear
 	// NOTE: plain format does NOT support --jobs (it's single-threaded by design)
-	if options.Parallel > 1 && (options.Format == "directory" || options.Format == "custom") {
+	if options.Parallel > 1 && options.Format == "directory" {
 		cmd = append(cmd, "--jobs="+strconv.Itoa(options.Parallel))
 	}
 
@@ -390,12 +400,21 @@ func (p *PostgreSQL) BuildRestoreCommand(database, inputFile string, options Res
 	cmd := []string{"pg_restore"}
 
 	// Connection parameters
-	// CRITICAL: Always pass port even for localhost - user may have non-standard port
-	if p.cfg.Host != "localhost" && p.cfg.Host != "127.0.0.1" && p.cfg.Host != "" {
+	// CRITICAL: For Unix socket paths (starting with /), use -h with socket dir but NO port
+	// This enables peer authentication via socket. Port would force TCP connection.
+	isSocketPath := strings.HasPrefix(p.cfg.Host, "/")
+	if isSocketPath {
+		// Unix socket: use -h with socket directory, no port needed
+		cmd = append(cmd, "-h", p.cfg.Host)
+	} else if p.cfg.Host != "localhost" && p.cfg.Host != "127.0.0.1" && p.cfg.Host != "" {
+		// Remote host: use -h and port
 		cmd = append(cmd, "-h", p.cfg.Host)
 		cmd = append(cmd, "--no-password")
+		cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
+	} else {
+		// localhost: always pass port for non-standard port configs
+		cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
 	}
-	cmd = append(cmd, "-p", strconv.Itoa(p.cfg.Port))
 	cmd = append(cmd, "-U", p.cfg.User)
 
 	// Parallel jobs (incompatible with --single-transaction per PostgreSQL docs)
@@ -485,6 +504,15 @@ func (p *PostgreSQL) GetPasswordEnvVar() string {
 func (p *PostgreSQL) buildPgxDSN() string {
 	// pgx supports both URL and keyword=value formats
 	// Use keyword format for Unix sockets, URL for TCP
+
+	// Check if host is an explicit Unix socket path (starts with /)
+	if strings.HasPrefix(p.cfg.Host, "/") {
+		// User provided explicit socket directory path
+		dsn := fmt.Sprintf("user=%s dbname=%s host=%s sslmode=disable",
+			p.cfg.User, p.cfg.Database, p.cfg.Host)
+		p.log.Debug("Using explicit PostgreSQL socket path", "path", p.cfg.Host)
+		return dsn
+	}
 
 	// Try Unix socket first for localhost without password
 	if p.cfg.Host == "localhost" && p.cfg.Password == "" {

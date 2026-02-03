@@ -286,7 +286,13 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		err = runNativeBackup(ctx, db, databaseName, backupType, baseBackup, backupStartTime, user)
 
 		if err != nil && cfg.FallbackToTools {
-			log.Warn("Native engine failed, falling back to external tools", "error", err)
+			// Check if this is an expected authentication failure (peer auth doesn't provide password to native engine)
+			errStr := err.Error()
+			if strings.Contains(errStr, "password authentication failed") || strings.Contains(errStr, "SASL auth") {
+				log.Info("Native engine requires password auth, using pg_dump with peer authentication")
+			} else {
+				log.Warn("Native engine failed, falling back to external tools", "error", err)
+			}
 			// Continue with tool-based backup below
 		} else {
 			// Native engine succeeded or no fallback configured

@@ -30,24 +30,25 @@ var PhaseWeights = map[Phase]int{
 
 // ProgressSnapshot is a mutex-free copy of progress state for safe reading
 type ProgressSnapshot struct {
-	Operation      string
-	ArchiveFile    string
-	Phase          Phase
-	ExtractBytes   int64
-	ExtractTotal   int64
-	DatabasesDone  int
-	DatabasesTotal int
-	CurrentDB      string
-	CurrentDBBytes int64
-	CurrentDBTotal int64
-	DatabaseSizes  map[string]int64
-	VerifyDone     int
-	VerifyTotal    int
-	StartTime      time.Time
-	PhaseStartTime time.Time
-	LastUpdateTime time.Time
-	DatabaseTimes  []time.Duration
-	Errors         []string
+	Operation       string
+	ArchiveFile     string
+	Phase           Phase
+	ExtractBytes    int64
+	ExtractTotal    int64
+	DatabasesDone   int
+	DatabasesTotal  int
+	CurrentDB       string
+	CurrentDBBytes  int64
+	CurrentDBTotal  int64
+	DatabaseSizes   map[string]int64
+	VerifyDone      int
+	VerifyTotal     int
+	StartTime       time.Time
+	PhaseStartTime  time.Time
+	LastUpdateTime  time.Time
+	DatabaseTimes   []time.Duration
+	Errors          []string
+	UseNativeEngine bool // True if using pure Go native engine (no pg_restore)
 }
 
 // UnifiedClusterProgress combines all progress states into one cohesive structure
@@ -56,8 +57,9 @@ type UnifiedClusterProgress struct {
 	mu sync.RWMutex
 
 	// Operation info
-	Operation   string // "backup" or "restore"
-	ArchiveFile string
+	Operation       string // "backup" or "restore"
+	ArchiveFile     string
+	UseNativeEngine bool // True if using pure Go native engine (no pg_restore)
 
 	// Current phase
 	Phase Phase
@@ -175,6 +177,13 @@ func (p *UnifiedClusterProgress) SetVerifyProgress(done, total int) {
 	p.VerifyDone = done
 	p.VerifyTotal = total
 	p.LastUpdateTime = time.Now()
+}
+
+// SetUseNativeEngine sets whether native Go engine is used (no external tools)
+func (p *UnifiedClusterProgress) SetUseNativeEngine(native bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.UseNativeEngine = native
 }
 
 // AddError adds an error message
@@ -320,24 +329,25 @@ func (p *UnifiedClusterProgress) GetSnapshot() ProgressSnapshot {
 	copy(errors, p.Errors)
 
 	return ProgressSnapshot{
-		Operation:      p.Operation,
-		ArchiveFile:    p.ArchiveFile,
-		Phase:          p.Phase,
-		ExtractBytes:   p.ExtractBytes,
-		ExtractTotal:   p.ExtractTotal,
-		DatabasesDone:  p.DatabasesDone,
-		DatabasesTotal: p.DatabasesTotal,
-		CurrentDB:      p.CurrentDB,
-		CurrentDBBytes: p.CurrentDBBytes,
-		CurrentDBTotal: p.CurrentDBTotal,
-		DatabaseSizes:  dbSizes,
-		VerifyDone:     p.VerifyDone,
-		VerifyTotal:    p.VerifyTotal,
-		StartTime:      p.StartTime,
-		PhaseStartTime: p.PhaseStartTime,
-		LastUpdateTime: p.LastUpdateTime,
-		DatabaseTimes:  dbTimes,
-		Errors:         errors,
+		Operation:       p.Operation,
+		ArchiveFile:     p.ArchiveFile,
+		Phase:           p.Phase,
+		ExtractBytes:    p.ExtractBytes,
+		ExtractTotal:    p.ExtractTotal,
+		DatabasesDone:   p.DatabasesDone,
+		DatabasesTotal:  p.DatabasesTotal,
+		CurrentDB:       p.CurrentDB,
+		CurrentDBBytes:  p.CurrentDBBytes,
+		CurrentDBTotal:  p.CurrentDBTotal,
+		DatabaseSizes:   dbSizes,
+		VerifyDone:      p.VerifyDone,
+		VerifyTotal:     p.VerifyTotal,
+		StartTime:       p.StartTime,
+		PhaseStartTime:  p.PhaseStartTime,
+		LastUpdateTime:  p.LastUpdateTime,
+		DatabaseTimes:   dbTimes,
+		Errors:          errors,
+		UseNativeEngine: p.UseNativeEngine,
 	}
 }
 

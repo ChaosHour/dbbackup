@@ -5,6 +5,83 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.7] - 2026-02-03
+
+### Fixed
+- **DR Drill MariaDB**: Complete fixes for modern MariaDB containers
+  - Use TCP (127.0.0.1) instead of socket for health checks and restore
+  - Use `mariadb-admin` and `mariadb` client (not `mysqladmin`/`mysql`)
+  - Drop existing database before restore (backup contains CREATE DATABASE)
+  - Tested with MariaDB 12.1.2 image
+
+## [5.7.6] - 2026-02-03
+
+### Fixed
+- **Verify Command**: Fixed absolute path handling
+  - `dbbackup verify /full/path/to/backup.dump` now works correctly
+  - Previously always prefixed with `--backup-dir`, breaking absolute paths
+
+## [5.7.5] - 2026-02-03
+
+### Fixed
+- **SMTP Notifications**: Fixed false error on successful email delivery
+  - `client.Quit()` response "250 Ok: queued" was incorrectly treated as error
+  - Now properly closes data writer and ignores successful quit response
+
+## [5.7.4] - 2026-02-03
+
+### Fixed
+- **Notify Test Command** - Fixed `dbbackup notify test` to properly read NOTIFY_* environment variables
+  - Previously only checked `cfg.NotifyEnabled` which wasn't set from ENV
+  - Now uses `notify.ConfigFromEnv()` like the rest of the application
+  - Clear error messages showing exactly which ENV variables to set
+
+### Technical Details
+- `cmd/notify.go`: Refactored to use `notify.ConfigFromEnv()` instead of `cfg.*` fields
+
+## [5.7.3] - 2026-02-03
+
+### Fixed
+- **MariaDB Binlog Position Bug** - Fixed `getBinlogPosition()` to handle dynamic column count
+  - MariaDB `SHOW MASTER STATUS` returns 4 columns
+  - MySQL 5.6+ returns 5 columns (with `Executed_Gtid_Set`)
+  - Now tries 5 columns first, falls back to 4 columns for MariaDB compatibility
+
+### Improved
+- **Better `--password` Flag Error Message**
+  - Using `--password` now shows helpful error with instructions for `MYSQL_PWD`/`PGPASSWORD` environment variables
+  - Flag is hidden but accepted for better error handling
+
+- **Improved Fallback Logging for PostgreSQL Peer Authentication**
+  - Changed from `WARN: Native engine failed, falling back...` 
+  - Now shows `INFO: Native engine requires password auth, using pg_dump with peer authentication`
+  - Clearer indication that this is expected behavior, not an error
+
+- **Reduced Noise from Binlog Position Warnings**
+  - "Binary logging not enabled" now logged at DEBUG level (was WARN)
+  - "Insufficient privileges for binlog" now logged at DEBUG level (was WARN)
+  - Only unexpected errors still logged as WARN
+
+### Technical Details
+- `internal/engine/native/mysql.go`: Dynamic column detection in `getBinlogPosition()`
+- `cmd/root.go`: Added hidden `--password` flag with helpful error message
+- `cmd/backup_impl.go`: Improved fallback logging for peer auth scenarios
+
+## [5.7.2] - 2026-02-02
+
+### Added
+- Native engine improvements for production stability
+
+## [5.7.1] - 2026-02-02
+
+### Fixed
+- Minor stability fixes
+
+## [5.7.0] - 2026-02-02
+
+### Added
+- Enhanced native engine support for MariaDB
+
 ## [5.6.0] - 2026-02-02
 
 ### Performance Optimizations 🚀

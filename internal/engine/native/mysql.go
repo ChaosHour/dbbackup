@@ -138,7 +138,15 @@ func (e *MySQLNativeEngine) Backup(ctx context.Context, outputWriter io.Writer) 
 	// Get binlog position for PITR
 	binlogPos, err := e.getBinlogPosition(ctx)
 	if err != nil {
-		e.log.Warn("Failed to get binlog position", "error", err)
+		// Only warn about binlog errors if it's not "no rows" (binlog disabled) or permission errors
+		errStr := err.Error()
+		if strings.Contains(errStr, "no rows in result set") {
+			e.log.Debug("Binary logging not enabled on this server, skipping binlog position capture")
+		} else if strings.Contains(errStr, "Access denied") || strings.Contains(errStr, "BINLOG MONITOR") {
+			e.log.Debug("Insufficient privileges for binlog position (PITR requires BINLOG MONITOR or SUPER privilege)")
+		} else {
+			e.log.Warn("Failed to get binlog position", "error", err)
+		}
 	}
 
 	// Start transaction for consistent backup
@@ -386,6 +394,10 @@ func (e *MySQLNativeEngine) buildDSN() string {
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 
+		// Auth settings - required for MariaDB unix_socket auth
+		AllowNativePasswords: true,
+		AllowOldPasswords:    true,
+
 		// Character set
 		Params: map[string]string{
 			"charset":   "utf8mb4",
@@ -418,21 +430,34 @@ func (e *MySQLNativeEngine) buildDSN() string {
 func (e *MySQLNativeEngine) getBinlogPosition(ctx context.Context) (*BinlogPosition, error) {
 	var file string
 	var position int64
+	var binlogDoDB, binlogIgnoreDB sql.NullString
+	var executedGtidSet sql.NullString // MySQL 5.6+ has 5th column
 
 	// Try MySQL 8.0.22+ syntax first, then fall back to legacy
+	// Note: MySQL 8.0.22+ uses SHOW BINARY LOG STATUS
+	// MySQL 5.6+ has 5 columns: File, Position, Binlog_Do_DB, Binlog_Ignore_DB, Executed_Gtid_Set
+	// MariaDB has 4 columns: File, Position, Binlog_Do_DB, Binlog_Ignore_DB
 	row := e.db.QueryRowContext(ctx, "SHOW BINARY LOG STATUS")
-	err := row.Scan(&file, &position, nil, nil, nil)
+	err := row.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB, &executedGtidSet)
 	if err != nil {
-		// Fall back to legacy syntax for older MySQL versions
+		// Fall back to legacy syntax for older MySQL/MariaDB versions
 		row = e.db.QueryRowContext(ctx, "SHOW MASTER STATUS")
-		if err = row.Scan(&file, &position, nil, nil, nil); err != nil {
-			return nil, fmt.Errorf("failed to get binlog status: %w", err)
+		// Try 5 columns first (MySQL 5.6+)
+		err = row.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB, &executedGtidSet)
+		if err != nil {
+			// MariaDB only has 4 columns
+			row = e.db.QueryRowContext(ctx, "SHOW MASTER STATUS")
+			if err = row.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB); err != nil {
+				return nil, fmt.Errorf("failed to get binlog status: %w", err)
+			}
 		}
 	}
 
-	// Try to get GTID set (MySQL 5.6+)
+	// Try to get GTID set (MySQL 5.6+ / MariaDB 10.0+)
 	var gtidSet string
-	if row := e.db.QueryRowContext(ctx, "SELECT @@global.gtid_executed"); row != nil {
+	if executedGtidSet.Valid && executedGtidSet.String != "" {
+		gtidSet = executedGtidSet.String
+	} else if row := e.db.QueryRowContext(ctx, "SELECT @@global.gtid_executed"); row != nil {
 		row.Scan(&gtidSet)
 	}
 
@@ -689,7 +714,8 @@ func (e *MySQLNativeEngine) getTableInfo(ctx context.Context, database, table st
 	row := e.db.QueryRowContext(ctx, query, database, table)
 
 	var info MySQLTableInfo
-	var autoInc, createTime, updateTime sql.NullInt64
+	var autoInc sql.NullInt64
+	var createTime, updateTime sql.NullTime
 	var collation sql.NullString
 
 	err := row.Scan(&info.Name, &info.Engine, &collation, &info.RowCount,
@@ -705,13 +731,11 @@ func (e *MySQLNativeEngine) getTableInfo(ctx context.Context, database, table st
 	}
 
 	if createTime.Valid {
-		createTimeVal := time.Unix(createTime.Int64, 0)
-		info.CreateTime = &createTimeVal
+		info.CreateTime = &createTime.Time
 	}
 
 	if updateTime.Valid {
-		updateTimeVal := time.Unix(updateTime.Int64, 0)
-		info.UpdateTime = &updateTimeVal
+		info.UpdateTime = &updateTime.Time
 	}
 
 	return &info, nil

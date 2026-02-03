@@ -370,6 +370,39 @@ SET GLOBAL gtid_mode = ON;
 4. **Monitoring**: Check progress with `dbbackup status`
 5. **Testing**: Verify restores regularly with `dbbackup verify`
 
+## Authentication
+
+### Password Handling (Security)
+
+For security reasons, dbbackup does **not** support `--password` as a command-line flag. Passwords should be passed via environment variables:
+
+```bash
+# MySQL/MariaDB
+export MYSQL_PWD='your_password'
+dbbackup backup single mydb --db-type mysql
+
+# PostgreSQL  
+export PGPASSWORD='your_password'
+dbbackup backup single mydb --db-type postgres
+```
+
+Alternative methods:
+- **MySQL/MariaDB**: Use socket authentication with `--socket /var/run/mysqld/mysqld.sock`
+- **PostgreSQL**: Use peer authentication by running as the postgres user
+
+### PostgreSQL Peer Authentication
+
+When using PostgreSQL with peer authentication (running as the `postgres` user), the native engine will automatically fall back to `pg_dump` since peer auth doesn't provide a password for the native protocol:
+
+```bash
+# This works - dbbackup detects peer auth and uses pg_dump
+sudo -u postgres dbbackup backup single mydb -d postgres
+```
+
+You'll see: `INFO: Native engine requires password auth, using pg_dump with peer authentication`
+
+This is expected behavior, not an error.
+
 ## See Also
 
 - [PITR.md](PITR.md) - Point-in-Time Recovery guide

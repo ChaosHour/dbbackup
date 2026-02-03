@@ -154,14 +154,21 @@ func (s *SMTPNotifier) sendMail(ctx context.Context, message string) error {
 	if err != nil {
 		return fmt.Errorf("data command failed: %w", err)
 	}
-	defer w.Close()
 
 	_, err = w.Write([]byte(message))
 	if err != nil {
 		return fmt.Errorf("write failed: %w", err)
 	}
 
-	return client.Quit()
+	// Close the data writer to finalize the message
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("data close failed: %w", err)
+	}
+
+	// Quit gracefully - ignore the response as long as it's a 2xx code
+	// Some servers return "250 2.0.0 Ok: queued as..." which isn't an error
+	_ = client.Quit()
+	return nil
 }
 
 // getPriority returns X-Priority header value based on severity

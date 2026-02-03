@@ -395,6 +395,8 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		// Initialize unified progress tracker for cluster restores
 		if restoreType == "restore-cluster" {
 			progressState.unifiedProgress = progress.NewUnifiedClusterProgress("restore", archive.Path)
+			// Set engine type for correct TUI display
+			progressState.unifiedProgress.SetUseNativeEngine(cfg.UseNativeEngine)
 		}
 		engine.SetProgressCallback(func(current, total int64, description string) {
 			// CRITICAL: Panic recovery to prevent nil pointer crashes

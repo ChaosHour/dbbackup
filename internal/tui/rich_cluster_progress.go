@@ -236,7 +236,11 @@ func (v *RichClusterProgressView) renderPhaseDetails(snapshot *progress.Progress
 				b.WriteString(fmt.Sprintf("     %s %-20s [restoring...] running %s\n",
 					spinner, truncateString(snapshot.CurrentDB, 20),
 					formatDuration(phaseElapsed)))
-				b.WriteString(fmt.Sprintf("        └─ pg_restore in progress (progress updates every 5s)\n"))
+				if snapshot.UseNativeEngine {
+					b.WriteString(fmt.Sprintf("        └─ native Go engine in progress (pure Go, no external tools)\n"))
+				} else {
+					b.WriteString(fmt.Sprintf("        └─ pg_restore in progress (progress updates every 5s)\n"))
+				}
 			}
 		}
 

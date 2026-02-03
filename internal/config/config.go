@@ -319,7 +319,8 @@ func (c *Config) UpdateFromEnvironment() {
 	if password := os.Getenv("PGPASSWORD"); password != "" {
 		c.Password = password
 	}
-	if password := os.Getenv("MYSQL_PWD"); password != "" && c.DatabaseType == "mysql" {
+	// MYSQL_PWD works for both mysql and mariadb
+	if password := os.Getenv("MYSQL_PWD"); password != "" && (c.DatabaseType == "mysql" || c.DatabaseType == "mariadb") {
 		c.Password = password
 	}
 }

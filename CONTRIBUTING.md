@@ -17,9 +17,9 @@ Be respectful, constructive, and professional in all interactions. We're buildin
 
 **Bug Report Template:**
 ```
-**Version:** dbbackup v3.42.1
+**Version:** dbbackup v5.7.7
 **OS:** Linux/macOS/BSD
-**Database:** PostgreSQL 14 / MySQL 8.0 / MariaDB 10.6
+**Database:** PostgreSQL 14+ / MySQL 8.0+ / MariaDB 10.6+
 **Command:** The exact command that failed
 **Error:** Full error message and stack trace
 **Expected:** What you expected to happen

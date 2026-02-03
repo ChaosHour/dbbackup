@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v5.1.15-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v5.7.7-green.svg)](https://git.uuxo.net/UUXO/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -92,7 +92,7 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v3.42.74/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v5.7.7/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
@@ -115,8 +115,9 @@ go build
 # PostgreSQL with peer authentication
 sudo -u postgres dbbackup interactive
 
-# MySQL/MariaDB
-dbbackup interactive --db-type mysql --user root --password secret
+# MySQL/MariaDB (use MYSQL_PWD env var for password)
+export MYSQL_PWD='secret'
+dbbackup interactive --db-type mysql --user root
 ```
 
 **Main Menu:**
@@ -401,7 +402,7 @@ dbbackup backup single mydb --dry-run
 | `--host` | Database host | localhost |
 | `--port` | Database port | 5432/3306 |
 | `--user` | Database user | current user |
-| `--password` | Database password | - |
+| `MYSQL_PWD` / `PGPASSWORD` | Database password (env var) | - |
 | `--backup-dir` | Backup directory | ~/db_backups |
 | `--compression` | Compression level (0-9) | 6 |
 | `--jobs` | Parallel jobs | 8 |
@@ -672,6 +673,22 @@ dbbackup backup single mydb
 - `pitr_recovery`
 - `dr_drill_passed`, `dr_drill_failed`
 - `gap_detected`, `rpo_violation`
+
+### Testing Notifications
+
+```bash
+# Test notification configuration
+export NOTIFY_SMTP_HOST="localhost"
+export NOTIFY_SMTP_PORT="25"
+export NOTIFY_SMTP_FROM="dbbackup@myserver.local"
+export NOTIFY_SMTP_TO="admin@example.com"
+
+dbbackup notify test --verbose
+# [OK] Notification sent successfully
+
+# For servers using STARTTLS with self-signed certs
+export NOTIFY_SMTP_STARTTLS="false"
+```
 
 ## Backup Catalog
 
@@ -970,8 +987,12 @@ export PGPASSWORD=password
 ### MySQL/MariaDB Authentication
 
 ```bash
-# Command line
-dbbackup backup single mydb --db-type mysql --user root --password secret
+# Environment variable (recommended)
+export MYSQL_PWD='secret'
+dbbackup backup single mydb --db-type mysql --user root
+
+# Socket authentication (no password needed)
+dbbackup backup single mydb --db-type mysql --socket /var/run/mysqld/mysqld.sock
 
 # Configuration file
 cat > ~/.my.cnf << EOF
@@ -981,6 +1002,9 @@ password=secret
 EOF
 chmod 0600 ~/.my.cnf
 ```
+
+> **Note:** The `--password` command-line flag is not supported for security reasons
+> (passwords would be visible in `ps aux` output). Use environment variables or config files.
 
 ### Configuration Persistence
 

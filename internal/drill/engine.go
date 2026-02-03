@@ -340,10 +340,21 @@ func (e *Engine) executeRestore(ctx context.Context, config *DrillConfig, contai
 		}
 
 	case "mysql":
-		cmd = []string{"sh", "-c", fmt.Sprintf("mysql -u root --password=root %s < %s", config.DatabaseName, backupPath)}
+		// Drop database if exists (backup contains CREATE DATABASE)
+		_, _ = e.docker.ExecCommand(ctx, containerID, []string{
+			"mysql", "-h", "127.0.0.1", "-u", "root", "--password=root", "-e",
+			fmt.Sprintf("DROP DATABASE IF EXISTS %s", config.DatabaseName),
+		})
+		cmd = []string{"sh", "-c", fmt.Sprintf("mysql -h 127.0.0.1 -u root --password=root < %s", backupPath)}
 
 	case "mariadb":
-		cmd = []string{"sh", "-c", fmt.Sprintf("mariadb -u root --password=root %s < %s", config.DatabaseName, backupPath)}
+		// Drop database if exists (backup contains CREATE DATABASE)
+		_, _ = e.docker.ExecCommand(ctx, containerID, []string{
+			"mariadb", "-h", "127.0.0.1", "-u", "root", "--password=root", "-e",
+			fmt.Sprintf("DROP DATABASE IF EXISTS %s", config.DatabaseName),
+		})
+		// Use mariadb client (mysql symlink may not exist in newer images)
+		cmd = []string{"sh", "-c", fmt.Sprintf("mariadb -h 127.0.0.1 -u root --password=root < %s", backupPath)}
 
 	default:
 		return fmt.Errorf("unsupported database type: %s", config.DatabaseType)

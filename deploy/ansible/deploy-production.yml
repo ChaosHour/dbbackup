@@ -1,0 +1,104 @@
+---
+# dbbackup Production Deployment Playbook
+# Deploys dbbackup binary and verifies backup jobs
+#
+# Usage (from dev.uuxo.net):
+#   ansible-playbook -i inventory.yml deploy-production.yml
+#   ansible-playbook -i inventory.yml deploy-production.yml --limit mysql01.uuxoi.local
+#   ansible-playbook -i inventory.yml deploy-production.yml --tags binary  # Only deploy binary
+
+- name: Deploy dbbackup to production DB hosts
+  hosts: db_servers
+  become: yes
+  
+  vars:
+    # Binary source: /tmp/dbbackup_linux_amd64 on Ansible controller (dev.uuxo.net)
+    local_binary: "{{ dbbackup_binary_src | default('/tmp/dbbackup_linux_amd64') }}"
+    install_path: /usr/local/bin/dbbackup
+  
+  tasks:
+    - name: Deploy dbbackup binary
+      tags: [binary, deploy]
+      block:
+        - name: Copy dbbackup binary
+          copy:
+            src: "{{ local_binary }}"
+            dest: "{{ install_path }}"
+            mode: "0755"
+            owner: root
+            group: root
+          register: binary_deployed
+
+        - name: Verify dbbackup version
+          command: "{{ install_path }} --version"
+          register: version_check
+          changed_when: false
+
+        - name: Display installed version
+          debug:
+            msg: "{{ inventory_hostname }}: {{ version_check.stdout }}"
+
+    - name: Check backup configuration
+      tags: [verify, check]
+      block:
+        - name: Check backup script exists
+          stat:
+            path: "/opt/dbbackup/bin/{{ dbbackup_backup_script | default('backup.sh') }}"
+          register: backup_script
+
+        - name: Display backup script status
+          debug:
+            msg: "Backup script: {{ 'EXISTS' if backup_script.stat.exists else 'MISSING' }}"
+
+        - name: Check systemd timer status
+          shell: systemctl list-timers --no-pager | grep dbbackup || echo "No timer found"
+          register: timer_status
+          changed_when: false
+
+        - name: Display timer status
+          debug:
+            msg: "{{ timer_status.stdout_lines }}"
+
+        - name: Check exporter service
+          shell: systemctl is-active dbbackup-exporter 2>/dev/null || echo "not running"
+          register: exporter_status
+          changed_when: false
+
+        - name: Display exporter status
+          debug:
+            msg: "Exporter: {{ exporter_status.stdout }}"
+
+    - name: Run test backup (dry-run)
+      tags: [test, never]
+      block:
+        - name: Execute dry-run backup
+          command: >
+            {{ install_path }} backup single {{ dbbackup_databases[0] }}
+            --db-type {{ dbbackup_db_type }}
+            {% if dbbackup_socket is defined %}--socket {{ dbbackup_socket }}{% endif %}
+            {% if dbbackup_host is defined %}--host {{ dbbackup_host }}{% endif %}
+            {% if dbbackup_port is defined %}--port {{ dbbackup_port }}{% endif %}
+            --user root
+            --allow-root
+            --dry-run
+          environment:
+            MYSQL_PWD: "{{ dbbackup_password | default('') }}"
+          register: dryrun_result
+          changed_when: false
+          ignore_errors: yes
+
+        - name: Display dry-run result
+          debug:
+            msg: "{{ dryrun_result.stdout_lines[-5:] }}"
+
+  post_tasks:
+    - name: Deployment summary
+      debug:
+        msg: |
+          === {{ inventory_hostname }} ===
+          Version: {{ version_check.stdout | default('unknown') }}
+          DB Type: {{ dbbackup_db_type }}
+          Databases: {{ dbbackup_databases | join(', ') }}
+          Backup Dir: {{ dbbackup_backup_dir }}
+          Timer: {{ 'active' if 'dbbackup' in timer_status.stdout else 'not configured' }}
+          Exporter: {{ exporter_status.stdout }}

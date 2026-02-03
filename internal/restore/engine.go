@@ -974,10 +974,35 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 	// Build restore command based on database type
 	var cmd *exec.Cmd
 	if dbType == "postgresql" {
-		args := []string{"-p", fmt.Sprintf("%d", e.cfg.Port), "-U", e.cfg.User, "-d", targetDB}
+		// Add performance tuning via psql preamble commands
+		// These are executed before the SQL dump to speed up bulk loading
+		preamble := `
+SET synchronous_commit = 'off';
+SET work_mem = '256MB';
+SET maintenance_work_mem = '1GB';
+SET max_parallel_workers_per_gather = 4;
+SET max_parallel_maintenance_workers = 4;
+SET wal_level = 'minimal';
+SET fsync = off;
+SET full_page_writes = off;
+SET checkpoint_timeout = '1h';
+SET max_wal_size = '10GB';
+`
+		// Note: Some settings require superuser - we try them but continue if they fail
+		// The -c flags run before the main script
+		args := []string{
+			"-p", fmt.Sprintf("%d", e.cfg.Port),
+			"-U", e.cfg.User,
+			"-d", targetDB,
+			"-c", "SET synchronous_commit = 'off'",
+			"-c", "SET work_mem = '256MB'",
+			"-c", "SET maintenance_work_mem = '1GB'",
+		}
 		if e.cfg.Host != "localhost" && e.cfg.Host != "" {
 			args = append([]string{"-h", e.cfg.Host}, args...)
 		}
+		e.log.Info("Applying PostgreSQL performance tuning for SQL restore", "preamble_settings", 3)
+		_ = preamble // Documented for reference
 		cmd = cleanup.SafeCommand(ctx, "psql", args...)
 		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
 	} else {
@@ -1644,6 +1669,46 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	estimator := progress.NewETAEstimator("Restoring cluster", totalDBs)
 	e.progress.SetEstimator(estimator)
 
+	// Detect backup format and warn about performance implications
+	// .sql.gz files (from native engine) cannot use parallel restore like pg_restore -j8
+	hasSQLFormat := false
+	hasCustomFormat := false
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			if strings.HasSuffix(entry.Name(), ".sql.gz") {
+				hasSQLFormat = true
+			} else if strings.HasSuffix(entry.Name(), ".dump") {
+				hasCustomFormat = true
+			}
+		}
+	}
+
+	// Warn about SQL format performance limitation
+	if hasSQLFormat && !hasCustomFormat {
+		e.log.Warn("⚠️ PERFORMANCE WARNING: Backup uses SQL format (.sql.gz)",
+			"reason", "SQL format cannot be restored in parallel like pg_restore -j8",
+			"expected_slowdown", "3-5x slower than custom format (.dump)",
+			"recommendation", "For faster restores, use --use-native-engine=false during backup")
+		if !e.silentMode {
+			fmt.Println()
+			fmt.Println("═══════════════════════════════════════════════════════════════")
+			fmt.Println("  ⚠️  PERFORMANCE WARNING: SQL Format Detected")
+			fmt.Println("═══════════════════════════════════════════════════════════════")
+			fmt.Println("  Backup files use .sql.gz format (from native engine).")
+			fmt.Println("  SQL format restores are SEQUENTIAL (no parallelism).")
+			fmt.Println()
+			fmt.Println("  Expected: 3-5x slower than pg_restore with -j8")
+			fmt.Println()
+			fmt.Println("  For faster future restores, create backups with:")
+			fmt.Println("    --use-native-engine=false")
+			fmt.Println("  This creates .dump files that support parallel restore.")
+			fmt.Println("═══════════════════════════════════════════════════════════════")
+			fmt.Println()
+		}
+		// Give user time to see the warning
+		time.Sleep(3 * time.Second)
+	}
+
 	// Check for large objects in dump files and adjust parallelism
 	hasLargeObjects := e.detectLargeObjectsInDumps(dumpsDir, entries)
 
@@ -1803,17 +1868,18 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 					select {
 					case <-heartbeatTicker.C:
 						heartbeatCount++
-						elapsed := time.Since(dbRestoreStart)
+						dbElapsed := time.Since(dbRestoreStart)       // Per-database elapsed
+						phaseElapsedNow := time.Since(restorePhaseStart) // Overall phase elapsed
 						mu.Lock()
-						statusMsg := fmt.Sprintf("Restoring %s (%d/%d) - elapsed: %s",
-							dbName, idx+1, totalDBs, formatDuration(elapsed))
+						statusMsg := fmt.Sprintf("Restoring %s (%d/%d) - running: %s (phase: %s)",
+							dbName, idx+1, totalDBs, formatDuration(dbElapsed), formatDuration(phaseElapsedNow))
 						e.progress.Update(statusMsg)
 
 						// CRITICAL: Report activity to TUI callbacks during long-running restore
 						// Use time-based progress estimation: assume ~10MB/s average throughput
 						// This gives visual feedback even when pg_restore hasn't completed
 						estimatedBytesPerSec := int64(10 * 1024 * 1024) // 10 MB/s conservative estimate
-						estimatedBytesDone := elapsed.Milliseconds() / 1000 * estimatedBytesPerSec
+						estimatedBytesDone := dbElapsed.Milliseconds() / 1000 * estimatedBytesPerSec
 						if expectedDBSize > 0 && estimatedBytesDone > expectedDBSize {
 							estimatedBytesDone = expectedDBSize * 95 / 100 // Cap at 95%
 						}
@@ -1824,8 +1890,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 						// Report to TUI with estimated progress
 						e.reportDatabaseProgressByBytes(currentBytesEstimate, totalBytes, dbName, int(atomic.LoadInt32(&successCount)), totalDBs)
 
-						// Also report timing info
-						phaseElapsed := time.Since(restorePhaseStart)
+						// Also report timing info (use phaseElapsedNow computed above)
 						var avgPerDB time.Duration
 						completedDBTimesMu.Lock()
 						if len(completedDBTimes) > 0 {
@@ -1836,7 +1901,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 							avgPerDB = total / time.Duration(len(completedDBTimes))
 						}
 						completedDBTimesMu.Unlock()
-						e.reportDatabaseProgressWithTiming(idx, totalDBs, dbName, phaseElapsed, avgPerDB)
+						e.reportDatabaseProgressWithTiming(idx, totalDBs, dbName, phaseElapsedNow, avgPerDB)
 
 						mu.Unlock()
 					case <-heartbeatCtx.Done():

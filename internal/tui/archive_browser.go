@@ -205,11 +205,12 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return diagnoseView, diagnoseView.Init()
 				}
 
-				// For restore-cluster mode:
-				// - .tar.gz cluster archives → full cluster restore
-				// - .sql/.sql.gz files → single database restore (Native Engine supports these)
-				// - .dump/.dump.gz → single database restore (pg_restore)
-				// ALL formats are now allowed for restore operations!
+				// For restore-cluster mode: MUST be a .tar.gz cluster archive
+				// Single .sql/.dump files are NOT valid cluster backups
+				if m.mode == "restore-cluster" && !selected.Format.IsClusterBackup() {
+					m.message = errorStyle.Render(fmt.Sprintf("⚠️  Not a cluster backup: %s is a single database backup (%s). Use 'Restore Single' mode instead, or select a .tar.gz cluster archive.", selected.Name, selected.Format.String()))
+					return m, nil
+				}
 
 				// For single restore mode with cluster backup selected - offer to select individual database
 				if m.mode == "restore-single" && selected.Format.IsClusterBackup() {
@@ -217,7 +218,7 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return clusterSelector, clusterSelector.Init()
 				}
 
-				// Open restore preview for any valid format
+				// Open restore preview for valid format
 				preview := NewRestorePreview(m.config, m.logger, m.parent, m.ctx, selected, m.mode)
 				return preview, preview.Init()
 			}

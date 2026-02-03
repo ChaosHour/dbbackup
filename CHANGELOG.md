@@ -5,6 +5,35 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.10] - 2026-02-03
+
+### Fixed
+- **TUI Auto-Select Index Mismatch**: Fixed `--tui-auto-select` case indices not matching keyboard handler
+  - Indices 5-11 were out of sync, causing wrong menu items to be selected in automated testing
+  - Added missing handlers for Schedule, Chain, and Profile commands
+- **TUI Back Navigation**: Fixed incorrect `tea.Quit` usage in done states
+  - `backup_exec.go` and `restore_exec.go` returned `tea.Quit` instead of `nil` for InterruptMsg
+  - This caused unwanted application exit instead of returning to parent menu
+- **TUI Separator Navigation**: Arrow keys now skip separator items
+  - Up/down navigation auto-skips items of kind `itemSeparator`
+  - Prevents cursor from landing on non-selectable menu separators
+- **TUI Input Validation**: Added ratio validation for percentage inputs
+  - Values outside 0-100 range now show error message
+  - Auto-confirm mode uses safe default (10) for invalid input
+
+### Added
+- **TUI Unit Tests**: 11 new tests + 2 benchmarks in `internal/tui/menu_test.go`
+  - Tests: navigation, quit, Ctrl+C, database switch, view rendering, auto-select
+  - Benchmarks: View rendering performance, navigation stress test
+- **TUI Smoke Test Script**: `tests/tui_smoke_test.sh` for CI/CD integration
+  - Tests all 19 menu items via `--tui-auto-select` flag
+  - No human input required, suitable for automated pipelines
+
+### Changed
+- **TUI TODO Messages**: Improved clarity with `[TODO]` prefix and version hints
+  - Placeholder items now show "[TODO] Feature Name - planned for v6.1"
+  - Added `warnStyle` for better visual distinction
+
 ## [5.7.9] - 2026-02-03
 
 ### Fixed

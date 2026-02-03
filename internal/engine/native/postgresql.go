@@ -254,9 +254,9 @@ func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer,
 	// BLOB-OPTIMIZED SESSION SETTINGS (PostgreSQL Specialist recommendations)
 	// ═══════════════════════════════════════════════════════════════════════
 	blobOptimizations := []string{
-		"SET work_mem = '256MB'",              // More memory for sorting/hashing
-		"SET maintenance_work_mem = '512MB'",  // For large operations
-		"SET temp_buffers = '64MB'",           // Temp table buffers
+		"SET work_mem = '256MB'",             // More memory for sorting/hashing
+		"SET maintenance_work_mem = '512MB'", // For large operations
+		"SET temp_buffers = '64MB'",          // Temp table buffers
 	}
 	for _, opt := range blobOptimizations {
 		conn.Exec(ctx, opt)

@@ -87,32 +87,32 @@ type BlobParallelEngine struct {
 
 // BlobStats tracks BLOB operation statistics
 type BlobStats struct {
-	TablesProcessed     int64
-	TotalRows           int64
-	TotalBytes          int64
-	LargeObjectsCount   int64
-	LargeObjectsBytes   int64
-	ByteaColumnsCount   int64
-	ByteaColumnsBytes   int64
-	Duration            time.Duration
-	ParallelWorkers     int
-	TablesWithBlobs     []string
-	LargestBlobSize     int64
-	LargestBlobTable    string
-	AverageBlobSize     int64
-	CompressionRatio    float64
-	ThroughputMBps      float64
+	TablesProcessed   int64
+	TotalRows         int64
+	TotalBytes        int64
+	LargeObjectsCount int64
+	LargeObjectsBytes int64
+	ByteaColumnsCount int64
+	ByteaColumnsBytes int64
+	Duration          time.Duration
+	ParallelWorkers   int
+	TablesWithBlobs   []string
+	LargestBlobSize   int64
+	LargestBlobTable  string
+	AverageBlobSize   int64
+	CompressionRatio  float64
+	ThroughputMBps    float64
 }
 
 // TableBlobInfo contains BLOB information for a table
 type TableBlobInfo struct {
 	Schema        string
 	Table         string
-	ByteaColumns  []string      // Columns containing BYTEA data
-	HasLargeData  bool          // Table contains BLOB > threshold
-	EstimatedSize int64         // Estimated BLOB data size
+	ByteaColumns  []string // Columns containing BYTEA data
+	HasLargeData  bool     // Table contains BLOB > threshold
+	EstimatedSize int64    // Estimated BLOB data size
 	RowCount      int64
-	Priority      int           // Processing priority (larger = first)
+	Priority      int // Processing priority (larger = first)
 }
 
 // NewBlobParallelEngine creates a new BLOB-optimized engine
@@ -294,7 +294,7 @@ func (e *BlobParallelEngine) BackupBlobTables(ctx context.Context, tables []Tabl
 			atomic.AddInt64(&processedBytes, bytesWritten)
 
 			if e.config.ProgressCallback != nil {
-				e.config.ProgressCallback("backup", t.Schema+"."+t.Table, 
+				e.config.ProgressCallback("backup", t.Schema+"."+t.Table,
 					completed, int64(len(tables)), processedBytes)
 			}
 		}(table)
@@ -354,9 +354,9 @@ func (e *BlobParallelEngine) backupTableBlobs(ctx context.Context, table *TableB
 
 	// Apply session optimizations for COPY
 	optimizations := []string{
-		"SET work_mem = '256MB'",              // More memory for sorting
-		"SET maintenance_work_mem = '512MB'",  // For index operations
-		"SET synchronous_commit = 'off'",      // Faster for backup reads
+		"SET work_mem = '256MB'",             // More memory for sorting
+		"SET maintenance_work_mem = '512MB'", // For index operations
+		"SET synchronous_commit = 'off'",     // Faster for backup reads
 	}
 	for _, opt := range optimizations {
 		conn.Exec(ctx, opt)
@@ -366,16 +366,16 @@ func (e *BlobParallelEngine) backupTableBlobs(ctx context.Context, table *TableB
 	copyHeader := fmt.Sprintf("-- BLOB backup for %s.%s\n", table.Schema, table.Table)
 	copyHeader += fmt.Sprintf("-- BYTEA columns: %s\n", strings.Join(table.ByteaColumns, ", "))
 	copyHeader += fmt.Sprintf("-- Estimated rows: %d\n\n", table.RowCount)
-	
+
 	// Write COPY statement that will be used for restore
 	fullTableName := fmt.Sprintf("%s.%s", e.quoteIdentifier(table.Schema), e.quoteIdentifier(table.Table))
 	copyHeader += fmt.Sprintf("COPY %s FROM stdin;\n", fullTableName)
-	
+
 	gzWriter.Write([]byte(copyHeader))
 
 	// Use COPY TO STDOUT for efficient binary data export
 	copySQL := fmt.Sprintf("COPY %s TO STDOUT", fullTableName)
-	
+
 	var bytesWritten int64
 	copyResult, err := conn.Conn().PgConn().CopyTo(ctx, gzWriter, copySQL)
 	if err != nil {

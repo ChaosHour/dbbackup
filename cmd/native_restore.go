@@ -16,8 +16,62 @@ import (
 
 // runNativeRestore executes restore using native Go engines
 func runNativeRestore(ctx context.Context, db database.Database, archivePath, targetDB string, cleanFirst, createIfMissing bool, startTime time.Time, user string) error {
-	// Initialize native engine manager
-	engineManager := native.NewEngineManager(cfg, log)
+	var engineManager *native.EngineManager
+	var err error
+
+	// Build DSN for auto-profiling
+	dsn := buildNativeDSN(targetDB)
+
+	// Create engine manager with or without auto-profiling
+	if nativeAutoProfile && nativeWorkers == 0 && nativePoolSize == 0 {
+		// Use auto-profiling
+		log.Info("Auto-detecting optimal restore settings...")
+		engineManager, err = native.NewEngineManagerWithAutoConfig(ctx, cfg, log, dsn)
+		if err != nil {
+			log.Warn("Auto-profiling failed, using defaults", "error", err)
+			engineManager = native.NewEngineManager(cfg, log)
+		} else {
+			// Log the detected profile
+			if profile := engineManager.GetSystemProfile(); profile != nil {
+				log.Info("System profile detected for restore",
+					"category", profile.Category.String(),
+					"workers", profile.RecommendedWorkers,
+					"pool_size", profile.RecommendedPoolSize,
+					"buffer_kb", profile.RecommendedBufferSize/1024)
+			}
+		}
+	} else {
+		// Use manual configuration
+		engineManager = native.NewEngineManager(cfg, log)
+
+		// Apply manual overrides if specified
+		if nativeWorkers > 0 || nativePoolSize > 0 || nativeBufferSizeKB > 0 {
+			adaptiveConfig := &native.AdaptiveConfig{
+				Mode:       native.ModeManual,
+				Workers:    nativeWorkers,
+				PoolSize:   nativePoolSize,
+				BufferSize: nativeBufferSizeKB * 1024,
+				BatchSize:  nativeBatchSize,
+			}
+			if adaptiveConfig.Workers == 0 {
+				adaptiveConfig.Workers = 4
+			}
+			if adaptiveConfig.PoolSize == 0 {
+				adaptiveConfig.PoolSize = adaptiveConfig.Workers + 2
+			}
+			if adaptiveConfig.BufferSize == 0 {
+				adaptiveConfig.BufferSize = 256 * 1024
+			}
+			if adaptiveConfig.BatchSize == 0 {
+				adaptiveConfig.BatchSize = 5000
+			}
+			engineManager.SetAdaptiveConfig(adaptiveConfig)
+			log.Info("Using manual restore configuration",
+				"workers", adaptiveConfig.Workers,
+				"pool_size", adaptiveConfig.PoolSize,
+				"buffer_kb", adaptiveConfig.BufferSize/1024)
+		}
+	}
 
 	if err := engineManager.InitializeEngines(ctx); err != nil {
 		return fmt.Errorf("failed to initialize native engines: %w", err)

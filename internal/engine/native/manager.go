@@ -38,9 +38,11 @@ type Engine interface {
 
 // EngineManager manages native database engines
 type EngineManager struct {
-	engines map[string]Engine
-	cfg     *config.Config
-	log     logger.Logger
+	engines        map[string]Engine
+	cfg            *config.Config
+	log            logger.Logger
+	adaptiveConfig *AdaptiveConfig
+	systemProfile  *SystemProfile
 }
 
 // NewEngineManager creates a new engine manager
@@ -50,6 +52,68 @@ func NewEngineManager(cfg *config.Config, log logger.Logger) *EngineManager {
 		cfg:     cfg,
 		log:     log,
 	}
+}
+
+// NewEngineManagerWithAutoConfig creates an engine manager with auto-detected configuration
+func NewEngineManagerWithAutoConfig(ctx context.Context, cfg *config.Config, log logger.Logger, dsn string) (*EngineManager, error) {
+	m := &EngineManager{
+		engines: make(map[string]Engine),
+		cfg:     cfg,
+		log:     log,
+	}
+
+	// Auto-detect system profile
+	log.Info("Auto-detecting system profile...")
+	adaptiveConfig, err := NewAdaptiveConfig(ctx, dsn, ModeAuto)
+	if err != nil {
+		log.Warn("Failed to auto-detect system profile, using defaults", "error", err)
+		// Fall back to manual mode with conservative defaults
+		adaptiveConfig = &AdaptiveConfig{
+			Mode:       ModeManual,
+			Workers:    4,
+			PoolSize:   8,
+			BufferSize: 256 * 1024,
+			BatchSize:  5000,
+			WorkMem:    "64MB",
+		}
+	}
+
+	m.adaptiveConfig = adaptiveConfig
+	m.systemProfile = adaptiveConfig.Profile
+
+	if m.systemProfile != nil {
+		log.Info("System profile detected",
+			"category", m.systemProfile.Category.String(),
+			"cpu_cores", m.systemProfile.CPUCores,
+			"ram_gb", float64(m.systemProfile.TotalRAM)/(1024*1024*1024),
+			"disk_type", m.systemProfile.DiskType)
+		log.Info("Adaptive configuration applied",
+			"workers", adaptiveConfig.Workers,
+			"pool_size", adaptiveConfig.PoolSize,
+			"buffer_kb", adaptiveConfig.BufferSize/1024,
+			"batch_size", adaptiveConfig.BatchSize)
+	}
+
+	return m, nil
+}
+
+// GetAdaptiveConfig returns the adaptive configuration
+func (m *EngineManager) GetAdaptiveConfig() *AdaptiveConfig {
+	return m.adaptiveConfig
+}
+
+// GetSystemProfile returns the detected system profile
+func (m *EngineManager) GetSystemProfile() *SystemProfile {
+	return m.systemProfile
+}
+
+// SetAdaptiveConfig sets a custom adaptive configuration
+func (m *EngineManager) SetAdaptiveConfig(cfg *AdaptiveConfig) {
+	m.adaptiveConfig = cfg
+	m.log.Debug("Adaptive configuration updated",
+		"workers", cfg.Workers,
+		"pool_size", cfg.PoolSize,
+		"buffer_size", cfg.BufferSize)
 }
 
 // RegisterEngine registers a native engine
@@ -104,6 +168,13 @@ func (m *EngineManager) InitializeEngines(ctx context.Context) error {
 
 // createPostgreSQLEngine creates a configured PostgreSQL native engine
 func (m *EngineManager) createPostgreSQLEngine() (Engine, error) {
+	// Use adaptive config if available
+	parallel := m.cfg.Jobs
+	if m.adaptiveConfig != nil && m.adaptiveConfig.Workers > 0 {
+		parallel = m.adaptiveConfig.Workers
+		m.log.Debug("Using adaptive worker count", "workers", parallel)
+	}
+
 	pgCfg := &PostgreSQLNativeConfig{
 		Host:     m.cfg.Host,
 		Port:     m.cfg.Port,
@@ -114,7 +185,7 @@ func (m *EngineManager) createPostgreSQLEngine() (Engine, error) {
 
 		Format:      "sql", // Start with SQL format
 		Compression: m.cfg.CompressionLevel,
-		Parallel:    m.cfg.Jobs, // Use Jobs instead of MaxParallel
+		Parallel:    parallel,
 
 		SchemaOnly:   false,
 		DataOnly:     false,
@@ -122,7 +193,7 @@ func (m *EngineManager) createPostgreSQLEngine() (Engine, error) {
 		NoPrivileges: false,
 		NoComments:   false,
 		Blobs:        true,
-		Verbose:      m.cfg.Debug, // Use Debug instead of Verbose
+		Verbose:      m.cfg.Debug,
 	}
 
 	return NewPostgreSQLNativeEngine(pgCfg, m.log)

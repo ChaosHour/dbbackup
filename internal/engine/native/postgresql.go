@@ -17,10 +17,27 @@ import (
 
 // PostgreSQLNativeEngine implements pure Go PostgreSQL backup/restore
 type PostgreSQLNativeEngine struct {
-	pool *pgxpool.Pool
-	conn *pgx.Conn
-	cfg  *PostgreSQLNativeConfig
-	log  logger.Logger
+	pool           *pgxpool.Pool
+	conn           *pgx.Conn
+	cfg            *PostgreSQLNativeConfig
+	log            logger.Logger
+	adaptiveConfig *AdaptiveConfig
+}
+
+// SetAdaptiveConfig sets adaptive configuration for the engine
+func (e *PostgreSQLNativeEngine) SetAdaptiveConfig(cfg *AdaptiveConfig) {
+	e.adaptiveConfig = cfg
+	if cfg != nil {
+		e.log.Debug("Adaptive config applied to PostgreSQL engine",
+			"workers", cfg.Workers,
+			"pool_size", cfg.PoolSize,
+			"buffer_size", cfg.BufferSize)
+	}
+}
+
+// GetAdaptiveConfig returns the current adaptive configuration
+func (e *PostgreSQLNativeEngine) GetAdaptiveConfig() *AdaptiveConfig {
+	return e.adaptiveConfig
 }
 
 type PostgreSQLNativeConfig struct {
@@ -87,7 +104,28 @@ func NewPostgreSQLNativeEngine(cfg *PostgreSQLNativeConfig, log logger.Logger) (
 func (e *PostgreSQLNativeEngine) Connect(ctx context.Context) error {
 	connStr := e.buildConnectionString()
 
-	// Create connection pool
+	// If adaptive config is set, use it to create the pool
+	if e.adaptiveConfig != nil {
+		e.log.Debug("Using adaptive configuration for connection pool",
+			"pool_size", e.adaptiveConfig.PoolSize,
+			"workers", e.adaptiveConfig.Workers)
+
+		pool, err := e.adaptiveConfig.CreatePool(ctx, connStr)
+		if err != nil {
+			return fmt.Errorf("failed to create adaptive pool: %w", err)
+		}
+		e.pool = pool
+
+		// Create single connection for metadata operations
+		e.conn, err = pgx.Connect(ctx, connStr)
+		if err != nil {
+			return fmt.Errorf("failed to create connection: %w", err)
+		}
+
+		return nil
+	}
+
+	// Fall back to standard pool configuration
 	poolConfig, err := pgxpool.ParseConfig(connStr)
 	if err != nil {
 		return fmt.Errorf("failed to parse connection string: %w", err)

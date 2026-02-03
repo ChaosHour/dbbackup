@@ -338,6 +338,11 @@ func init() {
 	restoreSingleCmd.Flags().BoolVar(&restoreDebugLocks, "debug-locks", false, "Enable detailed lock debugging (captures PostgreSQL config, Guard decisions, boost attempts)")
 	restoreSingleCmd.Flags().Bool("native", false, "Use pure Go native engine (no psql/pg_restore required)")
 	restoreSingleCmd.Flags().Bool("fallback-tools", false, "Fall back to external tools if native engine fails")
+	restoreSingleCmd.Flags().Bool("auto", true, "Auto-detect optimal settings based on system resources")
+	restoreSingleCmd.Flags().Int("workers", 0, "Number of parallel workers for native engine (0 = auto-detect)")
+	restoreSingleCmd.Flags().Int("pool-size", 0, "Connection pool size for native engine (0 = auto-detect)")
+	restoreSingleCmd.Flags().Int("buffer-size", 0, "Buffer size in KB for native engine (0 = auto-detect)")
+	restoreSingleCmd.Flags().Int("batch-size", 0, "Batch size for bulk operations (0 = auto-detect)")
 
 	// Cluster restore flags
 	restoreClusterCmd.Flags().BoolVar(&restoreListDBs, "list-databases", false, "List databases in cluster backup and exit")
@@ -367,6 +372,11 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreLowMemory, "low-memory", false, "Force low-memory mode: single-threaded restore with minimal memory (use for <8GB RAM or very large backups)")
 	restoreClusterCmd.Flags().Bool("native", false, "Use pure Go native engine for .sql.gz files (no psql/pg_restore required)")
 	restoreClusterCmd.Flags().Bool("fallback-tools", false, "Fall back to external tools if native engine fails")
+	restoreClusterCmd.Flags().Bool("auto", true, "Auto-detect optimal settings based on system resources")
+	restoreClusterCmd.Flags().Int("workers", 0, "Number of parallel workers for native engine (0 = auto-detect)")
+	restoreClusterCmd.Flags().Int("pool-size", 0, "Connection pool size for native engine (0 = auto-detect)")
+	restoreClusterCmd.Flags().Int("buffer-size", 0, "Buffer size in KB for native engine (0 = auto-detect)")
+	restoreClusterCmd.Flags().Int("batch-size", 0, "Batch size for bulk operations (0 = auto-detect)")
 
 	// Handle native engine flags for restore commands
 	for _, cmd := range []*cobra.Command{restoreSingleCmd, restoreClusterCmd} {

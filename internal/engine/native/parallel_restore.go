@@ -28,6 +28,9 @@ type ParallelRestoreEngine struct {
 
 	// Configuration
 	parallelWorkers int
+
+	// Internal cancel channel to stop the pool cleanup goroutine
+	closeCh chan struct{}
 }
 
 // ParallelRestoreOptions configures parallel restore behavior
@@ -111,19 +114,26 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
+	closeCh := make(chan struct{})
+
 	engine := &ParallelRestoreEngine{
 		config:          config,
 		pool:            pool,
 		log:             log,
 		parallelWorkers: workers,
+		closeCh:         closeCh,
 	}
 
-	// CRITICAL: Start a goroutine to close the pool when context is cancelled
-	// This ensures the background health check goroutine is stopped on Ctrl+C
+	// CRITICAL: Start a goroutine to close the pool when context is cancelled OR engine is closed
+	// This ensures the background health check goroutine is stopped on Ctrl+C or normal Close()
 	go func() {
-		<-ctx.Done()
-		if pool != nil {
+		select {
+		case <-ctx.Done():
+			// Context cancelled (e.g., Ctrl+C)
 			pool.Close()
+		case <-closeCh:
+			// Engine explicitly closed - pool already closed by Close()
+			return
 		}
 	}()
 
@@ -525,8 +535,13 @@ func (e *ParallelRestoreEngine) executeCopy(ctx context.Context, stmt *SQLStatem
 	return tag.RowsAffected(), nil
 }
 
-// Close closes the connection pool
+// Close closes the connection pool and stops the cleanup goroutine
 func (e *ParallelRestoreEngine) Close() error {
+	// Signal the cleanup goroutine to exit
+	if e.closeCh != nil {
+		close(e.closeCh)
+	}
+	// Close the pool
 	if e.pool != nil {
 		e.pool.Close()
 	}

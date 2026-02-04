@@ -5,6 +5,27 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.11] - 2026-02-04
+
+### Fixed
+- **TUI Deadlock**: Fixed goroutine leaks in pgxpool connection handling
+  - Removed redundant goroutines waiting on ctx.Done() in postgresql.go and parallel_restore.go
+  - These were causing WaitGroup deadlocks when BubbleTea tried to shutdown
+
+### Added
+- **systemd-run Resource Isolation**: New `internal/cleanup/cgroups.go` for long-running jobs
+  - `RunWithResourceLimits()` wraps commands in systemd-run scopes
+  - Configurable: MemoryHigh, MemoryMax, CPUQuota, IOWeight, Nice, Slice
+  - Automatic cleanup on context cancellation
+- **Restore Dry-Run Checks**: New `internal/restore/dryrun.go` with 10 pre-restore validations
+  - Archive access, format, connectivity, permissions, target conflicts
+  - Disk space, work directory, required tools, lock settings, memory estimation
+  - Returns pass/warning/fail status with detailed messages
+- **Audit Log Signing**: Enhanced `internal/security/audit.go` with Ed25519 cryptographic signing
+  - `SignedAuditEntry` with sequence numbers, hash chains, and signatures
+  - `GenerateSigningKeys()`, `SavePrivateKey()`, `LoadPublicKey()`
+  - `EnableSigning()`, `ExportSignedLog()`, `VerifyAuditLog()` for tamper detection
+
 ## [5.7.10] - 2026-02-03
 
 ### Fixed

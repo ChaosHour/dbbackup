@@ -124,18 +124,13 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 		closeCh:         closeCh,
 	}
 
-	// CRITICAL: Start a goroutine to close the pool when context is cancelled OR engine is closed
-	// This ensures the background health check goroutine is stopped on Ctrl+C or normal Close()
-	go func() {
-		select {
-		case <-ctx.Done():
-			// Context cancelled (e.g., Ctrl+C)
-			pool.Close()
-		case <-closeCh:
-			// Engine explicitly closed - pool already closed by Close()
-			return
-		}
-	}()
+	// NOTE: We intentionally do NOT start a goroutine to close the pool on context cancellation.
+	// The pool is closed via defer parallelEngine.Close() in the caller (restore/engine.go).
+	// The Close() method properly signals closeCh and closes the pool.
+	// Starting a goroutine here can cause:
+	// 1. Race conditions with explicit Close() calls
+	// 2. Goroutine leaks if neither ctx nor Close() fires
+	// 3. Deadlocks with BubbleTea's event loop
 
 	return engine, nil
 }

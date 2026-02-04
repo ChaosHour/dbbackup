@@ -70,10 +70,10 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 			maxConns = 5 // minimum pool size
 		}
 	}
-	config.MaxConns = maxConns              // Max concurrent connections based on --jobs
-	config.MinConns = 2                     // Keep minimum connections ready
-	config.MaxConnLifetime = 0              // No limit on connection lifetime
-	config.MaxConnIdleTime = 0              // No idle timeout
+	config.MaxConns = maxConns                 // Max concurrent connections based on --jobs
+	config.MinConns = 2                        // Keep minimum connections ready
+	config.MaxConnLifetime = 0                 // No limit on connection lifetime
+	config.MaxConnIdleTime = 0                 // No idle timeout
 	config.HealthCheckPeriod = 5 * time.Second // Faster health check for quicker shutdown on Ctrl+C
 
 	// Optimize for large query results (BLOB data)
@@ -98,14 +98,12 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 	p.pool = pool
 	p.db = db
 
-	// CRITICAL: Start a goroutine to close the pool when context is cancelled
-	// This ensures the background health check goroutine is stopped on Ctrl+C
-	go func() {
-		<-ctx.Done()
-		if p.pool != nil {
-			p.pool.Close()
-		}
-	}()
+	// NOTE: We intentionally do NOT start a goroutine to close the pool on context cancellation.
+	// The pool is closed via defer dbClient.Close() in the caller, which is the correct pattern.
+	// Starting a goroutine here causes goroutine leaks and potential double-close issues when:
+	// 1. The caller's defer runs first (normal case)
+	// 2. Then context is cancelled and the goroutine tries to close an already-closed pool
+	// This was causing deadlocks in the TUI when tea.Batch was waiting for commands to complete.
 
 	p.log.Info("Connected to PostgreSQL successfully", "driver", "pgx", "max_conns", config.MaxConns)
 	return nil

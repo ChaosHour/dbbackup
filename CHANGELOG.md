@@ -5,6 +5,15 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.12] - 2026-02-04
+
+### Fixed
+- **Config Loading**: Fixed config not loading for users without standard home directories
+  - Now searches: current dir → home dir → /etc/dbbackup.conf → /etc/dbbackup/dbbackup.conf
+  - Works for postgres user with home at /var/lib/postgresql
+  - Added `ConfigSearchPaths()` and `LoadLocalConfigWithPath()` functions
+  - Log now shows which config path was actually loaded
+
 ## [5.8.11] - 2026-02-04
 
 ### Fixed

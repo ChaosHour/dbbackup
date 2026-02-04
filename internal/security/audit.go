@@ -40,16 +40,16 @@ type AuditLogger struct {
 
 // SignedAuditEntry represents an audit entry with cryptographic signature
 type SignedAuditEntry struct {
-	Sequence  int64     `json:"seq"`
-	Timestamp string    `json:"ts"`
-	User      string    `json:"user"`
-	Action    string    `json:"action"`
-	Resource  string    `json:"resource"`
-	Result    string    `json:"result"`
-	Details   string    `json:"details,omitempty"`
-	PrevHash  string    `json:"prev_hash"` // Hash chain for tamper detection
-	Hash      string    `json:"hash"`      // SHA-256 of this entry (without signature)
-	Signature string    `json:"sig"`       // Ed25519 signature of Hash
+	Sequence  int64  `json:"seq"`
+	Timestamp string `json:"ts"`
+	User      string `json:"user"`
+	Action    string `json:"action"`
+	Resource  string `json:"resource"`
+	Result    string `json:"result"`
+	Details   string `json:"details,omitempty"`
+	PrevHash  string `json:"prev_hash"` // Hash chain for tamper detection
+	Hash      string `json:"hash"`      // SHA-256 of this entry (without signature)
+	Signature string `json:"sig"`       // Ed25519 signature of Hash
 }
 
 // NewAuditLogger creates a new audit logger

@@ -15,11 +15,11 @@ import (
 )
 
 var (
-	cfg              *config.Config
-	log              logger.Logger
-	auditLogger      *security.AuditLogger
-	rateLimiter      *security.RateLimiter
-	notifyManager    *notify.Manager
+	cfg                *config.Config
+	log                logger.Logger
+	auditLogger        *security.AuditLogger
+	rateLimiter        *security.RateLimiter
+	notifyManager      *notify.Manager
 	deprecatedPassword string
 )
 
@@ -61,22 +61,24 @@ For help with specific commands, use: dbbackup [command] --help`,
 
 		// Load local config if not disabled
 		if !cfg.NoLoadConfig {
-			// Use custom config path if specified, otherwise default to current directory
+			// Use custom config path if specified, otherwise search standard locations
 			var localCfg *config.LocalConfig
+			var configPath string
 			var err error
 			if cfg.ConfigPath != "" {
 				localCfg, err = config.LoadLocalConfigFromPath(cfg.ConfigPath)
+				configPath = cfg.ConfigPath
 				if err != nil {
 					log.Warn("Failed to load config from specified path", "path", cfg.ConfigPath, "error", err)
 				} else if localCfg != nil {
 					log.Info("Loaded configuration", "path", cfg.ConfigPath)
 				}
 			} else {
-				localCfg, err = config.LoadLocalConfig()
+				localCfg, configPath, err = config.LoadLocalConfigWithPath()
 				if err != nil {
-					log.Warn("Failed to load local config", "error", err)
+					log.Warn("Failed to load config", "error", err)
 				} else if localCfg != nil {
-					log.Info("Loaded configuration from .dbbackup.conf")
+					log.Info("Loaded configuration", "path", configPath)
 				}
 			}
 

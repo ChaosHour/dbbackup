@@ -113,10 +113,10 @@ func RunWithResourceLimitsOutput(ctx context.Context, log logger.Logger, limits 
 // buildSystemdArgs constructs the systemd-run argument list
 func buildSystemdArgs(limits *ResourceLimits, name string, args []string) []string {
 	systemdArgs := []string{
-		"--scope",    // Run as transient scope (not service)
-		"--user",     // Run in user session (no root required)
-		"--quiet",    // Reduce systemd noise
-		"--collect",  // Automatically clean up after exit
+		"--scope",   // Run as transient scope (not service)
+		"--user",    // Run in user session (no root required)
+		"--quiet",   // Reduce systemd noise
+		"--collect", // Automatically clean up after exit
 	}
 
 	// Add description for easier identification

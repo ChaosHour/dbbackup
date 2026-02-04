@@ -41,9 +41,53 @@ type LocalConfig struct {
 	MaxRetries    int
 }
 
-// LoadLocalConfig loads configuration from .dbbackup.conf in current directory
+// ConfigSearchPaths returns all paths where config files are searched, in order of priority
+func ConfigSearchPaths() []string {
+	paths := []string{
+		filepath.Join(".", ConfigFileName), // Current directory (highest priority)
+	}
+
+	// User's home directory
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		paths = append(paths, filepath.Join(home, ConfigFileName))
+	}
+
+	// System-wide config locations
+	paths = append(paths,
+		"/etc/dbbackup.conf",
+		"/etc/dbbackup/dbbackup.conf",
+	)
+
+	return paths
+}
+
+// LoadLocalConfig loads configuration from .dbbackup.conf
+// Search order: 1) current directory, 2) user's home directory, 3) /etc/dbbackup.conf, 4) /etc/dbbackup/dbbackup.conf
 func LoadLocalConfig() (*LocalConfig, error) {
-	return LoadLocalConfigFromPath(filepath.Join(".", ConfigFileName))
+	for _, path := range ConfigSearchPaths() {
+		cfg, err := LoadLocalConfigFromPath(path)
+		if err != nil {
+			return nil, err
+		}
+		if cfg != nil {
+			return cfg, nil
+		}
+	}
+	return nil, nil
+}
+
+// LoadLocalConfigWithPath loads configuration and returns the path it was loaded from
+func LoadLocalConfigWithPath() (*LocalConfig, string, error) {
+	for _, path := range ConfigSearchPaths() {
+		cfg, err := LoadLocalConfigFromPath(path)
+		if err != nil {
+			return nil, "", err
+		}
+		if cfg != nil {
+			return cfg, path, nil
+		}
+	}
+	return nil, "", nil
 }
 
 // LoadLocalConfigFromPath loads configuration from a specific path

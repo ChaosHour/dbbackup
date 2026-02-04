@@ -70,11 +70,11 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 			maxConns = 5 // minimum pool size
 		}
 	}
-	config.MaxConns = maxConns                 // Max concurrent connections based on --jobs
-	config.MinConns = 2                        // Keep minimum connections ready
-	config.MaxConnLifetime = 0                 // No limit on connection lifetime
-	config.MaxConnIdleTime = 0                 // No idle timeout
-	config.HealthCheckPeriod = 1 * time.Minute // Health check every minute
+	config.MaxConns = maxConns              // Max concurrent connections based on --jobs
+	config.MinConns = 2                     // Keep minimum connections ready
+	config.MaxConnLifetime = 0              // No limit on connection lifetime
+	config.MaxConnIdleTime = 0              // No idle timeout
+	config.HealthCheckPeriod = 5 * time.Second // Faster health check for quicker shutdown on Ctrl+C
 
 	// Optimize for large query results (BLOB data)
 	config.ConnConfig.RuntimeParams["work_mem"] = "64MB"
@@ -97,6 +97,16 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 
 	p.pool = pool
 	p.db = db
+
+	// CRITICAL: Start a goroutine to close the pool when context is cancelled
+	// This ensures the background health check goroutine is stopped on Ctrl+C
+	go func() {
+		<-ctx.Done()
+		if p.pool != nil {
+			p.pool.Close()
+		}
+	}()
+
 	p.log.Info("Connected to PostgreSQL successfully", "driver", "pgx", "max_conns", config.MaxConns)
 	return nil
 }

@@ -101,18 +101,33 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 	poolConfig.MaxConns = int32(workers + 2)
 	poolConfig.MinConns = int32(workers)
 
+	// CRITICAL: Reduce health check period to allow faster shutdown
+	// Default is 1 minute which causes hangs on Ctrl+C
+	poolConfig.HealthCheckPeriod = 5 * time.Second
+
 	// Use the provided context so pool health checks stop when context is cancelled
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
-	return &ParallelRestoreEngine{
+	engine := &ParallelRestoreEngine{
 		config:          config,
 		pool:            pool,
 		log:             log,
 		parallelWorkers: workers,
-	}, nil
+	}
+
+	// CRITICAL: Start a goroutine to close the pool when context is cancelled
+	// This ensures the background health check goroutine is stopped on Ctrl+C
+	go func() {
+		<-ctx.Done()
+		if pool != nil {
+			pool.Close()
+		}
+	}()
+
+	return engine, nil
 }
 
 // RestoreFile restores from a SQL file with parallel execution

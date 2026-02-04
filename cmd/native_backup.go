@@ -11,6 +11,7 @@ import (
 
 	"dbbackup/internal/database"
 	"dbbackup/internal/engine/native"
+	"dbbackup/internal/metadata"
 	"dbbackup/internal/notify"
 
 	"github.com/klauspost/pgzip"
@@ -162,6 +163,54 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 		"objects", result.ObjectsProcessed,
 		"duration", backupDuration,
 		"engine", result.EngineUsed)
+
+	// Get actual file size from disk
+	fileInfo, err := os.Stat(outputFile)
+	var actualSize int64
+	if err == nil {
+		actualSize = fileInfo.Size()
+	} else {
+		actualSize = result.BytesProcessed
+	}
+
+	// Calculate SHA256 checksum
+	sha256sum, err := metadata.CalculateSHA256(outputFile)
+	if err != nil {
+		log.Warn("Failed to calculate SHA256", "error", err)
+		sha256sum = ""
+	}
+
+	// Create and save metadata file
+	meta := &metadata.BackupMetadata{
+		Version:      "1.0",
+		Timestamp:    backupStartTime,
+		Database:     databaseName,
+		DatabaseType: dbType,
+		Host:         cfg.Host,
+		Port:         cfg.Port,
+		User:         cfg.User,
+		BackupFile:   filepath.Base(outputFile),
+		SizeBytes:    actualSize,
+		SHA256:       sha256sum,
+		Compression:  "gzip",
+		BackupType:   backupType,
+		Duration:     backupDuration.Seconds(),
+		ExtraInfo: map[string]string{
+			"engine":            result.EngineUsed,
+			"objects_processed": fmt.Sprintf("%d", result.ObjectsProcessed),
+		},
+	}
+
+	if cfg.CompressionLevel == 0 {
+		meta.Compression = "none"
+	}
+
+	metaPath := outputFile + ".meta.json"
+	if err := metadata.Save(metaPath, meta); err != nil {
+		log.Warn("Failed to save metadata", "error", err)
+	} else {
+		log.Debug("Metadata saved", "path", metaPath)
+	}
 
 	// Audit log: backup completed
 	auditLogger.LogBackupComplete(user, databaseName, cfg.BackupDir, result.BytesProcessed)

@@ -635,7 +635,8 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 		"database", targetDB,
 		"archive", archivePath)
 
-	parallelEngine, err := native.NewParallelRestoreEngine(nativeCfg, e.log, parallelWorkers)
+	// Pass context to ensure pool is properly closed on Ctrl+C cancellation
+	parallelEngine, err := native.NewParallelRestoreEngineWithContext(ctx, nativeCfg, e.log, parallelWorkers)
 	if err != nil {
 		e.log.Warn("Failed to create parallel restore engine, falling back to sequential", "error", err)
 		// Fall back to sequential restore

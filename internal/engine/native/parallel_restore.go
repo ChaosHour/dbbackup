@@ -71,7 +71,14 @@ const (
 )
 
 // NewParallelRestoreEngine creates a new parallel restore engine
+// NOTE: Pass a cancellable context to ensure the pool is properly closed on Ctrl+C
 func NewParallelRestoreEngine(config *PostgreSQLNativeConfig, log logger.Logger, workers int) (*ParallelRestoreEngine, error) {
+	return NewParallelRestoreEngineWithContext(context.Background(), config, log, workers)
+}
+
+// NewParallelRestoreEngineWithContext creates a new parallel restore engine with context support
+// This ensures the connection pool is properly closed when the context is cancelled
+func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQLNativeConfig, log logger.Logger, workers int) (*ParallelRestoreEngine, error) {
 	if workers < 1 {
 		workers = 4 // Default to 4 parallel workers
 	}
@@ -94,7 +101,8 @@ func NewParallelRestoreEngine(config *PostgreSQLNativeConfig, log logger.Logger,
 	poolConfig.MaxConns = int32(workers + 2)
 	poolConfig.MinConns = int32(workers)
 
-	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+	// Use the provided context so pool health checks stop when context is cancelled
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
@@ -215,17 +223,38 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	semaphore := make(chan struct{}, options.Workers)
 	var completedCopies int64
 	var totalRows int64
+	var cancelled int32 // Atomic flag to signal cancellation
 
 	for _, stmt := range copyStmts {
+		// Check for context cancellation before starting new work
+		if ctx.Err() != nil {
+			break
+		}
+
 		wg.Add(1)
-		semaphore <- struct{}{} // Acquire worker slot
+		select {
+		case semaphore <- struct{}{}: // Acquire worker slot
+		case <-ctx.Done():
+			wg.Done()
+			atomic.StoreInt32(&cancelled, 1)
+			break
+		}
 
 		go func(s *SQLStatement) {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release worker slot
 
+			// Check cancellation before executing
+			if ctx.Err() != nil || atomic.LoadInt32(&cancelled) == 1 {
+				return
+			}
+
 			rows, err := e.executeCopy(ctx, s)
 			if err != nil {
+				if ctx.Err() != nil {
+					// Context cancelled, don't log as error
+					return
+				}
 				if options.ContinueOnError {
 					e.log.Warn("COPY failed", "table", s.TableName, "error", err)
 				} else {
@@ -243,6 +272,12 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	}
 
 	wg.Wait()
+
+	// Check if cancelled
+	if ctx.Err() != nil {
+		return result, ctx.Err()
+	}
+
 	result.TablesRestored = completedCopies
 	result.RowsRestored = totalRows
 
@@ -264,15 +299,35 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 
 	// Execute post-data in parallel
 	var completedPostData int64
+	cancelled = 0 // Reset for phase 4
 	for _, sql := range postDataStmts {
+		// Check for context cancellation before starting new work
+		if ctx.Err() != nil {
+			break
+		}
+
 		wg.Add(1)
-		semaphore <- struct{}{}
+		select {
+		case semaphore <- struct{}{}:
+		case <-ctx.Done():
+			wg.Done()
+			atomic.StoreInt32(&cancelled, 1)
+			break
+		}
 
 		go func(stmt string) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
+			// Check cancellation before executing
+			if ctx.Err() != nil || atomic.LoadInt32(&cancelled) == 1 {
+				return
+			}
+
 			if err := e.executeStatement(ctx, stmt); err != nil {
+				if ctx.Err() != nil {
+					return // Context cancelled
+				}
 				if options.ContinueOnError {
 					e.log.Warn("Post-data statement failed", "error", err)
 				}
@@ -288,6 +343,11 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	}
 
 	wg.Wait()
+
+	// Check if cancelled
+	if ctx.Err() != nil {
+		return result, ctx.Err()
+	}
 
 	result.Duration = time.Since(startTime)
 	e.log.Info("Parallel restore completed",

@@ -123,9 +123,11 @@ func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhas
 	currentBackupProgressState.hasUpdate = false
 
 	// Calculate realtime phase elapsed if we have a phase 2 start time
-	dbPhaseElapsed = currentBackupProgressState.dbPhaseElapsed
+	// Always recalculate from phase2StartTime for accurate real-time display
 	if !currentBackupProgressState.phase2StartTime.IsZero() {
 		dbPhaseElapsed = time.Since(currentBackupProgressState.phase2StartTime)
+	} else {
+		dbPhaseElapsed = currentBackupProgressState.dbPhaseElapsed
 	}
 
 	return currentBackupProgressState.dbTotal, currentBackupProgressState.dbDone,
@@ -260,7 +262,10 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 			// Set phase 2 start time on first callback (for realtime ETA calculation)
 			if progressState.phase2StartTime.IsZero() {
 				progressState.phase2StartTime = time.Now()
+				log.Info("Phase 2 started", "time", progressState.phase2StartTime)
 			}
+			// Calculate elapsed time immediately
+			progressState.dbPhaseElapsed = time.Since(progressState.phase2StartTime)
 			progressState.mu.Unlock()
 		})
 

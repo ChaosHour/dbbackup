@@ -245,9 +245,11 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 	speed = calculateRollingSpeed(currentRestoreProgressState.speedSamples)
 
 	// Calculate realtime phase elapsed if we have a phase 3 start time
-	dbPhaseElapsed = currentRestoreProgressState.dbPhaseElapsed
+	// Always recalculate from phase3StartTime for accurate real-time display
 	if !currentRestoreProgressState.phase3StartTime.IsZero() {
 		dbPhaseElapsed = time.Since(currentRestoreProgressState.phase3StartTime)
+	} else {
+		dbPhaseElapsed = currentRestoreProgressState.dbPhaseElapsed
 	}
 
 	return currentRestoreProgressState.bytesTotal, currentRestoreProgressState.bytesDone,
@@ -527,6 +529,8 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			if progressState.phase3StartTime.IsZero() {
 				progressState.phase3StartTime = time.Now()
 			}
+			// Calculate elapsed time immediately for accurate display
+			progressState.dbPhaseElapsed = time.Since(progressState.phase3StartTime)
 			// Clear byte progress when switching to db progress
 			progressState.bytesTotal = 0
 			progressState.bytesDone = 0
@@ -568,6 +572,10 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			if progressState.phase3StartTime.IsZero() {
 				progressState.phase3StartTime = time.Now()
 			}
+			// Recalculate elapsed for accuracy if phaseElapsed not provided
+			if phaseElapsed == 0 && !progressState.phase3StartTime.IsZero() {
+				progressState.dbPhaseElapsed = time.Since(progressState.phase3StartTime)
+			}
 			// Clear byte progress when switching to db progress
 			progressState.bytesTotal = 0
 			progressState.bytesDone = 0
@@ -608,6 +616,8 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			if progressState.phase3StartTime.IsZero() {
 				progressState.phase3StartTime = time.Now()
 			}
+			// Calculate elapsed time immediately for accurate display
+			progressState.dbPhaseElapsed = time.Since(progressState.phase3StartTime)
 
 			// Update unified progress tracker
 			if progressState.unifiedProgress != nil {

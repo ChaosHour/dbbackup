@@ -605,6 +605,18 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 			progressState.mu.Lock()
 			defer progressState.mu.Unlock()
+
+			// Check for live byte update signal (dbDone=-1, dbTotal=-1)
+			// This is a periodic progress update during active restore
+			if dbDone == -1 && dbTotal == -1 {
+				// Just update bytes, don't change db counts or phase
+				progressState.dbBytesDone = bytesDone
+				progressState.dbBytesTotal = bytesTotal
+				progressState.hasUpdate = true
+				return
+			}
+
+			// Normal database count progress update
 			progressState.dbBytesDone = bytesDone
 			progressState.dbBytesTotal = bytesTotal
 			progressState.dbDone = dbDone

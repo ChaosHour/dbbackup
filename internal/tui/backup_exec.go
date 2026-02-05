@@ -259,6 +259,19 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 			}
 
 			progressState.mu.Lock()
+			defer progressState.mu.Unlock()
+
+			// Check for live byte update signal (done=-1, total=-1)
+			// This is a periodic file size update during active dump/restore
+			if done == -1 && total == -1 {
+				// Just update bytes, don't change db counts or phase
+				progressState.bytesDone = bytesDone
+				progressState.bytesTotal = bytesTotal
+				progressState.hasUpdate = true
+				return
+			}
+
+			// Normal database count progress update
 			progressState.dbDone = done
 			progressState.dbTotal = total
 			progressState.dbName = currentDB
@@ -274,7 +287,6 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 			}
 			// Calculate elapsed time immediately
 			progressState.dbPhaseElapsed = time.Since(progressState.phase2StartTime)
-			progressState.mu.Unlock()
 		})
 
 		var backupErr error

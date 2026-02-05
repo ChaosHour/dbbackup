@@ -52,6 +52,10 @@ type Engine struct {
 	silent             bool // Silent mode for TUI
 	progressCallback   ProgressCallback
 	dbProgressCallback DatabaseProgressCallback
+
+	// Live progress tracking
+	liveBytesDone  int64 // Atomic: tracks live bytes during operations (dump file size)
+	liveBytesTotal int64 // Atomic: total expected bytes for size-weighted progress
 }
 
 // New creates a new backup engine
@@ -124,6 +128,44 @@ func (e *Engine) reportDatabaseProgress(done, total int, dbName string, bytesDon
 
 	if e.dbProgressCallback != nil {
 		e.dbProgressCallback(done, total, dbName, bytesDone, bytesTotal)
+	}
+}
+
+// GetLiveBytes returns the current live byte progress (atomic read)
+func (e *Engine) GetLiveBytes() (done, total int64) {
+	return atomic.LoadInt64(&e.liveBytesDone), atomic.LoadInt64(&e.liveBytesTotal)
+}
+
+// SetLiveBytesTotal sets the total bytes expected for live progress tracking
+func (e *Engine) SetLiveBytesTotal(total int64) {
+	atomic.StoreInt64(&e.liveBytesTotal, total)
+}
+
+// monitorFileSize monitors a file's size during backup and updates progress
+// Call this in a goroutine; it will stop when ctx is cancelled
+func (e *Engine) monitorFileSize(ctx context.Context, filePath string, baseBytes int64, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if info, err := os.Stat(filePath); err == nil {
+				// Live bytes = base (completed DBs) + current file size
+				liveBytes := baseBytes + info.Size()
+				atomic.StoreInt64(&e.liveBytesDone, liveBytes)
+
+				// Trigger a progress update if callback is set
+				total := atomic.LoadInt64(&e.liveBytesTotal)
+				if e.dbProgressCallback != nil && total > 0 {
+					// We use -1 for done/total to signal this is a live update (not a db count change)
+					// The TUI will recognize this and just update the bytes
+					e.dbProgressCallback(-1, -1, "", liveBytes, total)
+				}
+			}
+		}
 	}
 }
 
@@ -475,6 +517,9 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	}
 	var completedBytes int64 // Track bytes completed (atomic access)
 
+	// Set total bytes for live progress monitoring
+	atomic.StoreInt64(&e.liveBytesTotal, totalBytes)
+
 	// Create ETA estimator for database backups
 	estimator := progress.NewETAEstimator("Backing up cluster", len(databases))
 	quietProgress.SetEstimator(estimator)
@@ -627,6 +672,10 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 							return
 						}
 
+						// Set up live file size monitoring for native backup
+						monitorCtx, cancelMonitor := context.WithCancel(ctx)
+						go e.monitorFileSize(monitorCtx, sqlFile, completedBytes, 2*time.Second)
+
 						// Use pgzip for parallel compression
 						gzWriter, _ := pgzip.NewWriterLevel(outFile, compressionLevel)
 
@@ -634,6 +683,9 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 						gzWriter.Close()
 						outFile.Close()
 						nativeEngine.Close()
+
+						// Stop the file size monitor
+						cancelMonitor()
 
 						if backupErr != nil {
 							os.Remove(sqlFile) // Clean up partial file
@@ -692,10 +744,18 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 
 			cmd := e.db.BuildBackupCommand(name, dumpFile, options)
 
+			// Set up live file size monitoring for real-time progress
+			// This runs in a background goroutine and updates liveBytesDone
+			monitorCtx, cancelMonitor := context.WithCancel(ctx)
+			go e.monitorFileSize(monitorCtx, dumpFile, completedBytes, 2*time.Second)
+
 			// NO TIMEOUT for individual database backups
 			// Large databases with large objects can take many hours
 			// The parent context handles cancellation if needed
 			err := e.executeCommand(ctx, cmd, dumpFile)
+
+			// Stop the file size monitor
+			cancelMonitor()
 
 			if err != nil {
 				e.log.Warn("Failed to backup database", "database", name, "error", err)
@@ -1400,38 +1460,36 @@ func (e *Engine) verifyClusterArchive(ctx context.Context, archivePath string) e
 		return fmt.Errorf("archive suspiciously small (%d bytes)", info.Size())
 	}
 
-	// Verify tar.gz structure by reading header
+	// Verify tar.gz structure by reading ONLY the first header
+	// Reading all headers would require decompressing the entire archive
+	// which is extremely slow for large backups (99GB+ takes 15+ minutes)
 	gzipReader, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("invalid gzip format: %w", err)
 	}
 	defer gzipReader.Close()
 
-	// Read tar header to verify archive structure
+	// Read just the first tar header to verify archive structure
 	tarReader := tar.NewReader(gzipReader)
-	fileCount := 0
-	for {
-		_, err := tarReader.Next()
-		if err == io.EOF {
-			break // End of archive
-		}
-		if err != nil {
-			return fmt.Errorf("corrupted tar archive at entry %d: %w", fileCount, err)
-		}
-		fileCount++
-
-		// Limit scan to first 100 entries for performance
-		// (cluster backup should have globals + N database dumps)
-		if fileCount >= 100 {
-			break
-		}
-	}
-
-	if fileCount == 0 {
+	header, err := tarReader.Next()
+	if err == io.EOF {
 		return fmt.Errorf("archive contains no files")
 	}
+	if err != nil {
+		return fmt.Errorf("corrupted tar archive: %w", err)
+	}
 
-	e.log.Debug("Cluster archive verification passed", "files_checked", fileCount, "size_bytes", info.Size())
+	// Verify we got a valid header with expected content
+	if header.Name == "" {
+		return fmt.Errorf("archive has invalid empty filename")
+	}
+
+	// For cluster backups, first entry should be globals.sql
+	// Just having a valid first header is sufficient verification
+	e.log.Debug("Cluster archive verification passed",
+		"first_file", header.Name,
+		"first_file_size", header.Size,
+		"archive_size", info.Size())
 	return nil
 }
 
@@ -1723,6 +1781,15 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	if err := dumpCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start pg_dump: %w", err)
 	}
+
+	// Start file size monitoring for live progress (monitors the growing .sql.gz file)
+	// This is handled by the caller through monitorFileSize for the output file
+	// The caller monitors the dumpFile path, but streaming creates compressedFile
+	// So we start a separate monitor here for the compressed output
+	monitorCtx, cancelMonitor := context.WithCancel(ctx)
+	baseBytes := atomic.LoadInt64(&e.liveBytesDone) // Current completed bytes from other DBs
+	go e.monitorFileSize(monitorCtx, compressedFile, baseBytes, 2*time.Second)
+	defer cancelMonitor()
 
 	// Copy from pg_dump stdout to pgzip writer in a goroutine
 	copyDone := make(chan error, 1)

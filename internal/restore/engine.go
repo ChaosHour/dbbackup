@@ -62,6 +62,10 @@ type Engine struct {
 	dbProgressCallback        DatabaseProgressCallback
 	dbProgressTimingCallback  DatabaseProgressWithTimingCallback
 	dbProgressByBytesCallback DatabaseProgressByBytesCallback
+
+	// Live progress tracking for real-time byte updates
+	liveBytesDone  int64 // Atomic: tracks live bytes during restore
+	liveBytesTotal int64 // Atomic: total expected bytes
 }
 
 // New creates a new restore engine
@@ -184,6 +188,39 @@ func (e *Engine) reportDatabaseProgressByBytes(bytesDone, bytesTotal int64, dbNa
 
 	if e.dbProgressByBytesCallback != nil {
 		e.dbProgressByBytesCallback(bytesDone, bytesTotal, dbName, dbDone, dbTotal)
+	}
+}
+
+// GetLiveBytes returns the current live byte progress (atomic read)
+func (e *Engine) GetLiveBytes() (done, total int64) {
+	return atomic.LoadInt64(&e.liveBytesDone), atomic.LoadInt64(&e.liveBytesTotal)
+}
+
+// SetLiveBytesTotal sets the total bytes expected for live progress tracking
+func (e *Engine) SetLiveBytesTotal(total int64) {
+	atomic.StoreInt64(&e.liveBytesTotal, total)
+}
+
+// monitorRestoreProgress monitors restore progress by tracking bytes read from dump files
+// For restore, we track the source dump file's original size and estimate progress
+// based on elapsed time and average restore throughput
+func (e *Engine) monitorRestoreProgress(ctx context.Context, baseBytes int64, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			// Get current live bytes and report
+			liveBytes := atomic.LoadInt64(&e.liveBytesDone)
+			total := atomic.LoadInt64(&e.liveBytesTotal)
+			if e.dbProgressByBytesCallback != nil && total > 0 {
+				// Signal live update with -1 for db counts
+				e.dbProgressByBytesCallback(liveBytes, total, "", -1, -1)
+			}
+		}
 	}
 }
 

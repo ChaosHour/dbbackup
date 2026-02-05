@@ -181,11 +181,22 @@ type backupCompleteMsg struct {
 }
 
 func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
-	return func() tea.Msg {
-		// CRITICAL: Add panic recovery to prevent TUI crashes on context cancellation
+	return func() (returnMsg tea.Msg) {
+		start := time.Now()
+
+		// CRITICAL: Add panic recovery that RETURNS a proper message to BubbleTea.
+		// Without this, if a panic occurs the command function returns nil,
+		// causing BubbleTea's execBatchMsg WaitGroup to hang forever waiting
+		// for a message that never comes.
 		defer func() {
 			if r := recover(); r != nil {
 				log.Error("Backup execution panic recovered", "panic", r, "database", dbName)
+				// CRITICAL: Set the named return value so BubbleTea receives a message
+				returnMsg = backupCompleteMsg{
+					result:  "",
+					err:     fmt.Errorf("backup panic: %v", r),
+					elapsed: time.Since(start),
+				}
 			}
 		}()
 
@@ -200,8 +211,6 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 				err:    fmt.Errorf("operation cancelled: %w", ctx.Err()),
 			}
 		}
-
-		start := time.Now()
 
 		// Setup shared progress state for TUI polling
 		progressState := &sharedBackupProgressState{}

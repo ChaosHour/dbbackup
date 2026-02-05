@@ -308,13 +308,24 @@ func calculateRollingSpeed(samples []restoreSpeedSample) float64 {
 }
 
 func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool) tea.Cmd {
-	return func() tea.Msg {
-		// CRITICAL: Add panic recovery to prevent TUI crashes on context cancellation
+	return func() (returnMsg tea.Msg) {
+		start := time.Now()
+
+		// CRITICAL: Add panic recovery that RETURNS a proper message to BubbleTea.
+		// Without this, if a panic occurs the command function returns nil,
+		// causing BubbleTea's execBatchMsg WaitGroup to hang forever waiting
+		// for a message that never comes. This was the root cause of the
+		// TUI cluster restore hang/panic issue.
 		defer func() {
 			if r := recover(); r != nil {
 				log.Error("Restore execution panic recovered", "panic", r, "database", targetDB)
-				// Return error message instead of crashing
-				// Note: We can't return from defer, so this just logs
+				// CRITICAL: Set the named return value so BubbleTea receives a message
+				// This prevents the WaitGroup deadlock in execBatchMsg
+				returnMsg = restoreCompleteMsg{
+					result:  "",
+					err:     fmt.Errorf("restore panic: %v", r),
+					elapsed: time.Since(start),
+				}
 			}
 		}()
 
@@ -330,8 +341,6 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 				elapsed: 0,
 			}
 		}
-
-		start := time.Now()
 
 		// Create database instance
 		dbClient, err := database.New(cfg, log)

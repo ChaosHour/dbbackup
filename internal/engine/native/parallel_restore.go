@@ -245,6 +245,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	var totalRows int64
 	var cancelled int32 // Atomic flag to signal cancellation
 
+copyLoop:
 	for _, stmt := range copyStmts {
 		// Check for context cancellation before starting new work
 		if ctx.Err() != nil {
@@ -257,7 +258,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 		case <-ctx.Done():
 			wg.Done()
 			atomic.StoreInt32(&cancelled, 1)
-			break
+			break copyLoop // CRITICAL: Use labeled break to exit the for loop, not just the select
 		}
 
 		go func(s *SQLStatement) {
@@ -320,6 +321,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	// Execute post-data in parallel
 	var completedPostData int64
 	cancelled = 0 // Reset for phase 4
+postDataLoop:
 	for _, sql := range postDataStmts {
 		// Check for context cancellation before starting new work
 		if ctx.Err() != nil {
@@ -332,7 +334,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 		case <-ctx.Done():
 			wg.Done()
 			atomic.StoreInt32(&cancelled, 1)
-			break
+			break postDataLoop // CRITICAL: Use labeled break to exit the for loop, not just the select
 		}
 
 		go func(stmt string) {

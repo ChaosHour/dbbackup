@@ -26,29 +26,48 @@ MAIN_FILE="main.go"
 BUMP_VERSION=false
 UPDATE_ONLY=false
 DRY_RUN=false
+RELEASE_MSG=""
 
-for arg in "$@"; do
-    case $arg in
+while [[ $# -gt 0 ]]; do
+    case $1 in
         --bump)
             BUMP_VERSION=true
+            shift
             ;;
         --update)
             UPDATE_ONLY=true
+            shift
             ;;
         --dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        -m|--message)
+            RELEASE_MSG="$2"
+            shift 2
             ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --bump      Bump patch version before release"
-            echo "  --update    Update existing release (don't create new)"
-            echo "  --dry-run   Show what would happen without doing it"
-            echo "  --help      Show this help"
+            echo "  --bump           Bump patch version before release"
+            echo "  --update         Update existing release (don't create new)"
+            echo "  --dry-run        Show what would happen without doing it"
+            echo "  -m, --message    Release message/comment (required for new releases)"
+            echo "  --help           Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  $0 -m \"Fix TUI crash on cluster restore\""
+            echo "  $0 --bump -m \"Add new backup compression option\""
+            echo "  $0 --update  # Just update binaries, no message needed"
             echo ""
             echo "Token file: .gh_token (gitignored)"
             exit 0
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            echo "Use --help for usage"
+            exit 1
             ;;
     esac
 done
@@ -97,6 +116,15 @@ fi
 TAG="v${CURRENT_VERSION}"
 echo -e "${BLUE}🏷️  Release tag: ${YELLOW}${TAG}${NC}"
 
+# Require message for new releases (not updates)
+if [ -z "$RELEASE_MSG" ] && [ "$UPDATE_ONLY" = false ] && [ "$DRY_RUN" = false ]; then
+    echo -e "${RED}❌ Release message required. Use -m \"Your message\"${NC}"
+    echo ""
+    echo "Example:"
+    echo "  $0 -m \"Fix TUI crash on cluster restore\""
+    exit 1
+fi
+
 if [ "$DRY_RUN" = true ]; then
     echo -e "${YELLOW}🔍 DRY RUN - No changes will be made${NC}"
     echo ""
@@ -118,8 +146,10 @@ if [ -n "$(git status --porcelain)" ]; then
     echo -e "${BLUE}📝 Committing changes...${NC}"
     git add -A
     
-    # Generate commit message
-    if [ "$BUMP_VERSION" = true ]; then
+    # Generate commit message using the release message
+    if [ -n "$RELEASE_MSG" ]; then
+        COMMIT_MSG="${TAG}: ${RELEASE_MSG}"
+    elif [ "$BUMP_VERSION" = true ]; then
         COMMIT_MSG="${TAG}: Version bump"
     else
         COMMIT_MSG="${TAG}: Release build"
@@ -162,8 +192,8 @@ if [ "$RELEASE_EXISTS" = "yes" ] || [ "$UPDATE_ONLY" = true ]; then
 else
     echo -e "${GREEN}📦 Creating new release ${TAG}...${NC}"
     
-    # Generate release notes
-    NOTES="## Release ${TAG}
+    # Generate release notes with the provided message
+    NOTES="## ${TAG}: ${RELEASE_MSG}
 
 ### Downloads
 | Platform | Architecture | Binary |
@@ -189,7 +219,7 @@ sudo mv dbbackup_darwin_arm64 /usr/local/bin/dbbackup
 "
 
     gh release create "$TAG" \
-        --title "${TAG}" \
+        --title "${TAG}: ${RELEASE_MSG}" \
         --notes "$NOTES" \
         bin/dbbackup_linux_amd64 \
         bin/dbbackup_linux_arm64 \

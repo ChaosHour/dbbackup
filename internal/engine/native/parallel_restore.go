@@ -108,6 +108,14 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 	// Default is 1 minute which causes hangs on Ctrl+C
 	poolConfig.HealthCheckPeriod = 5 * time.Second
 
+	// CRITICAL: Set connection-level timeouts to ensure queries can be cancelled
+	// This prevents infinite hangs on slow/stuck operations
+	poolConfig.ConnConfig.RuntimeParams = map[string]string{
+		"statement_timeout": "3600000",      // 1 hour max per statement (in ms)
+		"lock_timeout":      "300000",       // 5 min max wait for locks (in ms)
+		"idle_in_transaction_session_timeout": "600000", // 10 min idle timeout (in ms)
+	}
+
 	// Use the provided context so pool health checks stop when context is cancelled
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {

@@ -131,6 +131,9 @@ type Config struct {
 	TUIVerbose      bool   // Verbose TUI logging
 	TUILogFile      string // TUI event log file path
 
+	// Safety options
+	SkipPreflightChecks bool // Skip pre-restore safety checks (archive integrity, disk space, etc.)
+
 	// Cloud storage options (v2.0)
 	CloudEnabled    bool   // Enable cloud storage integration
 	CloudProvider   string // "s3", "minio", "b2", "azure", "gcs"

@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.24] - 2026-02-05
+
+### Added
+- **Skip Preflight Checks Option**: New TUI setting to disable pre-restore safety checks
+  - Accessible via Settings menu → "Skip Preflight Checks"
+  - Shows warning when enabled: "⚠️ SKIPPED (dangerous)"
+  - Displays prominent warning banner on restore preview screen
+  - Useful for enterprise scenarios where checks are too slow on large databases
+  - Config field: `SkipPreflightChecks` (default: false)
+
 ## [5.8.23] - 2026-02-05
 
 ### Added

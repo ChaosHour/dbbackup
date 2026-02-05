@@ -166,6 +166,22 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Enable for databases with many tables/LOBs. Reduces parallelism, increases max_locks_per_transaction.",
 		},
 		{
+			Key:         "skip_preflight_checks",
+			DisplayName: "Skip Preflight Checks",
+			Value: func(c *config.Config) string {
+				if c.SkipPreflightChecks {
+					return "⚠️  SKIPPED (dangerous)"
+				}
+				return "Enabled (safe)"
+			},
+			Update: func(c *config.Config, v string) error {
+				c.SkipPreflightChecks = !c.SkipPreflightChecks
+				return nil
+			},
+			Type:        "selector",
+			Description: "⚠️  WARNING: Skipping checks may result in failed restores or data loss. Only use if checks are too slow.",
+		},
+		{
 			Key:         "cluster_parallelism",
 			DisplayName: "Cluster Parallelism",
 			Value:       func(c *config.Config) string { return fmt.Sprintf("%d", c.ClusterParallelism) },

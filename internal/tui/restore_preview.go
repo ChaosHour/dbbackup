@@ -99,6 +99,22 @@ type safetyCheckCompleteMsg struct {
 
 func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string) tea.Cmd {
 	return func() tea.Msg {
+		// Check if preflight checks should be skipped
+		if cfg.SkipPreflightChecks {
+			// Return all checks as "skipped" with warning
+			checks := []SafetyCheck{
+				{Name: "Archive integrity", Status: "warning", Message: "⚠️ SKIPPED - preflight checks disabled", Critical: true},
+				{Name: "Dump validity", Status: "warning", Message: "⚠️ SKIPPED - preflight checks disabled", Critical: true},
+				{Name: "Disk space", Status: "warning", Message: "⚠️ SKIPPED - preflight checks disabled", Critical: true},
+				{Name: "Required tools", Status: "warning", Message: "⚠️ SKIPPED - preflight checks disabled", Critical: true},
+				{Name: "Target database", Status: "warning", Message: "⚠️ SKIPPED - preflight checks disabled", Critical: false},
+			}
+			return safetyCheckCompleteMsg{
+				checks:     checks,
+				canProceed: true, // Allow proceeding but with warnings
+			}
+		}
+
 		// Dynamic timeout based on archive size for large database support
 		// Base: 10 minutes + 1 minute per 5 GB, max 120 minutes
 		timeoutMinutes := 10
@@ -529,6 +545,14 @@ func (m RestorePreviewModel) View() string {
 	// Safety Checks
 	s.WriteString(archiveHeaderStyle.Render("[SAFETY] Checks"))
 	s.WriteString("\n")
+
+	// Show warning banner if preflight checks are skipped
+	if m.config.SkipPreflightChecks {
+		s.WriteString(CheckWarningStyle.Render("  ⚠️  PREFLIGHT CHECKS DISABLED ⚠️"))
+		s.WriteString("\n")
+		s.WriteString(CheckWarningStyle.Render("  Restore may fail unexpectedly. Re-enable in Settings."))
+		s.WriteString("\n\n")
+	}
 
 	if m.checking {
 		s.WriteString(infoStyle.Render("  Running safety checks..."))

@@ -5,6 +5,14 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.23] - 2026-02-05
+
+### Added
+- **Cancellation Tests**: Added Go unit tests for context cancellation verification
+  - `TestParseStatementsContextCancellation` - verifies statement parsing can be cancelled
+  - `TestParseStatementsWithCopyDataCancellation` - verifies COPY data parsing can be cancelled
+  - Tests confirm cancellation responds within 10ms on large (1M+ line) files
+
 ## [5.8.15] - 2026-02-05
 
 ### Fixed

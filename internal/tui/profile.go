@@ -181,9 +181,17 @@ func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.InterruptMsg:
+		// Handle Ctrl+C signal (SIGINT) - Bubbletea v1.3+ sends this instead of KeyMsg for ctrl+c
+		m.quitting = true
+		if m.parent != nil {
+			return m.parent, nil
+		}
+		return m, tea.Quit
+
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "esc":
+		case "ctrl+c", "q", "esc":
 			m.quitting = true
 			if m.parent != nil {
 				return m.parent, nil

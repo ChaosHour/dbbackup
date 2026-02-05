@@ -303,10 +303,10 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleSchedule()
 			case 9: // View Backup Chain
 				return m.handleChain()
-			case 10: // System Resource Profile
-				return m.handleProfile()
-			case 11: // Separator
+			case 10: // Separator
 				// Do nothing
+			case 11: // System Resource Profile
+				return m.handleProfile()
 			case 12: // Tools
 				return m.handleTools()
 			case 13: // View Active Operations

@@ -70,8 +70,17 @@ func (m ConfirmationModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.onConfirm != nil {
 			return m.onConfirm()
 		}
-		executor := NewBackupExecution(m.config, m.logger, m.parent, m.ctx, "cluster", "", 0)
+		// Default fallback (should not be reached if onConfirm is always provided)
+		ctx := m.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		executor := NewBackupExecution(m.config, m.logger, m.parent, ctx, "cluster", "", 0)
 		return executor, executor.Init()
+
+	case tea.InterruptMsg:
+		// Handle Ctrl+C signal (SIGINT) - Bubbletea v1.3+ sends this instead of KeyMsg for ctrl+c
+		return m.parent, nil
 
 	case tea.KeyMsg:
 		// Auto-forward ESC/quit in auto-confirm mode
@@ -98,8 +107,12 @@ func (m ConfirmationModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.onConfirm != nil {
 					return m.onConfirm()
 				}
-				// Default: execute cluster backup for backward compatibility
-				executor := NewBackupExecution(m.config, m.logger, m.parent, m.ctx, "cluster", "", 0)
+				// Default fallback (should not be reached if onConfirm is always provided)
+				ctx := m.ctx
+				if ctx == nil {
+					ctx = context.Background()
+				}
+				executor := NewBackupExecution(m.config, m.logger, m, ctx, "cluster", "", 0)
 				return executor, executor.Init()
 			}
 			return m.parent, nil

@@ -97,13 +97,17 @@ func (m ClusterDatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.InterruptMsg:
+		// Handle Ctrl+C signal (SIGINT) - Bubbletea v1.3+ sends this instead of KeyMsg for ctrl+c
+		return m.parent, nil
+
 	case tea.KeyMsg:
 		if m.loading {
 			return m, nil
 		}
 
 		switch msg.String() {
-		case "q", "esc":
+		case "ctrl+c", "q", "esc":
 			// Return to parent
 			return m.parent, nil
 

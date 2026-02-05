@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.26] - 2026-02-05
+
+### Improved
+- **Size-Weighted ETA for Cluster Backups**: ETAs now based on database sizes, not count
+  - Query database sizes upfront before starting cluster backup
+  - Progress bar shows bytes completed vs total bytes (e.g., `0B/500.0GB`)
+  - ETA calculated using size-weighted formula: `elapsed * (remaining_bytes / done_bytes)`
+  - Much more accurate for clusters with mixed database sizes (e.g., 8MB postgres + 500GB fakedb)
+  - Falls back to count-based ETA with `~` prefix if sizes unavailable
+
 ## [5.8.25] - 2026-02-05
 
 ### Fixed

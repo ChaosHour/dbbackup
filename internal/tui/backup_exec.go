@@ -62,6 +62,8 @@ type BackupExecutionModel struct {
 	dbPhaseElapsed  time.Duration // Elapsed time since database backup phase started
 	dbAvgPerDB      time.Duration // Average time per database backup
 	phase2StartTime time.Time     // When phase 2 started (for realtime elapsed calculation)
+	bytesDone       int64         // Size-weighted progress: bytes completed
+	bytesTotal      int64         // Size-weighted progress: total bytes
 }
 
 // sharedBackupProgressState holds progress state that can be safely accessed from callbacks
@@ -76,6 +78,8 @@ type sharedBackupProgressState struct {
 	phase2StartTime time.Time     // When phase 2 started (for realtime ETA calculation)
 	dbPhaseElapsed  time.Duration // Elapsed time since database backup phase started
 	dbAvgPerDB      time.Duration // Average time per database backup
+	bytesDone       int64         // Size-weighted progress: bytes completed
+	bytesTotal      int64         // Size-weighted progress: total bytes
 }
 
 // Package-level shared progress state for backup operations
@@ -96,7 +100,7 @@ func clearCurrentBackupProgress() {
 	currentBackupProgressState = nil
 }
 
-func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhase int, phaseDesc string, hasUpdate bool, dbPhaseElapsed, dbAvgPerDB time.Duration, phase2StartTime time.Time) {
+func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhase int, phaseDesc string, hasUpdate bool, dbPhaseElapsed, dbAvgPerDB time.Duration, phase2StartTime time.Time, bytesDone, bytesTotal int64) {
 	// CRITICAL: Add panic recovery
 	defer func() {
 		if r := recover(); r != nil {
@@ -109,12 +113,12 @@ func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhas
 	defer currentBackupProgressMu.Unlock()
 
 	if currentBackupProgressState == nil {
-		return 0, 0, "", 0, "", false, 0, 0, time.Time{}
+		return 0, 0, "", 0, "", false, 0, 0, time.Time{}, 0, 0
 	}
 
 	// Double-check state isn't nil after lock
 	if currentBackupProgressState == nil {
-		return 0, 0, "", 0, "", false, 0, 0, time.Time{}
+		return 0, 0, "", 0, "", false, 0, 0, time.Time{}, 0, 0
 	}
 
 	currentBackupProgressState.mu.Lock()
@@ -135,7 +139,8 @@ func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhas
 		currentBackupProgressState.dbName, currentBackupProgressState.overallPhase,
 		currentBackupProgressState.phaseDesc, hasUpdate,
 		dbPhaseElapsed, currentBackupProgressState.dbAvgPerDB,
-		currentBackupProgressState.phase2StartTime
+		currentBackupProgressState.phase2StartTime,
+		currentBackupProgressState.bytesDone, currentBackupProgressState.bytesTotal
 }
 
 func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, backupType, dbName string, ratio int) BackupExecutionModel {
@@ -239,8 +244,8 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 		// Pass nil as indicator - TUI itself handles all display, no stdout printing
 		engine := backup.NewSilent(cfg, log, dbClient, nil)
 
-		// Set database progress callback for cluster backups
-		engine.SetDatabaseProgressCallback(func(done, total int, currentDB string) {
+		// Set database progress callback for cluster backups (with size-weighted progress)
+		engine.SetDatabaseProgressCallback(func(done, total int, currentDB string, bytesDone, bytesTotal int64) {
 			// CRITICAL: Panic recovery to prevent nil pointer crashes
 			defer func() {
 				if r := recover(); r != nil {
@@ -257,6 +262,8 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 			progressState.dbDone = done
 			progressState.dbTotal = total
 			progressState.dbName = currentDB
+			progressState.bytesDone = bytesDone
+			progressState.bytesTotal = bytesTotal
 			progressState.overallPhase = backupPhaseDatabases
 			progressState.phaseDesc = fmt.Sprintf("Phase 2/3: Backing up Databases (%d/%d)", done, total)
 			progressState.hasUpdate = true
@@ -335,11 +342,15 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}()
 				var phase2Start time.Time
 				var phaseElapsed time.Duration
-				dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, phaseElapsed, dbAvgPerDB, phase2Start = getCurrentBackupProgress()
+				var bytesDone, bytesTotal int64
+				dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, phaseElapsed, dbAvgPerDB, phase2Start, bytesDone, bytesTotal = getCurrentBackupProgress()
 				_ = phaseElapsed // We recalculate this below from phase2StartTime
 				if !phase2Start.IsZero() && m.phase2StartTime.IsZero() {
 					m.phase2StartTime = phase2Start
 				}
+				// Always update size info for accurate ETA
+				m.bytesDone = bytesDone
+				m.bytesTotal = bytesTotal
 			}()
 
 			if hasUpdate {
@@ -451,14 +462,19 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// renderBackupDatabaseProgressBarWithTiming renders database backup progress with ETA
-func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed, dbAvgPerDB time.Duration) string {
+// renderBackupDatabaseProgressBarWithTiming renders database backup progress with size-weighted ETA
+func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed time.Duration, bytesDone, bytesTotal int64) string {
 	if total == 0 {
 		return ""
 	}
 
-	// Calculate progress percentage
-	percent := float64(done) / float64(total)
+	// Use size-weighted progress if available, otherwise fall back to count-based
+	var percent float64
+	if bytesTotal > 0 {
+		percent = float64(bytesDone) / float64(bytesTotal)
+	} else {
+		percent = float64(done) / float64(total)
+	}
 	if percent > 1.0 {
 		percent = 1.0
 	}
@@ -471,19 +487,31 @@ func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed, 
 	}
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 
-	// Calculate ETA similar to restore
+	// Calculate size-weighted ETA (much more accurate for mixed database sizes)
 	var etaStr string
-	if done > 0 && done < total {
+	if bytesDone > 0 && bytesDone < bytesTotal && bytesTotal > 0 {
+		// Size-weighted: ETA = elapsed * (remaining_bytes / done_bytes)
+		remainingBytes := bytesTotal - bytesDone
+		eta := time.Duration(float64(dbPhaseElapsed) * float64(remainingBytes) / float64(bytesDone))
+		etaStr = fmt.Sprintf(" | ETA: %s", formatDuration(eta))
+	} else if done > 0 && done < total && bytesTotal == 0 {
+		// Fallback to count-based if no size info
 		avgPerDB := dbPhaseElapsed / time.Duration(done)
 		remaining := total - done
 		eta := avgPerDB * time.Duration(remaining)
-		etaStr = fmt.Sprintf(" | ETA: %s", formatDuration(eta))
+		etaStr = fmt.Sprintf(" | ETA: ~%s", formatDuration(eta))
 	} else if done == total {
 		etaStr = " | Complete"
 	}
 
-	return fmt.Sprintf("  Databases: [%s] %d/%d | Elapsed: %s%s\n",
-		bar, done, total, formatDuration(dbPhaseElapsed), etaStr)
+	// Show size progress if available
+	var sizeInfo string
+	if bytesTotal > 0 {
+		sizeInfo = fmt.Sprintf(" (%s/%s)", FormatBytes(bytesDone), FormatBytes(bytesTotal))
+	}
+
+	return fmt.Sprintf("  Databases: [%s] %d/%d%s | Elapsed: %s%s\n",
+		bar, done, total, sizeInfo, formatDuration(dbPhaseElapsed), etaStr)
 }
 
 func (m BackupExecutionModel) View() string {
@@ -572,8 +600,8 @@ func (m BackupExecutionModel) View() string {
 				}
 				s.WriteString("\n")
 
-				// Database progress bar with timing
-				s.WriteString(renderBackupDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.dbAvgPerDB))
+				// Database progress bar with size-weighted timing
+				s.WriteString(renderBackupDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.bytesDone, m.bytesTotal))
 				s.WriteString("\n")
 			} else {
 				// Intermediate phase (globals)

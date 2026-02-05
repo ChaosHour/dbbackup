@@ -39,7 +39,8 @@ import (
 type ProgressCallback func(current, total int64, description string)
 
 // DatabaseProgressCallback is called with database count progress during cluster backup
-type DatabaseProgressCallback func(done, total int, dbName string)
+// bytesDone and bytesTotal enable size-weighted ETA calculations
+type DatabaseProgressCallback func(done, total int, dbName string, bytesDone, bytesTotal int64)
 
 // Engine handles backup operations
 type Engine struct {
@@ -112,7 +113,8 @@ func (e *Engine) SetDatabaseProgressCallback(cb DatabaseProgressCallback) {
 }
 
 // reportDatabaseProgress reports database count progress to the callback if set
-func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
+// bytesDone/bytesTotal enable size-weighted ETA calculations
+func (e *Engine) reportDatabaseProgress(done, total int, dbName string, bytesDone, bytesTotal int64) {
 	// CRITICAL: Add panic recovery to prevent crashes during TUI shutdown
 	defer func() {
 		if r := recover(); r != nil {
@@ -121,7 +123,7 @@ func (e *Engine) reportDatabaseProgress(done, total int, dbName string) {
 	}()
 
 	if e.dbProgressCallback != nil {
-		e.dbProgressCallback(done, total, dbName)
+		e.dbProgressCallback(done, total, dbName, bytesDone, bytesTotal)
 	}
 }
 
@@ -461,6 +463,18 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		return fmt.Errorf("failed to list databases: %w", err)
 	}
 
+	// Query database sizes upfront for accurate ETA calculation
+	e.printf("   Querying database sizes for ETA estimation...\n")
+	dbSizes := make(map[string]int64)
+	var totalBytes int64
+	for _, dbName := range databases {
+		if size, err := e.db.GetDatabaseSize(ctx, dbName); err == nil {
+			dbSizes[dbName] = size
+			totalBytes += size
+		}
+	}
+	var completedBytes int64 // Track bytes completed (atomic access)
+
 	// Create ETA estimator for database backups
 	estimator := progress.NewETAEstimator("Backing up cluster", len(databases))
 	quietProgress.SetEstimator(estimator)
@@ -520,25 +534,26 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			default:
 			}
 
+			// Get this database's size for progress tracking
+			thisDbSize := dbSizes[name]
+
 			// Update estimator progress (thread-safe)
 			mu.Lock()
 			estimator.UpdateProgress(idx)
 			e.printf("   [%d/%d] Backing up database: %s\n", idx+1, len(databases), name)
 			quietProgress.Update(fmt.Sprintf("Backing up database %d/%d: %s", idx+1, len(databases), name))
-			// Report database progress to TUI callback
-			e.reportDatabaseProgress(idx+1, len(databases), name)
+			// Report database progress to TUI callback with size-weighted info
+			e.reportDatabaseProgress(idx+1, len(databases), name, completedBytes, totalBytes)
 			mu.Unlock()
 
-			// Check database size and warn if very large
-			if size, err := e.db.GetDatabaseSize(ctx, name); err == nil {
-				sizeStr := formatBytes(size)
-				mu.Lock()
-				e.printf("       Database size: %s\n", sizeStr)
-				if size > 10*1024*1024*1024 { // > 10GB
-					e.printf("       [WARN]  Large database detected - this may take a while\n")
-				}
-				mu.Unlock()
+			// Use cached size, warn if very large
+			sizeStr := formatBytes(thisDbSize)
+			mu.Lock()
+			e.printf("       Database size: %s\n", sizeStr)
+			if thisDbSize > 10*1024*1024*1024 { // > 10GB
+				e.printf("       [WARN]  Large database detected - this may take a while\n")
 			}
+			mu.Unlock()
 
 			dumpFile := filepath.Join(tempDir, "dumps", name+".dump")
 
@@ -635,6 +650,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 							}
 						} else {
 							// Native backup succeeded!
+							// Update completed bytes for size-weighted ETA
+							atomic.AddInt64(&completedBytes, thisDbSize)
 							if info, statErr := os.Stat(sqlFile); statErr == nil {
 								mu.Lock()
 								e.printf("   [OK] Completed %s (%s) [native]\n", name, formatBytes(info.Size()))
@@ -687,6 +704,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 				mu.Unlock()
 				atomic.AddInt32(&failCount, 1)
 			} else {
+				// Update completed bytes for size-weighted ETA
+				atomic.AddInt64(&completedBytes, thisDbSize)
 				compressedCandidate := strings.TrimSuffix(dumpFile, ".dump") + ".sql.gz"
 				mu.Lock()
 				if info, err := os.Stat(compressedCandidate); err == nil {

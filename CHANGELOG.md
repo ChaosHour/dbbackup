@@ -5,6 +5,14 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.25] - 2026-02-05
+
+### Fixed
+- **Backup Database Elapsed Time Display**: Fixed bug where per-database elapsed time and ETA showed `0.0s` during cluster backups
+  - Root cause: elapsed time was only updated when `hasUpdate` flag was true, not on every tick
+  - Fix: Store `phase2StartTime` in model and recalculate elapsed time on every UI tick
+  - Now shows accurate real-time elapsed and ETA for database backup phase
+
 ## [5.8.24] - 2026-02-05
 
 ### Added

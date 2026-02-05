@@ -54,13 +54,14 @@ type BackupExecutionModel struct {
 	spinnerFrame int
 
 	// Database count progress (for cluster backup)
-	dbTotal        int
-	dbDone         int
-	dbName         string        // Current database being backed up
-	overallPhase   int           // 1=globals, 2=databases, 3=compressing
-	phaseDesc      string        // Description of current phase
-	dbPhaseElapsed time.Duration // Elapsed time since database backup phase started
-	dbAvgPerDB     time.Duration // Average time per database backup
+	dbTotal         int
+	dbDone          int
+	dbName          string        // Current database being backed up
+	overallPhase    int           // 1=globals, 2=databases, 3=compressing
+	phaseDesc       string        // Description of current phase
+	dbPhaseElapsed  time.Duration // Elapsed time since database backup phase started
+	dbAvgPerDB      time.Duration // Average time per database backup
+	phase2StartTime time.Time     // When phase 2 started (for realtime elapsed calculation)
 }
 
 // sharedBackupProgressState holds progress state that can be safely accessed from callbacks
@@ -324,7 +325,7 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var overallPhase int
 			var phaseDesc string
 			var hasUpdate bool
-			var dbPhaseElapsed, dbAvgPerDB time.Duration
+			var dbAvgPerDB time.Duration
 
 			func() {
 				defer func() {
@@ -332,7 +333,13 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.logger.Warn("Backup progress polling panic recovered", "panic", r)
 					}
 				}()
-				dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, dbPhaseElapsed, dbAvgPerDB, _ = getCurrentBackupProgress()
+				var phase2Start time.Time
+				var phaseElapsed time.Duration
+				dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, phaseElapsed, dbAvgPerDB, phase2Start = getCurrentBackupProgress()
+				_ = phaseElapsed // We recalculate this below from phase2StartTime
+				if !phase2Start.IsZero() && m.phase2StartTime.IsZero() {
+					m.phase2StartTime = phase2Start
+				}
 			}()
 
 			if hasUpdate {
@@ -341,8 +348,12 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.dbName = dbName
 				m.overallPhase = overallPhase
 				m.phaseDesc = phaseDesc
-				m.dbPhaseElapsed = dbPhaseElapsed
 				m.dbAvgPerDB = dbAvgPerDB
+			}
+
+			// Always recalculate elapsed time from phase2StartTime for accurate real-time display
+			if !m.phase2StartTime.IsZero() {
+				m.dbPhaseElapsed = time.Since(m.phase2StartTime)
 			}
 
 			// Update status based on progress and elapsed time

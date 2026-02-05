@@ -311,6 +311,35 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 	return func() (returnMsg tea.Msg) {
 		start := time.Now()
 
+		// TUI Debug Log: Always write to file when debug is enabled (even on success/hang)
+		var tuiDebugFile *os.File
+		if saveDebugLog {
+			workDir := cfg.GetEffectiveWorkDir()
+			tuiLogPath := filepath.Join(workDir, fmt.Sprintf("dbbackup-tui-debug-%s.log", time.Now().Format("20060102-150405")))
+			var err error
+			tuiDebugFile, err = os.Create(tuiLogPath)
+			if err == nil {
+				defer tuiDebugFile.Close()
+				fmt.Fprintf(tuiDebugFile, "=== TUI Restore Debug Log ===\n")
+				fmt.Fprintf(tuiDebugFile, "Started: %s\n", time.Now().Format(time.RFC3339))
+				fmt.Fprintf(tuiDebugFile, "Archive: %s\n", archive.Path)
+				fmt.Fprintf(tuiDebugFile, "RestoreType: %s\n", restoreType)
+				fmt.Fprintf(tuiDebugFile, "TargetDB: %s\n", targetDB)
+				fmt.Fprintf(tuiDebugFile, "CleanCluster: %v\n", cleanClusterFirst)
+				fmt.Fprintf(tuiDebugFile, "ExistingDBs: %v\n\n", existingDBs)
+				log.Info("TUI debug log enabled", "path", tuiLogPath)
+			}
+		}
+		tuiLog := func(msg string, args ...interface{}) {
+			if tuiDebugFile != nil {
+				fmt.Fprintf(tuiDebugFile, "[%s] %s", time.Now().Format("15:04:05.000"), fmt.Sprintf(msg, args...))
+				fmt.Fprintln(tuiDebugFile)
+				tuiDebugFile.Sync() // Flush immediately so we capture hangs
+			}
+		}
+
+		tuiLog("Starting restore execution")
+
 		// CRITICAL: Add panic recovery that RETURNS a proper message to BubbleTea.
 		// Without this, if a panic occurs the command function returns nil,
 		// causing BubbleTea's execBatchMsg WaitGroup to hang forever waiting
@@ -333,8 +362,11 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		// DO NOT create a new context here as it breaks Ctrl+C cancellation
 		ctx := parentCtx
 
+		tuiLog("Checking context state")
+
 		// Check if context is already cancelled
 		if ctx.Err() != nil {
+			tuiLog("Context already cancelled: %v", ctx.Err())
 			return restoreCompleteMsg{
 				result:  "",
 				err:     fmt.Errorf("operation cancelled: %w", ctx.Err()),
@@ -342,9 +374,12 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			}
 		}
 
+		tuiLog("Creating database client")
+
 		// Create database instance
 		dbClient, err := database.New(cfg, log)
 		if err != nil {
+			tuiLog("Database client creation failed: %v", err)
 			return restoreCompleteMsg{
 				result:  "",
 				err:     fmt.Errorf("failed to create database client: %w", err),
@@ -353,8 +388,11 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		}
 		defer dbClient.Close()
 
+		tuiLog("Database client created successfully")
+
 		// STEP 1: Clean cluster if requested (drop all existing user databases)
 		if restoreType == "restore-cluster" && cleanClusterFirst {
+			tuiLog("STEP 1: Cleaning cluster (dropping existing DBs)")
 			// Re-detect databases at execution time to get current state
 			// The preview list may be stale or detection may have failed earlier
 			safety := restore.NewSafety(cfg, log)
@@ -594,29 +632,39 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			log.Info("Debug logging enabled", "path", debugLogPath)
 		}
 
+		tuiLog("STEP 3: Executing restore (type=%s)", restoreType)
+
 		// STEP 3: Execute restore based on type
 		var restoreErr error
 		if restoreType == "restore-cluster" {
 			// Use pre-extracted directory if available (optimization)
 			if archive.ExtractedDir != "" {
+				tuiLog("Using pre-extracted cluster directory: %s", archive.ExtractedDir)
 				log.Info("Using pre-extracted cluster directory", "path", archive.ExtractedDir)
 				defer os.RemoveAll(archive.ExtractedDir) // Cleanup after restore completes
 				restoreErr = engine.RestoreCluster(ctx, archive.Path, archive.ExtractedDir)
 			} else {
+				tuiLog("Calling engine.RestoreCluster for: %s", archive.Path)
 				restoreErr = engine.RestoreCluster(ctx, archive.Path)
 			}
+			tuiLog("RestoreCluster returned: err=%v", restoreErr)
 		} else if restoreType == "restore-cluster-single" {
+			tuiLog("Calling RestoreSingleFromCluster: %s -> %s", archive.Path, targetDB)
 			// Restore single database from cluster backup
 			// Also cleanup pre-extracted dir if present
 			if archive.ExtractedDir != "" {
 				defer os.RemoveAll(archive.ExtractedDir)
 			}
 			restoreErr = engine.RestoreSingleFromCluster(ctx, archive.Path, targetDB, targetDB, cleanFirst, createIfMissing)
+			tuiLog("RestoreSingleFromCluster returned: err=%v", restoreErr)
 		} else {
+			tuiLog("Calling RestoreSingle: %s -> %s", archive.Path, targetDB)
 			restoreErr = engine.RestoreSingle(ctx, archive.Path, targetDB, cleanFirst, createIfMissing)
+			tuiLog("RestoreSingle returned: err=%v", restoreErr)
 		}
 
 		if restoreErr != nil {
+			tuiLog("Restore failed: %v", restoreErr)
 			return restoreCompleteMsg{
 				result:  "",
 				err:     restoreErr,
@@ -632,6 +680,8 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		} else if restoreType == "restore-cluster" && cleanClusterFirst {
 			result = fmt.Sprintf("Successfully restored cluster from %s (cleaned %d existing database(s) first)", archive.Name, len(existingDBs))
 		}
+
+		tuiLog("Restore completed successfully: %s", result)
 
 		return restoreCompleteMsg{
 			result:  result,

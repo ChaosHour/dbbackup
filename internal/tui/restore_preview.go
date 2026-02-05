@@ -100,7 +100,7 @@ type safetyCheckCompleteMsg struct {
 func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo, targetDB string) tea.Cmd {
 	return func() tea.Msg {
 		// Check if preflight checks should be skipped
-		if cfg.SkipPreflightChecks {
+		if cfg != nil && cfg.SkipPreflightChecks {
 			// Return all checks as "skipped" with warning
 			checks := []SafetyCheck{
 				{Name: "Archive integrity", Status: "warning", Message: "⚠️ SKIPPED - preflight checks disabled", Critical: true},
@@ -547,7 +547,7 @@ func (m RestorePreviewModel) View() string {
 	s.WriteString("\n")
 
 	// Show warning banner if preflight checks are skipped
-	if m.config.SkipPreflightChecks {
+	if m.config != nil && m.config.SkipPreflightChecks {
 		s.WriteString(CheckWarningStyle.Render("  ⚠️  PREFLIGHT CHECKS DISABLED ⚠️"))
 		s.WriteString("\n")
 		s.WriteString(CheckWarningStyle.Render("  Restore may fail unexpectedly. Re-enable in Settings."))

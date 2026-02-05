@@ -35,6 +35,9 @@ type LocalConfig struct {
 	ResourceProfile string
 	LargeDBMode     bool // Enable large database mode (reduces parallelism, increases locks)
 
+	// Safety settings
+	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
+
 	// Security settings
 	RetentionDays int
 	MinBackups    int
@@ -196,6 +199,11 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 					cfg.MaxRetries = mr
 				}
 			}
+		case "safety":
+			switch key {
+			case "skip_preflight_checks":
+				cfg.SkipPreflightChecks = value == "true" || value == "1"
+			}
 		}
 	}
 
@@ -252,6 +260,14 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	sb.WriteString(fmt.Sprintf("retention_days = %d\n", cfg.RetentionDays))
 	sb.WriteString(fmt.Sprintf("min_backups = %d\n", cfg.MinBackups))
 	sb.WriteString(fmt.Sprintf("max_retries = %d\n", cfg.MaxRetries))
+	sb.WriteString("\n")
+
+	// Safety section - only write if non-default (dangerous setting)
+	if cfg.SkipPreflightChecks {
+		sb.WriteString("[safety]\n")
+		sb.WriteString("# WARNING: Skipping preflight checks can lead to failed restores!\n")
+		sb.WriteString(fmt.Sprintf("skip_preflight_checks = %t\n", cfg.SkipPreflightChecks))
+	}
 
 	// Use 0644 permissions for readability
 	if err := os.WriteFile(configPath, []byte(sb.String()), 0644); err != nil {
@@ -328,29 +344,36 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.MaxRetries != 0 {
 		cfg.MaxRetries = local.MaxRetries
 	}
+
+	// Safety settings - apply even if false (explicit setting)
+	// This is a dangerous setting, so we always respect what's in the config
+	if local.SkipPreflightChecks {
+		cfg.SkipPreflightChecks = true
+	}
 }
 
 // ConfigFromConfig creates a LocalConfig from a Config
 func ConfigFromConfig(cfg *Config) *LocalConfig {
 	return &LocalConfig{
-		DBType:          cfg.DatabaseType,
-		Host:            cfg.Host,
-		Port:            cfg.Port,
-		User:            cfg.User,
-		Database:        cfg.Database,
-		SSLMode:         cfg.SSLMode,
-		BackupDir:       cfg.BackupDir,
-		WorkDir:         cfg.WorkDir,
-		Compression:     cfg.CompressionLevel,
-		Jobs:            cfg.Jobs,
-		DumpJobs:        cfg.DumpJobs,
-		CPUWorkload:     cfg.CPUWorkloadType,
-		MaxCores:        cfg.MaxCores,
-		ClusterTimeout:  cfg.ClusterTimeoutMinutes,
-		ResourceProfile: cfg.ResourceProfile,
-		LargeDBMode:     cfg.LargeDBMode,
-		RetentionDays:   cfg.RetentionDays,
-		MinBackups:      cfg.MinBackups,
-		MaxRetries:      cfg.MaxRetries,
+		DBType:              cfg.DatabaseType,
+		Host:                cfg.Host,
+		Port:                cfg.Port,
+		User:                cfg.User,
+		Database:            cfg.Database,
+		SSLMode:             cfg.SSLMode,
+		BackupDir:           cfg.BackupDir,
+		WorkDir:             cfg.WorkDir,
+		Compression:         cfg.CompressionLevel,
+		Jobs:                cfg.Jobs,
+		DumpJobs:            cfg.DumpJobs,
+		CPUWorkload:         cfg.CPUWorkloadType,
+		MaxCores:            cfg.MaxCores,
+		ClusterTimeout:      cfg.ClusterTimeoutMinutes,
+		ResourceProfile:     cfg.ResourceProfile,
+		LargeDBMode:         cfg.LargeDBMode,
+		SkipPreflightChecks: cfg.SkipPreflightChecks,
+		RetentionDays:       cfg.RetentionDays,
+		MinBackups:          cfg.MinBackups,
+		MaxRetries:          cfg.MaxRetries,
 	}
 }

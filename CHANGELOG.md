@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Displays prominent warning banner on restore preview screen
   - Useful for enterprise scenarios where checks are too slow on large databases
   - Config field: `SkipPreflightChecks` (default: false)
+  - Setting is persisted to config file with warning comment
+  - Added nil-pointer safety checks throughout
 
 ## [5.8.23] - 2026-02-05
 

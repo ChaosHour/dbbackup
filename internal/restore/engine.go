@@ -2525,7 +2525,14 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 		cmdErr = ctx.Err()
 	}
 
-	<-stderrDone
+	// Wait for stderr reader with timeout to prevent indefinite hang
+	// if the process doesn't fully terminate
+	select {
+	case <-stderrDone:
+		// Normal completion
+	case <-time.After(5 * time.Second):
+		e.log.Warn("Stderr reader timeout - forcefully continuing")
+	}
 
 	// Only fail on actual command errors or FATAL PostgreSQL errors
 	// Regular ERROR messages (like "role already exists") are expected

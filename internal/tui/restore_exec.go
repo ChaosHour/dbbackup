@@ -414,8 +414,9 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 				// This matches how cluster restore works - uses CLI tools, not database connections
 				droppedCount := 0
 				for _, dbName := range existingDBs {
-					// Create timeout context for each database drop (5 minutes per DB - large DBs take time)
-					dropCtx, dropCancel := context.WithTimeout(ctx, 5*time.Minute)
+					// Create timeout context for each database drop (60 seconds per DB)
+					// Reduced from 5 minutes for better TUI responsiveness
+					dropCtx, dropCancel := context.WithTimeout(ctx, 60*time.Second)
 					if err := dropDatabaseCLI(dropCtx, cfg, dbName); err != nil {
 						log.Warn("Failed to drop database", "name", dbName, "error", err)
 						// Continue with other databases

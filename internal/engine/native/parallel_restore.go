@@ -440,6 +440,15 @@ func (e *ParallelRestoreEngine) parseStatementsWithContext(ctx context.Context, 
 				currentCopyStmt.CopyData.WriteString(line)
 				currentCopyStmt.CopyData.WriteByte('\n')
 			}
+			// Check for context cancellation during COPY data parsing (large tables)
+			// Check every 10000 lines to avoid overhead
+			if lineCount%10000 == 0 {
+				select {
+				case <-ctx.Done():
+					return statements, ctx.Err()
+				default:
+				}
+			}
 			continue
 		}
 

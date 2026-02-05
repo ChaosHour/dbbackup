@@ -174,7 +174,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 		options.ProgressCallback("parsing", 0, 0, "")
 	}
 
-	statements, err := e.parseStatements(reader)
+	statements, err := e.parseStatementsWithContext(ctx, reader)
 	if err != nil {
 		return result, fmt.Errorf("failed to parse SQL: %w", err)
 	}
@@ -205,6 +205,13 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 
 	schemaStmts := 0
 	for _, stmt := range statements {
+		// Check for context cancellation periodically
+		select {
+		case <-ctx.Done():
+			return result, ctx.Err()
+		default:
+		}
+
 		if stmt.Type == StmtSchema || stmt.Type == StmtOther {
 			if err := e.executeStatement(ctx, stmt.SQL); err != nil {
 				if options.ContinueOnError {
@@ -383,6 +390,11 @@ postDataLoop:
 
 // parseStatements reads and classifies all SQL statements
 func (e *ParallelRestoreEngine) parseStatements(reader io.Reader) ([]SQLStatement, error) {
+	return e.parseStatementsWithContext(context.Background(), reader)
+}
+
+// parseStatementsWithContext reads and classifies all SQL statements with context support
+func (e *ParallelRestoreEngine) parseStatementsWithContext(ctx context.Context, reader io.Reader) ([]SQLStatement, error) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024) // 64MB max for large statements
 
@@ -390,8 +402,19 @@ func (e *ParallelRestoreEngine) parseStatements(reader io.Reader) ([]SQLStatemen
 	var stmtBuffer bytes.Buffer
 	var inCopyMode bool
 	var currentCopyStmt *SQLStatement
+	lineCount := 0
 
 	for scanner.Scan() {
+		// Check for context cancellation every 10000 lines
+		lineCount++
+		if lineCount%10000 == 0 {
+			select {
+			case <-ctx.Done():
+				return statements, ctx.Err()
+			default:
+			}
+		}
+
 		line := scanner.Text()
 
 		// Handle COPY data mode

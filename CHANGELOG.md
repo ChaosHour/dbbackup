@@ -5,6 +5,23 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.15] - 2026-02-05
+
+### Fixed
+- **TUI Cluster Restore Hang**: Fixed hang during large SQL file restore (pg_dumpall format)
+  - Added context cancellation support to `parseStatementsWithContext()` with checks every 10000 lines
+  - Added context cancellation checks in schema statement execution loop
+  - Now uses context-aware parsing in `RestoreFile()` for proper Ctrl+C handling
+  - This complements the v5.8.14 panic recovery fix by preventing hangs (not just panics)
+
+## [5.8.14] - 2026-02-05
+
+### Fixed
+- **TUI Cluster Restore Panic**: Fixed BubbleTea WaitGroup deadlock during cluster restore
+  - Panic recovery in `tea.Cmd` functions now uses named return values to properly return messages
+  - Previously, panic recovery returned nil which caused `execBatchMsg` WaitGroup to hang forever
+  - Affected files: `restore_exec.go` and `backup_exec.go`
+
 ## [5.8.12] - 2026-02-04
 
 ### Fixed

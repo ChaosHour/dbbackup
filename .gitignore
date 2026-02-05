@@ -18,6 +18,7 @@ bin/
 
 # Ignore local configuration (may contain IPs/credentials)
 .dbbackup.conf
+.gh_token
 
 # Ignore session/development notes
 TODO_SESSION.md

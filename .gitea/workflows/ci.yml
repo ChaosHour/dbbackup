@@ -49,13 +49,14 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: testdb
-        ports: ['5432:5432']
+        # Use container networking instead of host port binding
+        # This avoids "port already in use" errors on shared runners
       mysql:
         image: mysql:8
         env:
           MYSQL_ROOT_PASSWORD: mysql
           MYSQL_DATABASE: testdb
-        ports: ['3306:3306']
+        # Use container networking instead of host port binding
     steps:
       - name: Checkout code
         env:

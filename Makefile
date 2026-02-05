@@ -15,7 +15,7 @@ all: lint test build
 ## build: Build the binary with optimizations
 build:
 	@echo "🔨 Building dbbackup $(VERSION)..."
-	CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o bin/dbbackup .
+	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o bin/dbbackup .
 	@echo "✅ Built bin/dbbackup"
 
 ## build-debug: Build with debug symbols (for debugging)

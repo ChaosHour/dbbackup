@@ -80,7 +80,7 @@ for platform_config in "${PLATFORMS[@]}"; do
     # Set environment and build (using export for better compatibility)
     # CGO_ENABLED=0 creates static binaries without glibc dependency
     export CGO_ENABLED=0 GOOS GOARCH
-    if go build -ldflags "$LDFLAGS" -o "${BIN_DIR}/${binary_name}" . 2>/dev/null; then
+    if go build -trimpath -ldflags "$LDFLAGS" -o "${BIN_DIR}/${binary_name}" . 2>/dev/null; then
         # Get file size
         if [[ "$OSTYPE" == "darwin"* ]]; then
             size=$(stat -f%z "${BIN_DIR}/${binary_name}" 2>/dev/null || echo "0")

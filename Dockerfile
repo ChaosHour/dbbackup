@@ -19,7 +19,7 @@ COPY . .
 
 # Build binary with cross-compilation support
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -a -installsuffix cgo -ldflags="-w -s" -o dbbackup .
+    go build -trimpath -a -installsuffix cgo -ldflags="-w -s" -o dbbackup .
 
 # Final stage - minimal runtime image
 # Using pinned version 3.19 which has better QEMU compatibility

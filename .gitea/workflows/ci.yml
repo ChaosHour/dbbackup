@@ -80,7 +80,7 @@ jobs:
           done
 
       - name: Build dbbackup
-        run: go build -o dbbackup .
+        run: go build -trimpath -o dbbackup .
 
       - name: Test PostgreSQL backup/restore
         env:
@@ -239,7 +239,7 @@ jobs:
           echo "Focus: PostgreSQL native engine validation only"
 
       - name: Build dbbackup for native testing
-        run: go build -o dbbackup-native .
+        run: go build -trimpath -o dbbackup-native .
 
       - name: Test PostgreSQL Native Engine
         env:
@@ -383,7 +383,7 @@ jobs:
       - name: Build for current platform
         run: |
           echo "Building dbbackup for testing..."
-          go build -ldflags="-s -w" -o dbbackup .
+          go build -trimpath -ldflags="-s -w" -o dbbackup .
           echo "Build successful!"
           ls -lh dbbackup
           ./dbbackup version || echo "Binary created successfully"
@@ -419,7 +419,7 @@ jobs:
           
           # Test Linux amd64 build (with CGO for SQLite)
           echo "Testing linux/amd64 build (CGO enabled)..."
-          if CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release/dbbackup-linux-amd64 .; then
+          if CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o release/dbbackup-linux-amd64 .; then
             echo "✅ linux/amd64 build successful"
             ls -lh release/dbbackup-linux-amd64
           else
@@ -428,7 +428,7 @@ jobs:
           
           # Test Darwin amd64 (no CGO - cross-compile limitation) 
           echo "Testing darwin/amd64 build (CGO disabled)..."
-          if CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o release/dbbackup-darwin-amd64 .; then
+          if CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o release/dbbackup-darwin-amd64 .; then
             echo "✅ darwin/amd64 build successful"
             ls -lh release/dbbackup-darwin-amd64
           else
@@ -508,23 +508,23 @@ jobs:
           
           # Linux amd64 (with CGO for SQLite)
           echo "Building linux/amd64 (CGO enabled)..."
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o release/dbbackup-linux-amd64 .
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o release/dbbackup-linux-amd64 .
           
           # Linux arm64 (with CGO for SQLite)
           echo "Building linux/arm64 (CGO enabled)..."
-          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o release/dbbackup-linux-arm64 .
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o release/dbbackup-linux-arm64 .
           
           # Darwin amd64 (no CGO - cross-compile limitation)
           echo "Building darwin/amd64 (CGO disabled)..."
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o release/dbbackup-darwin-amd64 .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o release/dbbackup-darwin-amd64 .
           
           # Darwin arm64 (no CGO - cross-compile limitation)
           echo "Building darwin/arm64 (CGO disabled)..."
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o release/dbbackup-darwin-arm64 .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o release/dbbackup-darwin-arm64 .
           
           # FreeBSD amd64 (no CGO - cross-compile limitation)
           echo "Building freebsd/amd64 (CGO disabled)..."
-          CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -ldflags="-s -w" -o release/dbbackup-freebsd-amd64 .
+          CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o release/dbbackup-freebsd-amd64 .
           
           echo "All builds complete:"
           ls -lh release/

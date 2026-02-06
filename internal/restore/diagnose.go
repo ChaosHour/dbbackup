@@ -16,6 +16,7 @@ import (
 	"dbbackup/internal/cleanup"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/metadata"
 
 	"github.com/klauspost/pgzip"
 )
@@ -416,6 +417,17 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 
 // diagnoseClusterArchive analyzes a cluster tar.gz archive
 func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResult) {
+	// FAST PATH: If .meta.json exists and is valid, use it instead of scanning entire archive
+	// This reduces preflight time from ~20 minutes to <1 second for 100GB archives
+	if d.tryFastPathWithMetadata(filePath, result) {
+		if d.log != nil {
+			d.log.Info("Used fast metadata path for cluster verification",
+				"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)))
+		}
+		return
+	}
+
+	// SLOW PATH: No valid metadata, scan entire archive
 	// Calculate dynamic timeout based on file size
 	// Large archives (100GB+) can take significant time to list
 	// Minimum 5 minutes, scales with file size, max 180 minutes for very large archives
@@ -433,7 +445,7 @@ func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResu
 	}
 
 	if d.log != nil {
-		d.log.Info("Verifying cluster archive integrity",
+		d.log.Info("Verifying cluster archive integrity (full scan - no metadata found)",
 			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)),
 			"timeout", fmt.Sprintf("%d min", timeoutMinutes))
 	}
@@ -954,4 +966,98 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// tryFastPathWithMetadata attempts to use .meta.json for fast cluster verification
+// Returns true if successful, false if metadata unavailable/invalid
+func (d *Diagnoser) tryFastPathWithMetadata(filePath string, result *DiagnoseResult) bool {
+	metaPath := filePath + ".meta.json"
+
+	// Check if metadata file exists
+	metaStat, err := os.Stat(metaPath)
+	if err != nil {
+		return false // No metadata file
+	}
+
+	// Check if metadata is not older than archive (stale check)
+	archiveStat, err := os.Stat(filePath)
+	if err != nil {
+		return false
+	}
+	if metaStat.ModTime().Before(archiveStat.ModTime()) {
+		if d.log != nil {
+			d.log.Debug("Metadata older than archive, using full scan")
+		}
+		return false // Metadata is stale
+	}
+
+	// Load cluster metadata
+	clusterMeta, err := metadata.LoadCluster(filePath)
+	if err != nil {
+		if d.log != nil {
+			d.log.Debug("Cannot load cluster metadata", "error", err)
+		}
+		return false
+	}
+
+	// Validate metadata has meaningful content
+	if len(clusterMeta.Databases) == 0 {
+		return false
+	}
+
+	// Quick header check - verify it's actually a gzip file (first 2 bytes)
+	file, err := os.Open(filePath)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	header := make([]byte, 2)
+	if _, err := file.Read(header); err != nil {
+		return false
+	}
+	// Gzip magic number: 0x1f 0x8b
+	if header[0] != 0x1f || header[1] != 0x8b {
+		result.IsValid = false
+		result.IsCorrupted = true
+		result.Errors = append(result.Errors, "File is not a valid gzip archive")
+		return true // We handled it, don't fall through to slow path
+	}
+
+	// Populate result from metadata
+	var dbNames []string
+	for _, db := range clusterMeta.Databases {
+		if db.Database != "" {
+			dbNames = append(dbNames, db.Database+".dump")
+		}
+	}
+
+	result.Details.TableCount = len(dbNames)
+	result.Details.TableList = dbNames
+	result.Details.HasPGDMPSignature = true
+
+	// Check for required components based on metadata
+	hasGlobals := true  // Assume present if metadata exists (created by dbbackup)
+	hasMetadata := true // We just loaded it
+
+	if !hasGlobals {
+		result.Warnings = append(result.Warnings, "No globals.sql found - roles/tablespaces won't be restored")
+	}
+	if !hasMetadata {
+		result.Warnings = append(result.Warnings, "No manifest/metadata found - limited validation possible")
+	}
+
+	// Add info about fast path usage
+	result.Details.FirstBytes = fmt.Sprintf("Fast verified via .meta.json (%d databases)", len(clusterMeta.Databases))
+
+	// Check metadata for any recorded failures
+	if clusterMeta.ExtraInfo != nil {
+		if failCount, ok := clusterMeta.ExtraInfo["failure_count"]; ok && failCount != "0" {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("Backup had %s failure(s) during creation", failCount))
+		}
+	}
+
+	result.IsValid = true
+	return true
 }

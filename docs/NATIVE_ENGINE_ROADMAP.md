@@ -1,11 +1,55 @@
 # Native Engine Implementation Roadmap
 ## Complete Elimination of External Tool Dependencies
 
-### Current Status (Updated January 2026)
+### Current Status (Updated February 2026)
 - **External tools to eliminate**: pg_dump, pg_dumpall, pg_restore, psql, mysqldump, mysql, mysqlbinlog
 - **Target**: 100% pure Go implementation with zero external dependencies
 - **Benefit**: Self-contained binary, better integration, enhanced control
-- **Status**: Phase 1 and Phase 2 largely complete, Phase 3-5 in progress
+- **Status**: Phase 1-4 complete, Phase 5 in progress, Phase 6 new features added
+
+### Recent Additions (v5.9.0)
+
+#### Physical Backup Engine - pg_basebackup
+- [x] `internal/engine/pg_basebackup.go` - Wrapper for physical PostgreSQL backups
+- [x] Streaming replication protocol support
+- [x] WAL method configuration (stream, fetch, none)
+- [x] Compression options for tar format
+- [x] Replication slot management
+- [x] Backup manifest with checksums
+- [x] Streaming to cloud storage
+
+#### WAL Archiving Manager
+- [x] `internal/wal/manager.go` - WAL archiving and streaming
+- [x] pg_receivewal integration for continuous archiving
+- [x] Replication slot creation/management
+- [x] WAL file listing and cleanup
+- [x] Recovery configuration generation
+- [x] PITR support (find WALs for time target)
+
+#### Table-Level Backup/Restore
+- [x] `internal/backup/selective.go` - Selective table backup
+- [x] Include/exclude by table pattern
+- [x] Include/exclude by schema
+- [x] Row count filtering (min/max rows)
+- [x] Data-only and schema-only modes
+- [x] Single table restore from backup
+
+#### Pre/Post Backup Hooks
+- [x] `internal/hooks/hooks.go` - Hook execution framework
+- [x] Pre/post backup hooks
+- [x] Pre/post database hooks
+- [x] On error/success hooks
+- [x] Environment variable passing
+- [x] Hooks directory auto-loading
+- [x] Predefined hooks (vacuum-analyze, slack-notify)
+
+#### Bandwidth Throttling
+- [x] `internal/throttle/throttle.go` - Rate limiting
+- [x] Token bucket limiter
+- [x] Throttled reader/writer wrappers
+- [x] Adaptive rate limiting
+- [x] Rate parsing (100M, 1G, etc.)
+- [x] Transfer statistics
 
 ### Phase 1: Core Native Engines (8-12 weeks) - COMPLETE
 

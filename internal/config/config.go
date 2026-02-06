@@ -125,6 +125,41 @@ type Config struct {
 	RequireRowFormat      bool   // Require ROW format for binlog
 	RequireGTID           bool   // Require GTID mode enabled
 
+	// pg_basebackup options (physical backup)
+	PhysicalBackup       bool   // Use pg_basebackup for physical backup
+	PhysicalFormat       string // "plain" or "tar" (default: tar)
+	PhysicalWALMethod    string // "stream", "fetch", "none" (default: stream)
+	PhysicalCheckpoint   string // "fast" or "spread" (default: fast)
+	PhysicalSlot         string // Replication slot name
+	PhysicalCreateSlot   bool   // Create replication slot if not exists
+	PhysicalManifest     string // Manifest checksum: "CRC32C", "SHA256", etc.
+	WriteRecoveryConf    bool   // Write recovery configuration for standby
+
+	// Table-level backup options
+	IncludeTables   []string // Specific tables to include (schema.table)
+	ExcludeTables   []string // Tables to exclude
+	IncludeSchemas  []string // Include all tables in these schemas
+	ExcludeSchemas  []string // Exclude all tables in these schemas
+	TablePattern    string   // Regex pattern for table names
+	DataOnly        bool     // Backup data only, skip DDL
+	SchemaOnly      bool     // Backup DDL only, skip data
+
+	// Pre/post hooks
+	HooksDir         string   // Directory containing hook scripts
+	PreBackupHook    string   // Command to run before backup
+	PostBackupHook   string   // Command to run after backup
+	PreDatabaseHook  string   // Command to run before each database
+	PostDatabaseHook string   // Command to run after each database
+	OnErrorHook      string   // Command to run on error
+	OnSuccessHook    string   // Command to run on success
+	HookTimeout      int      // Timeout for hooks in seconds (default: 300)
+	HookContinueOnError bool  // Continue backup if hook fails
+
+	// Bandwidth throttling
+	MaxBandwidth     string // Maximum bandwidth (e.g., "100M", "1G")
+	UploadBandwidth  string // Cloud upload bandwidth limit
+	BackupBandwidth  string // Database backup bandwidth limit
+
 	// TUI automation options (for testing)
 	TUIAutoSelect   int    // Auto-select menu option (-1 = disabled)
 	TUIAutoDatabase string // Pre-fill database name

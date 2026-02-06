@@ -226,40 +226,37 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 		}
 	}()
 
+	// FIX: Lock ordering - copy reference first, release outer lock, then acquire inner
 	currentRestoreProgressMu.Lock()
-	defer currentRestoreProgressMu.Unlock()
+	state := currentRestoreProgressState
+	currentRestoreProgressMu.Unlock()
 
-	if currentRestoreProgressState == nil {
+	if state == nil {
 		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false, 0, 0, time.Time{}
 	}
 
-	// Double-check state isn't nil after lock
-	if currentRestoreProgressState == nil {
-		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false, 0, 0, time.Time{}
-	}
-
-	currentRestoreProgressState.mu.Lock()
-	defer currentRestoreProgressState.mu.Unlock()
+	state.mu.Lock()
+	defer state.mu.Unlock()
 
 	// Calculate rolling window speed
-	speed = calculateRollingSpeed(currentRestoreProgressState.speedSamples)
+	speed = calculateRollingSpeed(state.speedSamples)
 
 	// Calculate realtime phase elapsed if we have a phase 3 start time
 	// Always recalculate from phase3StartTime for accurate real-time display
-	if !currentRestoreProgressState.phase3StartTime.IsZero() {
-		dbPhaseElapsed = time.Since(currentRestoreProgressState.phase3StartTime)
+	if !state.phase3StartTime.IsZero() {
+		dbPhaseElapsed = time.Since(state.phase3StartTime)
 	} else {
-		dbPhaseElapsed = currentRestoreProgressState.dbPhaseElapsed
+		dbPhaseElapsed = state.dbPhaseElapsed
 	}
 
-	return currentRestoreProgressState.bytesTotal, currentRestoreProgressState.bytesDone,
-		currentRestoreProgressState.description, currentRestoreProgressState.hasUpdate,
-		currentRestoreProgressState.dbTotal, currentRestoreProgressState.dbDone, speed,
-		dbPhaseElapsed, currentRestoreProgressState.dbAvgPerDB,
-		currentRestoreProgressState.currentDB, currentRestoreProgressState.overallPhase,
-		currentRestoreProgressState.extractionDone,
-		currentRestoreProgressState.dbBytesTotal, currentRestoreProgressState.dbBytesDone,
-		currentRestoreProgressState.phase3StartTime
+	return state.bytesTotal, state.bytesDone,
+		state.description, state.hasUpdate,
+		state.dbTotal, state.dbDone, speed,
+		dbPhaseElapsed, state.dbAvgPerDB,
+		state.currentDB, state.overallPhase,
+		state.extractionDone,
+		state.dbBytesTotal, state.dbBytesDone,
+		state.phase3StartTime
 }
 
 // getUnifiedProgress returns the unified progress tracker if available
@@ -782,9 +779,12 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					weightedPercent := int((dbBytesDone * 100) / dbBytesTotal)
 					m.phase = fmt.Sprintf("Phase 3/3: Databases (%d/%d) - %.1f%% by size", dbDone, dbTotal, float64(dbBytesDone*100)/float64(dbBytesTotal))
 					m.progress = weightedPercent
-				} else {
+				} else if dbTotal > 0 {
 					m.phase = fmt.Sprintf("Phase 3/3: Databases (%d/%d)", dbDone, dbTotal)
 					m.progress = int((dbDone * 100) / dbTotal)
+				} else {
+					m.phase = "Phase 3/3: Databases (initializing...)"
+					m.progress = 0
 				}
 			} else if hasUpdate && extractionDone && dbTotal == 0 {
 				// Phase 2: Globals restore (brief phase between extraction and databases)

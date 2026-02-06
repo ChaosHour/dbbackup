@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.45] - 2026-02-06
+
+### Fixed
+- **Lock Ordering Fix**: Prevents potential deadlock in `getCurrentRestoreProgress()`
+  - Changed nested lock pattern to copy-then-release pattern
+- **Division by Zero Fix**: Added check for `dbTotal > 0` before calculating progress percentage
+- **Context Cancellation**: Added early exit checks in `fetchClusterDatabases()`
+- **Resource Leak Fix**: Cleanup extracted directory on error in cluster database listing
+- **Auto-generate .meta.json**: For legacy 3.x archives (one-time slow scan, then instant forever)
+
 ## [5.8.44] - 2026-02-06
 
 ### Fixed

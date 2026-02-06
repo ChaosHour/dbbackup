@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -59,6 +60,11 @@ type clusterDatabaseListMsg struct {
 
 func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config.Config, log logger.Logger) tea.Cmd {
 	return func() tea.Msg {
+		// Check for context cancellation before starting
+		if ctx.Err() != nil {
+			return clusterDatabaseListMsg{databases: nil, err: ctx.Err(), extractedDir: ""}
+		}
+
 		// FAST PATH: Try .meta.json first (instant - no decompression needed)
 		clusterMeta, err := metadata.LoadCluster(archive.Path)
 		if err == nil && len(clusterMeta.Databases) > 0 {
@@ -79,6 +85,11 @@ func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config
 			return clusterDatabaseListMsg{databases: databases, err: nil, extractedDir: ""}
 		}
 		
+		// Check for context cancellation before slow extraction
+		if ctx.Err() != nil {
+			return clusterDatabaseListMsg{databases: nil, err: ctx.Err(), extractedDir: ""}
+		}
+
 		// SLOW PATH: Extract archive (only if no .meta.json)
 		log.Info("No .meta.json found, pre-extracting cluster archive for database listing")
 		safety := restore.NewSafety(cfg, log)
@@ -96,7 +107,9 @@ func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config
 		// List databases from extracted directory (fast!)
 		databases, err := restore.ListDatabasesFromExtractedDir(ctx, extractedDir, log)
 		if err != nil {
-			return clusterDatabaseListMsg{databases: nil, err: fmt.Errorf("failed to list databases from extracted dir: %w", err), extractedDir: extractedDir}
+			// Cleanup on error to prevent leaked temp directories
+			os.RemoveAll(extractedDir)
+			return clusterDatabaseListMsg{databases: nil, err: fmt.Errorf("failed to list databases from extracted dir: %w", err), extractedDir: ""}
 		}
 		return clusterDatabaseListMsg{databases: databases, err: nil, extractedDir: extractedDir}
 	}

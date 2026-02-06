@@ -9,6 +9,38 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
 
+## Table of Contents
+
+- [Quick Start](#quick-start-30-seconds)
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+  - [Interactive Mode](#interactive-mode)
+  - [Command Line](#command-line)
+- [Commands](#commands)
+- [Global Flags](#global-flags)
+- [Encryption](#encryption)
+- [Incremental Backups](#incremental-backups)
+- [Cloud Storage](#cloud-storage)
+- [Point-in-Time Recovery](#point-in-time-recovery)
+- [Backup Cleanup](#backup-cleanup)
+- [Dry-Run Mode](#dry-run-mode)
+- [Backup Diagnosis](#backup-diagnosis)
+- [Notifications](#notifications)
+- [Backup Catalog](#backup-catalog)
+- [Cost Analysis](#cost-analysis)
+- [Health Check](#health-check)
+- [DR Drill Testing](#dr-drill-testing)
+- [Compliance Reports](#compliance-reports)
+- [RTO/RPO Analysis](#rtorpo-analysis)
+- [Systemd Integration](#systemd-integration)
+- [Prometheus Metrics](#prometheus-metrics)
+- [Configuration](#configuration)
+- [Performance](#performance)
+- [Requirements](#requirements)
+- [Documentation](#documentation)
+- [License](#license)
+
 ## Quick Start (30 seconds)
 
 ```bash

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -13,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mattn/go-isatty"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
@@ -413,11 +413,13 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 				// Drop databases using command-line psql (no connection required)
 				// This matches how cluster restore works - uses CLI tools, not database connections
 				droppedCount := 0
-				for _, dbName := range existingDBs {
+				for i, dbName := range existingDBs {
+					tuiLog("STEP 1: Dropping database %d/%d: %s", i+1, len(existingDBs), dbName)
 					// Create timeout context for each database drop (60 seconds per DB)
 					// Reduced from 5 minutes for better TUI responsiveness
 					dropCtx, dropCancel := context.WithTimeout(ctx, 60*time.Second)
 					if err := dropDatabaseCLI(dropCtx, cfg, dbName); err != nil {
+						tuiLog("STEP 1: Failed to drop %s: %v", dbName, err)
 						log.Warn("Failed to drop database", "name", dbName, "error", err)
 						// Continue with other databases
 					} else {
@@ -434,6 +436,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		}
 
 		// STEP 2: Create restore engine with silent progress (no stdout interference with TUI)
+		tuiLog("STEP 2: Creating restore engine (native=%v)", cfg.UseNativeEngine)
 		engine := restore.NewSilent(cfg, log, dbClient)
 
 		// Set up progress callback for detailed progress reporting
@@ -1307,6 +1310,8 @@ func formatDuration(d time.Duration) string {
 
 // dropDatabaseCLI drops a database using command-line psql
 // This avoids needing an active database connection
+// Uses cleanup.SafeCommand to prevent child process from receiving SIGTTIN/SIGTTOU
+// when Bubble Tea controls the terminal (fixes TUI blocking issue)
 func dropDatabaseCLI(ctx context.Context, cfg *config.Config, dbName string) error {
 	args := []string{
 		"-p", fmt.Sprintf("%d", cfg.Port),
@@ -1320,7 +1325,8 @@ func dropDatabaseCLI(ctx context.Context, cfg *config.Config, dbName string) err
 		args = append([]string{"-h", cfg.Host}, args...)
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	// Use SafeCommand to create new process group, preventing TTY signals from Bubble Tea
+	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 
 	// Set password if provided
 	if cfg.Password != "" {

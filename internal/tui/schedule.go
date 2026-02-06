@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"runtime"
@@ -8,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 )
@@ -59,8 +61,9 @@ func (s *ScheduleView) loadTimers() tea.Msg {
 		return scheduleLoadedMsg{err: fmt.Errorf("systemctl not found")}
 	}
 
-	// Run systemctl list-timers
-	output, err := exec.Command("systemctl", "list-timers", "--all", "--no-pager").CombinedOutput()
+	// Run systemctl list-timers using SafeCommand to prevent TTY signals
+	cmd := cleanup.SafeCommand(context.Background(), "systemctl", "list-timers", "--all", "--no-pager")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return scheduleLoadedMsg{err: fmt.Errorf("failed to list timers: %w", err)}
 	}

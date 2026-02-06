@@ -131,6 +131,9 @@ type DatabaseAnalysis struct {
 	EstimatedBackupTimeMax TimeEstimate // With max compression (level 9)
 	EstimatedBackupTimeNone TimeEstimate // Without compression
 	
+	// Filesystem compression detection
+	FilesystemCompression *FilesystemCompression // Detected filesystem compression (ZFS/Btrfs)
+	
 	// Cache info
 	CachedAt     time.Time // When this analysis was cached (zero if not cached)
 	CacheExpires time.Time // When cache expires
@@ -201,6 +204,19 @@ func (a *Analyzer) Analyze(ctx context.Context) (*DatabaseAnalysis, error) {
 	analysis := &DatabaseAnalysis{
 		Database:     a.config.Database,
 		DatabaseType: a.config.DatabaseType,
+	}
+	
+	// Detect filesystem-level compression (ZFS/Btrfs)
+	if a.config.BackupDir != "" {
+		analysis.FilesystemCompression = DetectFilesystemCompression(a.config.BackupDir)
+		if analysis.FilesystemCompression != nil && analysis.FilesystemCompression.Detected {
+			if a.logger != nil {
+				a.logger.Info("Filesystem compression detected",
+					"filesystem", analysis.FilesystemCompression.Filesystem,
+					"compression", analysis.FilesystemCompression.CompressionType,
+					"enabled", analysis.FilesystemCompression.CompressionEnabled)
+			}
+		}
 	}
 
 	// Connect to database
@@ -597,6 +613,27 @@ func (a *Analyzer) estimateTotalBlobSize(ctx context.Context) int64 {
 
 // determineAdvice determines overall compression advice
 func (a *Analyzer) determineAdvice(analysis *DatabaseAnalysis) (CompressionAdvice, int) {
+	// Check if filesystem compression should be trusted
+	if a.config.TrustFilesystemCompress && analysis.FilesystemCompression != nil {
+		if analysis.FilesystemCompression.CompressionEnabled {
+			// Filesystem handles compression - skip app-level
+			if a.logger != nil {
+				a.logger.Info("Trusting filesystem compression, skipping app-level",
+					"filesystem", analysis.FilesystemCompression.Filesystem,
+					"compression", analysis.FilesystemCompression.CompressionType)
+			}
+			return AdviceSkip, 0
+		}
+	}
+	
+	// If filesystem compression is detected and enabled, recommend skipping
+	if analysis.FilesystemCompression != nil && 
+	   analysis.FilesystemCompression.CompressionEnabled && 
+	   analysis.FilesystemCompression.ShouldSkipAppCompress {
+		// Filesystem has transparent compression - recommend skipping app compression
+		return AdviceSkip, 0
+	}
+
 	if len(analysis.Columns) == 0 {
 		return AdviceCompress, a.config.CompressionLevel
 	}
@@ -656,6 +693,25 @@ func (analysis *DatabaseAnalysis) FormatReport() string {
 	sb.WriteString(fmt.Sprintf("Database: %s (%s)\n", analysis.Database, analysis.DatabaseType))
 	sb.WriteString(fmt.Sprintf("Scan Duration: %v\n\n", analysis.ScanDuration.Round(time.Millisecond)))
 
+	// Filesystem compression info
+	if analysis.FilesystemCompression != nil && analysis.FilesystemCompression.Detected {
+		sb.WriteString("═══ FILESYSTEM COMPRESSION ════════════════════════════════════════\n")
+		sb.WriteString(fmt.Sprintf("  Filesystem:    %s\n", strings.ToUpper(analysis.FilesystemCompression.Filesystem)))
+		sb.WriteString(fmt.Sprintf("  Dataset:       %s\n", analysis.FilesystemCompression.Dataset))
+		if analysis.FilesystemCompression.CompressionEnabled {
+			sb.WriteString(fmt.Sprintf("  Compression:   ✅ %s\n", strings.ToUpper(analysis.FilesystemCompression.CompressionType)))
+			if analysis.FilesystemCompression.CompressionLevel > 0 {
+				sb.WriteString(fmt.Sprintf("  Level:         %d\n", analysis.FilesystemCompression.CompressionLevel))
+			}
+		} else {
+			sb.WriteString("  Compression:   ❌ Disabled\n")
+		}
+		if analysis.FilesystemCompression.Filesystem == "zfs" && analysis.FilesystemCompression.RecordSize > 0 {
+			sb.WriteString(fmt.Sprintf("  Record Size:   %dK\n", analysis.FilesystemCompression.RecordSize/1024))
+		}
+		sb.WriteString("\n")
+	}
+
 	sb.WriteString("═══ SUMMARY ═══════════════════════════════════════════════════════\n")
 	sb.WriteString(fmt.Sprintf("  Blob Columns Found:      %d\n", analysis.TotalBlobColumns))
 	sb.WriteString(fmt.Sprintf("  Data Sampled:            %s\n", formatBytes(analysis.SampledDataSize)))
@@ -669,32 +725,49 @@ func (analysis *DatabaseAnalysis) FormatReport() string {
 
 	sb.WriteString("\n═══ RECOMMENDATION ════════════════════════════════════════════════\n")
 	
-	switch analysis.Advice {
-	case AdviceSkip:
-		sb.WriteString("  ⚠️  SKIP COMPRESSION (use --compression 0)\n")
+	// Special case: filesystem compression detected
+	if analysis.FilesystemCompression != nil && 
+	   analysis.FilesystemCompression.CompressionEnabled && 
+	   analysis.FilesystemCompression.ShouldSkipAppCompress {
+		sb.WriteString("  🗂️  FILESYSTEM COMPRESSION ACTIVE\n")
 		sb.WriteString("  \n")
-		sb.WriteString("  Most of your blob data is already compressed (images, archives, etc.)\n")
-		sb.WriteString("  Compressing again will waste CPU and may increase backup size.\n")
-	case AdviceLowLevel:
-		sb.WriteString(fmt.Sprintf("  ⚡ USE LOW COMPRESSION (--compression %d)\n", analysis.RecommendedLevel))
-		sb.WriteString("  \n")
-		sb.WriteString("  Mixed content detected. Low compression provides speed benefit\n")
-		sb.WriteString("  while still helping with compressible portions.\n")
-	case AdvicePartial:
-		sb.WriteString(fmt.Sprintf("  📊 MODERATE COMPRESSION (--compression %d)\n", analysis.RecommendedLevel))
-		sb.WriteString("  \n")
-		sb.WriteString("  Some data will compress well. Moderate level balances speed/size.\n")
-	case AdviceCompress:
-		sb.WriteString(fmt.Sprintf("  ✅ COMPRESSION RECOMMENDED (--compression %d)\n", analysis.RecommendedLevel))
-		sb.WriteString("  \n")
-		sb.WriteString("  Your blob data compresses well. Use standard compression.\n")
-		if analysis.PotentialSavings > 0 {
-			sb.WriteString(fmt.Sprintf("  Estimated savings: %s\n", formatBytes(analysis.PotentialSavings)))
+		sb.WriteString(fmt.Sprintf("  %s is handling compression transparently.\n", 
+			strings.ToUpper(analysis.FilesystemCompression.Filesystem)))
+		sb.WriteString("  Skip application-level compression for best performance:\n")
+		sb.WriteString("    • Set Compression Mode: NEVER in TUI settings\n")
+		sb.WriteString("    • Or use: --compression 0\n")
+		sb.WriteString("    • Or enable: Trust Filesystem Compression\n")
+		sb.WriteString("\n")
+		sb.WriteString(analysis.FilesystemCompression.Recommendation)
+		sb.WriteString("\n")
+	} else {
+		switch analysis.Advice {
+		case AdviceSkip:
+			sb.WriteString("  ⚠️  SKIP COMPRESSION (use --compression 0)\n")
+			sb.WriteString("  \n")
+			sb.WriteString("  Most of your blob data is already compressed (images, archives, etc.)\n")
+			sb.WriteString("  Compressing again will waste CPU and may increase backup size.\n")
+		case AdviceLowLevel:
+			sb.WriteString(fmt.Sprintf("  ⚡ USE LOW COMPRESSION (--compression %d)\n", analysis.RecommendedLevel))
+			sb.WriteString("  \n")
+			sb.WriteString("  Mixed content detected. Low compression provides speed benefit\n")
+			sb.WriteString("  while still helping with compressible portions.\n")
+		case AdvicePartial:
+			sb.WriteString(fmt.Sprintf("  📊 MODERATE COMPRESSION (--compression %d)\n", analysis.RecommendedLevel))
+			sb.WriteString("  \n")
+			sb.WriteString("  Some data will compress well. Moderate level balances speed/size.\n")
+		case AdviceCompress:
+			sb.WriteString(fmt.Sprintf("  ✅ COMPRESSION RECOMMENDED (--compression %d)\n", analysis.RecommendedLevel))
+			sb.WriteString("  \n")
+			sb.WriteString("  Your blob data compresses well. Use standard compression.\n")
+			if analysis.PotentialSavings > 0 {
+				sb.WriteString(fmt.Sprintf("  Estimated savings: %s\n", formatBytes(analysis.PotentialSavings)))
+			}
+		default:
+			sb.WriteString("  ❓ INSUFFICIENT DATA\n")
+			sb.WriteString("  \n")
+			sb.WriteString("  Not enough blob data to analyze. Using default compression.\n")
 		}
-	default:
-		sb.WriteString("  ❓ INSUFFICIENT DATA\n")
-		sb.WriteString("  \n")
-		sb.WriteString("  Not enough blob data to analyze. Using default compression.\n")
 	}
 
 	// Detailed breakdown if there are columns

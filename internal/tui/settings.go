@@ -302,6 +302,22 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Compressed=smaller archives, Plain=raw SQL files (faster, larger). Press Enter to toggle.",
 		},
 		{
+			Key:         "trust_filesystem_compress",
+			DisplayName: "Trust Filesystem Compression",
+			Value: func(c *config.Config) string {
+				if c.TrustFilesystemCompress {
+					return "ON (ZFS/Btrfs handles compression)"
+				}
+				return "OFF (use app compression)"
+			},
+			Update: func(c *config.Config, v string) error {
+				c.TrustFilesystemCompress = !c.TrustFilesystemCompress
+				return nil
+			},
+			Type:        "selector",
+			Description: "ON=trust ZFS/Btrfs transparent compression, skip app-level. Press Enter to toggle.",
+		},
+		{
 			Key:         "jobs",
 			DisplayName: "Parallel Jobs",
 			Value:       func(c *config.Config) string { return fmt.Sprintf("%d", c.Jobs) },

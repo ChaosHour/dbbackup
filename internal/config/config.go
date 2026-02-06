@@ -32,12 +32,13 @@ type Config struct {
 	Insecure     bool
 
 	// Backup options
-	BackupDir            string
-	CompressionLevel     int
+	BackupDir             string
+	CompressionLevel      int
 	AutoDetectCompression bool   // Auto-detect optimal compression based on blob analysis
-	CompressionMode      string // "auto", "always", "never" - controls compression behavior
-	BackupOutputFormat   string // "compressed" or "plain" - output format for backups
-	Jobs                 int
+	CompressionMode       string // "auto", "always", "never" - controls compression behavior
+	BackupOutputFormat    string // "compressed" or "plain" - output format for backups
+	TrustFilesystemCompress bool  // Trust filesystem-level compression (ZFS/Btrfs), skip app compression
+	Jobs                  int
 	DumpJobs             int
 	MaxCores             int
 	AutoDetectCores      bool

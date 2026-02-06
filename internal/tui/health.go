@@ -12,6 +12,7 @@ import (
 
 	"dbbackup/internal/catalog"
 	"dbbackup/internal/checks"
+	"dbbackup/internal/compression"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
@@ -115,6 +116,9 @@ func (m *HealthViewModel) runHealthChecks() tea.Cmd {
 
 		// 10. Disk space
 		checks = append(checks, m.checkDiskSpace())
+
+		// 11. Filesystem compression detection
+		checks = append(checks, m.checkFilesystemCompression())
 
 		// Calculate overall status
 		overallStatus := m.calculateOverallStatus(checks)
@@ -641,4 +645,50 @@ func formatHealthBytes(bytes uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// checkFilesystemCompression checks for transparent filesystem compression (ZFS/Btrfs)
+func (m *HealthViewModel) checkFilesystemCompression() TUIHealthCheck {
+	check := TUIHealthCheck{
+		Name:   "Filesystem Compression",
+		Status: HealthStatusHealthy,
+	}
+
+	// Detect filesystem compression on backup directory
+	fc := compression.DetectFilesystemCompression(m.config.BackupDir)
+	if fc == nil || !fc.Detected {
+		check.Message = "Standard filesystem (no transparent compression)"
+		check.Details = "Consider ZFS or Btrfs for transparent compression"
+		return check
+	}
+
+	// Filesystem with compression support detected
+	fsName := strings.ToUpper(fc.Filesystem)
+	
+	if fc.CompressionEnabled {
+		check.Message = fmt.Sprintf("%s %s compression active", fsName, strings.ToUpper(fc.CompressionType))
+		check.Details = fmt.Sprintf("Dataset: %s", fc.Dataset)
+		
+		// Check if app compression is properly disabled
+		if m.config.TrustFilesystemCompress || m.config.CompressionMode == "never" {
+			check.Details += " | App compression: disabled (optimal)"
+		} else {
+			check.Status = HealthStatusWarning
+			check.Details += " | ⚠️ Consider disabling app compression"
+		}
+		
+		// ZFS-specific recommendations
+		if fc.Filesystem == "zfs" {
+			if fc.RecordSize > 64*1024 {
+				check.Status = HealthStatusWarning
+				check.Details += fmt.Sprintf(" | recordsize=%dK (recommend 32-64K for PG)", fc.RecordSize/1024)
+			}
+		}
+	} else {
+		check.Status = HealthStatusWarning
+		check.Message = fmt.Sprintf("%s detected but compression disabled", fsName)
+		check.Details = fmt.Sprintf("Enable: zfs set compression=lz4 %s", fc.Dataset)
+	}
+
+	return check
 }

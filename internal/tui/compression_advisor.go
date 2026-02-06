@@ -219,6 +219,24 @@ func (v *CompressionAdvisorView) renderSummaryBox() string {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("📊 Analysis Summary (scan: %v)", a.ScanDuration.Round(time.Millisecond)))
 	lines = append(lines, "")
+	
+	// Filesystem compression info (if detected)
+	if a.FilesystemCompression != nil && a.FilesystemCompression.Detected {
+		fc := a.FilesystemCompression
+		fsIcon := "🗂️"
+		if fc.CompressionEnabled {
+			lines = append(lines, fmt.Sprintf("  %s Filesystem:        %s (%s compression)", 
+				fsIcon, strings.ToUpper(fc.Filesystem), strings.ToUpper(fc.CompressionType)))
+		} else {
+			lines = append(lines, fmt.Sprintf("  %s Filesystem:        %s (compression OFF)", 
+				fsIcon, strings.ToUpper(fc.Filesystem)))
+		}
+		if fc.Filesystem == "zfs" && fc.RecordSize > 0 {
+			lines = append(lines, fmt.Sprintf("    Dataset:           %s (recordsize=%dK)", fc.Dataset, fc.RecordSize/1024))
+		}
+		lines = append(lines, "")
+	}
+	
 	lines = append(lines, fmt.Sprintf("  Blob Columns:        %d", a.TotalBlobColumns))
 	lines = append(lines, fmt.Sprintf("  Data Sampled:        %s", formatCompBytes(a.SampledDataSize)))
 	lines = append(lines, fmt.Sprintf("  Compression Ratio:   %.2fx", a.OverallRatio))
@@ -237,6 +255,28 @@ func (v *CompressionAdvisorView) renderRecommendation() string {
 
 	var borderColor, iconStr, titleStr, descStr string
 	currentLevel := v.config.CompressionLevel
+
+	// Check if filesystem compression is active and should be trusted
+	if a.FilesystemCompression != nil && 
+	   a.FilesystemCompression.CompressionEnabled && 
+	   a.FilesystemCompression.ShouldSkipAppCompress {
+		borderColor = "5" // Magenta
+		iconStr = "🗂️"
+		titleStr = fmt.Sprintf("FILESYSTEM COMPRESSION ACTIVE (%s)", 
+			strings.ToUpper(a.FilesystemCompression.CompressionType))
+		descStr = fmt.Sprintf("%s handles compression transparently.\n"+
+			"Recommendation: Skip app-level compression\n"+
+			"Set: Compression Mode → NEVER\n"+
+			"Or enable: Trust Filesystem Compression", 
+			strings.ToUpper(a.FilesystemCompression.Filesystem))
+		
+		boxStyle := lipgloss.NewStyle().
+			Border(lipgloss.DoubleBorder()).
+			Padding(0, 1).
+			BorderForeground(lipgloss.Color(borderColor))
+		content := fmt.Sprintf("%s %s\n\n%s", iconStr, titleStr, descStr)
+		return boxStyle.Render(content)
+	}
 
 	switch a.Advice {
 	case compression.AdviceSkip:

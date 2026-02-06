@@ -378,7 +378,9 @@ func (r *RestoreDryRun) checkDiskSpace() (DryRunCheck, int64, int64) {
 		return check, requiredMB, 0
 	}
 
-	availableMB := int64(stat.Bavail*uint64(stat.Bsize)) / 1024 / 1024
+	// Calculate available space - cast both to int64 for cross-platform compatibility
+	// (FreeBSD has Bsize as int64, Linux has it as int64, but Bavail types vary)
+	availableMB := (int64(stat.Bavail) * int64(stat.Bsize)) / 1024 / 1024
 
 	if availableMB < requiredMB {
 		check.Status = DryRunFailed

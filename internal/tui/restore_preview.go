@@ -293,6 +293,15 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.parent, nil
 
 	case tea.KeyMsg:
+		// Show wait message during safety checks for any key press
+		if m.checking {
+			key := msg.String()
+			if key != "ctrl+c" && key != "q" && key != "esc" {
+				m.message = infoStyle.Render("[WAIT] Safety checks in progress... please wait")
+				return m, nil
+			}
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m.parent, nil

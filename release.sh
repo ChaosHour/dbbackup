@@ -6,6 +6,7 @@
 #   ./release.sh              # Build and release current version
 #   ./release.sh --bump       # Bump patch version, build, and release
 #   ./release.sh --update     # Update existing release with new binaries
+#   ./release.sh --fast       # Fast release (skip tests, parallel builds)
 #   ./release.sh --dry-run    # Show what would happen without doing it
 
 set -e
@@ -22,10 +23,27 @@ NC='\033[0m'
 TOKEN_FILE=".gh_token"
 MAIN_FILE="main.go"
 
+# Security: List of files that should NEVER be committed
+SECURITY_FILES=(
+    ".gh_token"
+    ".env"
+    ".env.local"
+    ".env.production"
+    "*.pem"
+    "*.key"
+    "*.p12"
+    ".dbbackup.conf"
+    "secrets.yaml"
+    "secrets.json"
+    ".aws/credentials"
+    ".gcloud/*.json"
+)
+
 # Parse arguments
 BUMP_VERSION=false
 UPDATE_ONLY=false
 DRY_RUN=false
+FAST_MODE=false
 RELEASE_MSG=""
 
 while [[ $# -gt 0 ]]; do
@@ -42,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             DRY_RUN=true
             shift
             ;;
+        --fast)
+            FAST_MODE=true
+            shift
+            ;;
         -m|--message)
             RELEASE_MSG="$2"
             shift 2
@@ -52,6 +74,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --bump           Bump patch version before release"
             echo "  --update         Update existing release (don't create new)"
+            echo "  --fast           Fast mode: parallel builds, skip tests"
             echo "  --dry-run        Show what would happen without doing it"
             echo "  -m, --message    Release message/comment (required for new releases)"
             echo "  --help           Show this help"
@@ -59,9 +82,12 @@ while [[ $# -gt 0 ]]; do
             echo "Examples:"
             echo "  $0 -m \"Fix TUI crash on cluster restore\""
             echo "  $0 --bump -m \"Add new backup compression option\""
+            echo "  $0 --fast -m \"Hotfix release\""
             echo "  $0 --update  # Just update binaries, no message needed"
             echo ""
-            echo "Token file: .gh_token (gitignored)"
+            echo "Security:"
+            echo "  Token file: .gh_token (gitignored)"
+            echo "  Never commits: .env, *.pem, *.key, secrets.*, .dbbackup.conf"
             exit 0
             ;;
         *)
@@ -90,6 +116,41 @@ if [ -z "$GH_TOKEN" ]; then
 fi
 
 export GH_TOKEN
+
+# Security check: Ensure sensitive files are not staged
+echo -e "${BLUE}🔒 Security check...${NC}"
+check_security() {
+    local found_issues=false
+    
+    # Check if any security files are staged
+    for pattern in "${SECURITY_FILES[@]}"; do
+        staged=$(git diff --cached --name-only 2>/dev/null | grep -E "$pattern" || true)
+        if [ -n "$staged" ]; then
+            echo -e "${RED}❌ SECURITY: Sensitive file staged for commit: $staged${NC}"
+            found_issues=true
+        fi
+    done
+    
+    # Check for hardcoded tokens/secrets in staged files
+    if git diff --cached 2>/dev/null | grep -iE "(api_key|apikey|secret|token|password|passwd).*=.*['\"][^'\"]{8,}['\"]" | head -3; then
+        echo -e "${YELLOW}⚠️  WARNING: Possible secrets detected in staged changes${NC}"
+        echo "   Review carefully before committing!"
+    fi
+    
+    if [ "$found_issues" = true ]; then
+        echo -e "${RED}❌ Aborting release due to security issues${NC}"
+        echo "   Remove sensitive files: git reset HEAD <file>"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✅ Security check passed${NC}"
+    export SECURITY_VALIDATED=true
+}
+
+# Run security check unless dry-run
+if [ "$DRY_RUN" = false ]; then
+    check_security
+fi
 
 # Get current version
 CURRENT_VERSION=$(grep 'version.*=' "$MAIN_FILE" | head -1 | sed 's/.*"\(.*\)".*/\1/')
@@ -129,16 +190,83 @@ if [ "$DRY_RUN" = true ]; then
     echo -e "${YELLOW}🔍 DRY RUN - No changes will be made${NC}"
     echo ""
     echo "Would execute:"
-    echo "  1. Build binaries with build_all.sh"
-    echo "  2. Commit and push changes"
-    echo "  3. Create/update release ${TAG}"
+    echo "  1. Security check (verify no tokens/secrets staged)"
+    echo "  2. Build binaries with build_all.sh"
+    if [ "$FAST_MODE" = true ]; then
+        echo "     (FAST MODE: parallel builds, skip tests)"
+    fi
+    echo "  3. Commit and push changes"
+    echo "  4. Create/update release ${TAG}"
     exit 0
 fi
 
 # Build binaries
 echo ""
 echo -e "${BOLD}${BLUE}🔨 Building binaries...${NC}"
-bash build_all.sh
+
+if [ "$FAST_MODE" = true ]; then
+    echo -e "${YELLOW}⚡ Fast mode: parallel builds, skipping tests${NC}"
+    
+    # Fast parallel build
+    START_TIME=$(date +%s)
+    
+    # Build all platforms in parallel
+    PLATFORMS=(
+        "linux/amd64"
+        "linux/arm64"
+        "linux/arm/7"
+        "darwin/amd64"
+        "darwin/arm64"
+    )
+    
+    mkdir -p bin
+    
+    # Get version info for ldflags
+    VERSION=$(grep 'version.*=' "$MAIN_FILE" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    LDFLAGS="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}"
+    
+    # Build in parallel using background jobs
+    pids=()
+    for platform in "${PLATFORMS[@]}"; do
+        GOOS=$(echo "$platform" | cut -d/ -f1)
+        GOARCH=$(echo "$platform" | cut -d/ -f2)
+        GOARM=$(echo "$platform" | cut -d/ -f3)
+        
+        OUTPUT="bin/dbbackup_${GOOS}_${GOARCH}"
+        if [ -n "$GOARM" ]; then
+            OUTPUT="bin/dbbackup_${GOOS}_arm_armv${GOARM}"
+            GOARM="$GOARM"
+        fi
+        
+        (
+            if [ -n "$GOARM" ]; then
+                GOOS=$GOOS GOARCH=arm GOARM=$GOARM go build -trimpath -ldflags "$LDFLAGS" -o "$OUTPUT" . 2>/dev/null
+            else
+                GOOS=$GOOS GOARCH=$GOARCH go build -trimpath -ldflags "$LDFLAGS" -o "$OUTPUT" . 2>/dev/null
+            fi
+            if [ $? -eq 0 ]; then
+                echo -e "  ${GREEN}✅${NC} $OUTPUT"
+            else
+                echo -e "  ${RED}❌${NC} $OUTPUT"
+            fi
+        ) &
+        pids+=($!)
+    done
+    
+    # Wait for all builds
+    for pid in "${pids[@]}"; do
+        wait $pid
+    done
+    
+    END_TIME=$(date +%s)
+    DURATION=$((END_TIME - START_TIME))
+    echo -e "${GREEN}⚡ Fast build completed in ${DURATION}s${NC}"
+else
+    # Standard build with full checks
+    bash build_all.sh
+fi
 
 # Check if there are changes to commit
 if [ -n "$(git status --porcelain)" ]; then
@@ -231,3 +359,13 @@ fi
 echo ""
 echo -e "${GREEN}${BOLD}✅ Release complete!${NC}"
 echo -e "   ${BLUE}https://github.com/PlusOne/dbbackup/releases/tag/${TAG}${NC}"
+
+# Summary
+echo ""
+echo -e "${BOLD}📊 Release Summary:${NC}"
+echo -e "   Version: ${TAG}"
+echo -e "   Mode: $([ "$FAST_MODE" = true ] && echo "Fast (parallel)" || echo "Standard")"
+echo -e "   Security: $([ -n "$SECURITY_VALIDATED" ] && echo "${GREEN}Validated${NC}" || echo "Checked")"
+if [ "$FAST_MODE" = true ] && [ -n "$DURATION" ]; then
+    echo -e "   Build time: ${DURATION}s"
+fi

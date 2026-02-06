@@ -32,13 +32,15 @@ type Config struct {
 	Insecure     bool
 
 	// Backup options
-	BackupDir        string
-	CompressionLevel int
-	Jobs             int
-	DumpJobs         int
-	MaxCores         int
-	AutoDetectCores  bool
-	CPUWorkloadType  string // "cpu-intensive", "io-intensive", "balanced"
+	BackupDir            string
+	CompressionLevel     int
+	AutoDetectCompression bool   // Auto-detect optimal compression based on blob analysis
+	CompressionMode      string // "auto", "always", "never" - controls compression behavior
+	Jobs                 int
+	DumpJobs             int
+	MaxCores             int
+	AutoDetectCores      bool
+	CPUWorkloadType      string // "cpu-intensive", "io-intensive", "balanced"
 
 	// Resource profile for backup/restore operations
 	ResourceProfile string // "conservative", "balanced", "performance", "max-performance", "turbo"
@@ -616,6 +618,25 @@ func (c *Config) GetEffectiveWorkDir() string {
 		return c.WorkDir
 	}
 	return os.TempDir()
+}
+
+// ShouldAutoDetectCompression returns true if compression should be auto-detected
+func (c *Config) ShouldAutoDetectCompression() bool {
+	return c.AutoDetectCompression || c.CompressionMode == "auto"
+}
+
+// ShouldSkipCompression returns true if compression is explicitly disabled
+func (c *Config) ShouldSkipCompression() bool {
+	return c.CompressionMode == "never" || c.CompressionLevel == 0
+}
+
+// GetEffectiveCompressionLevel returns the compression level to use
+// If auto-detect has set a level, use that; otherwise use configured level
+func (c *Config) GetEffectiveCompressionLevel() int {
+	if c.ShouldSkipCompression() {
+		return 0
+	}
+	return c.CompressionLevel
 }
 
 func getDefaultBackupDir() string {

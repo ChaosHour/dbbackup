@@ -20,6 +20,20 @@ bin/
 .dbbackup.conf
 .gh_token
 
+# Security - NEVER commit these files
+.env
+.env.*
+*.pem
+*.key
+*.p12
+secrets.yaml
+secrets.json
+.aws/
+.gcloud/
+*credentials*
+*_token
+*.secret
+
 # Ignore session/development notes
 TODO_SESSION.md
 QUICK.md

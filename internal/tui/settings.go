@@ -249,7 +249,36 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				return nil
 			},
 			Type:        "int",
-			Description: "Compression level (0=fastest, 9=smallest)",
+			Description: "Compression level (0=fastest/none, 9=smallest). Use Tools > Compression Advisor for guidance.",
+		},
+		{
+			Key:         "compression_mode",
+			DisplayName: "Compression Mode",
+			Value: func(c *config.Config) string {
+				if c.AutoDetectCompression {
+					return "AUTO (smart detect)"
+				}
+				if c.CompressionMode == "never" {
+					return "NEVER (skip)"
+				}
+				return "ALWAYS (standard)"
+			},
+			Update: func(c *config.Config, v string) error {
+				// Cycle through modes: ALWAYS -> AUTO -> NEVER
+				if c.AutoDetectCompression {
+					c.AutoDetectCompression = false
+					c.CompressionMode = "never"
+				} else if c.CompressionMode == "never" {
+					c.CompressionMode = "always"
+					c.AutoDetectCompression = false
+				} else {
+					c.AutoDetectCompression = true
+					c.CompressionMode = "auto"
+				}
+				return nil
+			},
+			Type:        "selector",
+			Description: "ALWAYS=use level, AUTO=analyze blobs & decide, NEVER=skip compression. Press Enter to cycle.",
 		},
 		{
 			Key:         "jobs",

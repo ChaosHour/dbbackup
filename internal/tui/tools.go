@@ -29,6 +29,7 @@ type ToolsMenu struct {
 func NewToolsMenu(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context) *ToolsMenu {
 	return &ToolsMenu{
 		choices: []string{
+			"Compression Advisor",
 			"Blob Statistics",
 			"Blob Extract (externalize LOBs)",
 			"Table Sizes",
@@ -83,25 +84,27 @@ func (t *ToolsMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter", " ":
 			switch t.cursor {
-			case 0: // Blob Statistics
+			case 0: // Compression Advisor
+				return t.handleCompressionAdvisor()
+			case 1: // Blob Statistics
 				return t.handleBlobStats()
-			case 1: // Blob Extract
+			case 2: // Blob Extract
 				return t.handleBlobExtract()
-			case 2: // Table Sizes
+			case 3: // Table Sizes
 				return t.handleTableSizes()
-			case 4: // Kill Connections
+			case 5: // Kill Connections
 				return t.handleKillConnections()
-			case 5: // Drop Database
+			case 6: // Drop Database
 				return t.handleDropDatabase()
-			case 7: // System Health Check
+			case 8: // System Health Check
 				return t.handleSystemHealth()
-			case 8: // Dedup Store Analyze
+			case 9: // Dedup Store Analyze
 				return t.handleDedupAnalyze()
-			case 9: // Verify Backup Integrity
+			case 10: // Verify Backup Integrity
 				return t.handleVerifyIntegrity()
-			case 10: // Catalog Sync
+			case 11: // Catalog Sync
 				return t.handleCatalogSync()
-			case 12: // Back to Main Menu
+			case 13: // Back to Main Menu
 				return t.parent, nil
 			}
 		}
@@ -147,6 +150,12 @@ func (t *ToolsMenu) View() string {
 func (t *ToolsMenu) handleBlobStats() (tea.Model, tea.Cmd) {
 	stats := NewBlobStatsView(t.config, t.logger, t, t.ctx)
 	return stats, stats.Init()
+}
+
+// handleCompressionAdvisor opens the compression advisor view
+func (t *ToolsMenu) handleCompressionAdvisor() (tea.Model, tea.Cmd) {
+	view := NewCompressionAdvisorView(t.config, t.logger, t, t.ctx)
+	return view, view.Init()
 }
 
 // handleBlobExtract opens the blob extraction wizard

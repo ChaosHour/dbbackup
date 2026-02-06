@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"dbbackup/internal/cleanup"
 )
 
 // lockRecommendation represents a normalized recommendation for locks
@@ -61,9 +63,9 @@ func execPsql(ctx context.Context, args []string, env []string, useSudo bool) (s
 		// sudo -u postgres psql --no-psqlrc -t -A -c "..."
 		all := append([]string{"-u", "postgres", "--"}, "psql")
 		all = append(all, args...)
-		cmd = exec.CommandContext(ctx, "sudo", all...)
+		cmd = cleanup.SafeCommand(ctx, "sudo", all...)
 	} else {
-		cmd = exec.CommandContext(ctx, "psql", args...)
+		cmd = cleanup.SafeCommand(ctx, "psql", args...)
 	}
 	cmd.Env = append(os.Environ(), env...)
 	out, err := cmd.Output()

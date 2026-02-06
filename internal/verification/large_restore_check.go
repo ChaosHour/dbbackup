@@ -9,12 +9,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/logger"
 
 	"github.com/klauspost/pgzip"
@@ -745,7 +745,7 @@ func (c *LargeRestoreChecker) detectBackupFormat(path string) string {
 // verifyPgDumpCustom verifies a pg_dump custom format file
 func (c *LargeRestoreChecker) verifyPgDumpCustom(ctx context.Context, path string, result *BackupFileCheck) error {
 	// Use pg_restore -l to list contents
-	cmd := exec.CommandContext(ctx, "pg_restore", "-l", path)
+	cmd := cleanup.SafeCommand(ctx, "pg_restore", "-l", path)
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("pg_restore -l failed: %w", err)
@@ -779,7 +779,7 @@ func (c *LargeRestoreChecker) verifyPgDumpDirectory(ctx context.Context, path st
 	}
 
 	// Use pg_restore -l
-	cmd := exec.CommandContext(ctx, "pg_restore", "-l", path)
+	cmd := cleanup.SafeCommand(ctx, "pg_restore", "-l", path)
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("pg_restore -l failed: %w", err)

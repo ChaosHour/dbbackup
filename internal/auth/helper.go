@@ -5,12 +5,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 )
 
@@ -74,7 +74,7 @@ func findHbaFileViaPostgres() string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "psql", "-U", "postgres", "-t", "-c", "SHOW hba_file;")
+	cmd := cleanup.SafeCommand(ctx, "psql", "-U", "postgres", "-t", "-c", "SHOW hba_file;")
 	output, err := cmd.Output()
 	if err != nil {
 		return ""

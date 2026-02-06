@@ -9,6 +9,7 @@ import (
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/metadata"
 	"dbbackup/internal/restore"
 )
 
@@ -58,9 +59,28 @@ type clusterDatabaseListMsg struct {
 
 func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config.Config, log logger.Logger) tea.Cmd {
 	return func() tea.Msg {
-		// OPTIMIZATION: Extract archive ONCE, then list databases from disk
-		// This eliminates double-extraction (scan + restore)
-		log.Info("Pre-extracting cluster archive for database listing")
+		// FAST PATH: Try .meta.json first (instant - no decompression needed)
+		clusterMeta, err := metadata.LoadCluster(archive.Path)
+		if err == nil && len(clusterMeta.Databases) > 0 {
+			log.Info("Using .meta.json for instant database listing",
+				"databases", len(clusterMeta.Databases))
+			
+			var databases []restore.DatabaseInfo
+			for _, dbMeta := range clusterMeta.Databases {
+				if dbMeta.Database != "" {
+					databases = append(databases, restore.DatabaseInfo{
+						Name:     dbMeta.Database,
+						Filename: dbMeta.Database + ".dump",
+						Size:     dbMeta.SizeBytes,
+					})
+				}
+			}
+			// No extractedDir yet - will extract at restore time
+			return clusterDatabaseListMsg{databases: databases, err: nil, extractedDir: ""}
+		}
+		
+		// SLOW PATH: Extract archive (only if no .meta.json)
+		log.Info("No .meta.json found, pre-extracting cluster archive for database listing")
 		safety := restore.NewSafety(cfg, log)
 		extractedDir, err := safety.ValidateAndExtractCluster(ctx, archive.Path)
 		if err != nil {

@@ -5,6 +5,27 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.41] - 2026-02-06
+
+### Fixed
+- **TUI SIGTTIN Fix**: Child processes (psql, pg_restore) no longer freeze in TUI
+  - Root cause: psql opens `/dev/tty` directly, bypassing stdin
+  - Solution: `Setsid: true` creates new session, detaching from controlling terminal
+  - Affects: All database listing, safety checks, restore operations in TUI
+- **Instant Cluster Database Listing**: TUI now uses `.meta.json` for database list
+  - Previously: Extracted entire 100GB archive just to list databases (~20 min)
+  - Now: Reads 1.6KB metadata file instantly (<1 sec)
+  - Fallback to full extraction only if `.meta.json` missing
+- **Comprehensive SafeCommand Migration**: All exec.CommandContext calls for psql/pg_restore
+  now use `cleanup.SafeCommand` with proper session isolation:
+  - `internal/engine/pg_basebackup.go`
+  - `internal/wal/manager.go`
+  - `internal/wal/pitr_config.go`
+  - `internal/checks/locks.go`
+  - `internal/auth/helper.go`
+  - `internal/verification/large_restore_check.go`
+  - `cmd/restore.go`
+
 ## [5.8.32] - 2026-02-06
 
 ### Added

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"dbbackup/internal/backup"
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/cloud"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
@@ -1200,7 +1200,7 @@ func runFullClusterRestore(archivePath string) error {
 		for _, dbName := range existingDBs {
 			log.Info("Dropping database", "name", dbName)
 			// Use CLI-based drop to avoid connection issues
-			dropCmd := exec.CommandContext(ctx, "psql",
+			dropCmd := cleanup.SafeCommand(ctx, "psql",
 				"-h", cfg.Host,
 				"-p", fmt.Sprintf("%d", cfg.Port),
 				"-U", cfg.User,

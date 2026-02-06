@@ -18,17 +18,18 @@ import (
 func SafeCommand(ctx context.Context, name string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, name, args...)
 
-	// Set up process group for clean termination
-	// This allows killing the entire process tree when cancelled
+	// Set up new session AND process group for clean termination
+	// Setsid: Creates a new session, detaching from the controlling terminal
+	// This prevents SIGTTIN when child processes try to access /dev/tty
+	// Setpgid: Creates new process group for killing entire process tree
 	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setsid:  true, // NEW SESSION - detach from controlling terminal
 		Setpgid: true, // Create new process group
 		Pgid:    0,    // Use the new process's PID as the PGID
 	}
 
-	// CRITICAL: Detach stdin to prevent SIGTTIN when running under TUI
-	// When Bubble Tea controls the terminal, child processes that try to read
-	// from stdin will receive SIGTTIN and stop. Setting Stdin to nil causes
-	// os/exec to connect it to /dev/null instead.
+	// Also set stdin to nil as a belt-and-suspenders approach
+	// This routes stdin to /dev/null
 	cmd.Stdin = nil
 
 	return cmd

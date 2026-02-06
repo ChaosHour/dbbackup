@@ -23,6 +23,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"dbbackup/internal/cleanup"
 	"sync"
 	"time"
 
@@ -175,7 +177,7 @@ func (m *Manager) getParameter(ctx context.Context, param string) (string, error
 		fmt.Sprintf("SHOW %s", param),
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 	if m.config.Password != "" {
 		cmd.Env = append(os.Environ(), "PGPASSWORD="+m.config.Password)
 	}
@@ -581,7 +583,7 @@ func (m *Manager) GetReplicationSlotInfo(ctx context.Context, slotName string) (
 		"-c", fmt.Sprintf(query, slotName),
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 	if m.config.Password != "" {
 		cmd.Env = append(os.Environ(), "PGPASSWORD="+m.config.Password)
 	}

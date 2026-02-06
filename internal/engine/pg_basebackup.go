@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/logger"
 )
 
@@ -150,7 +151,7 @@ func (e *PgBasebackupEngine) checkReplicationPermissions(ctx context.Context) ([
 		"SELECT rolreplication FROM pg_roles WHERE rolname = current_user",
 	}
 
-	cmd := exec.CommandContext(ctx, "psql", args...)
+	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 	if e.config.Password != "" {
 		cmd.Env = append(os.Environ(), "PGPASSWORD="+e.config.Password)
 	}
@@ -174,7 +175,7 @@ func (e *PgBasebackupEngine) checkReplicationPermissions(ctx context.Context) ([
 		"SHOW wal_level",
 	}
 
-	cmd = exec.CommandContext(ctx, "psql", args...)
+	cmd = cleanup.SafeCommand(ctx, "psql", args...)
 	if e.config.Password != "" {
 		cmd.Env = append(os.Environ(), "PGPASSWORD="+e.config.Password)
 	}
@@ -202,7 +203,7 @@ func (e *PgBasebackupEngine) checkReplicationPermissions(ctx context.Context) ([
 		"SHOW max_wal_senders",
 	}
 
-	cmd = exec.CommandContext(ctx, "psql", args...)
+	cmd = cleanup.SafeCommand(ctx, "psql", args...)
 	if e.config.Password != "" {
 		cmd.Env = append(os.Environ(), "PGPASSWORD="+e.config.Password)
 	}

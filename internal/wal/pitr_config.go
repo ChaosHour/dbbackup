@@ -5,12 +5,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
 )
@@ -308,7 +308,7 @@ func (pm *PITRManager) findPostgreSQLConf(ctx context.Context) (string, error) {
 	}
 
 	// Try to get from PostgreSQL directly
-	cmd := exec.CommandContext(ctx, "psql", "-U", pm.cfg.User, "-t", "-c", "SHOW config_file")
+	cmd := cleanup.SafeCommand(ctx, "psql", "-U", pm.cfg.User, "-t", "-c", "SHOW config_file")
 	output, err := cmd.Output()
 	if err == nil {
 		path := strings.TrimSpace(string(output))
@@ -373,7 +373,7 @@ func (pm *PITRManager) updatePostgreSQLConf(confPath string, settings map[string
 }
 
 func (pm *PITRManager) getPostgreSQLVersion(ctx context.Context) (int, error) {
-	cmd := exec.CommandContext(ctx, "psql", "-U", pm.cfg.User, "-t", "-c", "SHOW server_version")
+	cmd := cleanup.SafeCommand(ctx, "psql", "-U", pm.cfg.User, "-t", "-c", "SHOW server_version")
 	output, err := cmd.Output()
 	if err != nil {
 		return 0, err

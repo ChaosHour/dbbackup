@@ -1874,7 +1874,9 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			heartbeatCtx, cancelHeartbeat := context.WithCancel(ctx)
 			heartbeatTicker := time.NewTicker(5 * time.Second) // More frequent updates (was 15s)
 			heartbeatCount := int64(0)
+			heartbeatDone := make(chan struct{}) // Signal that goroutine has exited
 			go func() {
+				defer close(heartbeatDone)
 				for {
 					select {
 					case <-heartbeatTicker.C:
@@ -1938,9 +1940,10 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 				restoreErr = e.restorePostgreSQLDumpWithOwnership(ctx, dumpFile, dbName, false, preserveOwnership)
 			}
 
-			// Stop heartbeat ticker
+			// Stop heartbeat ticker and wait for goroutine to exit
 			heartbeatTicker.Stop()
 			cancelHeartbeat()
+			<-heartbeatDone // Wait for goroutine to fully exit before continuing
 
 			if restoreErr != nil {
 				mu.Lock()

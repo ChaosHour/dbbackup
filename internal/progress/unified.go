@@ -143,15 +143,23 @@ func (p *UnifiedClusterProgress) SetDatabasesTotal(total int, sizes map[string]i
 }
 
 // StartDatabase marks a database restore as started
+// Only resets timer if database actually changes to prevent timer reset on repeated calls
 func (p *UnifiedClusterProgress) StartDatabase(dbName string, totalBytes int64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	now := time.Now()
-	p.CurrentDB = dbName
-	p.CurrentDBBytes = 0
+
+	// Only reset timer and byte counter if this is a different database
+	// This prevents the "running X.Xs" timer from resetting on repeated progress callbacks
+	if p.CurrentDB != dbName {
+		p.CurrentDB = dbName
+		p.CurrentDBBytes = 0
+		p.CurrentDBStarted = now // Track when this specific DB started
+	}
+
+	// Always update total bytes (may be refined during restore)
 	p.CurrentDBTotal = totalBytes
-	p.CurrentDBStarted = now // Track when this specific DB started
 	p.LastUpdateTime = now
 }
 

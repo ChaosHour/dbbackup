@@ -5,6 +5,14 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.43] - 2026-02-06
+
+### Improved
+- **Enhanced Fast Path Debug Logging**: Better diagnostics for .meta.json validation
+  - Shows archive/metadata timestamps when fast path fails
+  - Logs reason for fallback to full scan (stale metadata, no databases, etc.)
+  - Helps troubleshoot slow preflight on different Linux distributions
+
 ## [5.8.42] - 2026-02-06
 
 ### Fixed

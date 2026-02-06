@@ -976,17 +976,31 @@ func (d *Diagnoser) tryFastPathWithMetadata(filePath string, result *DiagnoseRes
 	// Check if metadata file exists
 	metaStat, err := os.Stat(metaPath)
 	if err != nil {
+		if d.log != nil {
+			d.log.Debug("Fast path: no .meta.json file", "path", metaPath)
+		}
 		return false // No metadata file
 	}
 
 	// Check if metadata is not older than archive (stale check)
 	archiveStat, err := os.Stat(filePath)
 	if err != nil {
+		if d.log != nil {
+			d.log.Debug("Fast path: cannot stat archive", "error", err)
+		}
 		return false
 	}
+	
+	if d.log != nil {
+		d.log.Debug("Fast path: timestamp check",
+			"archive_mtime", archiveStat.ModTime().Format("2006-01-02 15:04:05"),
+			"meta_mtime", metaStat.ModTime().Format("2006-01-02 15:04:05"),
+			"meta_newer", !metaStat.ModTime().Before(archiveStat.ModTime()))
+	}
+	
 	if metaStat.ModTime().Before(archiveStat.ModTime()) {
 		if d.log != nil {
-			d.log.Debug("Metadata older than archive, using full scan")
+			d.log.Debug("Fast path: metadata older than archive, using full scan")
 		}
 		return false // Metadata is stale
 	}
@@ -995,13 +1009,16 @@ func (d *Diagnoser) tryFastPathWithMetadata(filePath string, result *DiagnoseRes
 	clusterMeta, err := metadata.LoadCluster(filePath)
 	if err != nil {
 		if d.log != nil {
-			d.log.Debug("Cannot load cluster metadata", "error", err)
+			d.log.Debug("Fast path: cannot load cluster metadata", "error", err)
 		}
 		return false
 	}
 
 	// Validate metadata has meaningful content
 	if len(clusterMeta.Databases) == 0 {
+		if d.log != nil {
+			d.log.Debug("Fast path: metadata has no databases")
+		}
 		return false
 	}
 

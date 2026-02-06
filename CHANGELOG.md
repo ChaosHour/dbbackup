@@ -5,6 +5,13 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.42] - 2026-02-06
+
+### Fixed
+- **Hotfix: Reverted Setsid** - `Setsid: true` broke fork/exec permissions
+- **TERM=dumb**: Prevents psql from opening `/dev/tty` for password prompts
+- **psql flags**: Added `-X` (no .psqlrc) and `--no-password` for non-interactive mode
+
 ## [5.8.41] - 2026-02-06
 
 ### Fixed

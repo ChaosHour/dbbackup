@@ -6,6 +6,7 @@ package cleanup
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"syscall"
 	"time"
@@ -18,19 +19,19 @@ import (
 func SafeCommand(ctx context.Context, name string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, name, args...)
 
-	// Set up new session AND process group for clean termination
-	// Setsid: Creates a new session, detaching from the controlling terminal
-	// This prevents SIGTTIN when child processes try to access /dev/tty
-	// Setpgid: Creates new process group for killing entire process tree
+	// Set up process group for clean termination
+	// This allows killing the entire process tree when cancelled
 	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid:  true, // NEW SESSION - detach from controlling terminal
 		Setpgid: true, // Create new process group
 		Pgid:    0,    // Use the new process's PID as the PGID
 	}
 
-	// Also set stdin to nil as a belt-and-suspenders approach
-	// This routes stdin to /dev/null
+	// Detach stdin to prevent SIGTTIN when running under TUI
 	cmd.Stdin = nil
+
+	// Set TERM=dumb to prevent child processes from trying to access /dev/tty
+	// This is critical for psql which opens /dev/tty for password prompts
+	cmd.Env = append(os.Environ(), "TERM=dumb")
 
 	return cmd
 }

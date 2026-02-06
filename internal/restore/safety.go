@@ -482,7 +482,9 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 		"-p", fmt.Sprintf("%d", s.cfg.Port),
 		"-U", s.cfg.User,
 		"-d", "postgres",
-		"-tA", // Tuples only, unaligned
+		"-tA",          // Tuples only, unaligned
+		"-X",           // Don't read .psqlrc (prevents interactive features)
+		"--no-password", // Never prompt for password (use PGPASSWORD env)
 		"-c", query,
 	}
 
@@ -496,8 +498,9 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 
 	cmd := cleanup.SafeCommand(ctx, "psql", args...)
 
-	// Set password - check config first, then environment
+	// Set password and TERM=dumb to prevent /dev/tty access
 	env := os.Environ()
+	env = append(env, "TERM=dumb") // Prevent psql from opening /dev/tty
 	if s.cfg.Password != "" {
 		env = append(env, fmt.Sprintf("PGPASSWORD=%s", s.cfg.Password))
 	}

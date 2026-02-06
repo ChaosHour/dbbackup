@@ -225,6 +225,18 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return diagnoseView, diagnoseView.Init()
 				}
 
+				// Handle generate-metadata mode - generate .meta.json and return
+				if m.mode == "generate-metadata" {
+					metaGenView := NewMetadataGeneratorView(m.config, m.logger, m.parent, m.ctx, selected)
+					return metaGenView, metaGenView.Init()
+				}
+
+				// Handle verify mode - go to diagnosis view
+				if m.mode == "verify" {
+					diagnoseView := NewDiagnoseView(m.config, m.logger, m.parent, m.ctx, selected)
+					return diagnoseView, diagnoseView.Init()
+				}
+
 				// For restore-cluster mode: check if format can be used for cluster restore
 				// - .tar.gz: dbbackup cluster format (works with pg_restore)
 				// - .sql/.sql.gz: pg_dumpall format (works with native engine or psql)

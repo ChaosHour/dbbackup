@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"dbbackup/internal/catalog"
+	"dbbackup/internal/logger"
+	"dbbackup/internal/restore"
 
 	"github.com/spf13/cobra"
 )
@@ -207,6 +209,38 @@ Examples:
 	RunE: runCatalogPrune,
 }
 
+// catalogGenerateCmd generates .meta.json for archives
+var catalogGenerateCmd = &cobra.Command{
+	Use:   "generate <archive> [archive2...]",
+	Short: "Generate .meta.json metadata for backup archives",
+	Long: `Scan backup archives and generate .meta.json metadata files.
+
+This is useful for:
+  - Legacy backups that don't have metadata
+  - Pre-generating metadata before restore (instant restore start)
+  - Importing backups created by other tools
+
+The generated .meta.json enables:
+  - Fast restore preflight checks (< 1 second vs minutes)
+  - Catalog sync without manual entry
+  - Quick database listing without archive extraction
+
+Examples:
+  # Generate metadata for a single archive
+  dbbackup catalog generate /backups/cluster-2026-02-06.tar.gz
+
+  # Generate for multiple archives
+  dbbackup catalog generate /backups/*.tar.gz
+
+  # Verbose output with details
+  dbbackup catalog generate /backups/cluster.tar.gz --verbose
+
+  # Force regenerate even if .meta.json exists
+  dbbackup catalog generate /backups/cluster.tar.gz --force`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: runCatalogGenerate,
+}
+
 func init() {
 	rootCmd.AddCommand(catalogCmd)
 
@@ -227,6 +261,7 @@ func init() {
 	catalogCmd.AddCommand(catalogSearchCmd)
 	catalogCmd.AddCommand(catalogInfoCmd)
 	catalogCmd.AddCommand(catalogPruneCmd)
+	catalogCmd.AddCommand(catalogGenerateCmd)
 
 	// Sync flags
 	catalogSyncCmd.Flags().BoolVarP(&catalogVerbose, "verbose", "v", false, "Show detailed output")
@@ -258,6 +293,10 @@ func init() {
 	catalogPruneCmd.Flags().String("status", "", "Remove entries with specific status (failed, corrupted, deleted)")
 	catalogPruneCmd.Flags().Bool("dry-run", false, "Preview changes without actually deleting")
 	catalogPruneCmd.Flags().StringVar(&catalogDatabase, "database", "", "Only prune entries for specific database")
+
+	// Generate flags
+	catalogGenerateCmd.Flags().BoolVarP(&catalogVerbose, "verbose", "v", false, "Show detailed output")
+	catalogGenerateCmd.Flags().Bool("force", false, "Regenerate even if .meta.json already exists")
 }
 
 func getDefaultConfigDir() string {
@@ -907,4 +946,119 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
+}
+
+// runCatalogGenerate generates .meta.json for backup archives
+func runCatalogGenerate(cmd *cobra.Command, args []string) error {
+	verbose, _ := cmd.Flags().GetBool("verbose")
+	force, _ := cmd.Flags().GetBool("force")
+
+	// Setup logger
+	logLevel := "info"
+	if verbose {
+		logLevel = "debug"
+	}
+	log := logger.New(logLevel, "text")
+
+	fmt.Println("🔍 Generating metadata for backup archives...")
+	fmt.Println()
+
+	var generated, skipped, failed int
+
+	for _, pattern := range args {
+		// Expand glob patterns
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			fmt.Printf("  ❌ Invalid pattern: %s - %v\n", pattern, err)
+			failed++
+			continue
+		}
+
+		if len(matches) == 0 {
+			fmt.Printf("  ⚠️  No files match: %s\n", pattern)
+			continue
+		}
+
+		for _, archivePath := range matches {
+			// Check if file exists and is a file
+			stat, err := os.Stat(archivePath)
+			if err != nil {
+				fmt.Printf("  ❌ Cannot access: %s - %v\n", filepath.Base(archivePath), err)
+				failed++
+				continue
+			}
+			if stat.IsDir() {
+				continue // Skip directories
+			}
+
+			// Check if it's a supported archive format
+			if !strings.HasSuffix(archivePath, ".tar.gz") &&
+				!strings.HasSuffix(archivePath, ".tgz") &&
+				!strings.HasSuffix(archivePath, ".dump") &&
+				!strings.HasSuffix(archivePath, ".dump.gz") &&
+				!strings.HasSuffix(archivePath, ".sql") &&
+				!strings.HasSuffix(archivePath, ".sql.gz") {
+				if verbose {
+					fmt.Printf("  ⏭️  Skipping unsupported format: %s\n", filepath.Base(archivePath))
+				}
+				continue
+			}
+
+			metaPath := archivePath + ".meta.json"
+
+			// Check if .meta.json already exists
+			if _, err := os.Stat(metaPath); err == nil && !force {
+				fmt.Printf("  ✅ Already exists: %s\n", filepath.Base(archivePath))
+				skipped++
+				continue
+			}
+
+			// Generate metadata
+			sizeGB := float64(stat.Size()) / (1024 * 1024 * 1024)
+			fmt.Printf("  🔄 Scanning: %s (%.1f GB)...\n", filepath.Base(archivePath), sizeGB)
+
+			diagnoser := restore.NewDiagnoser(log, verbose)
+			result, err := diagnoser.DiagnoseFile(archivePath)
+
+			if err != nil {
+				fmt.Printf("     ❌ Failed: %v\n", err)
+				failed++
+				continue
+			}
+
+			// Check if .meta.json was generated
+			if _, err := os.Stat(metaPath); err == nil {
+				fmt.Printf("     ✅ Generated: %s\n", filepath.Base(metaPath))
+				if result != nil && result.Details != nil && len(result.Details.TableList) > 0 {
+					fmt.Printf("        📊 Found %d database(s)\n", len(result.Details.TableList))
+					if verbose {
+						for _, db := range result.Details.TableList {
+							// Remove .dump suffix for display
+							dbName := strings.TrimSuffix(db, ".dump")
+							fmt.Printf("           - %s\n", dbName)
+						}
+					}
+				}
+				generated++
+			} else {
+				fmt.Printf("     ⚠️  No metadata generated (may not be a cluster archive)\n")
+				skipped++
+			}
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Printf("📊 Summary: %d generated, %d skipped, %d failed\n", generated, skipped, failed)
+
+	if generated > 0 {
+		fmt.Println()
+		fmt.Println("💡 Tip: Run 'dbbackup catalog sync <dir>' to import into catalog")
+	}
+
+	if failed > 0 {
+		return fmt.Errorf("%d archive(s) failed", failed)
+	}
+
+	return nil
 }

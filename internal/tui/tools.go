@@ -41,6 +41,7 @@ func NewToolsMenu(cfg *config.Config, log logger.Logger, parent tea.Model, ctx c
 			"Dedup Store Analyze",
 			"Verify Backup Integrity",
 			"Catalog Sync",
+			"Generate Archive Metadata",
 			"--------------------------------",
 			"Back to Main Menu",
 		},
@@ -104,7 +105,9 @@ func (t *ToolsMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return t.handleVerifyIntegrity()
 			case 11: // Catalog Sync
 				return t.handleCatalogSync()
-			case 13: // Back to Main Menu
+			case 12: // Generate Archive Metadata
+				return t.handleGenerateMetadata()
+			case 14: // Back to Main Menu
 				return t.parent, nil
 			}
 		}
@@ -187,6 +190,13 @@ func (t *ToolsMenu) handleVerifyIntegrity() (tea.Model, tea.Cmd) {
 func (t *ToolsMenu) handleCatalogSync() (tea.Model, tea.Cmd) {
 	t.message = warnStyle.Render("[TODO] Catalog sync TUI - use CLI: dbbackup catalog sync")
 	return t, nil
+}
+
+// handleGenerateMetadata opens the archive metadata generator
+func (t *ToolsMenu) handleGenerateMetadata() (tea.Model, tea.Cmd) {
+	// Use existing archive browser to select archive, then generate metadata
+	browser := NewArchiveBrowser(t.config, t.logger, t, t.ctx, "generate-metadata")
+	return browser, browser.Init()
 }
 
 // handleTableSizes opens the table sizes view

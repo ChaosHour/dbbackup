@@ -25,6 +25,12 @@ func SafeCommand(ctx context.Context, name string, args ...string) *exec.Cmd {
 		Pgid:    0,    // Use the new process's PID as the PGID
 	}
 
+	// CRITICAL: Detach stdin to prevent SIGTTIN when running under TUI
+	// When Bubble Tea controls the terminal, child processes that try to read
+	// from stdin will receive SIGTTIN and stop. Setting Stdin to nil causes
+	// os/exec to connect it to /dev/null instead.
+	cmd.Stdin = nil
+
 	return cmd
 }
 

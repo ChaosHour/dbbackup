@@ -104,19 +104,35 @@ func loadArchives(cfg *config.Config, log logger.Logger) tea.Cmd {
 		var archives []ArchiveInfo
 
 		for _, file := range files {
-			if file.IsDir() {
-				continue
-			}
-
 			name := file.Name()
-			format := restore.DetectArchiveFormat(name)
-
-			if format == restore.FormatUnknown {
-				continue // Skip non-backup files
-			}
-
-			info, _ := file.Info()
 			fullPath := filepath.Join(backupDir, name)
+			
+			var format restore.ArchiveFormat
+			var info os.FileInfo
+			var size int64
+			
+			if file.IsDir() {
+				// Check if directory is a plain cluster backup
+				format = restore.DetectArchiveFormatWithPath(fullPath)
+				if format == restore.FormatUnknown {
+					continue // Skip non-backup directories
+				}
+				// Calculate directory size
+				filepath.Walk(fullPath, func(_ string, fi os.FileInfo, _ error) error {
+					if fi != nil && !fi.IsDir() {
+						size += fi.Size()
+					}
+					return nil
+				})
+				info, _ = file.Info()
+			} else {
+				format = restore.DetectArchiveFormat(name)
+				if format == restore.FormatUnknown {
+					continue // Skip non-backup files
+				}
+				info, _ = file.Info()
+				size = info.Size()
+			}
 
 			// Extract database name
 			dbName := extractDBNameFromFilename(name)
@@ -124,16 +140,16 @@ func loadArchives(cfg *config.Config, log logger.Logger) tea.Cmd {
 			// Basic validation (just check if file is readable)
 			valid := true
 			validationMsg := "Valid"
-			if info.Size() == 0 {
+			if size == 0 {
 				valid = false
-				validationMsg = "Empty file"
+				validationMsg = "Empty"
 			}
 
 			archives = append(archives, ArchiveInfo{
 				Name:          name,
 				Path:          fullPath,
 				Format:        format,
-				Size:          info.Size(),
+				Size:          size,
 				Modified:      info.ModTime(),
 				DatabaseName:  dbName,
 				Valid:         valid,

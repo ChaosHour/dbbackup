@@ -242,21 +242,26 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	timestamp := time.Now().Format("20060102_150405")
 	var outputFile string
 
-	if e.cfg.IsPostgreSQL() {
-		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("db_%s_%s.dump", databaseName, timestamp))
-	} else {
-		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("db_%s_%s.sql.gz", databaseName, timestamp))
-	}
+	// Use configured output format (compressed or plain)
+	extension := e.cfg.GetBackupExtension(e.cfg.DatabaseType)
+	outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("db_%s_%s%s", databaseName, timestamp, extension))
 
 	tracker.SetDetails("output_file", outputFile)
 	tracker.UpdateProgress(20, "Generated backup filename")
 
 	// Build backup command
 	cmdStep := tracker.AddStep("command", "Building backup command")
+	
+	// Determine format based on output setting
+	backupFormat := "custom"
+	if !e.cfg.ShouldOutputCompressed() || !e.cfg.IsPostgreSQL() {
+		backupFormat = "plain" // SQL text format
+	}
+	
 	options := database.BackupOptions{
-		Compression:  e.cfg.CompressionLevel,
+		Compression:  e.cfg.GetEffectiveCompressionLevel(),
 		Parallel:     e.cfg.DumpJobs,
-		Format:       "custom",
+		Format:       backupFormat,
 		Blobs:        true,
 		NoOwner:      false,
 		NoPrivileges: false,
@@ -473,9 +478,20 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			"used_percent", spaceCheck.UsedPercent)
 	}
 
-	// Generate timestamp and filename
+	// Generate timestamp and filename based on output format
 	timestamp := time.Now().Format("20060102_150405")
-	outputFile := filepath.Join(e.cfg.BackupDir, fmt.Sprintf("cluster_%s.tar.gz", timestamp))
+	var outputFile string
+	var plainOutput bool // Track if we're doing plain (uncompressed) output
+	
+	if e.cfg.ShouldOutputCompressed() {
+		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("cluster_%s.tar.gz", timestamp))
+		plainOutput = false
+	} else {
+		// Plain output: create a directory instead of archive
+		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("cluster_%s", timestamp))
+		plainOutput = true
+	}
+	
 	tempDir := filepath.Join(e.cfg.BackupDir, fmt.Sprintf(".cluster_%s", timestamp))
 
 	operation.Update("Starting cluster backup")
@@ -486,7 +502,10 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		quietProgress.Fail("Failed to create temporary directory")
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	// For compressed output, remove temp dir after. For plain, we'll rename it.
+	if !plainOutput {
+		defer os.RemoveAll(tempDir)
+	}
 
 	// Backup globals
 	e.printf("   Backing up global objects...\n")
@@ -787,24 +806,54 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 
 	e.printf("   Backup summary: %d succeeded, %d failed\n", successCountFinal, failCountFinal)
 
-	// Create archive
-	e.printf("   Creating compressed archive...\n")
-	if err := e.createArchive(ctx, tempDir, outputFile); err != nil {
-		quietProgress.Fail(fmt.Sprintf("Failed to create archive: %v", err))
-		operation.Fail("Archive creation failed")
-		return fmt.Errorf("failed to create archive: %w", err)
+	// Create archive or finalize plain output
+	if plainOutput {
+		// Plain output: rename temp directory to final location
+		e.printf("   Finalizing plain backup directory...\n")
+		if err := os.Rename(tempDir, outputFile); err != nil {
+			quietProgress.Fail(fmt.Sprintf("Failed to finalize backup: %v", err))
+			operation.Fail("Backup finalization failed")
+			return fmt.Errorf("failed to finalize plain backup: %w", err)
+		}
+	} else {
+		// Compressed output: create tar.gz archive
+		e.printf("   Creating compressed archive...\n")
+		if err := e.createArchive(ctx, tempDir, outputFile); err != nil {
+			quietProgress.Fail(fmt.Sprintf("Failed to create archive: %v", err))
+			operation.Fail("Archive creation failed")
+			return fmt.Errorf("failed to create archive: %w", err)
+		}
 	}
 
-	// Check output file
-	if info, err := os.Stat(outputFile); err != nil {
-		quietProgress.Fail("Cluster backup archive not created")
-		operation.Fail("Cluster backup archive not found")
-		return fmt.Errorf("cluster backup archive not created: %w", err)
-	} else {
-		size := formatBytes(info.Size())
-		quietProgress.Complete(fmt.Sprintf("Cluster backup completed: %s (%s)", filepath.Base(outputFile), size))
-		operation.Complete(fmt.Sprintf("Cluster backup created: %s (%s)", outputFile, size))
+	// Check output file/directory
+	info, err := os.Stat(outputFile)
+	if err != nil {
+		quietProgress.Fail("Cluster backup not created")
+		operation.Fail("Cluster backup not found")
+		return fmt.Errorf("cluster backup not created: %w", err)
 	}
+	
+	var size string
+	if plainOutput {
+		// For directory, calculate total size
+		var totalSize int64
+		filepath.Walk(outputFile, func(_ string, fi os.FileInfo, _ error) error {
+			if fi != nil && !fi.IsDir() {
+				totalSize += fi.Size()
+			}
+			return nil
+		})
+		size = formatBytes(totalSize)
+	} else {
+		size = formatBytes(info.Size())
+	}
+	
+	outputType := "archive"
+	if plainOutput {
+		outputType = "directory"
+	}
+	quietProgress.Complete(fmt.Sprintf("Cluster backup completed: %s (%s)", filepath.Base(outputFile), size))
+	operation.Complete(fmt.Sprintf("Cluster backup %s created: %s (%s)", outputType, outputFile, size))
 
 	// Create cluster metadata file
 	if err := e.createClusterMetadata(outputFile, databases, successCountFinal, failCountFinal); err != nil {
@@ -812,7 +861,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	}
 
 	// Auto-verify cluster backup integrity if enabled (HIGH priority #9)
-	if e.cfg.VerifyAfterBackup {
+	// Only verify for compressed archives
+	if e.cfg.VerifyAfterBackup && !plainOutput {
 		e.printf("   Verifying cluster backup integrity...\n")
 		e.log.Info("Post-backup verification enabled, checking cluster archive...")
 

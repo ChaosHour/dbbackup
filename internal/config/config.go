@@ -36,6 +36,7 @@ type Config struct {
 	CompressionLevel     int
 	AutoDetectCompression bool   // Auto-detect optimal compression based on blob analysis
 	CompressionMode      string // "auto", "always", "never" - controls compression behavior
+	BackupOutputFormat   string // "compressed" or "plain" - output format for backups
 	Jobs                 int
 	DumpJobs             int
 	MaxCores             int
@@ -222,9 +223,10 @@ func New() *Config {
 		Insecure:     getEnvBool("INSECURE", false),
 
 		// Backup defaults - use recommended profile's settings for small VMs
-		BackupDir:        backupDir,
-		CompressionLevel: getEnvInt("COMPRESS_LEVEL", 6),
-		Jobs:             getEnvInt("JOBS", recommendedProfile.Jobs),
+		BackupDir:          backupDir,
+		CompressionLevel:   getEnvInt("COMPRESS_LEVEL", 6),
+		BackupOutputFormat: getEnvString("BACKUP_OUTPUT_FORMAT", "compressed"),
+		Jobs:               getEnvInt("JOBS", recommendedProfile.Jobs),
 		DumpJobs:         getEnvInt("DUMP_JOBS", recommendedProfile.DumpJobs),
 		MaxCores:         getEnvInt("MAX_CORES", getDefaultMaxCores(cpuInfo)),
 		AutoDetectCores:  getEnvBool("AUTO_DETECT_CORES", true),
@@ -628,6 +630,41 @@ func (c *Config) ShouldAutoDetectCompression() bool {
 // ShouldSkipCompression returns true if compression is explicitly disabled
 func (c *Config) ShouldSkipCompression() bool {
 	return c.CompressionMode == "never" || c.CompressionLevel == 0
+}
+
+// ShouldOutputCompressed returns true if backup output should be compressed
+func (c *Config) ShouldOutputCompressed() bool {
+	// If output format is explicitly "plain", skip compression
+	if c.BackupOutputFormat == "plain" {
+		return false
+	}
+	// If compression mode is "never", output plain
+	if c.CompressionMode == "never" {
+		return false
+	}
+	// Default to compressed
+	return true
+}
+
+// GetBackupExtension returns the appropriate file extension based on output format
+// For single database backups
+func (c *Config) GetBackupExtension(dbType string) string {
+	if c.ShouldOutputCompressed() {
+		if dbType == "postgres" || dbType == "postgresql" {
+			return ".dump" // PostgreSQL custom format (includes compression)
+		}
+		return ".sql.gz" // MySQL/MariaDB compressed SQL
+	}
+	// Plain output
+	return ".sql"
+}
+
+// GetClusterExtension returns the appropriate extension for cluster backups
+func (c *Config) GetClusterExtension() string {
+	if c.ShouldOutputCompressed() {
+		return ".tar.gz"
+	}
+	return "" // Plain directory (no extension)
 }
 
 // GetEffectiveCompressionLevel returns the compression level to use

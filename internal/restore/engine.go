@@ -1380,19 +1380,28 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	}
 
 	format := DetectArchiveFormat(archivePath)
+	
+	// Also check if it's a plain cluster directory
+	if format == FormatUnknown {
+		format = DetectArchiveFormatWithPath(archivePath)
+	}
+	
 	if !format.CanBeClusterRestore() {
 		operation.Fail("Invalid cluster archive format")
-		return fmt.Errorf("not a valid cluster restore format: %s (detected format: %s). Supported: .tar.gz, .sql, .sql.gz", archivePath, format)
+		return fmt.Errorf("not a valid cluster restore format: %s (detected format: %s). Supported: .tar.gz, plain directory, .sql, .sql.gz", archivePath, format)
 	}
 
 	// For SQL-based cluster restores, use a different restore path
 	if format == FormatPostgreSQLSQL || format == FormatPostgreSQLSQLGz {
 		return e.restoreClusterFromSQL(ctx, archivePath, operation)
 	}
+	
+	// For plain directories, use directly without extraction
+	isPlainDirectory := format == FormatClusterDir
 
 	// Check if we have a pre-extracted directory (optimization to avoid double extraction)
 	// This check must happen BEFORE disk space checks to avoid false failures
-	usingPreExtracted := len(preExtractedPath) > 0 && preExtractedPath[0] != ""
+	usingPreExtracted := len(preExtractedPath) > 0 && preExtractedPath[0] != "" || isPlainDirectory
 
 	// Check disk space before starting restore (skip if using pre-extracted directory)
 	var archiveInfo os.FileInfo
@@ -1429,8 +1438,14 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	workDir := e.cfg.GetEffectiveWorkDir()
 	tempDir := filepath.Join(workDir, fmt.Sprintf(".restore_%d", time.Now().Unix()))
 
-	// Handle pre-extracted directory or extract archive
-	if usingPreExtracted {
+	// Handle plain directory, pre-extracted directory, or extract archive
+	if isPlainDirectory {
+		// Plain cluster directory - use directly (no extraction needed)
+		tempDir = archivePath
+		e.log.Info("Using plain cluster directory (no extraction needed)",
+			"path", tempDir,
+			"format", "plain")
+	} else if usingPreExtracted {
 		tempDir = preExtractedPath[0]
 		// Note: Caller handles cleanup of pre-extracted directory
 		e.log.Info("Using pre-extracted cluster directory",

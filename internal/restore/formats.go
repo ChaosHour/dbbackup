@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/klauspost/pgzip"
@@ -20,6 +21,7 @@ const (
 	FormatMySQLSQL         ArchiveFormat = "MySQL SQL (.sql)"
 	FormatMySQLSQLGz       ArchiveFormat = "MySQL SQL Compressed (.sql.gz)"
 	FormatClusterTarGz     ArchiveFormat = "Cluster Archive (.tar.gz)"
+	FormatClusterDir       ArchiveFormat = "Cluster Directory (plain)"
 	FormatUnknown          ArchiveFormat = "Unknown"
 )
 
@@ -117,6 +119,40 @@ func DetectArchiveFormat(filename string) ArchiveFormat {
 	return FormatUnknown
 }
 
+// DetectArchiveFormatWithPath detects format including directory check
+// This is used by archive browser to handle both files and directories
+func DetectArchiveFormatWithPath(path string) ArchiveFormat {
+	// Check if it's a directory first
+	info, err := os.Stat(path)
+	if err == nil && info.IsDir() {
+		// Check if it looks like a cluster backup directory
+		// by looking for globals.sql or dumps subdirectory
+		if isClusterDirectory(path) {
+			return FormatClusterDir
+		}
+		return FormatUnknown
+	}
+	
+	// Fall back to filename-based detection
+	return DetectArchiveFormat(path)
+}
+
+// isClusterDirectory checks if a directory is a plain cluster backup
+func isClusterDirectory(dir string) bool {
+	// Look for cluster backup markers: globals.sql or dumps/ subdirectory
+	if _, err := os.Stat(filepath.Join(dir, "globals.sql")); err == nil {
+		return true
+	}
+	if info, err := os.Stat(filepath.Join(dir, "dumps")); err == nil && info.IsDir() {
+		return true
+	}
+	// Also check for .cluster.meta.json
+	if _, err := os.Stat(filepath.Join(dir, ".cluster.meta.json")); err == nil {
+		return true
+	}
+	return false
+}
+
 // formatCheckResult represents the result of checking file format
 type formatCheckResult int
 
@@ -168,15 +204,16 @@ func (f ArchiveFormat) IsCompressed() bool {
 		f == FormatClusterTarGz
 }
 
-// IsClusterBackup returns true if the archive is a cluster backup (.tar.gz format created by dbbackup)
+// IsClusterBackup returns true if the archive is a cluster backup (.tar.gz or plain directory)
 func (f ArchiveFormat) IsClusterBackup() bool {
-	return f == FormatClusterTarGz
+	return f == FormatClusterTarGz || f == FormatClusterDir
 }
 
 // CanBeClusterRestore returns true if the format can be used for cluster restore
-// This includes .tar.gz (dbbackup format) and .sql/.sql.gz (pg_dumpall format for native engine)
+// This includes .tar.gz (dbbackup format), plain directories, and .sql/.sql.gz (pg_dumpall format for native engine)
 func (f ArchiveFormat) CanBeClusterRestore() bool {
 	return f == FormatClusterTarGz ||
+		f == FormatClusterDir ||
 		f == FormatPostgreSQLSQL ||
 		f == FormatPostgreSQLSQLGz
 }
@@ -187,7 +224,8 @@ func (f ArchiveFormat) IsPostgreSQL() bool {
 		f == FormatPostgreSQLDumpGz ||
 		f == FormatPostgreSQLSQL ||
 		f == FormatPostgreSQLSQLGz ||
-		f == FormatClusterTarGz
+		f == FormatClusterTarGz ||
+		f == FormatClusterDir
 }
 
 // IsMySQL returns true if format is MySQL
@@ -212,6 +250,8 @@ func (f ArchiveFormat) String() string {
 		return "MySQL SQL (gzip)"
 	case FormatClusterTarGz:
 		return "Cluster Archive (tar.gz)"
+	case FormatClusterDir:
+		return "Cluster Directory (plain)"
 	default:
 		return "Unknown"
 	}

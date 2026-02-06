@@ -281,6 +281,27 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "ALWAYS=use level, AUTO=analyze blobs & decide, NEVER=skip compression. Press Enter to cycle.",
 		},
 		{
+			Key:         "backup_output_format",
+			DisplayName: "Backup Output Format",
+			Value: func(c *config.Config) string {
+				if c.BackupOutputFormat == "plain" {
+					return "Plain (.sql)"
+				}
+				return "Compressed (.tar.gz/.sql.gz)"
+			},
+			Update: func(c *config.Config, v string) error {
+				// Toggle between compressed and plain
+				if c.BackupOutputFormat == "plain" {
+					c.BackupOutputFormat = "compressed"
+				} else {
+					c.BackupOutputFormat = "plain"
+				}
+				return nil
+			},
+			Type:        "selector",
+			Description: "Compressed=smaller archives, Plain=raw SQL files (faster, larger). Press Enter to toggle.",
+		},
+		{
 			Key:         "jobs",
 			DisplayName: "Parallel Jobs",
 			Value:       func(c *config.Config) string { return fmt.Sprintf("%d", c.Jobs) },

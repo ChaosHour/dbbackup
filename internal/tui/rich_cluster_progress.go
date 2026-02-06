@@ -222,7 +222,13 @@ func (v *RichClusterProgressView) renderPhaseDetails(snapshot *progress.Progress
 			}
 			bar := v.renderMiniProgressBar(pct)
 
-			phaseElapsed := time.Since(snapshot.PhaseStartTime)
+			// Use per-database elapsed time if available, fallback to phase elapsed
+			var dbElapsed time.Duration
+			if !snapshot.CurrentDBStarted.IsZero() {
+				dbElapsed = time.Since(snapshot.CurrentDBStarted)
+			} else {
+				dbElapsed = time.Since(snapshot.PhaseStartTime)
+			}
 
 			// Better display when we have progress info vs when we're waiting
 			if snapshot.CurrentDBTotal > 0 {
@@ -230,12 +236,12 @@ func (v *RichClusterProgressView) renderPhaseDetails(snapshot *progress.Progress
 					spinner, truncateString(snapshot.CurrentDB, 20), bar, pct))
 				b.WriteString(fmt.Sprintf("        └─ %s / %s (running %s)\n",
 					FormatBytes(snapshot.CurrentDBBytes), FormatBytes(snapshot.CurrentDBTotal),
-					formatDuration(phaseElapsed)))
+					formatDuration(dbElapsed)))
 			} else {
 				// No byte-level progress available - show activity indicator with elapsed time
 				b.WriteString(fmt.Sprintf("     %s %-20s [restoring...] running %s\n",
 					spinner, truncateString(snapshot.CurrentDB, 20),
-					formatDuration(phaseElapsed)))
+					formatDuration(dbElapsed)))
 				if snapshot.UseNativeEngine {
 					b.WriteString(fmt.Sprintf("        └─ native Go engine in progress (pure Go, no external tools)\n"))
 				} else {

@@ -970,6 +970,7 @@ func minInt(a, b int) int {
 
 // tryFastPathWithMetadata attempts to use .meta.json for fast cluster verification
 // Returns true if successful, false if metadata unavailable/invalid
+// If no .meta.json exists, attempts to generate one (one-time slow scan, then fast forever)
 func (d *Diagnoser) tryFastPathWithMetadata(filePath string, result *DiagnoseResult) bool {
 	metaPath := filePath + ".meta.json"
 
@@ -977,9 +978,21 @@ func (d *Diagnoser) tryFastPathWithMetadata(filePath string, result *DiagnoseRes
 	metaStat, err := os.Stat(metaPath)
 	if err != nil {
 		if d.log != nil {
-			d.log.Debug("Fast path: no .meta.json file", "path", metaPath)
+			d.log.Debug("Fast path: no .meta.json file, attempting to generate", "path", metaPath)
 		}
-		return false // No metadata file
+		// Try to auto-generate .meta.json for legacy archives (dbbackup 3.x)
+		if d.tryGenerateMetadata(filePath, result) {
+			// Retry with newly generated metadata
+			metaStat, err = os.Stat(metaPath)
+			if err != nil {
+				return false
+			}
+			if d.log != nil {
+				d.log.Info("Generated .meta.json for legacy archive - future access will be instant")
+			}
+		} else {
+			return false
+		}
 	}
 
 	// Check if metadata is not older than archive (stale check)
@@ -1076,5 +1089,85 @@ func (d *Diagnoser) tryFastPathWithMetadata(filePath string, result *DiagnoseRes
 	}
 
 	result.IsValid = true
+	return true
+}
+
+// tryGenerateMetadata attempts to generate .meta.json for legacy archives (dbbackup 3.x)
+// This is a one-time slow scan that enables fast access for all future operations
+func (d *Diagnoser) tryGenerateMetadata(filePath string, result *DiagnoseResult) bool {
+	if d.log != nil {
+		d.log.Info("Generating .meta.json for legacy archive (one-time scan)...",
+			"archive", filepath.Base(filePath),
+			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)))
+	}
+
+	// Quick timeout for listing - 10 minutes max
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	// List contents of archive
+	files, err := fs.ListTarGzContents(ctx, filePath)
+	if err != nil {
+		if d.log != nil {
+			d.log.Debug("Failed to list archive contents for metadata generation", "error", err)
+		}
+		return false
+	}
+
+	// Extract database names from .dump files
+	var databases []metadata.BackupMetadata
+	for _, f := range files {
+		if strings.HasSuffix(f, ".dump") {
+			dbName := strings.TrimSuffix(filepath.Base(f), ".dump")
+			databases = append(databases, metadata.BackupMetadata{
+				Database:     dbName,
+				DatabaseType: "postgres",
+			})
+		}
+	}
+
+	if len(databases) == 0 {
+		if d.log != nil {
+			d.log.Debug("No .dump files found in archive")
+		}
+		return false
+	}
+
+	// Create cluster metadata
+	clusterMeta := &metadata.ClusterMetadata{
+		Version:      "2.0",
+		Timestamp:    time.Now(),
+		ClusterName:  "legacy-import",
+		DatabaseType: "postgres",
+		Databases:    databases,
+		ExtraInfo: map[string]string{
+			"generated_by": "dbbackup-auto-migrate",
+			"source":       "legacy-3.x-archive",
+		},
+	}
+
+	// Write metadata file
+	metaPath := filePath + ".meta.json"
+	data, err := json.MarshalIndent(clusterMeta, "", "  ")
+	if err != nil {
+		if d.log != nil {
+			d.log.Debug("Failed to marshal metadata", "error", err)
+		}
+		return false
+	}
+
+	if err := os.WriteFile(metaPath, data, 0644); err != nil {
+		if d.log != nil {
+			d.log.Debug("Failed to write .meta.json", "error", err)
+		}
+		return false
+	}
+
+	if d.log != nil {
+		d.log.Info("Successfully generated .meta.json",
+			"databases", len(databases),
+			"path", metaPath)
+	}
+
 	return true
 }

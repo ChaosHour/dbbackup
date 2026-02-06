@@ -862,8 +862,14 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	}
 
 	// Stream decompressed data to restore command in goroutine
+	// CRITICAL: Use recover to catch panics from pgzip when context is cancelled
 	copyDone := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				copyDone <- fmt.Errorf("pgzip panic (context cancelled): %v", r)
+			}
+		}()
 		_, copyErr := fs.CopyWithContext(ctx, stdin, gz)
 		stdin.Close()
 		copyDone <- copyErr
@@ -1002,8 +1008,14 @@ SET max_wal_size = '10GB';
 	}
 
 	// Stream decompressed data to restore command in goroutine
+	// CRITICAL: Use recover to catch panics from pgzip when context is cancelled
 	copyDone := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				copyDone <- fmt.Errorf("pgzip panic (context cancelled): %v", r)
+			}
+		}()
 		_, copyErr := fs.CopyWithContext(ctx, stdin, gz)
 		stdin.Close()
 		copyDone <- copyErr

@@ -5,6 +5,19 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.44] - 2026-02-06
+
+### Fixed
+- **pgzip Panic Fix**: Added panic recovery to pgzip stream goroutines in restore engine
+  - Root cause: klauspost/pgzip panics when reader closed during active goroutine reads
+  - Solution: `defer recover()` wrapper converts panic to error message
+  - Affects: Cluster restore cancellation (Ctrl+C) no longer crashes
+- **Timer Display Fix**: "running Xs" no longer resets every 5 seconds
+  - Root cause: `SetPhase()` was called on every heartbeat, resetting PhaseStartTime
+  - Solution: SetPhase now only resets timer when phase actually changes
+  - Added `CurrentDBStarted` field for per-database elapsed time tracking
+  - Timer now shows actual time since current database started restoring
+
 ## [5.8.43] - 2026-02-06
 
 ### Improved

@@ -30,25 +30,26 @@ var PhaseWeights = map[Phase]int{
 
 // ProgressSnapshot is a mutex-free copy of progress state for safe reading
 type ProgressSnapshot struct {
-	Operation       string
-	ArchiveFile     string
-	Phase           Phase
-	ExtractBytes    int64
-	ExtractTotal    int64
-	DatabasesDone   int
-	DatabasesTotal  int
-	CurrentDB       string
-	CurrentDBBytes  int64
-	CurrentDBTotal  int64
-	DatabaseSizes   map[string]int64
-	VerifyDone      int
-	VerifyTotal     int
-	StartTime       time.Time
-	PhaseStartTime  time.Time
-	LastUpdateTime  time.Time
-	DatabaseTimes   []time.Duration
-	Errors          []string
-	UseNativeEngine bool // True if using pure Go native engine (no pg_restore)
+	Operation        string
+	ArchiveFile      string
+	Phase            Phase
+	ExtractBytes     int64
+	ExtractTotal     int64
+	DatabasesDone    int
+	DatabasesTotal   int
+	CurrentDB        string
+	CurrentDBBytes   int64
+	CurrentDBTotal   int64
+	CurrentDBStarted time.Time // When current database restore started
+	DatabaseSizes    map[string]int64
+	VerifyDone       int
+	VerifyTotal      int
+	StartTime        time.Time
+	PhaseStartTime   time.Time
+	LastUpdateTime   time.Time
+	DatabaseTimes    []time.Duration
+	Errors           []string
+	UseNativeEngine  bool // True if using pure Go native engine (no pg_restore)
 }
 
 // UnifiedClusterProgress combines all progress states into one cohesive structure
@@ -69,12 +70,13 @@ type UnifiedClusterProgress struct {
 	ExtractTotal int64
 
 	// Database phase (Phase 2)
-	DatabasesDone  int
-	DatabasesTotal int
-	CurrentDB      string
-	CurrentDBBytes int64
-	CurrentDBTotal int64
-	DatabaseSizes  map[string]int64 // Pre-calculated sizes for accurate weighting
+	DatabasesDone    int
+	DatabasesTotal   int
+	CurrentDB        string
+	CurrentDBBytes   int64
+	CurrentDBTotal   int64
+	CurrentDBStarted time.Time            // When current database restore started
+	DatabaseSizes    map[string]int64     // Pre-calculated sizes for accurate weighting
 
 	// Verification phase (Phase 3)
 	VerifyDone  int
@@ -105,13 +107,17 @@ func NewUnifiedClusterProgress(operation, archiveFile string) *UnifiedClusterPro
 	}
 }
 
-// SetPhase changes the current phase
+// SetPhase changes the current phase (only resets timer if phase actually changes)
 func (p *UnifiedClusterProgress) SetPhase(phase Phase) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.Phase = phase
-	p.PhaseStartTime = time.Now()
+	// Only reset PhaseStartTime if phase actually changes
+	// This prevents timer reset on repeated calls with same phase
+	if p.Phase != phase {
+		p.Phase = phase
+		p.PhaseStartTime = time.Now()
+	}
 	p.LastUpdateTime = time.Now()
 }
 
@@ -141,10 +147,12 @@ func (p *UnifiedClusterProgress) StartDatabase(dbName string, totalBytes int64) 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	now := time.Now()
 	p.CurrentDB = dbName
 	p.CurrentDBBytes = 0
 	p.CurrentDBTotal = totalBytes
-	p.LastUpdateTime = time.Now()
+	p.CurrentDBStarted = now // Track when this specific DB started
+	p.LastUpdateTime = now
 }
 
 // UpdateDatabaseProgress updates current database progress
@@ -329,25 +337,26 @@ func (p *UnifiedClusterProgress) GetSnapshot() ProgressSnapshot {
 	copy(errors, p.Errors)
 
 	return ProgressSnapshot{
-		Operation:       p.Operation,
-		ArchiveFile:     p.ArchiveFile,
-		Phase:           p.Phase,
-		ExtractBytes:    p.ExtractBytes,
-		ExtractTotal:    p.ExtractTotal,
-		DatabasesDone:   p.DatabasesDone,
-		DatabasesTotal:  p.DatabasesTotal,
-		CurrentDB:       p.CurrentDB,
-		CurrentDBBytes:  p.CurrentDBBytes,
-		CurrentDBTotal:  p.CurrentDBTotal,
-		DatabaseSizes:   dbSizes,
-		VerifyDone:      p.VerifyDone,
-		VerifyTotal:     p.VerifyTotal,
-		StartTime:       p.StartTime,
-		PhaseStartTime:  p.PhaseStartTime,
-		LastUpdateTime:  p.LastUpdateTime,
-		DatabaseTimes:   dbTimes,
-		Errors:          errors,
-		UseNativeEngine: p.UseNativeEngine,
+		Operation:        p.Operation,
+		ArchiveFile:      p.ArchiveFile,
+		Phase:            p.Phase,
+		ExtractBytes:     p.ExtractBytes,
+		ExtractTotal:     p.ExtractTotal,
+		DatabasesDone:    p.DatabasesDone,
+		DatabasesTotal:   p.DatabasesTotal,
+		CurrentDB:        p.CurrentDB,
+		CurrentDBBytes:   p.CurrentDBBytes,
+		CurrentDBTotal:   p.CurrentDBTotal,
+		CurrentDBStarted: p.CurrentDBStarted,
+		DatabaseSizes:    dbSizes,
+		VerifyDone:       p.VerifyDone,
+		VerifyTotal:      p.VerifyTotal,
+		StartTime:        p.StartTime,
+		PhaseStartTime:   p.PhaseStartTime,
+		LastUpdateTime:   p.LastUpdateTime,
+		DatabaseTimes:    dbTimes,
+		Errors:           errors,
+		UseNativeEngine:  p.UseNativeEngine,
 	}
 }
 

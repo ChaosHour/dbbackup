@@ -3,8 +3,8 @@
 Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v5.7.10-green.svg)](https://git.uuxo.net/UUXO/dbbackup/releases/latest)
+[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
+[![Release](https://img.shields.io/badge/Release-v5.8.32-green.svg)](https://git.uuxo.net/UUXO/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -29,14 +29,25 @@ chmod +x dbbackup-linux-amd64
 
 ## Features
 
-### NEW in 5.0: We Built Our Own Database Engines
+### NEW in 5.8: Enterprise Physical Backup & Operations
 
-**This is a really big step.** We're no longer calling external tools - **we built our own machines.**
+**Major enterprise features for production DBAs:**
 
-- **Our Own Engines**: Pure Go implementation - we speak directly to databases using their native wire protocols
-- **No External Tools**: Goodbye pg_dump, mysqldump, pg_restore, mysql, psql, mysqlbinlog - we don't need them anymore
-- **Native Protocol**: Direct PostgreSQL (pgx) and MySQL (go-sql-driver) communication - no shell, no pipes, no parsing
-- **Full Control**: Our code generates the SQL, handles the types, manages the connections
+- **pg_basebackup Integration**: Physical backup via streaming replication for 100GB+ databases
+- **WAL Archiving Manager**: pg_receivewal integration with replication slot management for true PITR
+- **Table-Level Backup**: Selective backup by table pattern, schema, or row count
+- **Pre/Post Hooks**: Run VACUUM ANALYZE, notify Slack, or custom scripts before/after backups
+- **Bandwidth Throttling**: Rate-limit backup and upload operations (e.g., `--max-bandwidth 100M`)
+- **Intelligent Compression**: Detects blob types (JPEG, PDF, archives) and recommends optimal compression
+- **ZFS/Btrfs Detection**: Auto-detects filesystem compression and adjusts recommendations
+
+### Native Database Engines (v5.0+)
+
+**We built our own database engines - no external tools required.**
+
+- **Pure Go Implementation**: Direct PostgreSQL (pgx) and MySQL (go-sql-driver) protocol communication
+- **No External Dependencies**: No pg_dump, mysqldump, pg_restore, mysql, psql, mysqlbinlog
+- **Full Control**: Our code generates SQL, handles types, manages connections, and processes binary data
 - **Production Ready**: Advanced data type handling, proper escaping, binary support, batch processing
 
 ### Core Database Features
@@ -92,12 +103,12 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v5.7.10/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v5.8.32/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
 
-Available platforms: Linux (amd64, arm64, armv7), macOS (amd64, arm64), FreeBSD, OpenBSD, NetBSD.
+Available platforms: Linux (amd64, arm64, armv7), macOS (amd64, arm64).
 
 ### Build from Source
 

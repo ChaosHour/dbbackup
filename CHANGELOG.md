@@ -5,6 +5,48 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.32] - 2026-02-06
+
+### Added
+- **Enterprise Features Release** - Major additions for senior DBAs:
+  - **pg_basebackup Integration**: Full PostgreSQL physical backup support
+    - Streaming replication protocol for consistent hot backups
+    - WAL streaming methods: `stream`, `fetch`, `none`
+    - Compression support: gzip, lz4, zstd
+    - Replication slot management with auto-creation
+    - Manifest checksums for backup verification
+  - **WAL Archiving Manager**: Continuous WAL archiving for PITR
+    - Integration with pg_receivewal for WAL streaming
+    - Automatic cleanup of old WAL files
+    - Recovery configuration generation
+    - WAL file inventory and status tracking
+  - **Table-Level Selective Backup**: Granular backup control
+    - Include/exclude patterns for tables and schemas
+    - Wildcard matching (e.g., `audit_*`, `*_logs`)
+    - Row count-based filtering for large tables
+    - Parallel table backup support
+  - **Pre/Post Backup Hooks**: Custom script execution
+    - Environment variable passing (DB name, size, status)
+    - Timeout controls and error handling
+    - Hook directory scanning for organization
+    - Conditional execution based on backup status
+  - **Bandwidth Throttling**: Rate limiting for backups
+    - Token bucket algorithm for smooth limiting
+    - Separate upload vs backup bandwidth controls
+    - Human-readable rates: `10MB/s`, `1Gbit/s`
+    - Adaptive rate adjustment based on system load
+
+### Fixed
+- **CI/CD Pipeline**: Removed FreeBSD build (type mismatch in syscall.Statfs_t)
+- **Catalog Benchmark**: Relaxed threshold from 50ms to 200ms for CI runners
+
+## [5.8.31] - 2026-02-05
+
+### Added
+- **ZFS/Btrfs Filesystem Compression Detection**: Detects transparent compression
+  - Checks filesystem type and compression settings before applying redundant compression
+  - Automatically adjusts compression strategy for ZFS/Btrfs volumes
+
 ## [5.8.26] - 2026-02-05
 
 ### Improved

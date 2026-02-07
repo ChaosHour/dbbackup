@@ -1794,7 +1794,8 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	}
 
 	var successCount, failCount int32
-	var mu sync.Mutex // Protect shared resources (progress, logger)
+	var mu sync.Mutex         // Protect shared resources (logger)
+	var progressMu sync.Mutex // Separate mutex for progress updates (prevents heartbeat blocking workers)
 
 	// CRITICAL: Check context before starting database restore loop
 	// This helps debug issues where context gets cancelled between extraction and restore
@@ -1937,7 +1938,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 						heartbeatCount++
 						dbElapsed := time.Since(dbRestoreStart)          // Per-database elapsed
 						phaseElapsedNow := time.Since(restorePhaseStart) // Overall phase elapsed
-						mu.Lock()
+						progressMu.Lock()
 						statusMsg := fmt.Sprintf("Restoring %s (%d/%d) - running: %s (phase: %s)",
 							dbName, idx+1, totalDBs, formatDuration(dbElapsed), formatDuration(phaseElapsedNow))
 						e.progress.Update(statusMsg)
@@ -1970,7 +1971,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 						completedDBTimesMu.Unlock()
 						e.reportDatabaseProgressWithTiming(idx, totalDBs, dbName, phaseElapsedNow, avgPerDB)
 
-						mu.Unlock()
+						progressMu.Unlock()
 					case <-heartbeatCtx.Done():
 						return
 					}

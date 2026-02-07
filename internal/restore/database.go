@@ -56,8 +56,12 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 		e.log.Warn("Could not terminate connections", "database", dbName, "error", err)
 	}
 
-	// Wait a moment for connections to terminate
-	time.Sleep(500 * time.Millisecond)
+	// Wait a moment for connections to terminate (context-aware)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(500 * time.Millisecond):
+	}
 
 	// Try to revoke new connections (prevents race condition)
 	// This only works if we have the privilege to do so
@@ -76,7 +80,13 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 
 	// Terminate connections again after revoking connect privilege
 	e.terminateConnections(ctx, dbName)
-	time.Sleep(200 * time.Millisecond)
+	
+	// Context-aware wait
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(200 * time.Millisecond):
+	}
 
 	// Try DROP DATABASE WITH (FORCE) first (PostgreSQL 13+)
 	// This forcefully terminates connections and drops the database atomically

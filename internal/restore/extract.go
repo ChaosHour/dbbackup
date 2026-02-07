@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
@@ -85,13 +86,35 @@ func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.
 	if err != nil {
 		return nil, fmt.Errorf("cannot open archive: %w", err)
 	}
-	defer file.Close()
 
 	gz, err := pgzip.NewReader(file)
 	if err != nil {
+		file.Close()
 		return nil, fmt.Errorf("not a valid gzip archive: %w", err)
 	}
-	defer gz.Close()
+
+	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
+	// pgzip spawns internal read-ahead goroutines that block on file.Read()
+	// Use sync.Once to prevent race between context watcher and defer
+	var cleanupOnce sync.Once
+	cleanupResources := func() {
+		cleanupOnce.Do(func() {
+			gz.Close()
+			file.Close()
+		})
+	}
+	defer cleanupResources()
+
+	// Context watcher: immediately close resources on cancellation
+	ctxWatcherDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			cleanupResources()
+		case <-ctxWatcherDone:
+		}
+	}()
+	defer close(ctxWatcherDone)
 
 	tarReader := tar.NewReader(gz)
 	databases := make([]DatabaseInfo, 0)
@@ -148,19 +171,41 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 	if err != nil {
 		return "", fmt.Errorf("cannot open archive: %w", err)
 	}
-	defer file.Close()
 
 	stat, err := file.Stat()
 	if err != nil {
+		file.Close()
 		return "", fmt.Errorf("cannot stat archive: %w", err)
 	}
 	archiveSize := stat.Size()
 
 	gz, err := pgzip.NewReader(file)
 	if err != nil {
+		file.Close()
 		return "", fmt.Errorf("not a valid gzip archive: %w", err)
 	}
-	defer gz.Close()
+
+	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
+	// Use sync.Once to prevent race between context watcher and defer
+	var cleanupOnce sync.Once
+	cleanupResources := func() {
+		cleanupOnce.Do(func() {
+			gz.Close()
+			file.Close()
+		})
+	}
+	defer cleanupResources()
+
+	// Context watcher: immediately close resources on cancellation
+	ctxWatcherDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			cleanupResources()
+		case <-ctxWatcherDone:
+		}
+	}()
+	defer close(ctxWatcherDone)
 
 	tarReader := tar.NewReader(gz)
 
@@ -265,19 +310,41 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 	if err != nil {
 		return nil, fmt.Errorf("cannot open archive: %w", err)
 	}
-	defer file.Close()
 
 	stat, err := file.Stat()
 	if err != nil {
+		file.Close()
 		return nil, fmt.Errorf("cannot stat archive: %w", err)
 	}
 	archiveSize := stat.Size()
 
 	gz, err := pgzip.NewReader(file)
 	if err != nil {
+		file.Close()
 		return nil, fmt.Errorf("not a valid gzip archive: %w", err)
 	}
-	defer gz.Close()
+
+	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
+	// Use sync.Once to prevent race between context watcher and defer
+	var cleanupOnce sync.Once
+	cleanupResources := func() {
+		cleanupOnce.Do(func() {
+			gz.Close()
+			file.Close()
+		})
+	}
+	defer cleanupResources()
+
+	// Context watcher: immediately close resources on cancellation
+	ctxWatcherDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			cleanupResources()
+		case <-ctxWatcherDone:
+		}
+	}()
+	defer close(ctxWatcherDone)
 
 	tarReader := tar.NewReader(gz)
 

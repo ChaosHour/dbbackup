@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"dbbackup/internal/fs"
@@ -43,7 +44,6 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 	if err != nil {
 		return fmt.Errorf("failed to open archive: %w", err)
 	}
-	defer file.Close()
 
 	// Wrap with progress reader
 	progressReader := &progressReader{
@@ -56,9 +56,35 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 	// Create parallel gzip reader for faster decompression
 	gzReader, err := pgzip.NewReader(progressReader)
 	if err != nil {
+		file.Close()
 		return fmt.Errorf("failed to create gzip reader: %w", err)
 	}
-	defer gzReader.Close()
+
+	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
+	// pgzip spawns internal read-ahead goroutines that block on file.Read()
+	// If context is cancelled, we MUST close both gzReader and file to unblock them
+	// Use sync.Once to prevent race between context watcher and defer
+	var cleanupOnce sync.Once
+	cleanupResources := func() {
+		cleanupOnce.Do(func() {
+			gzReader.Close() // Close gzip reader first (stops read-ahead goroutines)
+			file.Close()     // Then close underlying file (unblocks any pending reads)
+		})
+	}
+	defer cleanupResources()
+
+	// Context watcher: immediately close resources on cancellation
+	// This prevents pgzip read-ahead goroutines from hanging indefinitely
+	ctxWatcherDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			cleanupResources()
+		case <-ctxWatcherDone:
+			// Normal exit path - cleanup will happen via defer
+		}
+	}()
+	defer close(ctxWatcherDone)
 
 	// Create tar reader
 	tarReader := tar.NewReader(gzReader)

@@ -829,14 +829,41 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	if err != nil {
 		return fmt.Errorf("failed to open archive: %w", err)
 	}
-	defer file.Close()
 
 	// Create parallel gzip reader
 	gz, err := pgzip.NewReader(file)
 	if err != nil {
+		file.Close()
 		return fmt.Errorf("failed to create pgzip reader: %w", err)
 	}
-	defer gz.Close()
+
+	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
+	// pgzip spawns internal read-ahead goroutines that block on file.Read()
+	// If context is cancelled, we MUST close both gz and file to unblock them
+	var cleanupOnce sync.Once
+	cleanupResources := func() {
+		cleanupOnce.Do(func() {
+			gz.Close()   // Close gzip reader first (stops read-ahead goroutines)
+			file.Close() // Then close underlying file (unblocks any pending reads)
+		})
+	}
+	defer cleanupResources()
+
+	// Context watcher: immediately close resources on cancellation
+	// This prevents pgzip read-ahead goroutines from hanging indefinitely
+	ctxWatcherDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			e.log.Debug("Context cancelled - closing pgzip resources to prevent goroutine leak",
+				"archive", archivePath)
+			cleanupResources()
+		case <-ctxWatcherDone:
+			// Normal exit path - cleanup will happen via defer
+		}
+	}()
+	// Signal watcher to stop when function exits normally
+	defer close(ctxWatcherDone)
 
 	// Start restore command
 	cmd := cleanup.SafeCommand(ctx, restoreCmd[0], restoreCmd[1:]...)
@@ -933,14 +960,41 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 	if err != nil {
 		return fmt.Errorf("failed to open archive: %w", err)
 	}
-	defer file.Close()
 
 	// Create parallel gzip reader
 	gz, err := pgzip.NewReader(file)
 	if err != nil {
+		file.Close()
 		return fmt.Errorf("failed to create pgzip reader: %w", err)
 	}
-	defer gz.Close()
+
+	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
+	// pgzip spawns internal read-ahead goroutines that block on file.Read()
+	// If context is cancelled, we MUST close both gz and file to unblock them
+	var cleanupOnce sync.Once
+	cleanupResources := func() {
+		cleanupOnce.Do(func() {
+			gz.Close()   // Close gzip reader first (stops read-ahead goroutines)
+			file.Close() // Then close underlying file (unblocks any pending reads)
+		})
+	}
+	defer cleanupResources()
+
+	// Context watcher: immediately close resources on cancellation
+	// This prevents pgzip read-ahead goroutines from hanging indefinitely
+	ctxWatcherDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			e.log.Debug("Context cancelled - closing pgzip resources to prevent goroutine leak",
+				"archive", archivePath, "database", targetDB)
+			cleanupResources()
+		case <-ctxWatcherDone:
+			// Normal exit path - cleanup will happen via defer
+		}
+	}()
+	// Signal watcher to stop when function exits normally
+	defer close(ctxWatcherDone)
 
 	// Build restore command based on database type
 	var cmd *exec.Cmd

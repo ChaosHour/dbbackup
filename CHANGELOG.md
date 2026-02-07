@@ -5,6 +5,20 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.59] - 2026-02-07
+
+### Fixed
+- **Corrupt .meta.json Blocks Regeneration** — If a `.meta.json` sidecar file existed but was
+  corrupt (invalid JSON) or empty (0 databases), it was never regenerated — the fast path
+  silently failed and fell back to slow extraction every time, but the bad file stayed forever.
+  Three code paths are now fixed:
+  - `generateMetadataFromExtracted()` validates existing `.meta.json` with `LoadCluster()` and
+    deletes corrupt/empty files before regenerating (previously just checked `os.Stat` existence).
+  - `tryFastPathWithMetadata()` now removes corrupt/empty `.meta.json` files on validation
+    failure, allowing `tryGenerateMetadata()` to recreate them on the next call.
+  - `fetchClusterDatabases()` (TUI) now generates `.meta.json` after a successful slow-path
+    extraction + database listing, so the next access uses the instant fast path.
+
 ## [5.8.58] - 2026-02-07
 
 ### Fixed

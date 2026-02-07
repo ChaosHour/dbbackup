@@ -2501,10 +2501,18 @@ func (e *Engine) cleanupStaleRestoreDirs(workDir string) {
 // Called as a fire-and-forget goroutine after extraction completes — does not block restore.
 // Future restores of the same archive will use the fast metadata path instead of scanning.
 func (e *Engine) generateMetadataFromExtracted(archivePath, extractedDir string) {
-	// Don't overwrite existing metadata
 	metaPath := archivePath + ".meta.json"
+
+	// If metadata already exists, validate it — corrupt/empty files must be regenerated
 	if _, err := os.Stat(metaPath); err == nil {
-		return // Already exists
+		existing, loadErr := metadata.LoadCluster(archivePath)
+		if loadErr == nil && len(existing.Databases) > 0 {
+			return // Valid metadata exists, nothing to do
+		}
+		// Corrupt or empty — remove so we can regenerate
+		e.log.Warn("Removing corrupt/empty .meta.json, will regenerate",
+			"path", metaPath, "load_error", loadErr)
+		os.Remove(metaPath)
 	}
 
 	dumpsDir := filepath.Join(extractedDir, "dumps")

@@ -1022,16 +1022,18 @@ func (d *Diagnoser) tryFastPathWithMetadata(ctx context.Context, filePath string
 	clusterMeta, err := metadata.LoadCluster(filePath)
 	if err != nil {
 		if d.log != nil {
-			d.log.Debug("Fast path: cannot load cluster metadata", "error", err)
+			d.log.Debug("Fast path: cannot load cluster metadata, removing corrupt .meta.json", "error", err)
 		}
+		os.Remove(metaPath)
 		return false
 	}
 
 	// Validate metadata has meaningful content
 	if len(clusterMeta.Databases) == 0 {
 		if d.log != nil {
-			d.log.Debug("Fast path: metadata has no databases")
+			d.log.Debug("Fast path: metadata has no databases, removing empty .meta.json")
 		}
+		os.Remove(metaPath)
 		return false
 	}
 

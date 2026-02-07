@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -84,6 +85,15 @@ func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config
 			// No extractedDir yet - will extract at restore time
 			return clusterDatabaseListMsg{databases: databases, err: nil, extractedDir: ""}
 		}
+
+		// .meta.json missing or corrupt — remove corrupt file so we can regenerate
+		if err != nil {
+			metaPath := archive.Path + ".meta.json"
+			if _, statErr := os.Stat(metaPath); statErr == nil {
+				log.Warn("Removing corrupt .meta.json", "path", metaPath, "error", err)
+				os.Remove(metaPath)
+			}
+		}
 		
 		// Check for context cancellation before slow extraction
 		if ctx.Err() != nil {
@@ -111,8 +121,56 @@ func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config
 			os.RemoveAll(extractedDir)
 			return clusterDatabaseListMsg{databases: nil, err: fmt.Errorf("failed to list databases from extracted dir: %w", err), extractedDir: ""}
 		}
+
+		// Generate .meta.json from extracted directory so future access is instant
+		generateMetaFromDatabases(archive.Path, databases, log)
+
 		return clusterDatabaseListMsg{databases: databases, err: nil, extractedDir: extractedDir}
 	}
+}
+
+// generateMetaFromDatabases creates a .meta.json sidecar from the extracted database list
+// so that future cluster operations use the instant fast path instead of re-extracting.
+func generateMetaFromDatabases(archivePath string, databases []restore.DatabaseInfo, log logger.Logger) {
+	if len(databases) == 0 {
+		return
+	}
+
+	var dbMetas []metadata.BackupMetadata
+	for _, db := range databases {
+		dbMetas = append(dbMetas, metadata.BackupMetadata{
+			Database:     db.Name,
+			DatabaseType: "postgres",
+			BackupFile:   "dumps/" + db.Filename,
+			SizeBytes:    db.Size,
+		})
+	}
+
+	var totalSize int64
+	if stat, err := os.Stat(archivePath); err == nil {
+		totalSize = stat.Size()
+	}
+
+	clusterMeta := &metadata.ClusterMetadata{
+		Version:      "2.0",
+		Timestamp:    time.Now(),
+		ClusterName:  "auto-generated",
+		DatabaseType: "postgres",
+		Databases:    dbMetas,
+		TotalSize:    totalSize,
+		ExtraInfo: map[string]string{
+			"generated_by": "dbbackup-tui-slow-path",
+			"source":       "post-extraction-directory-listing",
+		},
+	}
+
+	if err := clusterMeta.Save(archivePath); err != nil {
+		log.Debug("Failed to generate .meta.json from slow path", "error", err)
+		return
+	}
+
+	log.Info("Generated .meta.json from slow path — future access will be instant",
+		"databases", len(databases))
 }
 
 func (m ClusterDatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

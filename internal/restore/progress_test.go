@@ -190,10 +190,10 @@ func TestMonitorRestoreProgress(t *testing.T) {
 	log := &mockProgressLogger{}
 	e := New(cfg, log, nil)
 
-	// Set up callback to count calls
-	callCount := 0
+	// Set up callback to count calls (atomic to avoid data race with monitor goroutine)
+	var callCount int64
 	e.SetDatabaseProgressByBytesCallback(func(bytesDone, bytesTotal int64, dbName string, dbDone, dbTotal int) {
-		callCount++
+		atomic.AddInt64(&callCount, 1)
 	})
 
 	// Set total bytes
@@ -210,8 +210,8 @@ func TestMonitorRestoreProgress(t *testing.T) {
 	time.Sleep(10 * time.Millisecond) // Let goroutine finish
 
 	// Should have been called at least once
-	if callCount < 1 {
-		t.Errorf("expected at least 1 callback, got %d", callCount)
+	if atomic.LoadInt64(&callCount) < 1 {
+		t.Errorf("expected at least 1 callback, got %d", atomic.LoadInt64(&callCount))
 	}
 }
 

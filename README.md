@@ -1084,6 +1084,16 @@ Workload types:
 - `cpu-intensive` - Higher parallelism for fast storage
 - `io-intensive` - Lower parallelism to avoid I/O contention
 
+## Testing
+
+dbbackup is tested daily on dedicated infrastructure:
+
+- 5 production database servers running automated nightly backups
+- Dedicated 16-core test node running the full test suite against real PostgreSQL and MySQL instances
+- Every release is deployed via Ansible and validated across the fleet before tagging
+- Prometheus monitoring with RPO/failure alerts on all nodes
+- CI pipeline with race detection on every commit
+
 ## Requirements
 
 **System:**

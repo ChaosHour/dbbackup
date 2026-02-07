@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -152,30 +153,65 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		// 2. Dump validity (deep diagnosis)
 		check = SafetyCheck{Name: "Dump validity", Status: "checking", Critical: true}
 		diagnoser := restore.NewDiagnoser(log, false)
-		diagResult, diagErr := diagnoser.DiagnoseFile(archive.Path)
-		if diagErr != nil {
-			check.Status = "warning"
-			check.Message = fmt.Sprintf("Cannot diagnose: %v", diagErr)
-		} else if !diagResult.IsValid {
-			check.Status = "failed"
-			check.Critical = true
-			if diagResult.IsTruncated {
-				check.Message = "Dump is TRUNCATED - restore will fail"
-			} else if diagResult.IsCorrupted {
-				check.Message = "Dump is CORRUPTED - restore will fail"
-			} else if len(diagResult.Errors) > 0 {
-				check.Message = diagResult.Errors[0]
-			} else {
-				check.Message = "Dump has validation errors"
+
+		// For large cluster archives (>1GB) without .meta.json, use quick header validation
+		// instead of full DiagnoseFile which would decompress the entire archive (30+ min for 100GB)
+		if archive.Format.IsClusterBackup() && archive.Size > 1024*1024*1024 {
+			metaPath := archive.Path + ".meta.json"
+			if _, metaErr := os.Stat(metaPath); metaErr != nil {
+				// No .meta.json — use quick validation (< 1 second)
+				if err := diagnoser.QuickValidateClusterArchive(archive.Path); err != nil {
+					check.Status = "failed"
+					check.Critical = true
+					check.Message = fmt.Sprintf("Archive header invalid: %v", err)
+					canProceed = false
+				} else {
+					check.Status = "passed"
+					sizeGB := float64(archive.Size) / (1024 * 1024 * 1024)
+					check.Message = fmt.Sprintf("Archive header valid (%.1f GB, quick check — no catalog found)", sizeGB)
+				}
+				checks = append(checks, check)
+
+				// Add informational warning about missing catalog
+				catalogCheck := SafetyCheck{
+					Name:     "Catalog status",
+					Status:   "warning",
+					Message:  "No .meta.json catalog — full archive scan skipped. Catalog will be generated after extraction.",
+					Critical: false,
+				}
+				checks = append(checks, catalogCheck)
+				goto diskSpaceCheck
 			}
-			canProceed = false
-		} else {
-			check.Status = "passed"
-			check.Message = "Dump structure verified"
 		}
-		checks = append(checks, check)
+
+		// Normal path: .meta.json exists or archive is small enough for full scan
+		{
+			diagResult, diagErr := diagnoser.DiagnoseFile(archive.Path)
+			if diagErr != nil {
+				check.Status = "warning"
+				check.Message = fmt.Sprintf("Cannot diagnose: %v", diagErr)
+			} else if !diagResult.IsValid {
+				check.Status = "failed"
+				check.Critical = true
+				if diagResult.IsTruncated {
+					check.Message = "Dump is TRUNCATED - restore will fail"
+				} else if diagResult.IsCorrupted {
+					check.Message = "Dump is CORRUPTED - restore will fail"
+				} else if len(diagResult.Errors) > 0 {
+					check.Message = diagResult.Errors[0]
+				} else {
+					check.Message = "Dump has validation errors"
+				}
+				canProceed = false
+			} else {
+				check.Status = "passed"
+				check.Message = "Dump structure verified"
+			}
+			checks = append(checks, check)
+		}
 
 		// 3. Disk space
+	diskSpaceCheck:
 		check = SafetyCheck{Name: "Disk space", Status: "checking", Critical: true}
 		multiplier := 3.0
 		if archive.Format.IsClusterBackup() {

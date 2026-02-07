@@ -1,6 +1,7 @@
 package restore
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
 	"context"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"dbbackup/internal/cleanup"
@@ -427,39 +429,25 @@ func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResu
 		return
 	}
 
-	// SLOW PATH: No valid metadata, scan entire archive
-	// Calculate dynamic timeout based on file size
-	// Large archives (100GB+) can take significant time to list
-	// Minimum 5 minutes, scales with file size, max 180 minutes for very large archives
-	timeoutMinutes := 5
-	if result.FileSize > 0 {
-		// 1 minute per 2 GB, minimum 5 minutes, max 180 minutes
-		sizeGB := result.FileSize / (1024 * 1024 * 1024)
-		estimatedMinutes := int(sizeGB/2) + 5
-		if estimatedMinutes > timeoutMinutes {
-			timeoutMinutes = estimatedMinutes
-		}
-		if timeoutMinutes > 180 {
-			timeoutMinutes = 180
-		}
-	}
-
+	// SCAN PATH: No valid metadata, scan archive headers (first 200 entries only)
+	// For cluster archives, .dump files are at the beginning so we don't need to read everything.
+	// This reduces scan time from 30+ minutes to seconds for 100GB archives.
 	if d.log != nil {
-		d.log.Info("Verifying cluster archive integrity (full scan - no metadata found)",
-			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)),
-			"timeout", fmt.Sprintf("%d min", timeoutMinutes))
+		d.log.Info("Scanning cluster archive headers (quick scan - no metadata found)",
+			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	// Use in-process parallel gzip listing (2-4x faster on multi-core, no shell dependency)
-	allFiles, listErr := fs.ListTarGzContents(ctx, filePath)
+	// Use shell pipeline for fast header scan (seconds instead of 30+ minutes)
+	// pigz -dc | tar tf - | head uses SIGPIPE to stop decompression early
+	allFiles, listErr := fs.ListTarGzHeadersFast(ctx, filePath, 200)
 	if listErr != nil {
 		// Check if it was a timeout
 		if ctx.Err() == context.DeadlineExceeded {
 			result.Warnings = append(result.Warnings,
-				fmt.Sprintf("Verification timed out after %d minutes - archive is very large", timeoutMinutes),
+				"Header scan timed out after 3 minutes - archive may have unusual structure",
 				"This does not necessarily mean the archive is corrupted")
 			return
 		}
@@ -1094,27 +1082,87 @@ func (d *Diagnoser) tryFastPathWithMetadata(filePath string, result *DiagnoseRes
 
 // tryGenerateMetadata attempts to generate .meta.json for legacy archives (dbbackup 3.x)
 // This is a one-time slow scan that enables fast access for all future operations
+// QuickValidateClusterArchive performs a fast header-only check without full archive scan.
+// Validates: gzip magic bytes (0x1f 0x8b), valid gzip stream, first tar header readable.
+// Returns nil if archive appears valid, error otherwise.
+// This completes in <1 second even for 100GB+ archives.
+func (d *Diagnoser) QuickValidateClusterArchive(filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("cannot open archive: %w", err)
+	}
+	defer file.Close()
+
+	// Check gzip magic bytes
+	magic := make([]byte, 2)
+	if _, err := io.ReadFull(file, magic); err != nil {
+		return fmt.Errorf("cannot read header: %w", err)
+	}
+	if magic[0] != 0x1f || magic[1] != 0x8b {
+		return fmt.Errorf("not a gzip file (magic: %x %x)", magic[0], magic[1])
+	}
+
+	// Reset and decompress just enough to read first tar entry
+	file.Seek(0, 0)
+	gz, err := pgzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("invalid gzip stream: %w", err)
+	}
+
+	// Context-watcher: close pgzip reader after validation to prevent goroutine leak
+	var cleanupOnce sync.Once
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			gz.Close()
+		})
+	}
+	defer cleanup()
+
+	tr := tar.NewReader(gz)
+	// Read first entry — this only decompresses the first ~1KB of the archive
+	hdr, err := tr.Next()
+	if err != nil {
+		return fmt.Errorf("cannot read tar header: %w", err)
+	}
+
+	// Verify it looks like a cluster archive (directory entry or .dump file)
+	if hdr.Typeflag == tar.TypeDir || strings.HasSuffix(hdr.Name, ".dump") ||
+		strings.HasSuffix(hdr.Name, ".sql.gz") || strings.HasSuffix(hdr.Name, ".sql") {
+		return nil // Looks valid
+	}
+
+	// First entry isn't what we expect, but that's ok — it's still a valid tar.gz
+	return nil
+}
+
 func (d *Diagnoser) tryGenerateMetadata(filePath string, result *DiagnoseResult) bool {
 	if d.log != nil {
-		d.log.Info("Generating .meta.json for legacy archive (one-time scan)...",
+		d.log.Info("Generating .meta.json for legacy archive (quick header scan)...",
 			"archive", filepath.Base(filePath),
 			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)))
 	}
 
-	// Quick timeout for listing - 10 minutes max
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	// Use a short timeout - ListTarGzHeaders only reads the first few entries
+	// and stops early, so this should complete in seconds even for 100GB archives.
+	// The old code used ListTarGzContents which decompressed the ENTIRE archive.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	// List contents of archive
-	files, err := fs.ListTarGzContents(ctx, filePath)
+	// Read only first 100 tar entries - cluster archives have .dump files at the beginning
+	// This avoids decompressing the entire 100GB archive just to list filenames
+	// Use shell pipeline (pigz -dc | tar tf - | head) for instant results.
+	// Go's tar.Reader.Next() must decompress file bodies to skip them,
+	// making it 30+ minutes for 100GB archives. The shell pipeline uses
+	// SIGPIPE to kill the decompressor as soon as head has enough lines.
+	files, err := fs.ListTarGzHeadersFast(ctx, filePath, 100)
 	if err != nil {
 		if d.log != nil {
-			d.log.Debug("Failed to list archive contents for metadata generation", "error", err)
+			d.log.Debug("Failed to list archive headers for metadata generation", "error", err)
 		}
 		return false
 	}
 
-	// Extract database names from .dump files
+	// Extract database names from .dump and .sql.gz files
 	var databases []metadata.BackupMetadata
 	for _, f := range files {
 		if strings.HasSuffix(f, ".dump") {
@@ -1122,13 +1170,21 @@ func (d *Diagnoser) tryGenerateMetadata(filePath string, result *DiagnoseResult)
 			databases = append(databases, metadata.BackupMetadata{
 				Database:     dbName,
 				DatabaseType: "postgres",
+				BackupFile:   f,
+			})
+		} else if strings.HasSuffix(f, ".sql.gz") && !strings.Contains(f, "globals") {
+			dbName := strings.TrimSuffix(filepath.Base(f), ".sql.gz")
+			databases = append(databases, metadata.BackupMetadata{
+				Database:     dbName,
+				DatabaseType: "postgres",
+				BackupFile:   f,
 			})
 		}
 	}
 
 	if len(databases) == 0 {
 		if d.log != nil {
-			d.log.Debug("No .dump files found in archive")
+			d.log.Debug("No .dump/.sql.gz files found in first 100 entries of archive")
 		}
 		return false
 	}

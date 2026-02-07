@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"dbbackup/internal/engine/native"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/metadata"
 	"dbbackup/internal/progress"
 	"dbbackup/internal/security"
 
@@ -1415,6 +1417,11 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			return fmt.Errorf("context cancelled after extraction completed: %w", ctx.Err())
 		}
 		e.log.Info("Extraction completed, context still valid")
+
+		// Generate .meta.json in background from extracted directory listing.
+		// This is instant since files are already on disk — just readdir + write JSON.
+		// Future restores of this archive will use the fast metadata path.
+		go e.generateMetadataFromExtracted(archivePath, tempDir)
 	}
 
 	// Check if user has superuser privileges (required for ownership restoration)
@@ -2386,6 +2393,89 @@ func (e *Engine) checkSuperuser(ctx context.Context) (bool, error) {
 
 // NOTE: terminateConnections, dropDatabaseIfExists, ensureDatabaseExists,
 // ensureMySQLDatabaseExists, and ensurePostgresDatabaseExists are now in database.go
+
+// generateMetadataFromExtracted creates a .meta.json sidecar file from an already-extracted
+// cluster archive directory. This is instant since it just reads the directory listing.
+// Called as a fire-and-forget goroutine after extraction completes — does not block restore.
+// Future restores of the same archive will use the fast metadata path instead of scanning.
+func (e *Engine) generateMetadataFromExtracted(archivePath, extractedDir string) {
+	// Don't overwrite existing metadata
+	metaPath := archivePath + ".meta.json"
+	if _, err := os.Stat(metaPath); err == nil {
+		return // Already exists
+	}
+
+	dumpsDir := filepath.Join(extractedDir, "dumps")
+	entries, err := os.ReadDir(dumpsDir)
+	if err != nil {
+		// Try extractedDir directly if no dumps/ subdirectory
+		entries, err = os.ReadDir(extractedDir)
+		if err != nil {
+			e.log.Debug("Cannot read extracted directory for metadata generation", "error", err)
+			return
+		}
+	}
+
+	var databases []metadata.BackupMetadata
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(name, ".dump") {
+			dbName := strings.TrimSuffix(name, ".dump")
+			databases = append(databases, metadata.BackupMetadata{
+				Database:     dbName,
+				DatabaseType: "postgres",
+				BackupFile:   "dumps/" + name,
+			})
+		} else if strings.HasSuffix(name, ".sql.gz") && !strings.Contains(name, "globals") {
+			dbName := strings.TrimSuffix(name, ".sql.gz")
+			databases = append(databases, metadata.BackupMetadata{
+				Database:     dbName,
+				DatabaseType: "postgres",
+				BackupFile:   "dumps/" + name,
+			})
+		}
+	}
+
+	if len(databases) == 0 {
+		return
+	}
+
+	// Get archive size for metadata
+	var totalSize int64
+	if stat, err := os.Stat(archivePath); err == nil {
+		totalSize = stat.Size()
+	}
+
+	clusterMeta := &metadata.ClusterMetadata{
+		Version:      "2.0",
+		Timestamp:    time.Now(),
+		ClusterName:  "auto-generated",
+		DatabaseType: "postgres",
+		Databases:    databases,
+		TotalSize:    totalSize,
+		ExtraInfo: map[string]string{
+			"generated_by": "dbbackup-restore-passthrough",
+			"source":       "post-extraction-directory-listing",
+		},
+	}
+
+	data, err := json.MarshalIndent(clusterMeta, "", "  ")
+	if err != nil {
+		return
+	}
+
+	if err := os.WriteFile(metaPath, data, 0644); err != nil {
+		e.log.Debug("Failed to write .meta.json after extraction", "error", err)
+		return
+	}
+
+	e.log.Info("Generated .meta.json from extracted directory — future restores will be instant",
+		"databases", len(databases),
+		"path", metaPath)
+}
 
 // previewClusterRestore shows cluster restore preview
 func (e *Engine) previewClusterRestore(archivePath string) error {

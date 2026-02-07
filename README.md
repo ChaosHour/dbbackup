@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v5.8.57-green.svg)](https://git.uuxo.net/UUXO/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v5.8.58-green.svg)](https://git.uuxo.net/UUXO/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -135,7 +135,7 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v5.8.57/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v5.8.58/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```

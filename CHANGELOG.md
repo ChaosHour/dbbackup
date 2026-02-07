@@ -5,6 +5,17 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.58] - 2026-02-07
+
+### Fixed
+- **Stale Config: user=root Persisted in .dbbackup.conf** — The auto-saved config file
+  (`.dbbackup.conf`) could contain `user = root` from a previous run as root, overriding the
+  `getCurrentUser()` fix from v5.8.57. The config persistence layer now sanitizes: `user=root`
+  is never saved or loaded for PostgreSQL (replaced with `postgres`). This applies to both
+  `ApplyLocalConfig()` (load) and `SaveLocalConfigToPath()` (save).
+- **MySQL user=root Preserved** — The sanitization only applies to PostgreSQL. MySQL/MariaDB
+  legitimately uses `root` as the default admin user and is not affected.
+
 ## [5.8.57] - 2026-02-07
 
 ### Fixed

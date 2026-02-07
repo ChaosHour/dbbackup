@@ -228,7 +228,12 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	sb.WriteString(fmt.Sprintf("type = %s\n", cfg.DBType))
 	sb.WriteString(fmt.Sprintf("host = %s\n", cfg.Host))
 	sb.WriteString(fmt.Sprintf("port = %d\n", cfg.Port))
-	sb.WriteString(fmt.Sprintf("user = %s\n", cfg.User))
+	// Sanitize: never persist 'root' as PostgreSQL user (not a valid PG role)
+	saveUser := cfg.User
+	if saveUser == "root" && (cfg.DBType == "" || cfg.DBType == "postgres" || cfg.DBType == "postgresql") {
+		saveUser = "postgres"
+	}
+	sb.WriteString(fmt.Sprintf("user = %s\n", saveUser))
 	sb.WriteString(fmt.Sprintf("database = %s\n", cfg.Database))
 	sb.WriteString(fmt.Sprintf("ssl_mode = %s\n", cfg.SSLMode))
 	sb.WriteString("\n")
@@ -297,7 +302,13 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 		cfg.Port = local.Port
 	}
 	if local.User != "" {
-		cfg.User = local.User
+		// Sanitize: 'root' is never a valid PostgreSQL role. If a stale config
+		// file has user=root (saved before v5.8.57), override to 'postgres'.
+		if local.User == "root" && (local.DBType == "" || local.DBType == "postgres" || local.DBType == "postgresql") {
+			cfg.User = "postgres"
+		} else {
+			cfg.User = local.User
+		}
 	}
 	if local.Database != "" {
 		cfg.Database = local.Database

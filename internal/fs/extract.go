@@ -3,17 +3,46 @@ package fs
 
 import (
 	"archive/tar"
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/klauspost/pgzip"
 )
+
+// safeReader wraps an io.Reader and returns io.EOF once closed.
+// pgzip spawns background goroutines (doReadAhead) that call Read()
+// on the underlying reader concurrently. When we close the file early
+// (e.g. after reading enough tar headers), those goroutines can panic
+// on a read from a closed file descriptor. safeReader prevents this
+// by atomically checking a closed flag before every read.
+type safeReader struct {
+	r      io.Reader
+	closed atomic.Bool
+}
+
+func (s *safeReader) Read(p []byte) (int, error) {
+	if s.closed.Load() {
+		return 0, io.EOF
+	}
+	n, err := s.r.Read(p)
+	if s.closed.Load() {
+		return 0, io.EOF
+	}
+	return n, err
+}
+
+func (s *safeReader) shutdown() {
+	s.closed.Store(true)
+}
 
 // CopyWithContext copies data from src to dst while checking for context cancellation.
 // This allows Ctrl+C to interrupt large file extractions instead of blocking until complete.
@@ -102,7 +131,9 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 
 	// Create parallel gzip reader
 	// Uses all available CPU cores for decompression
-	gzReader, err := pgzip.NewReaderN(file, 1<<20, runtime.NumCPU()) // 1MB blocks
+	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	sr := &safeReader{r: file}
+	gzReader, err := pgzip.NewReaderN(sr, 1<<20, runtime.NumCPU()) // 1MB blocks
 	if err != nil {
 		file.Close()
 		return fmt.Errorf("cannot create gzip reader: %w", err)
@@ -113,6 +144,7 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
+			sr.shutdown()
 			gzReader.Close()
 			file.Close()
 		})
@@ -240,7 +272,9 @@ func ListTarGzContents(ctx context.Context, archivePath string) ([]string, error
 	}
 
 	// Create parallel gzip reader
-	gzReader, err := pgzip.NewReaderN(file, 1<<20, runtime.NumCPU())
+	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	sr := &safeReader{r: file}
+	gzReader, err := pgzip.NewReaderN(sr, 1<<20, runtime.NumCPU())
 	if err != nil {
 		file.Close()
 		return nil, fmt.Errorf("cannot create gzip reader: %w", err)
@@ -251,6 +285,7 @@ func ListTarGzContents(ctx context.Context, archivePath string) ([]string, error
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
+			sr.shutdown()
 			gzReader.Close()
 			file.Close()
 		})
@@ -308,7 +343,9 @@ func ListTarGzHeaders(ctx context.Context, archivePath string, maxEntries int) (
 	}
 
 	// Create parallel gzip reader
-	gzReader, err := pgzip.NewReaderN(file, 1<<20, runtime.NumCPU())
+	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	sr := &safeReader{r: file}
+	gzReader, err := pgzip.NewReaderN(sr, 1<<20, runtime.NumCPU())
 	if err != nil {
 		file.Close()
 		return nil, fmt.Errorf("cannot create gzip reader: %w", err)
@@ -318,6 +355,7 @@ func ListTarGzHeaders(ctx context.Context, archivePath string, maxEntries int) (
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
+			sr.shutdown()
 			gzReader.Close()
 			file.Close()
 		})
@@ -369,24 +407,88 @@ func ListTarGzHeaders(ctx context.Context, archivePath string, maxEntries int) (
 // This is dramatically faster than ListTarGzContents/ListTarGzHeaders for large archives
 // (e.g. seconds vs 30+ minutes for a 100GB archive with 2x 50GB dump files).
 //
-// The problem with Go's tar.Reader.Next(): it must io.Copy(io.Discard) each file's body
-// before it can read the next header. For 50GB dump files, that means decompressing everything.
-//
-// Our approach: read the raw decompressed stream ourselves, parse 512-byte tar headers
-// to collect filenames, then use io.CopyN(io.Discard) to skip file bodies. When we have
-// enough entries, we close the reader immediately — the context-watcher kills pgzip's
-// read-ahead goroutines. We still decompress bodies we skip past, but we stop as soon
-// as we have maxEntries names, and closing the reader terminates decompression instantly.
-//
-// For cluster archives where .dump files are at the beginning (after a directory entry),
-// we typically only need to decompress the first ~1KB + one file body to get all names.
+// Primary method: shell pipeline using tar tzf with SIGPIPE. When we pipe through head,
+// SIGPIPE kills tar and the decompressor instantly — no need to decompress the rest.
+// Fallback: Go-based pgzip + manual tar header parsing if shell tools are unavailable.
 func ListTarGzHeadersFast(ctx context.Context, archivePath string, maxEntries int) ([]string, error) {
+	// Try shell pipeline first — it's orders of magnitude faster for large archives
+	// because SIGPIPE kills decompression immediately after we have enough entries
+	files, err := listTarGzHeadersShell(ctx, archivePath, maxEntries)
+	if err == nil && len(files) > 0 {
+		return files, nil
+	}
+
+	// Fallback: pure Go approach (slower for huge archives but always works)
+	return listTarGzHeadersGo(ctx, archivePath, maxEntries)
+}
+
+// listTarGzHeadersShell uses a shell pipeline to list tar.gz contents.
+// Uses: tar tzf <file> | head -<n>
+// When head exits after N lines, SIGPIPE kills tar instantly — no need to
+// decompress the entire archive. This makes it O(header_count) not O(archive_size).
+func listTarGzHeadersShell(ctx context.Context, archivePath string, maxEntries int) ([]string, error) {
+	// Check if tar is available
+	tarPath, err := exec.LookPath("tar")
+	if err != nil {
+		return nil, fmt.Errorf("tar not found: %w", err)
+	}
+
+	// Build command: tar tzf <file>
+	// tar handles gzip decompression internally and SIGPIPE kills it when head exits
+	var cmd *exec.Cmd
+	if maxEntries > 0 {
+		// Use head to limit output — SIGPIPE stops tar immediately
+		cmd = exec.CommandContext(ctx, "sh", "-c",
+			fmt.Sprintf("%s tzf %s 2>/dev/null | head -n %d",
+				tarPath, shellQuote(archivePath), maxEntries))
+	} else {
+		cmd = exec.CommandContext(ctx, tarPath, "tzf", archivePath)
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		// Exit code 141 = SIGPIPE (expected when head closes the pipe) — not an error
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			if exitErr.ExitCode() == 141 || len(output) > 0 {
+				// Got output before SIGPIPE, that's fine
+			} else {
+				return nil, fmt.Errorf("tar failed: %w", err)
+			}
+		} else if len(output) == 0 {
+			return nil, fmt.Errorf("tar failed: %w", err)
+		}
+	}
+
+	var files []string
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			files = append(files, line)
+		}
+	}
+
+	return files, nil
+}
+
+// shellQuote returns a single-quoted shell string, safe for use in sh -c
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+// listTarGzHeadersGo lists tar headers using pure Go pgzip decompression.
+// This is the fallback when shell tools aren't available. It's slow for large
+// archives because it must decompress file bodies to skip to the next header.
+func listTarGzHeadersGo(ctx context.Context, archivePath string, maxEntries int) ([]string, error) {
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open archive: %w", err)
 	}
 
-	gzReader, err := pgzip.NewReaderN(file, 1<<20, runtime.NumCPU())
+	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	sr := &safeReader{r: file}
+
+	gzReader, err := pgzip.NewReaderN(sr, 1<<20, runtime.NumCPU())
 	if err != nil {
 		file.Close()
 		return nil, fmt.Errorf("cannot create gzip reader: %w", err)
@@ -396,6 +498,7 @@ func ListTarGzHeadersFast(ctx context.Context, archivePath string, maxEntries in
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
+			sr.shutdown() // Signal safeReader first so pgzip goroutines get EOF
 			gzReader.Close()
 			file.Close()
 		})
@@ -691,11 +794,16 @@ func EstimateCompressionRatio(archivePath string) (float64, error) {
 	compressedSize := stat.Size()
 
 	// Read first 1MB and measure decompression ratio
-	gzReader, err := pgzip.NewReader(file)
+	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	sr := &safeReader{r: file}
+	gzReader, err := pgzip.NewReader(sr)
 	if err != nil {
 		return 3.0, err
 	}
-	defer gzReader.Close()
+	defer func() {
+		sr.shutdown()
+		gzReader.Close()
+	}()
 
 	// Read up to 1MB of decompressed data
 	buf := make([]byte, 1<<20)

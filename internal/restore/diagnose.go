@@ -432,22 +432,34 @@ func (d *Diagnoser) diagnoseClusterArchive(ctx context.Context, filePath string,
 	// SCAN PATH: No valid metadata, scan archive headers (first 200 entries only)
 	// For cluster archives, .dump files are at the beginning so we don't need to read everything.
 	// This reduces scan time from 30+ minutes to seconds for 100GB archives.
-	if d.log != nil {
-		d.log.Info("Scanning cluster archive headers (quick scan - no metadata found)",
-			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)))
+	// Dynamic timeout based on file size: 5 min base + 1 min per 10 GB
+	timeoutMin := 5
+	if result.FileSize > 0 {
+		sizeGB := result.FileSize / (1024 * 1024 * 1024)
+		estimated := 5 + int(sizeGB/10)
+		if estimated > timeoutMin {
+			timeoutMin = estimated
+		}
+		if timeoutMin > 30 {
+			timeoutMin = 30
+		}
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	if d.log != nil {
+		d.log.Info("Scanning cluster archive headers (quick scan - no metadata found)",
+			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)),
+			"timeout", fmt.Sprintf("%d min", timeoutMin))
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMin)*time.Minute)
 	defer cancel()
 
-	// Use shell pipeline for fast header scan (seconds instead of 30+ minutes)
-	// pigz -dc | tar tf - | head uses SIGPIPE to stop decompression early
 	allFiles, listErr := fs.ListTarGzHeadersFast(ctx, filePath, 200)
 	if listErr != nil {
 		// Check if it was a timeout
 		if ctx.Err() == context.DeadlineExceeded {
 			result.Warnings = append(result.Warnings,
-				"Header scan timed out after 3 minutes - archive may have unusual structure",
+				fmt.Sprintf("Header scan timed out after %d minutes - archive may have unusual structure", timeoutMin),
 				"This does not necessarily mean the archive is corrupted")
 			return
 		}
@@ -1142,18 +1154,22 @@ func (d *Diagnoser) tryGenerateMetadata(ctx context.Context, filePath string, re
 			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)))
 	}
 
-	// Use a short timeout - ListTarGzHeaders only reads the first few entries
-	// and stops early, so this should complete in seconds even for 100GB archives.
-	// The old code used ListTarGzContents which decompressed the ENTIRE archive.
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	// Dynamic timeout: 5 min base + 1 min per 10 GB (pgzip must decompress
+	// file bodies to skip tar entries, so large archives take longer)
+	timeoutMin := 5
+	if result.FileSize > 0 {
+		sizeGB := result.FileSize / (1024 * 1024 * 1024)
+		estimated := 5 + int(sizeGB/10)
+		if estimated > timeoutMin {
+			timeoutMin = estimated
+		}
+		if timeoutMin > 30 {
+			timeoutMin = 30
+		}
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMin)*time.Minute)
 	defer cancel()
 
-	// Read only first 100 tar entries - cluster archives have .dump files at the beginning
-	// This avoids decompressing the entire 100GB archive just to list filenames
-	// Use shell pipeline (pigz -dc | tar tf - | head) for instant results.
-	// Go's tar.Reader.Next() must decompress file bodies to skip them,
-	// making it 30+ minutes for 100GB archives. The shell pipeline uses
-	// SIGPIPE to kill the decompressor as soon as head has enough lines.
 	files, err := fs.ListTarGzHeadersFast(ctx, filePath, 100)
 	if err != nil {
 		if d.log != nil {

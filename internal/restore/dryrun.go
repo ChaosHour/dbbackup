@@ -230,6 +230,11 @@ func (r *RestoreDryRun) checkDatabaseConnectivity(ctx context.Context) DryRunChe
 	// Try to list databases as a connectivity check
 	_, err := r.safety.ListUserDatabases(ctx)
 	if err != nil {
+		if strings.Contains(err.Error(), "not configured") {
+			check.Status = DryRunWarning
+			check.Message = "Database not configured — skipped (will connect at restore time)"
+			return check
+		}
 		check.Status = DryRunFailed
 		check.Message = "Cannot connect to database server"
 		check.Details = err.Error()

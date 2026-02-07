@@ -510,8 +510,15 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		// Include psql output in error for debugging
-		return nil, fmt.Errorf("failed to list databases: %w (output: %s)", err, strings.TrimSpace(string(output)))
+		outStr := strings.TrimSpace(string(output))
+		// Return clean error for common non-configured cases
+		if strings.Contains(outStr, "fe_sendauth") || strings.Contains(outStr, "no password supplied") {
+			return nil, fmt.Errorf("database not configured (no password supplied)")
+		}
+		if strings.Contains(outStr, "Connection refused") || strings.Contains(outStr, "connection refused") {
+			return nil, fmt.Errorf("database not configured (connection refused)")
+		}
+		return nil, fmt.Errorf("failed to list databases: %w (output: %s)", err, outStr)
 	}
 
 	// Parse output

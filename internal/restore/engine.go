@@ -283,7 +283,7 @@ func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetD
 func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archivePath, targetDB string, compressed bool, preserveOwnership bool) error {
 	// Check if dump contains large objects (BLOBs) - if so, use phased restore
 	// to prevent lock table exhaustion (max_locks_per_transaction OOM)
-	hasLargeObjects := e.checkDumpHasLargeObjects(archivePath)
+	hasLargeObjects := e.checkDumpHasLargeObjects(ctx, archivePath)
 
 	if hasLargeObjects {
 		e.log.Info("Large objects detected - using phased restore to prevent lock exhaustion",
@@ -412,9 +412,9 @@ func (e *Engine) restoreSection(ctx context.Context, archivePath, targetDB, sect
 }
 
 // checkDumpHasLargeObjects checks if a PostgreSQL custom dump contains large objects (BLOBs)
-func (e *Engine) checkDumpHasLargeObjects(archivePath string) bool {
+func (e *Engine) checkDumpHasLargeObjects(ctx context.Context, archivePath string) bool {
 	// Use pg_restore -l to list contents without restoring
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	cmd := cleanup.SafeCommand(ctx, "pg_restore", "-l", archivePath)
@@ -806,7 +806,9 @@ func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs [
 					e.log.Warn("Failed to save debug log", "error", saveErr)
 				} else {
 					e.log.Info("Debug log saved", "path", e.debugLogPath)
-					fmt.Printf("\n[LOG] Detailed error report saved to: %s\n", e.debugLogPath)
+					if !e.silentMode {
+						fmt.Printf("\n[LOG] Detailed error report saved to: %s\n", e.debugLogPath)
+					}
 				}
 			}
 		}
@@ -1362,6 +1364,12 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	workDir := e.cfg.GetEffectiveWorkDir()
 	tempDir := filepath.Join(workDir, fmt.Sprintf(".restore_%d", time.Now().Unix()))
 
+	// Clean up stale .restore_* directories from previous failed restores.
+	// When Ctrl+C kills a restore (SIGKILL), defer os.RemoveAll never runs,
+	// leaving 100GB+ extracted archives on disk. Clean up any that are older
+	// than 1 hour — they can't be from a currently running restore.
+	e.cleanupStaleRestoreDirs(workDir)
+
 	// Handle plain directory, pre-extracted directory, or extract archive
 	if isPlainDirectory {
 		// Plain cluster directory - use directly (no extraction needed)
@@ -1435,7 +1443,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	if !isSuperuser {
 		e.log.Warn("Current user is not a superuser - database ownership may not be fully restored")
 		e.progress.Update("[WARN]  Warning: Non-superuser - ownership restoration limited")
-		time.Sleep(2 * time.Second) // Give user time to see warning
+		sleepWithContext(ctx, 2*time.Second) // Give user time to see warning
 	} else {
 		e.log.Info("Superuser privileges confirmed - full ownership restoration enabled")
 	}
@@ -1487,7 +1495,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 		}
 		dumpFile := filepath.Join(dumpsDir, entry.Name())
 		if strings.HasSuffix(dumpFile, ".sql.gz") {
-			result, err := diagnoser.DiagnoseFile(dumpFile)
+			result, err := diagnoser.DiagnoseFile(ctx, dumpFile)
 			if err != nil {
 				e.log.Warn("Could not validate dump file", "file", entry.Name(), "error", err)
 				continue
@@ -1573,14 +1581,16 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			e.log.Warn("If restore fails with OOM, reduce --jobs or use --profile conservative")
 		}
 		if memCheck.NeedsMoreSwap {
-			e.log.Warn("⚠️ SWAP RECOMMENDATION", "action", memCheck.Recommendation)
-			fmt.Println()
-			fmt.Println("═══════════════════════════════════════════════════════════════")
-			fmt.Println("  SWAP MEMORY RECOMMENDATION")
-			fmt.Println("═══════════════════════════════════════════════════════════════")
-			fmt.Println(memCheck.Recommendation)
-			fmt.Println("═══════════════════════════════════════════════════════════════")
-			fmt.Println()
+			e.log.Warn("SWAP RECOMMENDATION", "action", memCheck.Recommendation)
+			if !e.silentMode {
+				fmt.Println()
+				fmt.Println("═══════════════════════════════════════════════════════════════")
+				fmt.Println("  SWAP MEMORY RECOMMENDATION")
+				fmt.Println("═══════════════════════════════════════════════════════════════")
+				fmt.Println(memCheck.Recommendation)
+				fmt.Println("═══════════════════════════════════════════════════════════════")
+				fmt.Println()
+			}
 		}
 		if memCheck.EstimatedHours > 1 {
 			e.log.Info("⏱️ Estimated restore time", "hours", fmt.Sprintf("%.1f", memCheck.EstimatedHours))
@@ -1614,7 +1624,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	e.progress.Update("Tuning PostgreSQL for large restore...")
 
 	if e.cfg.DebugLocks {
-		e.log.Info("🔍 [LOCK-DEBUG] Attempting to boost PostgreSQL lock settings",
+		e.log.Debug("Lock boost: attempting to boost PostgreSQL lock settings",
 			"target_max_locks", lockBoostValue,
 			"conservative_mode", strategy.UseConservative)
 	}
@@ -1624,7 +1634,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 		e.log.Error("Could not boost PostgreSQL settings", "error", tuneErr)
 
 		if e.cfg.DebugLocks {
-			e.log.Error("🔍 [LOCK-DEBUG] Lock boost attempt FAILED",
+			e.log.Error("Lock boost: attempt failed",
 				"error", tuneErr,
 				"phase", "boostPostgreSQLSettings")
 		}
@@ -1634,7 +1644,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	}
 
 	if e.cfg.DebugLocks {
-		e.log.Info("🔍 [LOCK-DEBUG] Lock boost function returned",
+		e.log.Debug("Lock boost: function returned",
 			"original_max_locks", originalSettings.MaxLocks,
 			"target_max_locks", lockBoostValue,
 			"boost_successful", originalSettings.MaxLocks >= lockBoostValue)
@@ -1650,7 +1660,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			"user_parallelism", e.cfg.ClusterParallelism)
 
 		if e.cfg.DebugLocks {
-			e.log.Info("🔍 [LOCK-DEBUG] Lock verification WARNING (user settings preserved)",
+			e.log.Debug("Lock verification: warning (user settings preserved)",
 				"actual_locks", originalSettings.MaxLocks,
 				"recommended_locks", lockBoostValue,
 				"delta", lockBoostValue-originalSettings.MaxLocks,
@@ -1682,7 +1692,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 		"conservative_mode", strategy.UseConservative)
 
 	if e.cfg.DebugLocks {
-		e.log.Info("🔍 [LOCK-DEBUG] Lock verification PASSED",
+		e.log.Debug("Lock verification: passed",
 			"actual_locks", originalSettings.MaxLocks,
 			"required_locks", lockBoostValue,
 			"verdict", "PROCEED WITH RESTORE")
@@ -1777,7 +1787,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 				fmt.Println("═══════════════════════════════════════════════════════════════")
 				fmt.Println()
 			}
-			time.Sleep(2 * time.Second)
+			sleepWithContext(ctx, 2*time.Second)
 		}
 	}
 
@@ -1796,7 +1806,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			"original_parallelism", parallelism,
 			"adjusted_parallelism", 1)
 		e.progress.Update("[WARN]  Large objects detected - using sequential restore to avoid lock conflicts")
-		time.Sleep(2 * time.Second) // Give user time to see warning
+		sleepWithContext(ctx, 2*time.Second) // Give user time to see warning
 		parallelism = 1
 	}
 
@@ -1875,9 +1885,9 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			dbRestoreStart := time.Now()
 
 			// Update estimator progress (thread-safe)
-			mu.Lock()
+			progressMu.Lock()
 			estimator.UpdateProgress(idx)
-			mu.Unlock()
+			progressMu.Unlock()
 
 			dumpFile := filepath.Join(dumpsDir, filename)
 			dbName := filename
@@ -1899,13 +1909,15 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			phaseElapsed := time.Since(restorePhaseStart)
 			completedDBTimesMu.Unlock()
 
-			mu.Lock()
+			progressMu.Lock()
 			statusMsg := fmt.Sprintf("Restoring database %s (%d/%d)", dbName, idx+1, totalDBs)
 			e.progress.Update(statusMsg)
-			e.log.Info("Restoring database", "name", dbName, "file", dumpFile, "progress", dbProgress)
-			// Report database progress for TUI (both callbacks)
 			e.reportDatabaseProgress(idx, totalDBs, dbName)
 			e.reportDatabaseProgressWithTiming(idx, totalDBs, dbName, phaseElapsed, avgPerDB)
+			progressMu.Unlock()
+
+			mu.Lock()
+			e.log.Info("Restoring database", "name", dbName, "file", dumpFile, "progress", dbProgress)
 			mu.Unlock()
 
 			// STEP 1: Drop existing database completely (clean slate)
@@ -2090,7 +2102,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			atomic.AddInt32(&successCount, 1)
 
 			// Small delay to ensure PostgreSQL fully closes connections before next restore
-			time.Sleep(100 * time.Millisecond)
+			sleepWithContext(ctx, 100*time.Millisecond)
 		}(dbIndex, entry.Name())
 
 		dbIndex++
@@ -2394,6 +2406,62 @@ func (e *Engine) checkSuperuser(ctx context.Context) (bool, error) {
 // NOTE: terminateConnections, dropDatabaseIfExists, ensureDatabaseExists,
 // ensureMySQLDatabaseExists, and ensurePostgresDatabaseExists are now in database.go
 
+// cleanupStaleRestoreDirs removes leftover .restore_* directories from previous failed restores.
+// When a restore is interrupted with SIGKILL (e.g. pkill after Ctrl+C hangs), the defer
+// os.RemoveAll never runs, leaving 100GB+ extracted archives on disk.
+// Only removes directories older than 1 hour to avoid touching active restores.
+func (e *Engine) cleanupStaleRestoreDirs(workDir string) {
+	entries, err := os.ReadDir(workDir)
+	if err != nil {
+		return
+	}
+
+	cutoff := time.Now().Add(-1 * time.Hour)
+	var cleaned int
+	var freedBytes int64
+
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".restore_") {
+			continue
+		}
+
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		if info.ModTime().After(cutoff) {
+			continue // Too recent — might be an active restore
+		}
+
+		dirPath := filepath.Join(workDir, entry.Name())
+
+		// Calculate size before removing
+		var dirSize int64
+		filepath.Walk(dirPath, func(_ string, info os.FileInfo, _ error) error {
+			if info != nil && !info.IsDir() {
+				dirSize += info.Size()
+			}
+			return nil
+		})
+
+		if err := os.RemoveAll(dirPath); err != nil {
+			e.log.Warn("Failed to clean up stale restore directory",
+				"path", dirPath, "error", err)
+			continue
+		}
+
+		cleaned++
+		freedBytes += dirSize
+	}
+
+	if cleaned > 0 {
+		e.log.Info("Cleaned up stale restore directories from previous failed restores",
+			"count", cleaned,
+			"freed_gb", fmt.Sprintf("%.1f", float64(freedBytes)/(1024*1024*1024)))
+	}
+}
+
 // generateMetadataFromExtracted creates a .meta.json sidecar file from an already-extracted
 // cluster archive directory. This is instant since it just reads the directory listing.
 // Called as a fire-and-forget goroutine after extraction completes — does not block restore.
@@ -2658,7 +2726,7 @@ func (e *Engine) quickValidateSQLDump(archivePath string, compressed bool) error
 	e.log.Debug("Pre-validating SQL dump file", "path", archivePath, "compressed", compressed)
 
 	diagnoser := NewDiagnoser(e.log, false) // non-verbose for speed
-	result, err := diagnoser.DiagnoseFile(archivePath)
+	result, err := diagnoser.DiagnoseFile(context.Background(), archivePath)
 	if err != nil {
 		return fmt.Errorf("diagnosis error: %w", err)
 	}
@@ -2707,7 +2775,7 @@ type OriginalSettings struct {
 // maintenance_work_mem can be changed with pg_reload_conf().
 func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int) (*OriginalSettings, error) {
 	if e.cfg.DebugLocks {
-		e.log.Info("🔍 [LOCK-DEBUG] boostPostgreSQLSettings: Starting lock boost procedure",
+		e.log.Debug("boostPostgreSQLSettings: starting lock boost procedure",
 			"target_lock_value", lockBoostValue)
 	}
 
@@ -2715,7 +2783,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		if e.cfg.DebugLocks {
-			e.log.Error("🔍 [LOCK-DEBUG] Failed to connect to PostgreSQL",
+			e.log.Error("Lock debug: failed to connect to PostgreSQL",
 				"error", err)
 		}
 		return nil, fmt.Errorf("failed to connect: %w", err)
@@ -2731,7 +2799,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	}
 
 	if e.cfg.DebugLocks {
-		e.log.Info("🔍 [LOCK-DEBUG] Current PostgreSQL lock configuration",
+		e.log.Debug("Current PostgreSQL lock configuration",
 			"current_max_locks", original.MaxLocks,
 			"target_max_locks", lockBoostValue,
 			"boost_required", original.MaxLocks < lockBoostValue)
@@ -2745,7 +2813,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	needsRestart := false
 	if original.MaxLocks < lockBoostValue {
 		if e.cfg.DebugLocks {
-			e.log.Info("🔍 [LOCK-DEBUG] Executing ALTER SYSTEM to boost locks",
+			e.log.Debug("Executing ALTER SYSTEM to boost locks",
 				"from", original.MaxLocks,
 				"to", lockBoostValue)
 		}
@@ -2755,7 +2823,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 			e.log.Warn("Could not set max_locks_per_transaction", "error", err)
 
 			if e.cfg.DebugLocks {
-				e.log.Error("🔍 [LOCK-DEBUG] ALTER SYSTEM failed",
+				e.log.Error("ALTER SYSTEM failed",
 					"error", err)
 			}
 		} else {
@@ -2765,7 +2833,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 				"target", lockBoostValue)
 
 			if e.cfg.DebugLocks {
-				e.log.Info("🔍 [LOCK-DEBUG] ALTER SYSTEM succeeded - restart required",
+				e.log.Debug("ALTER SYSTEM succeeded - restart required",
 					"setting_saved_to", "postgresql.auto.conf",
 					"active_after", "PostgreSQL restart")
 			}
@@ -2788,14 +2856,14 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	// If max_locks_per_transaction needs a restart, try to do it
 	if needsRestart {
 		if e.cfg.DebugLocks {
-			e.log.Info("🔍 [LOCK-DEBUG] Attempting PostgreSQL restart to activate new lock setting")
+			e.log.Debug("Attempting PostgreSQL restart to activate new lock setting")
 		}
 
 		if restarted := e.tryRestartPostgreSQL(ctx); restarted {
 			e.log.Info("PostgreSQL restarted successfully - max_locks_per_transaction now active")
 
 			if e.cfg.DebugLocks {
-				e.log.Info("🔍 [LOCK-DEBUG] PostgreSQL restart SUCCEEDED")
+				e.log.Debug("PostgreSQL restart succeeded")
 			}
 
 			// Wait for PostgreSQL to be ready
@@ -2807,7 +2875,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 				e.log.Info("Verified new max_locks_per_transaction after restart", "value", original.MaxLocks)
 
 				if e.cfg.DebugLocks {
-					e.log.Info("🔍 [LOCK-DEBUG] Post-restart verification",
+					e.log.Debug("Post-restart verification",
 						"new_max_locks", original.MaxLocks,
 						"target_was", lockBoostValue,
 						"verification", "PASS")
@@ -2823,7 +2891,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 			e.log.Error("Action required: Ask DBA to restart PostgreSQL, then retry restore")
 
 			if e.cfg.DebugLocks {
-				e.log.Error("🔍 [LOCK-DEBUG] PostgreSQL restart FAILED",
+				e.log.Error("PostgreSQL restart failed",
 					"current_locks", original.MaxLocks,
 					"required_locks", lockBoostValue,
 					"setting_saved", true,
@@ -2837,7 +2905,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	}
 
 	if e.cfg.DebugLocks {
-		e.log.Info("🔍 [LOCK-DEBUG] boostPostgreSQLSettings: Complete",
+		e.log.Debug("boostPostgreSQLSettings: complete",
 			"final_max_locks", original.MaxLocks,
 			"target_was", lockBoostValue,
 			"boost_successful", original.MaxLocks >= lockBoostValue)
@@ -2973,4 +3041,12 @@ func (e *Engine) resetPostgreSQLSettings(ctx context.Context, original *Original
 		"note", "max_locks_per_transaction will revert on next PostgreSQL restart")
 
 	return nil
+}
+
+// sleepWithContext pauses for the given duration but returns early if the context is cancelled.
+func sleepWithContext(ctx context.Context, d time.Duration) {
+	select {
+	case <-ctx.Done():
+	case <-time.After(d):
+	}
 }

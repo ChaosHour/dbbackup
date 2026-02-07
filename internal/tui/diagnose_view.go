@@ -79,7 +79,7 @@ func runDiagnosis(cfg *config.Config, log logger.Logger, archive ArchiveInfo) te
 			defer removeTempDir(tempDir)
 
 			// Diagnose all dumps in the cluster
-			results, err := diagnoser.DiagnoseClusterDumps(archive.Path, tempDir)
+			results, err := diagnoser.DiagnoseClusterDumps(context.Background(), archive.Path, tempDir)
 			if err != nil {
 				return diagnoseCompleteMsg{err: err}
 			}
@@ -88,7 +88,7 @@ func runDiagnosis(cfg *config.Config, log logger.Logger, archive ArchiveInfo) te
 		}
 
 		// Single file diagnosis
-		result, err := diagnoser.DiagnoseFile(archive.Path)
+		result, err := diagnoser.DiagnoseFile(context.Background(), archive.Path)
 		if err != nil {
 			return diagnoseCompleteMsg{err: err}
 		}

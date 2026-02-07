@@ -186,7 +186,7 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 
 		// Normal path: .meta.json exists or archive is small enough for full scan
 		{
-			diagResult, diagErr := diagnoser.DiagnoseFile(archive.Path)
+			diagResult, diagErr := diagnoser.DiagnoseFile(context.Background(), archive.Path)
 			if diagErr != nil {
 				check.Status = "warning"
 				check.Message = fmt.Sprintf("Cannot diagnose: %v", diagErr)

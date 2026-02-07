@@ -88,7 +88,7 @@ func NewDiagnoser(log logger.Logger, verbose bool) *Diagnoser {
 }
 
 // DiagnoseFile performs comprehensive diagnosis of a backup file
-func (d *Diagnoser) DiagnoseFile(filePath string) (*DiagnoseResult, error) {
+func (d *Diagnoser) DiagnoseFile(ctx context.Context, filePath string) (*DiagnoseResult, error) {
 	result := &DiagnoseResult{
 		FilePath: filePath,
 		FileName: filepath.Base(filePath),
@@ -119,7 +119,7 @@ func (d *Diagnoser) DiagnoseFile(filePath string) (*DiagnoseResult, error) {
 	// Analyze based on format
 	switch result.Format {
 	case FormatPostgreSQLDump:
-		d.diagnosePgDump(filePath, result)
+		d.diagnosePgDump(ctx, filePath, result)
 	case FormatPostgreSQLDumpGz:
 		d.diagnosePgDumpGz(filePath, result)
 	case FormatPostgreSQLSQL:
@@ -127,7 +127,7 @@ func (d *Diagnoser) DiagnoseFile(filePath string) (*DiagnoseResult, error) {
 	case FormatPostgreSQLSQLGz:
 		d.diagnoseSQLScript(filePath, true, result)
 	case FormatClusterTarGz:
-		d.diagnoseClusterArchive(filePath, result)
+		d.diagnoseClusterArchive(ctx, filePath, result)
 	default:
 		result.Warnings = append(result.Warnings, "Unknown format - limited diagnosis available")
 		d.diagnoseUnknown(filePath, result)
@@ -137,7 +137,7 @@ func (d *Diagnoser) DiagnoseFile(filePath string) (*DiagnoseResult, error) {
 }
 
 // diagnosePgDump analyzes PostgreSQL custom format dump
-func (d *Diagnoser) diagnosePgDump(filePath string, result *DiagnoseResult) {
+func (d *Diagnoser) diagnosePgDump(ctx context.Context, filePath string, result *DiagnoseResult) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		result.IsValid = false
@@ -172,7 +172,7 @@ func (d *Diagnoser) diagnosePgDump(filePath string, result *DiagnoseResult) {
 	}
 
 	// Try pg_restore --list to verify dump integrity
-	d.verifyWithPgRestore(filePath, result)
+	d.verifyWithPgRestore(ctx, filePath, result)
 }
 
 // diagnosePgDumpGz analyzes compressed PostgreSQL custom format dump
@@ -418,10 +418,10 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 }
 
 // diagnoseClusterArchive analyzes a cluster tar.gz archive
-func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResult) {
+func (d *Diagnoser) diagnoseClusterArchive(ctx context.Context, filePath string, result *DiagnoseResult) {
 	// FAST PATH: If .meta.json exists and is valid, use it instead of scanning entire archive
 	// This reduces preflight time from ~20 minutes to <1 second for 100GB archives
-	if d.tryFastPathWithMetadata(filePath, result) {
+	if d.tryFastPathWithMetadata(ctx, filePath, result) {
 		if d.log != nil {
 			d.log.Info("Used fast metadata path for cluster verification",
 				"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)))
@@ -437,7 +437,7 @@ func (d *Diagnoser) diagnoseClusterArchive(filePath string, result *DiagnoseResu
 			"size", fmt.Sprintf("%.1f GB", float64(result.FileSize)/(1024*1024*1024)))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 
 	// Use shell pipeline for fast header scan (seconds instead of 30+ minutes)
@@ -549,7 +549,7 @@ func (d *Diagnoser) diagnoseUnknown(filePath string, result *DiagnoseResult) {
 }
 
 // verifyWithPgRestore uses pg_restore --list to verify dump integrity
-func (d *Diagnoser) verifyWithPgRestore(filePath string, result *DiagnoseResult) {
+func (d *Diagnoser) verifyWithPgRestore(ctx context.Context, filePath string, result *DiagnoseResult) {
 	// Calculate dynamic timeout based on file size
 	// pg_restore --list is usually faster than tar -tzf for same size
 	timeoutMinutes := 5
@@ -565,7 +565,7 @@ func (d *Diagnoser) verifyWithPgRestore(filePath string, result *DiagnoseResult)
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMinutes)*time.Minute)
 	defer cancel()
 
 	cmd := cleanup.SafeCommand(ctx, "pg_restore", "--list", filePath)
@@ -619,7 +619,7 @@ func (d *Diagnoser) verifyWithPgRestore(filePath string, result *DiagnoseResult)
 }
 
 // DiagnoseClusterDumps extracts and diagnoses all dumps in a cluster archive
-func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*DiagnoseResult, error) {
+func (d *Diagnoser) DiagnoseClusterDumps(ctx context.Context, archivePath, tempDir string) ([]*DiagnoseResult, error) {
 	// Get archive size for dynamic timeout calculation
 	archiveInfo, err := os.Stat(archivePath)
 	if err != nil {
@@ -646,7 +646,7 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 			"timeout", fmt.Sprintf("%d min", timeoutMinutes))
 	}
 
-	listCtx, listCancel := context.WithTimeout(context.Background(), time.Duration(timeoutMinutes)*time.Minute)
+	listCtx, listCancel := context.WithTimeout(ctx, time.Duration(timeoutMinutes)*time.Minute)
 	defer listCancel()
 
 	// Use in-process parallel gzip listing (2-4x faster, no shell dependency)
@@ -718,7 +718,7 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 	}
 
 	// Try full extraction using parallel gzip (2-4x faster on multi-core)
-	extractCtx, extractCancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	extractCtx, extractCancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer extractCancel()
 
 	err = fs.ExtractTarGzParallel(extractCtx, archivePath, tempDir, nil)
@@ -805,7 +805,7 @@ func (d *Diagnoser) DiagnoseClusterDumps(archivePath, tempDir string) ([]*Diagno
 			d.log.Info("Diagnosing dump file", "file", name)
 		}
 
-		result, err := d.DiagnoseFile(dumpPath)
+		result, err := d.DiagnoseFile(ctx, dumpPath)
 		if err != nil {
 			if d.log != nil {
 				d.log.Warn("Failed to diagnose file", "file", name, "error", err)
@@ -959,7 +959,7 @@ func minInt(a, b int) int {
 // tryFastPathWithMetadata attempts to use .meta.json for fast cluster verification
 // Returns true if successful, false if metadata unavailable/invalid
 // If no .meta.json exists, attempts to generate one (one-time slow scan, then fast forever)
-func (d *Diagnoser) tryFastPathWithMetadata(filePath string, result *DiagnoseResult) bool {
+func (d *Diagnoser) tryFastPathWithMetadata(ctx context.Context, filePath string, result *DiagnoseResult) bool {
 	metaPath := filePath + ".meta.json"
 
 	// Check if metadata file exists
@@ -969,7 +969,7 @@ func (d *Diagnoser) tryFastPathWithMetadata(filePath string, result *DiagnoseRes
 			d.log.Debug("Fast path: no .meta.json file, attempting to generate", "path", metaPath)
 		}
 		// Try to auto-generate .meta.json for legacy archives (dbbackup 3.x)
-		if d.tryGenerateMetadata(filePath, result) {
+		if d.tryGenerateMetadata(ctx, filePath, result) {
 			// Retry with newly generated metadata
 			metaStat, err = os.Stat(metaPath)
 			if err != nil {
@@ -1135,7 +1135,7 @@ func (d *Diagnoser) QuickValidateClusterArchive(filePath string) error {
 	return nil
 }
 
-func (d *Diagnoser) tryGenerateMetadata(filePath string, result *DiagnoseResult) bool {
+func (d *Diagnoser) tryGenerateMetadata(ctx context.Context, filePath string, result *DiagnoseResult) bool {
 	if d.log != nil {
 		d.log.Info("Generating .meta.json for legacy archive (quick header scan)...",
 			"archive", filepath.Base(filePath),
@@ -1145,7 +1145,7 @@ func (d *Diagnoser) tryGenerateMetadata(filePath string, result *DiagnoseResult)
 	// Use a short timeout - ListTarGzHeaders only reads the first few entries
 	// and stops early, so this should complete in seconds even for 100GB archives.
 	// The old code used ListTarGzContents which decompressed the ENTIRE archive.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
 	// Read only first 100 tar entries - cluster archives have .dump files at the beginning

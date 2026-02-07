@@ -104,7 +104,7 @@ func (v *MetadataGeneratorView) generateMetadata() tea.Cmd {
 
 		// Run diagnoser which will generate metadata
 		diagnoser := restore.NewDiagnoser(v.logger, false)
-		result, err := diagnoser.DiagnoseFile(v.archive.Path)
+		result, err := diagnoser.DiagnoseFile(context.Background(), v.archive.Path)
 
 		if err != nil {
 			return metadataGenResultMsg{

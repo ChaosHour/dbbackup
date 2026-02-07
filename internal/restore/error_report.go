@@ -208,7 +208,7 @@ func (ec *ErrorCollector) GenerateReport(errMessage string, errType string, errH
 
 	// Run diagnosis if not already done
 	diagnoser := NewDiagnoser(ec.log, false)
-	if diagResult, err := diagnoser.DiagnoseFile(ec.archivePath); err == nil {
+	if diagResult, err := diagnoser.DiagnoseFile(context.Background(), ec.archivePath); err == nil {
 		report.DiagnosisResult = diagResult
 	}
 

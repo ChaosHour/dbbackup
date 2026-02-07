@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -107,7 +108,7 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 
 	// Run diagnosis
 	diagnoser := restore.NewDiagnoser(log, restoreVerbose)
-	result, err := diagnoser.DiagnoseFile(archivePath)
+	result, err := diagnoser.DiagnoseFile(context.Background(), archivePath)
 	if err != nil {
 		return fmt.Errorf("failed to analyze backup: %w", err)
 	}

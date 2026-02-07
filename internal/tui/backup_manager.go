@@ -367,7 +367,7 @@ func verifyArchiveCmd(archive ArchiveInfo) tea.Cmd {
 
 		// 2. Run the same deep diagnosis as restore
 		diagnoser := restore.NewDiagnoser(nil, false)
-		diagResult, diagErr := diagnoser.DiagnoseFile(archive.Path)
+		diagResult, diagErr := diagnoser.DiagnoseFile(context.Background(), archive.Path)
 		if diagErr != nil {
 			return verifyResultMsg{
 				archive: archive.Name,

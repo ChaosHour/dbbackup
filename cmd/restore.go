@@ -471,7 +471,7 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 		log.Info("Extracting cluster archive for deep analysis...")
 
 		// Extract and diagnose all dumps
-		results, err := diagnoser.DiagnoseClusterDumps(archivePath, tempDir)
+		results, err := diagnoser.DiagnoseClusterDumps(context.Background(), archivePath, tempDir)
 		if err != nil {
 			return fmt.Errorf("cluster diagnosis failed: %w", err)
 		}
@@ -516,7 +516,7 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 	}
 
 	// Single file diagnosis
-	result, err := diagnoser.DiagnoseFile(archivePath)
+	result, err := diagnoser.DiagnoseFile(context.Background(), archivePath)
 	if err != nil {
 		return fmt.Errorf("diagnosis failed: %w", err)
 	}
@@ -719,7 +719,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 		log.Info("[DIAG] Running pre-restore diagnosis...")
 
 		diagnoser := restore.NewDiagnoser(log, restoreVerbose)
-		result, err := diagnoser.DiagnoseFile(archivePath)
+		result, err := diagnoser.DiagnoseFile(ctx, archivePath)
 		if err != nil {
 			return fmt.Errorf("diagnosis failed: %w", err)
 		}
@@ -1253,7 +1253,7 @@ func runFullClusterRestore(archivePath string) error {
 				continue
 			}
 			dumpPath := filepath.Join(dumpsDir, entry.Name())
-			result, err := diagnoser.DiagnoseFile(dumpPath)
+			result, err := diagnoser.DiagnoseFile(ctx, dumpPath)
 			if err != nil {
 				log.Warn("Could not diagnose dump", "file", entry.Name(), "error", err)
 				continue

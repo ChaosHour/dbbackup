@@ -1018,7 +1018,7 @@ func runCatalogGenerate(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  🔄 Scanning: %s (%.1f GB)...\n", filepath.Base(archivePath), sizeGB)
 
 			diagnoser := restore.NewDiagnoser(log, verbose)
-			result, err := diagnoser.DiagnoseFile(archivePath)
+			result, err := diagnoser.DiagnoseFile(context.Background(), archivePath)
 
 			if err != nil {
 				fmt.Printf("     ❌ Failed: %v\n", err)

@@ -451,19 +451,15 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 	}
 
 	// USE NATIVE ENGINE if configured
-	// This uses pure Go (pgx) instead of psql
+	// v5.8.55: Streaming architecture — reads dump line-by-line, streams COPY data
+	// directly to PostgreSQL via pgx. Zero memory buffering. No psql fallback needed.
 	if e.cfg.UseNativeEngine {
-		e.log.Info("Using native Go engine for restore", "database", targetDB, "file", archivePath)
+		e.log.Info("Using native Go streaming engine for restore", "database", targetDB, "file", archivePath)
 		nativeErr := e.restoreWithNativeEngine(ctx, archivePath, targetDB, compressed)
 		if nativeErr != nil {
-			if e.cfg.FallbackToTools {
-				e.log.Warn("Native restore failed, falling back to psql", "database", targetDB, "error", nativeErr)
-			} else {
-				return fmt.Errorf("native restore failed: %w", nativeErr)
-			}
-		} else {
-			return nil // Native restore succeeded!
+			return fmt.Errorf("native restore failed: %w", nativeErr)
 		}
+		return nil
 	}
 
 	// Use psql for SQL scripts (fallback or non-native mode)

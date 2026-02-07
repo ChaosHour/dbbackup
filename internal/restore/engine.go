@@ -2818,9 +2818,36 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	if err != nil {
 		if e.cfg.DebugLocks {
 			e.log.Error("Lock debug: failed to connect to PostgreSQL",
-				"error", err)
+				"user", e.cfg.User, "error", err)
 		}
-		return nil, fmt.Errorf("failed to connect: %w", err)
+		return nil, fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s: %w", e.cfg.Host, e.cfg.Port, e.cfg.User, err)
+	}
+
+	// Verify the connection actually works (sql.Open may not connect immediately)
+	if pingErr := db.PingContext(ctx); pingErr != nil {
+		db.Close()
+		// If connection fails and we're not already trying 'postgres', retry with 'postgres' user
+		if e.cfg.User != "postgres" {
+			e.log.Warn("Connection failed with current user, retrying with 'postgres' user",
+				"failed_user", e.cfg.User, "error", pingErr)
+			fallbackStr := e.buildConnStringForUser("postgres")
+			db, err = sql.Open("pgx", fallbackStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to connect to PostgreSQL as user 'postgres' (fallback): %w", err)
+			}
+			if pingErr2 := db.PingContext(ctx); pingErr2 != nil {
+				db.Close()
+				return nil, fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s (also tried 'postgres'): %w",
+					e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
+			}
+			e.log.Info("Successfully connected with 'postgres' user (fallback)",
+				"original_user", e.cfg.User)
+			// Update config so subsequent connections also use the working user
+			e.cfg.User = "postgres"
+		} else {
+			return nil, fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s: %w",
+				e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
+		}
 	}
 	defer db.Close()
 
@@ -3047,7 +3074,29 @@ func (e *Engine) resetPostgreSQLSettings(ctx context.Context, original *Original
 	connStr := e.buildConnString()
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
+		return fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s: %w", e.cfg.Host, e.cfg.Port, e.cfg.User, err)
+	}
+
+	// Verify connection works; fallback to 'postgres' user if needed
+	if pingErr := db.PingContext(ctx); pingErr != nil {
+		db.Close()
+		if e.cfg.User != "postgres" {
+			e.log.Warn("resetPostgreSQLSettings: connection failed, retrying with 'postgres' user",
+				"failed_user", e.cfg.User, "error", pingErr)
+			fallbackStr := e.buildConnStringForUser("postgres")
+			db, err = sql.Open("pgx", fallbackStr)
+			if err != nil {
+				return fmt.Errorf("failed to connect to PostgreSQL as user 'postgres' (fallback): %w", err)
+			}
+			if pingErr2 := db.PingContext(ctx); pingErr2 != nil {
+				db.Close()
+				return fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s: %w",
+					e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
+			}
+		} else {
+			return fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s: %w",
+				e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
+		}
 	}
 	defer db.Close()
 

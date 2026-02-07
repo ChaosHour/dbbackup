@@ -710,10 +710,45 @@ func parseMemoryToMB(memStr string) int {
 }
 
 func (e *Engine) buildConnString() string {
-	if e.cfg.Host == "localhost" || e.cfg.Host == "" {
-		return fmt.Sprintf("user=%s password=%s dbname=postgres sslmode=disable",
-			e.cfg.User, e.cfg.Password)
+	return e.buildConnStringForUser(e.cfg.User)
+}
+
+func (e *Engine) buildConnStringForUser(user string) string {
+	// Check if host is an explicit Unix socket path (starts with /)
+	if strings.HasPrefix(e.cfg.Host, "/") {
+		dsn := fmt.Sprintf("user=%s dbname=postgres host=%s sslmode=disable", user, e.cfg.Host)
+		if e.cfg.Password != "" {
+			dsn += fmt.Sprintf(" password=%s", e.cfg.Password)
+		}
+		return dsn
 	}
-	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
-		e.cfg.Host, e.cfg.Port, e.cfg.User, e.cfg.Password)
+
+	// For localhost without password, try Unix socket for peer authentication
+	if (e.cfg.Host == "localhost" || e.cfg.Host == "") && e.cfg.Password == "" {
+		socketDirs := []string{
+			"/var/run/postgresql",
+			"/tmp",
+			"/var/lib/pgsql",
+		}
+		for _, dir := range socketDirs {
+			socketPath := fmt.Sprintf("%s/.s.PGSQL.%d", dir, e.cfg.Port)
+			if _, err := os.Stat(socketPath); err == nil {
+				// Unix socket found - use peer auth (no password needed)
+				return fmt.Sprintf("user=%s dbname=postgres host=%s sslmode=disable", user, dir)
+			}
+		}
+		// No socket found, fall through to TCP
+	}
+
+	// TCP connection
+	host := e.cfg.Host
+	if host == "" {
+		host = "localhost"
+	}
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=postgres sslmode=disable",
+		host, e.cfg.Port, user)
+	if e.cfg.Password != "" {
+		dsn += fmt.Sprintf(" password=%s", e.cfg.Password)
+	}
+	return dsn
 }

@@ -637,9 +637,17 @@ func getEnvBool(key string, defaultValue bool) bool {
 
 func getCurrentUser() string {
 	if user := os.Getenv("USER"); user != "" {
+		// Root is not a valid PostgreSQL user - default to 'postgres' instead.
+		// Users can still override via PG_USER env var or --user flag.
+		if user == "root" {
+			return "postgres"
+		}
 		return user
 	}
 	if user := os.Getenv("USERNAME"); user != "" {
+		if user == "root" || user == "Administrator" {
+			return "postgres"
+		}
 		return user
 	}
 	return "postgres"

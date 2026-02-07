@@ -5,6 +5,28 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.57] - 2026-02-07
+
+### Fixed
+- **PostgreSQL Connection: Root User Default** — `getCurrentUser()` returned OS user `root` as
+  the PostgreSQL connection user, causing `failed to connect to user=root database=` errors.
+  Now defaults to `postgres` when the OS user is `root` or `Administrator`, since neither is
+  ever a valid PostgreSQL role. Users can still override via `PG_USER` env var or `--user` flag.
+- **PostgreSQL Connection: Peer Authentication** — `buildConnString()` always included an empty
+  `password=` field and omitted `host=`, which broke Unix socket peer authentication. Rewritten
+  to probe for Unix sockets in `/var/run/postgresql`, `/tmp`, `/var/lib/pgsql` (matching the
+  main database driver logic) and only include `password=` when non-empty.
+- **Boost/Reset Connection Fallback** — `boostPostgreSQLSettings()` and `resetPostgreSQLSettings()`
+  now verify connections with `PingContext()` (since `sql.Open` is lazy) and automatically retry
+  with `user=postgres` if the initial connection fails. On successful fallback, `cfg.User` is
+  updated so all subsequent connections use the working user.
+- **Large DB Guard Connection** — `checkLockConfiguration()` in `LargeDBGuard` used a hardcoded
+  `host=... password=...` connection string that broke peer auth. Replaced with socket-aware
+  `buildGuardConnString()` using the same Unix socket discovery logic.
+- **Improved Error Messages** — Connection failures now report host, port, and user in the error
+  message (e.g., `failed to connect to PostgreSQL at localhost:5432 as user root`) instead of
+  the generic `failed to connect`.
+
 ## [5.8.45] - 2026-02-06
 
 ### Fixed

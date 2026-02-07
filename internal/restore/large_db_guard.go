@@ -30,6 +30,44 @@ type RestoreStrategy struct {
 	ExpectedTime    string // Estimated restore time
 }
 
+// buildGuardConnString builds a PostgreSQL connection string with Unix socket awareness.
+// For localhost without password, probes for Unix sockets to enable peer authentication.
+func buildGuardConnString(host string, port int, user, password string) string {
+	// Check if host is an explicit Unix socket path
+	if strings.HasPrefix(host, "/") {
+		dsn := fmt.Sprintf("user=%s dbname=postgres host=%s sslmode=disable", user, host)
+		if password != "" {
+			dsn += fmt.Sprintf(" password=%s", password)
+		}
+		return dsn
+	}
+
+	// For localhost without password, try Unix socket for peer auth
+	if (host == "localhost" || host == "") && password == "" {
+		socketDirs := []string{
+			"/var/run/postgresql",
+			"/tmp",
+			"/var/lib/pgsql",
+		}
+		for _, dir := range socketDirs {
+			socketPath := fmt.Sprintf("%s/.s.PGSQL.%d", dir, port)
+			if _, err := os.Stat(socketPath); err == nil {
+				return fmt.Sprintf("user=%s dbname=postgres host=%s sslmode=disable", user, dir)
+			}
+		}
+	}
+
+	// TCP connection
+	if host == "" {
+		host = "localhost"
+	}
+	dsn := fmt.Sprintf("host=%s port=%d user=%s dbname=postgres sslmode=disable", host, port, user)
+	if password != "" {
+		dsn += fmt.Sprintf(" password=%s", password)
+	}
+	return dsn
+}
+
 // NewLargeDBGuard creates a new guard
 func NewLargeDBGuard(cfg *config.Config, log logger.Logger) *LargeDBGuard {
 	return &LargeDBGuard{
@@ -215,9 +253,8 @@ func (g *LargeDBGuard) checkLockConfiguration(ctx context.Context) (int, int) {
 			"user", g.cfg.User)
 	}
 
-	// Build connection string
-	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
-		g.cfg.Host, g.cfg.Port, g.cfg.User, g.cfg.Password)
+	// Build connection string (socket-aware for peer auth)
+	connStr := buildGuardConnString(g.cfg.Host, g.cfg.Port, g.cfg.User, g.cfg.Password)
 
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {

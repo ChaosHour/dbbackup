@@ -87,8 +87,8 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 		return nil, fmt.Errorf("failed to parse connection config: %w", err)
 	}
 
-	// Pool: workers for COPY + 1 for inline schema + 1 headroom
-	poolConfig.MaxConns = int32(workers + 2)
+	// Pool: sized for parallel cluster restore (multiple DBs restored concurrently)
+	poolConfig.MaxConns = int32(workers * 2)
 	poolConfig.MinConns = 1
 	poolConfig.HealthCheckPeriod = 5 * time.Second
 	poolConfig.MaxConnIdleTime = 5 * time.Minute
@@ -439,7 +439,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 //   gzip → scanner → pipe → pgx CopyFrom → PostgreSQL
 // Zero intermediate buffering.
 func (e *ParallelRestoreEngine) streamCopy(ctx context.Context, tableName string, reader io.Reader) (int64, error) {
-	acquireCtx, acquireCancel := context.WithTimeout(ctx, 2*time.Minute)
+	acquireCtx, acquireCancel := context.WithTimeout(ctx, 5*time.Minute)
 	conn, err := e.pool.Acquire(acquireCtx)
 	acquireCancel()
 	if err != nil {
@@ -463,8 +463,18 @@ func (e *ParallelRestoreEngine) streamCopy(ctx context.Context, tableName string
 	}
 
 	copySQL := fmt.Sprintf("COPY %s FROM STDIN", tableName)
-	tag, err := conn.Conn().PgConn().CopyFrom(ctx, reader, copySQL)
+
+	// 2-hour timeout per table: 100GB at 15MB/s ≈ 1.8h, with headroom
+	copyCtx, copyCancel := context.WithTimeout(ctx, 2*time.Hour)
+	defer copyCancel()
+
+	tag, err := conn.Conn().PgConn().CopyFrom(copyCtx, reader, copySQL)
 	if err != nil {
+		// Drain reader to unblock the pipe writer goroutine
+		_, _ = io.Copy(io.Discard, reader)
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
@@ -472,7 +482,7 @@ func (e *ParallelRestoreEngine) streamCopy(ctx context.Context, tableName string
 
 // executeStatement executes a single SQL statement with timeouts.
 func (e *ParallelRestoreEngine) executeStatement(ctx context.Context, sql string) error {
-	acquireCtx, acquireCancel := context.WithTimeout(ctx, 2*time.Minute)
+	acquireCtx, acquireCancel := context.WithTimeout(ctx, 5*time.Minute)
 	conn, err := e.pool.Acquire(acquireCtx)
 	acquireCancel()
 	if err != nil {

@@ -197,6 +197,6 @@ docker pull git.uuxo.net/PlusOne/dbbackup:latest
 
 ---
 
-**We take security seriously and appreciate responsible disclosure.** 🔒
+**We take security seriously and appreciate responsible disclosure.**
 
 Thank you for helping keep dbbackup and its users safe!

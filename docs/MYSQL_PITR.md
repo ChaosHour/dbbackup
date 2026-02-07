@@ -89,15 +89,15 @@ Example output:
   MySQL/MariaDB PITR Status (mysql)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-PITR Status:     ❌ NOT CONFIGURED
-Binary Logging:  ✅ ENABLED
+PITR Status:     NOT CONFIGURED
+Binary Logging:  ENABLED
 Binlog Format:   ROW
 GTID Mode:       ON
 Current Position: mysql-bin.000042:1234
 
 PITR Requirements:
-  ✅ Binary logging enabled
-  ✅ Row-based logging (recommended)
+  [OK] Binary logging enabled
+  [OK] Row-based logging (recommended)
 ```
 
 ### 2. Enable PITR

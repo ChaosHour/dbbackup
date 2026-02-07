@@ -129,7 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Skip Preflight Checks Option**: New TUI setting to disable pre-restore safety checks
   - Accessible via Settings menu → "Skip Preflight Checks"
-  - Shows warning when enabled: "⚠️ SKIPPED (dangerous)"
+  - Shows warning when enabled: "SKIPPED (dangerous)"
   - Displays prominent warning banner on restore preview screen
   - Useful for enterprise scenarios where checks are too slow on large databases
   - Config field: `SkipPreflightChecks` (default: false)
@@ -323,7 +323,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.6.0] - 2026-02-02
 
-### Performance Optimizations 🚀
+### Performance Optimizations
 - **Native Engine Outperforms pg_dump/pg_restore!**
   - Backup: **3.5x faster** than pg_dump (250K vs 71K rows/sec)
   - Restore: **13% faster** than pg_restore (115K vs 101K rows/sec)
@@ -364,7 +364,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Verified Working
 - **Full BLOB/Binary Data Round-Trip Validated**
   - BYTEA columns with NULL bytes (0x00) preserved correctly
-  - Unicode data (emoji 🚀, Chinese 中文, Arabic العربية) preserved
+  - Unicode data (Chinese, Arabic, special characters) preserved
   - JSON/JSONB with Unicode preserved
   - Integer and text arrays restored correctly
   - 10,002 row test with checksum verification: PASS
@@ -407,7 +407,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [5.5.0] - 2026-02-02
 
 ### Added
-- **🚀 Native Engine Support for Cluster Backup/Restore**
+- **Native Engine Support for Cluster Backup/Restore**
   - NEW: `--native` flag for cluster backup creates SQL format (.sql.gz) using pure Go
   - NEW: `--native` flag for cluster restore uses pure Go engine for .sql.gz files
   - Zero external tool dependencies when using native mode
@@ -2029,7 +2029,7 @@ dbbackup metrics serve --port 9399
 
 ## [3.1.0] - 2025-11-26
 
-### Added - 🔄 Point-in-Time Recovery (PITR)
+### Added - Point-in-Time Recovery (PITR)
 
 **Complete PITR Implementation for PostgreSQL:**
 - **WAL Archiving**: Continuous archiving of Write-Ahead Log files with compression and encryption support
@@ -2134,7 +2134,7 @@ dbbackup metrics serve --port 9399
 - **Backup volume**: ~10MB/night
 - **Schedule**: 02:09 and 02:25 CET
 - **Impact**: Resolved 4-day backup failure immediately
-- **User feedback**: "cleanup command is SO gut" | "--dry-run: chef's kiss!" 💋
+- **User feedback**: "cleanup command is SO gut" | "--dry-run: chef's kiss!"
 
 ### Documentation
 - Added comprehensive PITR.md guide (complete PITR documentation)

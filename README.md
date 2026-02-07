@@ -632,7 +632,7 @@ dbbackup restore diagnose cluster_backup.tar.gz --deep
 Backup Diagnosis Report
 ══════════════════════════════════════════════════════════════
 
-📁 File: mydb_20260105.dump.gz
+File: mydb_20260105.dump.gz
    Format: PostgreSQL Custom (gzip)
    Size: 2.5 GB
 
@@ -945,7 +945,7 @@ sudo dbbackup uninstall cluster --purge
 - Directories: `/var/lib/dbbackup/`, `/etc/dbbackup/`
 - Optional: Prometheus HTTP exporter on port 9399
 
-📖 **Full documentation:** [SYSTEMD.md](SYSTEMD.md) - Manual setup, security hardening, multiple instances, troubleshooting
+**Full documentation:** [SYSTEMD.md](SYSTEMD.md) - Manual setup, security hardening, multiple instances, troubleshooting
 
 ## Prometheus Metrics
 

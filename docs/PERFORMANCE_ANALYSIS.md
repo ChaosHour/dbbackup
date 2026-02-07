@@ -8,10 +8,10 @@ This report documents a comprehensive performance analysis of dbbackup's dump an
 
 | Metric | Target | Achieved | Status |
 |--------|--------|----------|--------|
-| Dump Throughput | 500 MB/s | 2,048 MB/s | ✅ 4x target |
-| Restore Throughput | 300 MB/s | 1,673 MB/s | ✅ 5.6x target |
-| Memory Usage | < 2GB | Bounded | ✅ Pass |
-| Max Goroutines | < 1000 | Configurable | ✅ Pass |
+| Dump Throughput | 500 MB/s | 2,048 MB/s | 4x target |
+| Restore Throughput | 300 MB/s | 1,673 MB/s | 5.6x target |
+| Memory Usage | < 2GB | Bounded | Pass |
+| Max Goroutines | < 1000 | Configurable | Pass |
 
 ---
 
@@ -395,6 +395,6 @@ The new `internal/performance` package provides:
 - **Restore optimizations** with database-specific tuning
 
 **All performance targets exceeded**:
-- Dump: 2,048 MB/s (target: 500 MB/s) ✅
-- Restore: 1,673 MB/s (target: 300 MB/s) ✅
-- Memory: Bounded via pooling ✅
+- Dump: 2,048 MB/s (target: 500 MB/s)
+- Restore: 1,673 MB/s (target: 300 MB/s)
+- Memory: Bounded via pooling

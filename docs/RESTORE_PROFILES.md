@@ -186,26 +186,26 @@ dbbackup restore cluster backup.tar.gz --confirm
 ### Profile Selection Guide
 
 **Use Conservative when:**
-- ✅ Memory usage > 70%
-- ✅ Other services running
-- ✅ Getting "out of shared memory" errors
-- ✅ Restore keeps failing
-- ✅ Small VM (< 4 GB RAM)
-- ✅ High swap usage
+- Memory usage > 70%
+- Other services running
+- Getting "out of shared memory" errors
+- Restore keeps failing
+- Small VM (< 4 GB RAM)
+- High swap usage
 
 **Use Balanced when:**
-- ✅ Normal operation
-- ✅ Moderate server load
-- ✅ Unsure what to use
-- ✅ Medium VM (4-16 GB RAM)
+- Normal operation
+- Moderate server load
+- Unsure what to use
+- Medium VM (4-16 GB RAM)
 
 **Use Aggressive when:**
-- ✅ Dedicated database server
-- ✅ Memory usage < 50%
-- ✅ No other critical services
-- ✅ Need fastest possible restore
-- ✅ Large VM (> 16 GB RAM)
-- ✅ Maintenance window
+- Dedicated database server
+- Memory usage < 50%
+- No other critical services
+- Need fastest possible restore
+- Large VM (> 16 GB RAM)
+- Maintenance window
 
 ## Environment Variables
 

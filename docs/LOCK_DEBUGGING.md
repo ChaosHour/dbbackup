@@ -204,10 +204,10 @@ grep 'LOCK-DEBUG' /var/log/dbbackup.log
 ## Backward Compatibility
 
 - No breaking changes
-- ✅ Flag defaults to false (no output unless enabled)
-- ✅ Existing scripts continue to work unchanged
-- ✅ TUI users get new 'l' toggle automatically
-- ✅ CLI users can add --debug-locks when needed
+- Flag defaults to false (no output unless enabled)
+- Existing scripts continue to work unchanged
+- TUI users get new 'l' toggle automatically
+- CLI users can add --debug-locks when needed
 
 ## Performance Impact
 

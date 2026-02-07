@@ -13,14 +13,14 @@ dbbackup v2.0 includes comprehensive cloud storage integration, allowing you to 
 - Any S3-compatible storage
 
 **Key Features:**
-- ✅ Direct backup to cloud with `--cloud` URI flag
-- ✅ Restore from cloud URIs
-- ✅ Verify cloud backup integrity
-- ✅ Apply retention policies to cloud storage
-- ✅ Multipart upload for large files (>100MB)
-- ✅ Progress tracking for uploads/downloads
-- ✅ Automatic metadata synchronization
-- ✅ Streaming transfers (memory efficient)
+- Direct backup to cloud with `--cloud` URI flag
+- Restore from cloud URIs
+- Verify cloud backup integrity
+- Apply retention policies to cloud storage
+- Multipart upload for large files (>100MB)
+- Progress tracking for uploads/downloads
+- Automatic metadata synchronization
+- Streaming transfers (memory efficient)
 
 ---
 

@@ -100,13 +100,19 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 		return nil, fmt.Errorf("failed to parse connection config: %w", err)
 	}
 
-	// Pool size = workers + 1 (for schema operations)
-	poolConfig.MaxConns = int32(workers + 2)
+	// CRITICAL FIX: Increase pool size to prevent deadlock under load
+	// Pool size = workers * 2 + 2 (allows for some overhead and prevents exhaustion)
+	poolConfig.MaxConns = int32(workers*2 + 2)
 	poolConfig.MinConns = int32(workers)
 
 	// CRITICAL: Reduce health check period to allow faster shutdown
 	// Default is 1 minute which causes hangs on Ctrl+C
 	poolConfig.HealthCheckPeriod = 5 * time.Second
+
+	// CRITICAL FIX: Add connection timeout to prevent Acquire from blocking forever
+	// This is a safety net - the per-operation timeouts are the primary defense
+	poolConfig.MaxConnIdleTime = 5 * time.Minute
+	poolConfig.MaxConnLifetime = 30 * time.Minute
 
 	// CRITICAL: Set connection-level timeouts to ensure queries can be cancelled
 	// This prevents infinite hangs on slow/stuck operations
@@ -115,6 +121,9 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 		"lock_timeout":      "300000",       // 5 min max wait for locks (in ms)
 		"idle_in_transaction_session_timeout": "600000", // 10 min idle timeout (in ms)
 	}
+
+	// CRITICAL FIX: Set connect timeout to prevent hanging on unreachable DB
+	poolConfig.ConnConfig.ConnectTimeout = 30 * time.Second
 
 	// Use the provided context so pool health checks stop when context is cancelled
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
@@ -164,15 +173,41 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	if err != nil {
 		return result, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks on context cancellation
+	var cleanupOnce sync.Once
+	var gzReader *pgzip.Reader
+	cleanupResources := func() {
+		cleanupOnce.Do(func() {
+			if gzReader != nil {
+				gzReader.Close() // Close gzip reader first (stops read-ahead goroutines)
+			}
+			file.Close() // Then close underlying file (unblocks any pending reads)
+		})
+	}
+	defer cleanupResources()
+
+	// Context watcher: immediately close resources on cancellation
+	// This prevents pgzip read-ahead goroutines from hanging indefinitely
+	ctxWatcherDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			e.log.Debug("Context cancelled - closing pgzip resources in RestoreFile",
+				"file", filePath)
+			cleanupResources()
+		case <-ctxWatcherDone:
+			// Normal exit path - cleanup will happen via defer
+		}
+	}()
+	defer close(ctxWatcherDone)
 
 	var reader io.Reader = file
 	if strings.HasSuffix(filePath, ".gz") {
-		gzReader, err := pgzip.NewReader(file)
+		var err error
+		gzReader, err = pgzip.NewReader(file)
 		if err != nil {
 			return result, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
-		defer gzReader.Close()
 		reader = gzReader
 	}
 
@@ -258,12 +293,14 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	semaphore := make(chan struct{}, options.Workers)
 	var completedCopies int64
 	var totalRows int64
-	var cancelled int32 // Atomic flag to signal cancellation
+	var cancelled int32      // Atomic flag to signal cancellation
+	var activeWorkers int32  // Track active workers for debugging
 
 copyLoop:
 	for _, stmt := range copyStmts {
 		// Check for context cancellation before starting new work
 		if ctx.Err() != nil {
+			e.log.Debug("Context cancelled - stopping COPY scheduling", "completed", atomic.LoadInt64(&completedCopies))
 			break
 		}
 
@@ -273,31 +310,43 @@ copyLoop:
 		case <-ctx.Done():
 			wg.Done()
 			atomic.StoreInt32(&cancelled, 1)
+			e.log.Debug("Context cancelled while waiting for semaphore")
 			break copyLoop // CRITICAL: Use labeled break to exit the for loop, not just the select
 		}
 
 		go func(s *SQLStatement) {
 			defer wg.Done()
 			defer func() { <-semaphore }() // Release worker slot
+			defer atomic.AddInt32(&activeWorkers, -1)
+
+			atomic.AddInt32(&activeWorkers, 1)
 
 			// Check cancellation before executing
 			if ctx.Err() != nil || atomic.LoadInt32(&cancelled) == 1 {
 				return
 			}
 
+			// CRITICAL: Log table name BEFORE starting COPY so we know where it hangs
+			dataSize := len(s.CopyData.String())
+			e.log.Debug("Starting COPY operation", "table", s.TableName, "data_size_bytes", dataSize, "active_workers", atomic.LoadInt32(&activeWorkers))
+
+			copyStart := time.Now()
 			rows, err := e.executeCopy(ctx, s)
+			copyDuration := time.Since(copyStart)
+
 			if err != nil {
 				if ctx.Err() != nil {
 					// Context cancelled, don't log as error
 					return
 				}
 				if options.ContinueOnError {
-					e.log.Warn("COPY failed", "table", s.TableName, "error", err)
+					e.log.Warn("COPY failed", "table", s.TableName, "error", err, "duration", copyDuration)
 				} else {
-					e.log.Error("COPY failed", "table", s.TableName, "error", err)
+					e.log.Error("COPY failed", "table", s.TableName, "error", err, "duration", copyDuration)
 				}
 			} else {
 				atomic.AddInt64(&totalRows, rows)
+				e.log.Debug("COPY completed", "table", s.TableName, "rows", rows, "duration", copyDuration)
 			}
 
 			completed := atomic.AddInt64(&completedCopies, 1)
@@ -529,22 +578,45 @@ func classifyStatement(sql string) StatementType {
 }
 
 // executeStatement executes a single SQL statement
+// CRITICAL FIX: Uses timeout for connection acquisition to prevent deadlock
 func (e *ParallelRestoreEngine) executeStatement(ctx context.Context, sql string) error {
-	conn, err := e.pool.Acquire(ctx)
+	// CRITICAL FIX: Add timeout for connection acquisition to prevent deadlock
+	acquireCtx, acquireCancel := context.WithTimeout(ctx, 2*time.Minute)
+	conn, err := e.pool.Acquire(acquireCtx)
+	acquireCancel()
 	if err != nil {
-		return fmt.Errorf("failed to acquire connection: %w", err)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("failed to acquire connection (timeout or pool exhausted): %w", err)
 	}
 	defer conn.Release()
 
-	_, err = conn.Exec(ctx, sql)
+	// CRITICAL FIX: Use statement timeout to prevent infinite hangs
+	// CREATE INDEX on large tables can take hours - use per-statement timeout
+	stmtCtx, stmtCancel := context.WithTimeout(ctx, 1*time.Hour)
+	defer stmtCancel()
+
+	_, err = conn.Exec(stmtCtx, sql)
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err() // Return context error if that's the root cause
+	}
 	return err
 }
 
 // executeCopy executes a COPY FROM STDIN operation with BLOB optimization
+// CRITICAL FIX: Uses timeout wrapper to prevent infinite hangs on large COPY operations
 func (e *ParallelRestoreEngine) executeCopy(ctx context.Context, stmt *SQLStatement) (int64, error) {
-	conn, err := e.pool.Acquire(ctx)
+	// CRITICAL FIX: Add timeout for connection acquisition to prevent deadlock
+	// If pool is exhausted and connections are stuck, this prevents infinite wait
+	acquireCtx, acquireCancel := context.WithTimeout(ctx, 2*time.Minute)
+	conn, err := e.pool.Acquire(acquireCtx)
+	acquireCancel()
 	if err != nil {
-		return 0, fmt.Errorf("failed to acquire connection: %w", err)
+		if ctx.Err() != nil {
+			return 0, ctx.Err() // Context was cancelled, don't log as error
+		}
+		return 0, fmt.Errorf("failed to acquire connection (timeout or pool exhausted): %w", err)
 	}
 	defer conn.Release()
 
@@ -562,14 +634,44 @@ func (e *ParallelRestoreEngine) executeCopy(ctx context.Context, stmt *SQLStatem
 		conn.Exec(ctx, opt)
 	}
 
-	// Execute the COPY
-	copySQL := fmt.Sprintf("COPY %s FROM STDIN", stmt.TableName)
-	tag, err := conn.Conn().PgConn().CopyFrom(ctx, strings.NewReader(stmt.CopyData.String()), copySQL)
-	if err != nil {
-		return 0, err
-	}
+	// CRITICAL FIX: Run COPY operation with a timeout wrapper
+	// Large tables can stall PostgreSQL (checkpoint, WAL sync, lock wait)
+	// Use a generous timeout (30 min per table) but don't block forever
+	copyDone := make(chan struct {
+		rows int64
+		err  error
+	}, 1)
 
-	return tag.RowsAffected(), nil
+	copyCtx, copyCancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer copyCancel()
+
+	go func() {
+		// Execute the COPY with timeout context
+		copySQL := fmt.Sprintf("COPY %s FROM STDIN", stmt.TableName)
+		tag, err := conn.Conn().PgConn().CopyFrom(copyCtx, strings.NewReader(stmt.CopyData.String()), copySQL)
+		if err != nil {
+			copyDone <- struct {
+				rows int64
+				err  error
+			}{0, err}
+			return
+		}
+		copyDone <- struct {
+			rows int64
+			err  error
+		}{tag.RowsAffected(), nil}
+	}()
+
+	// Wait for COPY to complete or context cancellation
+	select {
+	case result := <-copyDone:
+		return result.rows, result.err
+	case <-ctx.Done():
+		// Context cancelled - the copyCtx will also be cancelled
+		// which should interrupt the CopyFrom operation
+		e.log.Debug("COPY operation interrupted by context cancellation", "table", stmt.TableName)
+		return 0, ctx.Err()
+	}
 }
 
 // Close closes the connection pool and stops the cleanup goroutine

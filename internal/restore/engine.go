@@ -537,7 +537,45 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 		// Fall back to sequential restore
 		return e.restoreWithSequentialNativeEngine(ctx, archivePath, targetDB, compressed)
 	}
-	defer parallelEngine.Close()
+
+	// CRITICAL FIX: Ensure engine is closed on context cancellation or function exit
+	// This is a belt-and-suspenders approach - Close() is idempotent
+	engineClosed := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			e.log.Debug("Context cancelled - force closing parallel engine", "database", targetDB)
+			parallelEngine.Close()
+		case <-engineClosed:
+			// Normal exit, cleanup done via defer
+		}
+	}()
+	defer func() {
+		close(engineClosed)
+		parallelEngine.Close()
+	}()
+
+	// CRITICAL FIX: Add watchdog to detect hangs
+	// Logs status every 30 seconds so we can see if the restore is stuck
+	watchdogCtx, cancelWatchdog := context.WithCancel(ctx)
+	defer cancelWatchdog()
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		watchdogCount := 0
+		for {
+			select {
+			case <-ticker.C:
+				watchdogCount++
+				e.log.Info("Restore watchdog heartbeat",
+					"database", targetDB,
+					"elapsed_minutes", watchdogCount/2,
+					"status", "still running")
+			case <-watchdogCtx.Done():
+				return
+			}
+		}
+	}()
 
 	// Run parallel restore with progress callbacks
 	options := &native.ParallelRestoreOptions{

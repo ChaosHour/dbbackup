@@ -12,9 +12,6 @@ import (
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
-
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
 )
 
 // BlobColumn represents a blob/bytea column in the database
@@ -86,23 +83,7 @@ func (b *BlobStatsView) scanBlobColumns() tea.Cmd {
 
 // discoverBlobColumns queries information_schema for blob columns
 func (b *BlobStatsView) discoverBlobColumns() ([]BlobColumn, int64, int64, error) {
-	var db *sql.DB
-	var err error
-
-	if b.config.IsPostgreSQL() {
-		// PostgreSQL connection string
-		connStr := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=disable",
-			b.config.Host, b.config.Port, b.config.User, b.config.Database)
-		if b.config.Password != "" {
-			connStr += fmt.Sprintf(" password=%s", b.config.Password)
-		}
-		db, err = sql.Open("pgx", connStr)
-	} else {
-		// MySQL DSN
-		connStr := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
-			b.config.User, b.config.Password, b.config.Host, b.config.Port, b.config.Database)
-		db, err = sql.Open("mysql", connStr)
-	}
+	db, err := openTUIDatabase(b.config, "")
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to connect: %w", err)
 	}

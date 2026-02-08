@@ -400,6 +400,22 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Database username for connections",
 		},
 		{
+			Key:         "password",
+			DisplayName: "Password",
+			Value: func(c *config.Config) string {
+				if c.Password != "" {
+					return strings.Repeat("•", len(c.Password))
+				}
+				return "(from .pgpass / PGPASSWORD)"
+			},
+			Update: func(c *config.Config, v string) error {
+				c.Password = v // kept in memory only, never persisted to disk
+				return nil
+			},
+			Type:        "string",
+			Description: "Database password (in-memory only — use .pgpass for persistent config)",
+		},
+		{
 			Key:         "database",
 			DisplayName: "Default Database",
 			Value:       func(c *config.Config) string { return c.Database },
@@ -797,7 +813,11 @@ func (m SettingsModel) startEditing() (tea.Model, tea.Cmd) {
 	setting := m.settings[m.cursor]
 	m.editing = true
 	m.editingField = setting.Key
-	m.editingValue = setting.Value(m.config)
+	if setting.Key == "password" {
+		m.editingValue = "" // password always starts fresh (never reveal existing)
+	} else {
+		m.editingValue = setting.Value(m.config)
+	}
 	m.message = ""
 
 	return m, nil
@@ -929,6 +949,9 @@ func (m SettingsModel) View() string {
 			if m.editing && m.editingField == setting.Key {
 				// Show editing interface
 				editValue := m.editingValue
+				if setting.Key == "password" {
+					editValue = strings.Repeat("•", len(m.editingValue))
+				}
 				if setting.Type == "bool" {
 					editValue += " (true/false)"
 				}

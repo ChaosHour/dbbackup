@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"dbbackup/internal/auth"
 	"dbbackup/internal/config"
 	"dbbackup/internal/engine/native"
 	"dbbackup/internal/logger"
@@ -146,8 +147,14 @@ func buildDSNFromConfig(cfg *config.Config) string {
 	}
 
 	dsn := fmt.Sprintf("postgres://%s", user)
-	if cfg.Password != "" {
-		dsn += ":" + cfg.Password
+	password := cfg.Password
+	if password == "" {
+		if pw, found := auth.LoadPasswordFromPgpass(cfg); found {
+			password = pw
+		}
+	}
+	if password != "" {
+		dsn += ":" + password
 	}
 	dsn += fmt.Sprintf("@%s:%d/%s", host, port, dbName)
 

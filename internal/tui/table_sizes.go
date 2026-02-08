@@ -9,8 +9,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
@@ -81,30 +79,7 @@ func (v *TableSizesView) fetchTableSizes() ([]TableInfo, error) {
 		return nil, fmt.Errorf("no database specified")
 	}
 
-	var db *sql.DB
-	var err error
-
-	switch v.dbType {
-	case "mysql":
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s",
-			v.config.User,
-			v.config.Password,
-			v.config.Host,
-			v.config.Port,
-			v.database,
-		)
-		db, err = sql.Open("mysql", dsn)
-	default: // postgres
-		connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-			v.config.Host,
-			v.config.Port,
-			v.config.User,
-			v.config.Password,
-			v.database,
-		)
-		db, err = sql.Open("pgx", connStr)
-	}
-
+	db, err := openTUIDatabase(v.config, v.database)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}

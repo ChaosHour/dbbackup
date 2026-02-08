@@ -8,8 +8,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
@@ -86,28 +84,7 @@ func (v *KillConnectionsView) loadConnections() tea.Cmd {
 
 // fetchConnections queries the database for active connections
 func (v *KillConnectionsView) fetchConnections() ([]ConnectionInfo, error) {
-	var db *sql.DB
-	var err error
-
-	switch v.dbType {
-	case "mysql":
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
-			v.config.User,
-			v.config.Password,
-			v.config.Host,
-			v.config.Port,
-		)
-		db, err = sql.Open("mysql", dsn)
-	default: // postgres
-		connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
-			v.config.Host,
-			v.config.Port,
-			v.config.User,
-			v.config.Password,
-		)
-		db, err = sql.Open("pgx", connStr)
-	}
-
+	db, err := openTUIDatabase(v.config, "postgres")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
@@ -213,28 +190,7 @@ func (v *KillConnectionsView) killConnection(pid int) tea.Cmd {
 
 // doKillConnection executes the kill command
 func (v *KillConnectionsView) doKillConnection(pid int) error {
-	var db *sql.DB
-	var err error
-
-	switch v.dbType {
-	case "mysql":
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
-			v.config.User,
-			v.config.Password,
-			v.config.Host,
-			v.config.Port,
-		)
-		db, err = sql.Open("mysql", dsn)
-	default: // postgres
-		connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
-			v.config.Host,
-			v.config.Port,
-			v.config.User,
-			v.config.Password,
-		)
-		db, err = sql.Open("pgx", connStr)
-	}
-
+	db, err := openTUIDatabase(v.config, "postgres")
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
@@ -267,28 +223,7 @@ func (v *KillConnectionsView) doKillAllConnections() error {
 		return fmt.Errorf("no database selected")
 	}
 
-	var db *sql.DB
-	var err error
-
-	switch v.dbType {
-	case "mysql":
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
-			v.config.User,
-			v.config.Password,
-			v.config.Host,
-			v.config.Port,
-		)
-		db, err = sql.Open("mysql", dsn)
-	default: // postgres
-		connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
-			v.config.Host,
-			v.config.Port,
-			v.config.User,
-			v.config.Password,
-		)
-		db, err = sql.Open("pgx", connStr)
-	}
-
+	db, err := openTUIDatabase(v.config, "postgres")
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}

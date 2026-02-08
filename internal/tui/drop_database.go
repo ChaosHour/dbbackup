@@ -2,14 +2,11 @@ package tui
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
@@ -75,28 +72,7 @@ func (v *DropDatabaseView) loadDatabases() tea.Cmd {
 
 // fetchDatabases queries the database server for database list
 func (v *DropDatabaseView) fetchDatabases() ([]string, error) {
-	var db *sql.DB
-	var err error
-
-	switch v.dbType {
-	case "mysql":
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
-			v.config.User,
-			v.config.Password,
-			v.config.Host,
-			v.config.Port,
-		)
-		db, err = sql.Open("mysql", dsn)
-	default: // postgres
-		connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
-			v.config.Host,
-			v.config.Port,
-			v.config.User,
-			v.config.Password,
-		)
-		db, err = sql.Open("pgx", connStr)
-	}
-
+	db, err := openTUIDatabase(v.config, "postgres")
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
@@ -154,28 +130,7 @@ func (v *DropDatabaseView) dropDatabase(dbName string) tea.Cmd {
 
 // doDropDatabase executes the DROP DATABASE command
 func (v *DropDatabaseView) doDropDatabase(dbName string) error {
-	var db *sql.DB
-	var err error
-
-	switch v.dbType {
-	case "mysql":
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
-			v.config.User,
-			v.config.Password,
-			v.config.Host,
-			v.config.Port,
-		)
-		db, err = sql.Open("mysql", dsn)
-	default: // postgres
-		connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
-			v.config.Host,
-			v.config.Port,
-			v.config.User,
-			v.config.Password,
-		)
-		db, err = sql.Open("pgx", connStr)
-	}
-
+	db, err := openTUIDatabase(v.config, "postgres")
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}

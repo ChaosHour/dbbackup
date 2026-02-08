@@ -1080,7 +1080,7 @@ func (m SettingsModel) openDirectoryBrowser() (tea.Model, tea.Cmd) {
 // RunSettingsMenu starts the settings configuration interface
 func RunSettingsMenu(cfg *config.Config, log logger.Logger, parent tea.Model) error {
 	m := NewSettingsModel(cfg, log, parent)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithoutSignalHandler())
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running settings menu: %w", err)

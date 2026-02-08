@@ -58,7 +58,7 @@ func runCatalogDashboard(cmd *cobra.Command, args []string) error {
 
 	// Create and run the TUI
 	model := tui.NewCatalogDashboardView()
-	p := tea.NewProgram(model, tea.WithAltScreen())
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithoutSignalHandler())
 
 	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("failed to run catalog dashboard: %w", err)

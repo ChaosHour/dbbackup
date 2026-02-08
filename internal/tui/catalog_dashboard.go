@@ -112,6 +112,9 @@ func (v *CatalogDashboardView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
+		case "ctrl+c":
+			return v, tea.Quit
+
 		case "q", "esc":
 			if v.selectedIdx >= 0 {
 				v.selectedIdx = -1

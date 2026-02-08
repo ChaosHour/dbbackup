@@ -170,7 +170,7 @@ func (c *ChainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "esc":
+		case "ctrl+c", "q", "esc":
 			return c.parent, nil
 		}
 	}

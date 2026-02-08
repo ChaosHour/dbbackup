@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -189,9 +191,16 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	}()
 	defer close(ctxDone)
 
-	var reader io.Reader = file
+	// Wrap file with buffered reader for filesystem readahead (256KB)
+	bufReader := bufio.NewReaderSize(file, 256*1024)
+	var reader io.Reader = bufReader
 	if strings.HasSuffix(filePath, ".gz") {
-		gzReader, err = pgzip.NewReader(file)
+		// Use pgzip with tuned block size (1MB) and parallel workers
+		decompWorkers := runtime.NumCPU()
+		if decompWorkers > 16 {
+			decompWorkers = 16
+		}
+		gzReader, err = pgzip.NewReaderN(bufReader, 1<<20, decompWorkers)
 		if err != nil {
 			return result, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
@@ -277,7 +286,14 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 				e.log.Info("COPY streaming", "table", tbl, "number", num)
 				copyStart := time.Now()
 
-				rows, copyErr := e.streamCopy(ctx, tbl, r)
+				// Wrap reader with ProgressReader for throughput visibility
+				progressR := &ProgressReader{
+					r:          r,
+					tableName:  tbl,
+					lastReport: time.Now(),
+					log:        e.log,
+				}
+				rows, copyErr := e.streamCopy(ctx, tbl, progressR)
 
 				dur := time.Since(copyStart)
 				if copyErr != nil && ctx.Err() == nil {
@@ -295,18 +311,21 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 				}
 			}(tableName, tableNum, pr)
 
-			// Stream COPY data rows: scanner → pipe → pgx
+			// Stream COPY data rows: scanner → bufio → pipe → pgx
+			// Buffered writer batches small row writes into 256KB chunks,
+			// halving syscall overhead (was 2 writes per row, now batched).
+			bw := bufio.NewWriterSize(pw, 256*1024)
 			for scanner.Scan() {
 				lineCount++
 				dataLine := scanner.Text()
 				if dataLine == "\\." {
 					break // end of COPY block
 				}
-				// Write row directly into the pipe (blocks if pgx isn't consuming fast enough = backpressure)
-				if _, werr := io.WriteString(pw, dataLine); werr != nil {
+				// Write row into buffered writer (batches into large chunks)
+				if _, werr := io.WriteString(bw, dataLine); werr != nil {
 					break // pipe broken (worker died or context cancelled)
 				}
-				if _, werr := pw.Write([]byte{'\n'}); werr != nil {
+				if _, werr := bw.Write([]byte{'\n'}); werr != nil {
 					break
 				}
 
@@ -315,6 +334,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 					break
 				}
 			}
+			bw.Flush() // Flush remaining buffered data
 			pw.Close() // EOF → worker finishes CopyFrom
 			continue
 		}
@@ -382,6 +402,17 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	}
 
 	// ── Post-data: CREATE INDEX / constraints in parallel ──
+	// Sort: indexes first, then constraints/triggers.
+	// FK validation does a seqscan if the referenced index doesn't exist yet.
+	sort.SliceStable(postDataStmts, func(i, j int) bool {
+		iIsIndex := isIndexStatement(postDataStmts[i])
+		jIsIndex := isIndexStatement(postDataStmts[j])
+		if iIsIndex != jIsIndex {
+			return iIsIndex // indexes sort before non-indexes
+		}
+		return false // preserve original order within each group
+	})
+
 	postDataCount := len(postDataStmts)
 	if postDataCount > 0 {
 		e.log.Info("Creating indexes and constraints...",
@@ -565,6 +596,8 @@ func (e *ParallelRestoreEngine) executeIndexStatement(ctx context.Context, sql s
 		"SET max_parallel_maintenance_workers = 4",
 		"SET synchronous_commit = 'off'",
 		"SET checkpoint_timeout = '30min'",
+		"SET effective_io_concurrency = 200",
+		"SET random_page_cost = 1.1",
 	} {
 		_, _ = conn.Exec(ctx, opt)
 	}

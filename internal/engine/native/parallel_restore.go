@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -101,6 +102,176 @@ func NewParallelRestoreEngine(config *PostgreSQLNativeConfig, log logger.Logger,
 	return NewParallelRestoreEngineWithContext(context.Background(), config, log, workers)
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Adaptive Worker Allocation — metadata-driven restore planning
+// ──────────────────────────────────────────────────────────────────
+
+// TableProfile contains metadata about a database for adaptive worker allocation.
+type TableProfile struct {
+	Name       string
+	Rows       int64
+	SizeBytes  int64
+	Complexity string // "tiny", "small", "medium", "large", "huge"
+}
+
+// IndexType classifies index complexity for per-type optimization.
+type IndexType int
+
+const (
+	IndexTypeBTree IndexType = iota // Default, fast
+	IndexTypeGIN                    // Full-text search — slow, memory-intensive
+	IndexTypeGIST                   // Spatial/range — very slow, aggressive parallel
+	IndexTypeHash                   // Simple hash — fast
+)
+
+// String returns the index type name.
+func (it IndexType) String() string {
+	switch it {
+	case IndexTypeBTree:
+		return "btree"
+	case IndexTypeGIN:
+		return "gin"
+	case IndexTypeGIST:
+		return "gist"
+	case IndexTypeHash:
+		return "hash"
+	default:
+		return "unknown"
+	}
+}
+
+// classifyTableSize returns a complexity tier based on database size.
+func classifyTableSize(sizeBytes int64) string {
+	const (
+		MB = 1024 * 1024
+		GB = 1024 * MB
+	)
+	switch {
+	case sizeBytes < 10*MB:
+		return "tiny"
+	case sizeBytes < 100*MB:
+		return "small"
+	case sizeBytes < 1*GB:
+		return "medium"
+	case sizeBytes < 10*GB:
+		return "large"
+	default:
+		return "huge"
+	}
+}
+
+// workersForSize returns the optimal worker count for a given complexity tier.
+// baseWorkers is the user-configured or auto-detected worker count.
+func workersForSize(complexity string, baseWorkers int) int {
+	var w int
+	switch complexity {
+	case "tiny":
+		w = 1
+	case "small":
+		w = intMax(2, baseWorkers/4)
+	case "medium":
+		w = intMax(4, baseWorkers/2)
+	case "large":
+		w = intMax(8, baseWorkers)
+	case "huge":
+		w = intMax(16, baseWorkers*2)
+	default:
+		w = baseWorkers
+	}
+	// Cap at CPU count to avoid context-switch overhead
+	maxCPU := runtime.NumCPU()
+	if w > maxCPU {
+		w = maxCPU
+	}
+	return w
+}
+
+// intMax returns the larger of a or b.
+func intMax(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// classifyIndexType detects the index access method from CREATE INDEX SQL.
+func classifyIndexType(sql string) IndexType {
+	upper := strings.ToUpper(sql)
+	switch {
+	case strings.Contains(upper, "USING GIN") || strings.Contains(upper, "GIN ("):
+		return IndexTypeGIN
+	case strings.Contains(upper, "USING GIST") || strings.Contains(upper, "GIST ("):
+		return IndexTypeGIST
+	case strings.Contains(upper, "USING HASH"):
+		return IndexTypeHash
+	default:
+		return IndexTypeBTree
+	}
+}
+
+// loadTableProfile tries to read the .meta.json sidecar file for a backup
+// and returns a TableProfile for adaptive worker allocation.
+// Returns nil if metadata is unavailable (backward compatible — uses defaults).
+func loadTableProfile(filePath string, log logger.Logger) *TableProfile {
+	// Try both <file>.meta.json and <file-without-.gz>.meta.json
+	candidates := []string{
+		filePath + ".meta.json",
+	}
+	if strings.HasSuffix(filePath, ".gz") {
+		candidates = append(candidates, strings.TrimSuffix(filePath, ".gz")+".meta.json")
+	}
+
+	for _, metaPath := range candidates {
+		data, err := os.ReadFile(metaPath)
+		if err != nil {
+			continue
+		}
+
+		// Try single-database metadata first
+		var single struct {
+			Database  string `json:"database"`
+			SizeBytes int64  `json:"size_bytes"`
+		}
+		if json.Unmarshal(data, &single) == nil && single.SizeBytes > 0 {
+			complexity := classifyTableSize(single.SizeBytes)
+			log.Debug("Loaded backup metadata for adaptive planning",
+				"meta_path", metaPath,
+				"database", single.Database,
+				"size_bytes", single.SizeBytes,
+				"complexity", complexity)
+			return &TableProfile{
+				Name:       single.Database,
+				SizeBytes:  single.SizeBytes,
+				Complexity: complexity,
+			}
+		}
+
+		// Try cluster metadata (sum all databases)
+		var cluster struct {
+			Databases []struct {
+				Database  string `json:"database"`
+				SizeBytes int64  `json:"size_bytes"`
+			} `json:"databases"`
+			TotalSize int64 `json:"total_size_bytes"`
+		}
+		if json.Unmarshal(data, &cluster) == nil && cluster.TotalSize > 0 {
+			complexity := classifyTableSize(cluster.TotalSize)
+			log.Debug("Loaded cluster metadata for adaptive planning",
+				"meta_path", metaPath,
+				"databases", len(cluster.Databases),
+				"total_size", cluster.TotalSize,
+				"complexity", complexity)
+			return &TableProfile{
+				Name:       "cluster",
+				SizeBytes:  cluster.TotalSize,
+				Complexity: complexity,
+			}
+		}
+	}
+
+	return nil
+}
+
 // NewParallelRestoreEngineWithContext creates a new parallel restore engine with context support
 func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQLNativeConfig, log logger.Logger, workers int) (*ParallelRestoreEngine, error) {
 	if workers < 1 {
@@ -169,6 +340,22 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 
 	restoreMode := options.RestoreMode
 	result.RestoreMode = restoreMode
+
+	// ── Adaptive worker allocation from .meta.json ──
+	var tableProfile *TableProfile
+	if profile := loadTableProfile(filePath, e.log); profile != nil {
+		tableProfile = profile
+		adaptedWorkers := workersForSize(profile.Complexity, options.Workers)
+		if adaptedWorkers != options.Workers {
+			e.log.Info("Adaptive worker allocation",
+				"database", profile.Name,
+				"size_mb", profile.SizeBytes/(1024*1024),
+				"complexity", profile.Complexity,
+				"base_workers", options.Workers,
+				"adapted_workers", adaptedWorkers)
+			options.Workers = adaptedWorkers
+		}
+	}
 
 	e.log.Info("Starting STREAMING parallel restore (zero-buffer)",
 		"file", filePath,
@@ -623,6 +810,13 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 		logFields = append(logFields, "tables_toggled", result.TablesToggled)
 		logFields = append(logFields, "switch_duration", result.SwitchDuration)
 	}
+	if tableProfile != nil {
+		logFields = append(logFields,
+			"adaptive_db", tableProfile.Name,
+			"adaptive_size_mb", tableProfile.SizeBytes/(1024*1024),
+			"adaptive_complexity", tableProfile.Complexity,
+			"adaptive_workers", options.Workers)
+	}
 	e.log.Info("Streaming restore completed", logFields...)
 
 	return result, nil
@@ -699,8 +893,8 @@ func (e *ParallelRestoreEngine) executeStatement(ctx context.Context, sql string
 	return err
 }
 
-// executeIndexStatement executes a CREATE INDEX statement with index-specific
-// optimizations (higher work_mem, parallel workers, relaxed durability).
+// executeIndexStatement executes a CREATE INDEX statement with index-type-specific
+// optimizations. GIN/GIST indexes get more memory and workers than B-tree/Hash.
 func (e *ParallelRestoreEngine) executeIndexStatement(ctx context.Context, sql string) error {
 	acquireCtx, acquireCancel := context.WithTimeout(ctx, 5*time.Minute)
 	conn, err := e.pool.Acquire(acquireCtx)
@@ -713,20 +907,53 @@ func (e *ParallelRestoreEngine) executeIndexStatement(ctx context.Context, sql s
 	}
 	defer conn.Release()
 
-	// Index-specific optimizations
-	for _, opt := range []string{
-		"SET maintenance_work_mem = '2GB'",
-		"SET max_parallel_maintenance_workers = 4",
-		"SET synchronous_commit = 'off'",
-		"SET checkpoint_timeout = '30min'",
-		"SET effective_io_concurrency = 200",
-		"SET random_page_cost = 1.1",
-	} {
-		_, _ = conn.Exec(ctx, opt)
+	// Detect index type for per-type optimization
+	indexType := classifyIndexType(sql)
+
+	switch indexType {
+	case IndexTypeGIN, IndexTypeGIST:
+		// GIN/GIST indexes are slow and memory-intensive.
+		// GIN: full-text search inverted index — needs lots of RAM for pending list.
+		// GIST: spatial/range index — CPU-heavy balancing.
+		for _, opt := range []string{
+			"SET maintenance_work_mem = '4GB'",
+			"SET max_parallel_maintenance_workers = 8",
+			"SET synchronous_commit = 'off'",
+			"SET checkpoint_timeout = '1h'",
+		} {
+			_, _ = conn.Exec(ctx, opt)
+		}
+		e.log.Info("Index optimization (heavy)",
+			"type", indexType.String(),
+			"maintenance_work_mem", "4GB",
+			"parallel_workers", 8)
+
+	default:
+		// B-tree/Hash — fast indexes, standard settings
+		for _, opt := range []string{
+			"SET maintenance_work_mem = '2GB'",
+			"SET max_parallel_maintenance_workers = 4",
+			"SET synchronous_commit = 'off'",
+			"SET checkpoint_timeout = '30min'",
+		} {
+			_, _ = conn.Exec(ctx, opt)
+		}
 	}
 
-	// 4-hour timeout for CREATE INDEX (fragmented data can be very slow)
-	stmtCtx, stmtCancel := context.WithTimeout(ctx, 4*time.Hour)
+	// SSD-specific hints (safe no-ops on HDD)
+	_, _ = conn.Exec(ctx, "SET effective_io_concurrency = 200")
+	_, _ = conn.Exec(ctx, "SET random_page_cost = 1.1")
+
+	// Timeout based on index type: GIN/GIST can be 2-10x slower than B-tree
+	var timeout time.Duration
+	switch indexType {
+	case IndexTypeGIN, IndexTypeGIST:
+		timeout = 8 * time.Hour
+	default:
+		timeout = 4 * time.Hour
+	}
+
+	stmtCtx, stmtCancel := context.WithTimeout(ctx, timeout)
 	defer stmtCancel()
 
 	_, err = conn.Exec(stmtCtx, sql)

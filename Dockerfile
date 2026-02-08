@@ -58,5 +58,5 @@ CMD ["--help"]
 
 # Labels
 LABEL maintainer="UUXO"
-LABEL version="1.0"
+LABEL version="6.0"
 LABEL description="Professional database backup tool for PostgreSQL, MySQL, and MariaDB"

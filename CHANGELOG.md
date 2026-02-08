@@ -5,6 +5,50 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.76] - 2026-02-08
+
+### Final Audit & v6.0 Release Preparation
+- **Documentation Completeness Audit**
+  - Created `docs/DATABASE_COMPATIBILITY.md` — full feature matrix across PostgreSQL,
+    MySQL, and MariaDB covering restore features, backup features, TUI support,
+    cloud storage, minimum versions, and future roadmap
+  - Created `docs/TROUBLESHOOTING.md` — comprehensive guide for restore issues
+    (stuck at 85%, connection pool exhausted, permission denied, corrupt backup),
+    backup issues, TUI issues, connection problems, cloud storage, and debug mode
+  - Created `docs/PERFORMANCE_TUNING.md` — quick wins (balanced mode, tiered restore,
+    turbo mode), PostgreSQL/MySQL server tuning, worker allocation tables,
+    compression levels, throughput benchmarks, and common performance mistakes
+  - Created `docs/MIGRATION_FROM_V5.md` — complete upgrade guide with zero breaking
+    changes, new feature overview, config file changes, CLI flag reference, and
+    .meta.json format evolution
+  - Created `docs/V6_RELEASE_SUMMARY.md` — release summary with code statistics
+    (123,680 LOC, 331 files, 690 commits), feature inventory, performance achievements,
+    QA results (43 checks, 37 passed, 0 failed), and dependency health
+
+- **README.md Overhaul**
+  - Updated release badge to v6.0.0
+  - Added Performance Features section (5–10× faster, 90% RTO, adaptive workers)
+  - Added Restore Modes table (safe/balanced/turbo with speed/safety comparison)
+  - Added Multi-Database Support section (🐘 PostgreSQL / 🐬 MySQL indicators)
+  - Added Quality Assurance section (1358-line test suite, 27 TUI screens, CI)
+  - Updated Performance section with restore benchmarks and throughput data
+  - Updated Requirements to reflect native engine (external tools optional)
+  - Updated Documentation section with links to all new guides
+
+- **Release Notes** (`RELEASE_NOTES_v6.0.md`)
+  - Comprehensive v6.0.0 release notes covering all major features, performance
+    numbers, QA results, notable fixes, new documentation, and upgrade instructions
+
+- **Final Code Audit Results**
+  - 16 TODO/FIXME comments — all non-critical roadmap items (v6.1+ planned features)
+  - go vet: clean
+  - go mod verify: all modules verified
+  - govulncheck: 5 Go stdlib vulnerabilities (Go 1.24.9 → fixed in 1.24.11),
+    0 third-party vulnerabilities affecting code paths
+  - Binary size: 55 MB stripped (under 60 MB limit)
+  - Startup latency: 189 ms
+  - Dockerfile label updated to version 6.0
+
 ## [5.8.75] - 2026-02-08
 
 ### Pre-Release Validation Suite

@@ -291,11 +291,20 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 	}
 
 	// Pool: sized for parallel cluster restore (multiple DBs restored concurrently)
+	// Tune connection pool for restore workload.
+	// 2 connections per worker: 1 for COPY, 1 for metadata/indexes.
+	// MinConns keeps connections warm (avoids connection startup overhead).
 	poolConfig.MaxConns = int32(workers * 2)
-	poolConfig.MinConns = 1
+	if poolConfig.MaxConns < 8 {
+		poolConfig.MaxConns = 8 // Minimum 8 conns
+	}
+	poolConfig.MinConns = int32(workers)
+	if poolConfig.MinConns < 4 {
+		poolConfig.MinConns = 4 // Minimum 4 warm conns
+	}
 	poolConfig.HealthCheckPeriod = 5 * time.Second
 	poolConfig.MaxConnIdleTime = 5 * time.Minute
-	poolConfig.MaxConnLifetime = 30 * time.Minute
+	poolConfig.MaxConnLifetime = 10 * time.Minute // Recycle stale conns faster
 	poolConfig.ConnConfig.ConnectTimeout = 30 * time.Second
 	poolConfig.ConnConfig.RuntimeParams = map[string]string{
 		"statement_timeout":                  "3600000", // 1h
@@ -307,6 +316,13 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
+
+	log.Info("Connection pool tuned for restore workload",
+		"max_conns", poolConfig.MaxConns,
+		"min_conns", poolConfig.MinConns,
+		"workers", workers,
+		"max_lifetime", poolConfig.MaxConnLifetime,
+		"max_idle_time", poolConfig.MaxConnIdleTime)
 
 	return &ParallelRestoreEngine{
 		config:          config,
@@ -852,7 +868,17 @@ func (e *ParallelRestoreEngine) streamCopy(ctx context.Context, tableName string
 		_, _ = conn.Exec(ctx, opt)
 	}
 
-	copySQL := fmt.Sprintf("COPY %s FROM STDIN", tableName)
+	// Use COPY WITH (FREEZE) to skip visibility checks.
+	// FREEZE marks rows as committed immediately (no MVCC overhead).
+	// Safe for restore:
+	//   - Table is empty (just created)
+	//   - Same transaction
+	//   - No concurrent readers
+	// PostgreSQL 9.3+, 10-20% faster than plain COPY.
+	copySQL := fmt.Sprintf("COPY %s FROM STDIN WITH (FREEZE)", tableName)
+	e.log.Debug("Using COPY WITH (FREEZE) for fast visibility",
+		"table", tableName,
+		"optimization", "skip MVCC overhead")
 
 	// 2-hour timeout per table: 100GB at 15MB/s ≈ 1.8h, with headroom
 	copyCtx, copyCancel := context.WithTimeout(ctx, 2*time.Hour)

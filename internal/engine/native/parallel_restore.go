@@ -64,6 +64,28 @@ const (
 	StmtOther                         // SET, COMMENT, etc.
 )
 
+// ProgressReader wraps an io.Reader and logs throughput for COPY streaming visibility.
+type ProgressReader struct {
+	r          io.Reader
+	tableName  string
+	bytesRead  int64
+	lastReport time.Time
+	log        logger.Logger
+}
+
+func (pr *ProgressReader) Read(p []byte) (n int, err error) {
+	n, err = pr.r.Read(p)
+	pr.bytesRead += int64(n)
+
+	now := time.Now()
+	if now.Sub(pr.lastReport) > 10*time.Second {
+		mb := float64(pr.bytesRead) / 1024 / 1024
+		pr.log.Info("COPY progress", "table", pr.tableName, "MB", fmt.Sprintf("%.1f", mb))
+		pr.lastReport = now
+	}
+	return
+}
+
 // NewParallelRestoreEngine creates a new parallel restore engine
 func NewParallelRestoreEngine(config *PostgreSQLNativeConfig, log logger.Logger, workers int) (*ParallelRestoreEngine, error) {
 	return NewParallelRestoreEngineWithContext(context.Background(), config, log, workers)
@@ -395,20 +417,40 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 					return
 				}
 
-				if err := e.executeStatement(ctx, stmt); err != nil {
-					if ctx.Err() != nil {
-						return
-					}
-					if options.ContinueOnError {
-						e.log.Warn("Post-data failed", "error", err)
-					}
+				startTime := time.Now()
+				indexName := extractIndexName(stmt)
+
+				var err error
+				if isIndexStatement(stmt) {
+					err = e.executeIndexStatement(ctx, stmt)
 				} else {
+					err = e.executeStatement(ctx, stmt)
+				}
+
+				duration := time.Since(startTime)
+
+				if err != nil && ctx.Err() == nil {
+					e.log.Warn("Post-data failed", "statement", indexName, "duration", duration, "error", err)
+					if options.ContinueOnError {
+						// Already logged
+					}
+				} else if err == nil {
 					atomic.AddInt64(&result.IndexesCreated, 1)
+
+					if duration > 5*time.Minute {
+						e.log.Warn("Slow post-data statement (fragmented data?)",
+							"statement", indexName,
+							"duration", duration)
+					} else {
+						e.log.Info("Post-data completed",
+							"statement", indexName,
+							"duration", duration)
+					}
 				}
 
 				completed := atomic.AddInt64(&completedPD, 1)
 				if options.ProgressCallback != nil {
-					options.ProgressCallback("indexes", int(completed), postDataCount, "")
+					options.ProgressCallback("indexes", int(completed), postDataCount, indexName)
 				}
 			}(sql)
 		}
@@ -457,7 +499,7 @@ func (e *ParallelRestoreEngine) streamCopy(ctx context.Context, tableName string
 		"SET synchronous_commit = 'off'",
 		"SET session_replication_role = 'replica'",
 		"SET work_mem = '256MB'",
-		"SET maintenance_work_mem = '512MB'",
+		"SET maintenance_work_mem = '2GB'",
 	} {
 		_, _ = conn.Exec(ctx, opt)
 	}
@@ -503,6 +545,41 @@ func (e *ParallelRestoreEngine) executeStatement(ctx context.Context, sql string
 	return err
 }
 
+// executeIndexStatement executes a CREATE INDEX statement with index-specific
+// optimizations (higher work_mem, parallel workers, relaxed durability).
+func (e *ParallelRestoreEngine) executeIndexStatement(ctx context.Context, sql string) error {
+	acquireCtx, acquireCancel := context.WithTimeout(ctx, 5*time.Minute)
+	conn, err := e.pool.Acquire(acquireCtx)
+	acquireCancel()
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("failed to acquire connection: %w", err)
+	}
+	defer conn.Release()
+
+	// Index-specific optimizations
+	for _, opt := range []string{
+		"SET maintenance_work_mem = '2GB'",
+		"SET max_parallel_maintenance_workers = 4",
+		"SET synchronous_commit = 'off'",
+		"SET checkpoint_timeout = '30min'",
+	} {
+		_, _ = conn.Exec(ctx, opt)
+	}
+
+	// 4-hour timeout for CREATE INDEX (fragmented data can be very slow)
+	stmtCtx, stmtCancel := context.WithTimeout(ctx, 4*time.Hour)
+	defer stmtCancel()
+
+	_, err = conn.Exec(stmtCtx, sql)
+	if err != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return err
+}
+
 // classifyStatement determines the type of SQL statement
 func classifyStatement(sql string) StatementType {
 	upper := strings.ToUpper(strings.TrimSpace(sql))
@@ -525,6 +602,35 @@ func classifyStatement(sql string) StatementType {
 	}
 
 	return StmtOther
+}
+
+// extractIndexName extracts a human-readable name from post-data SQL
+func extractIndexName(sql string) string {
+	upper := strings.ToUpper(sql)
+	if strings.Contains(upper, "CREATE INDEX") || strings.Contains(upper, "CREATE UNIQUE INDEX") {
+		parts := strings.Fields(sql)
+		for i, part := range parts {
+			if strings.ToUpper(part) == "INDEX" && i+1 < len(parts) {
+				return parts[i+1]
+			}
+		}
+	}
+	if strings.Contains(upper, "ALTER TABLE") {
+		parts := strings.Fields(sql)
+		for i, part := range parts {
+			if strings.ToUpper(part) == "TABLE" && i+1 < len(parts) {
+				return fmt.Sprintf("constraint on %s", parts[i+1])
+			}
+		}
+	}
+	return "post-data statement"
+}
+
+// isIndexStatement checks if SQL is a CREATE INDEX statement
+func isIndexStatement(sql string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(sql))
+	return strings.HasPrefix(upper, "CREATE INDEX") ||
+		strings.HasPrefix(upper, "CREATE UNIQUE INDEX")
 }
 
 // Close closes the connection pool

@@ -273,7 +273,8 @@ func (m *EngineManager) RestoreWithNativeEngine(ctx context.Context, inputReader
 	m.log.Info("Using native engine for restore", "database", dbType, "target", targetDB)
 
 	// Create a new engine specifically for the target database
-	if dbType == "postgresql" {
+	switch dbType {
+	case "postgresql":
 		pgCfg := &PostgreSQLNativeConfig{
 			Host:     m.cfg.Host,
 			Port:     m.cfg.Port,
@@ -303,9 +304,41 @@ func (m *EngineManager) RestoreWithNativeEngine(ctx context.Context, inputReader
 
 		m.log.Info("Native restore completed")
 		return nil
-	}
 
-	return fmt.Errorf("native restore not supported for database type: %s", dbType)
+	case "mysql":
+		mysqlCfg := &MySQLNativeConfig{
+			Host:     m.cfg.Host,
+			Port:     m.cfg.Port,
+			User:     m.cfg.User,
+			Password: m.cfg.Password,
+			Database: targetDB,
+			Socket:   m.cfg.Socket,
+			SSLMode:  m.cfg.SSLMode,
+			Format:   "sql",
+		}
+
+		restoreEngine, err := NewMySQLNativeEngine(mysqlCfg, m.log)
+		if err != nil {
+			return fmt.Errorf("failed to create MySQL restore engine: %w", err)
+		}
+
+		// Connect to target database
+		if err := restoreEngine.Connect(ctx); err != nil {
+			return fmt.Errorf("failed to connect to target database %s: %w", targetDB, err)
+		}
+		defer restoreEngine.Close()
+
+		// Perform restore
+		if err := restoreEngine.Restore(ctx, inputReader, targetDB); err != nil {
+			return fmt.Errorf("native MySQL restore failed: %w", err)
+		}
+
+		m.log.Info("Native MySQL restore completed")
+		return nil
+
+	default:
+		return fmt.Errorf("native restore not supported for database type: %s", dbType)
+	}
 }
 
 // detectDatabaseType determines database type from configuration

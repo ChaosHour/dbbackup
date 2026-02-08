@@ -1309,11 +1309,19 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dh %dm", hours, minutes)
 }
 
-// dropDatabaseCLI drops a database using command-line psql
+// dropDatabaseCLI drops a database using command-line tools (psql for PostgreSQL, mysql for MySQL)
 // This avoids needing an active database connection
 // Uses cleanup.SafeCommand to prevent child process from receiving SIGTTIN/SIGTTOU
 // when Bubble Tea controls the terminal (fixes TUI blocking issue)
 func dropDatabaseCLI(ctx context.Context, cfg *config.Config, dbName string) error {
+	if cfg.IsMySQL() {
+		return dropDatabaseCLIMySQL(ctx, cfg, dbName)
+	}
+	return dropDatabaseCLIPostgreSQL(ctx, cfg, dbName)
+}
+
+// dropDatabaseCLIPostgreSQL drops a database using command-line psql
+func dropDatabaseCLIPostgreSQL(ctx context.Context, cfg *config.Config, dbName string) error {
 	args := []string{
 		"-p", fmt.Sprintf("%d", cfg.Port),
 		"-U", cfg.User,
@@ -1332,6 +1340,37 @@ func dropDatabaseCLI(ctx context.Context, cfg *config.Config, dbName string) err
 	// Set password if provided
 	if cfg.Password != "" {
 		cmd.Env = append(cmd.Environ(), fmt.Sprintf("PGPASSWORD=%s", cfg.Password))
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to drop database %s: %w\nOutput: %s", dbName, err, string(output))
+	}
+
+	return nil
+}
+
+// dropDatabaseCLIMySQL drops a database using command-line mysql client
+func dropDatabaseCLIMySQL(ctx context.Context, cfg *config.Config, dbName string) error {
+	// Escape backticks in database name to prevent SQL injection
+	safeDB := strings.ReplaceAll(dbName, "`", "``")
+	args := []string{
+		"-u", cfg.User,
+		"-P", fmt.Sprintf("%d", cfg.Port),
+		"-e", fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", safeDB),
+	}
+
+	// Only add -h flag if host is not localhost (to use Unix socket)
+	if cfg.Host != "localhost" && cfg.Host != "127.0.0.1" && cfg.Host != "" {
+		args = append([]string{"-h", cfg.Host}, args...)
+	}
+
+	cmd := cleanup.SafeCommand(ctx, "mysql", args...)
+
+	// Pass password via environment variable to avoid process list exposure
+	cmd.Env = cmd.Environ()
+	if cfg.Password != "" {
+		cmd.Env = append(cmd.Env, "MYSQL_PWD="+cfg.Password)
 	}
 
 	output, err := cmd.CombinedOutput()
@@ -1480,7 +1519,7 @@ func formatRestoreError(errStr string) string {
 
 	// Provide specific recommendations based on error
 	if strings.Contains(errStr, "out of shared memory") || strings.Contains(errStr, "max_locks_per_transaction") {
-		s.WriteString(errorStyle.Render("    • PostgreSQL lock table exhausted\n"))
+		s.WriteString(errorStyle.Render("    • Database lock table exhausted\n"))
 		s.WriteString("\n")
 		s.WriteString(infoStyle.Render("  ─── [HINT] Recommendations ────────────────────────────────"))
 		s.WriteString("\n\n")
@@ -1491,9 +1530,9 @@ func formatRestoreError(errStr string) string {
 		s.WriteString(successStyle.Render("    FIX OPTIONS:\n"))
 		s.WriteString("    1. Enable 'Large DB Mode' in Settings\n")
 		s.WriteString("       (press 'l' to toggle, reduces parallelism, increases locks)\n\n")
-		s.WriteString("    2. Increase PostgreSQL locks:\n")
+		s.WriteString("    2. Increase database locks:\n")
 		s.WriteString("       ALTER SYSTEM SET max_locks_per_transaction = 4096;\n")
-		s.WriteString("       Then RESTART PostgreSQL.\n\n")
+		s.WriteString("       Then RESTART the database server.\n\n")
 		s.WriteString("    3. Reduce parallel jobs:\n")
 		s.WriteString("       Set Cluster Parallelism = 1 in Settings\n")
 	} else if strings.Contains(errStr, "connection") || strings.Contains(errStr, "refused") {

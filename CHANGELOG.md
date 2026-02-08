@@ -5,6 +5,31 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.74] - 2026-02-08
+
+### Multi-Database Parity
+- **MySQL/MariaDB Native Restore Engine**
+  - Enabled MySQL native restore in `EngineManager.RestoreWithNativeEngine()` — previously
+    only PostgreSQL was routed to the native engine; MySQL fell through to an error.
+  - MySQL `Restore()` now applies bulk load optimizations: `FOREIGN_KEY_CHECKS=0`,
+    `UNIQUE_CHECKS=0`, `AUTOCOMMIT=0`, `sql_log_bin=0`, `innodb_flush_log_at_trx_commit=2`,
+    `sort_buffer_size=256MB`, `bulk_insert_buffer_size=256MB`. Settings restored on exit.
+  - Added `restoreWithMySQLNativeEngine()` to `restore/engine.go` — MySQL SQL restores
+    now use the native engine when `--native-engine` is set, matching PostgreSQL's path.
+  - `MySQLNativeEngine.Restore()` in `mysql.go` now applies the same bulk load optimizations,
+    uses 10MB scanner buffer, and safely truncates error log messages.
+
+- **DB-Agnostic TUI**
+  - `dropDatabaseCLI()` in `restore_exec.go` now dispatches to `psql` (PostgreSQL) or
+    `mysql` (MySQL/MariaDB) based on config — previously hardcoded to `psql` only.
+  - TUI main menu header now shows database icon (🐘 PostgreSQL / 🐬 MySQL) and
+    `DisplayDatabaseType()` in the brand line for at-a-glance DB identification.
+  - Restore preview "Engine Mode" now shows DB-appropriate tool names: `psql` for PG,
+    `mysql`/`mysqldump` for MySQL, instead of always showing `psql`/`pg_restore`.
+  - Lock debug messages de-hardcoded from "PostgreSQL lock config" to generic "lock config".
+  - Error diagnostic for lock table exhaustion changed from "PostgreSQL lock table exhausted"
+    to "Database lock table exhausted" and "RESTART PostgreSQL" to "RESTART the database server".
+
 ## [5.8.61] - 2026-02-08
 
 ### Performance

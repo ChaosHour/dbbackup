@@ -342,7 +342,11 @@ func (m *MenuModel) View() string {
 	var s string
 
 	// Product branding header
-	brandLine := fmt.Sprintf("dbbackup v%s • Enterprise Database Backup & Recovery", m.config.Version)
+	dbIcon := "🐘" // PostgreSQL elephant
+	if m.config.IsMySQL() {
+		dbIcon = "🐬" // MySQL dolphin
+	}
+	brandLine := fmt.Sprintf("dbbackup v%s %s %s • Enterprise Database Backup & Recovery", m.config.Version, dbIcon, m.config.DisplayDatabaseType())
 	s += "\n" + infoStyle.Render(brandLine) + "\n"
 
 	// Header
@@ -360,7 +364,7 @@ func (m *MenuModel) View() string {
 		}
 		selector := fmt.Sprintf("Target Engine: %s", strings.Join(options, menuStyle.Render("  |  ")))
 		s += dbSelectorLabelStyle.Render(selector) + "\n"
-		hint := infoStyle.Render("Switch with <-/-> or t | Cluster backup requires PostgreSQL")
+		hint := infoStyle.Render("Switch with <-/-> or t | Cluster backup/restore requires PostgreSQL")
 		s += hint + "\n"
 	}
 

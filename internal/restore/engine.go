@@ -746,6 +746,12 @@ func (e *Engine) restoreWithSequentialNativeEngine(ctx context.Context, archiveP
 
 // restoreMySQLSQL restores from MySQL SQL script
 func (e *Engine) restoreMySQLSQL(ctx context.Context, archivePath, targetDB string, compressed bool) error {
+	// Use native engine if configured (pure Go MySQL restore with bulk load optimizations)
+	if e.cfg.UseNativeEngine {
+		e.log.Info("Using native Go MySQL engine for restore", "database", targetDB, "file", archivePath)
+		return e.restoreWithMySQLNativeEngine(ctx, archivePath, targetDB, compressed)
+	}
+
 	options := database.RestoreOptions{}
 
 	cmd := e.db.BuildRestoreCommand(targetDB, archivePath, options)
@@ -756,6 +762,72 @@ func (e *Engine) restoreMySQLSQL(ctx context.Context, archivePath, targetDB stri
 	}
 
 	return e.executeRestoreCommand(ctx, cmd)
+}
+
+// restoreWithMySQLNativeEngine restores a MySQL SQL file using the pure Go native engine
+func (e *Engine) restoreWithMySQLNativeEngine(ctx context.Context, archivePath, targetDB string, compressed bool) error {
+	mysqlCfg := &native.MySQLNativeConfig{
+		Host:     e.cfg.Host,
+		Port:     e.cfg.Port,
+		User:     e.cfg.User,
+		Password: e.cfg.Password,
+		Database: targetDB,
+		Socket:   e.cfg.Socket,
+		SSLMode:  e.cfg.SSLMode,
+		Format:   "sql",
+	}
+
+	restoreEngine, err := native.NewMySQLRestoreEngine(mysqlCfg, e.log)
+	if err != nil {
+		return fmt.Errorf("failed to create MySQL native restore engine: %w", err)
+	}
+	defer restoreEngine.Close()
+
+	// Connect
+	if err := restoreEngine.Ping(); err != nil {
+		return fmt.Errorf("failed to connect to MySQL target database %s: %w", targetDB, err)
+	}
+
+	// Open input file
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("failed to open backup file: %w", err)
+	}
+	defer file.Close()
+
+	var reader io.Reader = file
+
+	// Handle compression
+	if compressed {
+		gzReader, err := pgzip.NewReader(file)
+		if err != nil {
+			return fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	// Restore with progress tracking
+	options := &native.RestoreOptions{
+		Database:           targetDB,
+		ContinueOnError:    true,
+		DisableForeignKeys: true, // Redundant but explicit — native engine applies its own optimizations
+		ProgressCallback: func(p *native.RestoreProgress) {
+			if p.ObjectsCompleted%500 == 0 {
+				e.log.Debug("MySQL restore progress", "statements", p.ObjectsCompleted, "rows", p.RowsProcessed)
+			}
+		},
+	}
+
+	result, err := restoreEngine.Restore(ctx, reader, options)
+	if err != nil {
+		return fmt.Errorf("MySQL native restore failed: %w", err)
+	}
+
+	e.log.Info("MySQL native restore completed",
+		"statements", result.ObjectsProcessed,
+		"duration", result.Duration)
+	return nil
 }
 
 // executeRestoreCommand executes a restore command

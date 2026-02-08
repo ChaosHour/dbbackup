@@ -1150,8 +1150,34 @@ func (e *MySQLNativeEngine) Restore(ctx context.Context, inputReader io.Reader, 
 		}
 	}
 
+	// Apply MySQL bulk load optimizations for faster restores
+	bulkLoadSettings := []string{
+		"SET FOREIGN_KEY_CHECKS = 0",
+		"SET UNIQUE_CHECKS = 0",
+		"SET AUTOCOMMIT = 0",
+		"SET sql_log_bin = 0",
+		"SET SESSION innodb_flush_log_at_trx_commit = 2",
+	}
+	for _, sql := range bulkLoadSettings {
+		if _, err := e.db.ExecContext(ctx, sql); err != nil {
+			e.log.Debug("MySQL optimization not available", "sql", sql, "error", err)
+		}
+	}
+	e.log.Info("Applied MySQL bulk load optimizations for restore")
+
+	// Restore settings at end
+	defer func() {
+		e.db.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1")
+		e.db.ExecContext(ctx, "SET UNIQUE_CHECKS = 1")
+		e.db.ExecContext(ctx, "COMMIT")
+		e.db.ExecContext(ctx, "SET AUTOCOMMIT = 1")
+		e.db.ExecContext(ctx, "SET sql_log_bin = 1")
+		e.db.ExecContext(ctx, "SET SESSION innodb_flush_log_at_trx_commit = 1")
+	}()
+
 	// Read and execute SQL script
 	scanner := bufio.NewScanner(inputReader)
+	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024) // 10MB max line
 	var sqlBuffer strings.Builder
 
 	for scanner.Scan() {
@@ -1172,7 +1198,7 @@ func (e *MySQLNativeEngine) Restore(ctx context.Context, inputReader io.Reader, 
 			sqlBuffer.Reset()
 
 			if _, err := e.db.ExecContext(ctx, stmt); err != nil {
-				e.log.Warn("Failed to execute statement", "error", err, "statement", stmt[:100])
+				e.log.Warn("Failed to execute statement", "error", err, "statement", stmt[:min(len(stmt), 100)])
 				// Continue with next statement (non-fatal errors)
 			}
 		}

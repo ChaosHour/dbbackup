@@ -374,7 +374,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Toggle lock debugging
 			m.debugLocks = !m.debugLocks
 			if m.debugLocks {
-				m.message = infoStyle.Render("🔍 [LOCK-DEBUG] Lock debugging: ENABLED (captures PostgreSQL lock config, Guard decisions, boost attempts)")
+				m.message = infoStyle.Render("🔍 [LOCK-DEBUG] Lock debugging: ENABLED (captures lock config, Guard decisions, boost attempts)")
 			} else {
 				m.message = "Lock debugging: disabled"
 			}
@@ -502,7 +502,11 @@ func (m RestorePreviewModel) View() string {
 		if m.config.UseNativeEngine {
 			s.WriteString(CheckPassedStyle.Render("  Engine Mode: Native Go (pure Go, no external tools)") + "\n")
 		} else {
-			s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (psql)\n"))
+			if m.config.IsMySQL() {
+				s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (mysql)\n"))
+			} else {
+				s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (psql)\n"))
+			}
 		}
 
 		cleanIcon := "[N]"
@@ -541,7 +545,11 @@ func (m RestorePreviewModel) View() string {
 		if m.config.UseNativeEngine {
 			s.WriteString(CheckPassedStyle.Render("  Engine Mode: Native Go (pure Go, no external tools)") + "\n")
 		} else {
-			s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (pg_restore, psql)\n"))
+			if m.config.IsMySQL() {
+				s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (mysql, mysqldump)\n"))
+			} else {
+				s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (pg_restore, psql)\n"))
+			}
 		}
 
 		if m.existingDBError != "" {
@@ -706,7 +714,7 @@ func (m RestorePreviewModel) View() string {
 	s.WriteString(lockDebugStyle.Render(fmt.Sprintf("  %s Lock Debug: %v (press 'l' to toggle)", lockDebugIcon, m.debugLocks)))
 	s.WriteString("\n")
 	if m.debugLocks {
-		s.WriteString(infoStyle.Render("    Captures PostgreSQL lock config, Guard decisions, boost attempts"))
+		s.WriteString(infoStyle.Render("    Captures lock config, Guard decisions, boost attempts"))
 		s.WriteString("\n")
 	}
 	s.WriteString("\n")

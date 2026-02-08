@@ -23,20 +23,20 @@ NC='\033[0m'
 TOKEN_FILE=".gh_token"
 MAIN_FILE="main.go"
 
-# Security: List of files that should NEVER be committed
+# Security: List of files that should NEVER be committed (regex patterns)
 SECURITY_FILES=(
-    ".gh_token"
-    ".env"
-    ".env.local"
-    ".env.production"
-    "*.pem"
-    "*.key"
-    "*.p12"
-    ".dbbackup.conf"
-    "secrets.yaml"
-    "secrets.json"
-    ".aws/credentials"
-    ".gcloud/*.json"
+    "\.gh_token"
+    "\.env$"
+    "\.env\.local"
+    "\.env\.production"
+    "\.pem$"
+    "\.key$"
+    "\.p12$"
+    "\.dbbackup\.conf"
+    "secrets\.yaml"
+    "secrets\.json"
+    "\.aws/credentials"
+    "\.gcloud/.*\.json"
 )
 
 # Parse arguments
@@ -152,6 +152,41 @@ if [ "$DRY_RUN" = false ]; then
     check_security
 fi
 
+# Check CHANGELOG.md mentions current version
+echo -e "${BLUE}📋 Checking CHANGELOG...${NC}"
+CURRENT_VERSION_CHECK=$(grep 'version.*=' "$MAIN_FILE" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+if ! grep -q "$CURRENT_VERSION_CHECK" CHANGELOG.md 2>/dev/null; then
+    echo -e "${YELLOW}⚠️  WARNING: CHANGELOG.md does not mention version ${CURRENT_VERSION_CHECK}${NC}"
+    echo -e "   Consider updating CHANGELOG.md before releasing."
+    read -p "   Continue anyway? [y/N] " -r
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${RED}Aborting.${NC}"
+        exit 1
+    fi
+else
+    echo -e "${GREEN}✅ CHANGELOG.md mentions v${CURRENT_VERSION_CHECK}${NC}"
+fi
+
+# Run pre-release suite (unless --fast)
+if [ "$FAST_MODE" = false ]; then
+    if [ -f "scripts/pre_release_suite.sh" ]; then
+        echo ""
+        echo -e "${BLUE}🧪 Running pre-release validation suite...${NC}"
+        if bash scripts/pre_release_suite.sh --quick; then
+            echo -e "${GREEN}✅ Pre-release suite passed${NC}"
+        else
+            echo -e "${RED}❌ Pre-release suite failed${NC}"
+            read -p "   Continue anyway? [y/N] " -r
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo -e "${RED}Aborting.${NC}"
+                exit 1
+            fi
+        fi
+    fi
+else
+    echo -e "${YELLOW}⚡ Skipping pre-release suite (--fast)${NC}"
+fi
+
 # Get current version
 CURRENT_VERSION=$(grep 'version.*=' "$MAIN_FILE" | head -1 | sed 's/.*"\(.*\)".*/\1/')
 echo -e "${BLUE}📦 Current version: ${YELLOW}${CURRENT_VERSION}${NC}"
@@ -169,7 +204,7 @@ if [ "$BUMP_VERSION" = true ]; then
     echo -e "${GREEN}📈 Bumping version: ${YELLOW}${CURRENT_VERSION}${NC} → ${GREEN}${NEW_VERSION}${NC}"
     
     if [ "$DRY_RUN" = false ]; then
-        sed -i "s/version.*=.*\"${CURRENT_VERSION}\"/version   = \"${NEW_VERSION}\"/" "$MAIN_FILE"
+        sed -i "s/\(version[[:space:]]*=[[:space:]]*\)\"${CURRENT_VERSION}\"/\1\"${NEW_VERSION}\"/" "$MAIN_FILE"
         CURRENT_VERSION="$NEW_VERSION"
     fi
 fi
@@ -237,7 +272,6 @@ if [ "$FAST_MODE" = true ]; then
         OUTPUT="bin/dbbackup_${GOOS}_${GOARCH}"
         if [ -n "$GOARM" ]; then
             OUTPUT="bin/dbbackup_${GOOS}_arm_armv${GOARM}"
-            GOARM="$GOARM"
         fi
         
         (
@@ -286,16 +320,26 @@ if [ -n "$(git status --porcelain)" ]; then
     git commit -m "$COMMIT_MSG"
 fi
 
-# Push changes
-echo -e "${BLUE}⬆️  Pushing to origin...${NC}"
-git push origin main
+# Push changes to all remotes
+REMOTES=("origin")
+if git remote | grep -q '^uuxo$'; then
+    REMOTES+=("uuxo")
+fi
+
+for remote in "${REMOTES[@]}"; do
+    echo -e "${BLUE}⬆️  Pushing to ${remote}...${NC}"
+    git push "$remote" main
+done
 
 # Handle tag
 TAG_EXISTS=$(git tag -l "$TAG")
 if [ -z "$TAG_EXISTS" ]; then
     echo -e "${BLUE}🏷️  Creating tag ${TAG}...${NC}"
     git tag "$TAG"
-    git push origin "$TAG"
+    for remote in "${REMOTES[@]}"; do
+        echo -e "${BLUE}🏷️  Pushing tag to ${remote}...${NC}"
+        git push "$remote" "$TAG"
+    done
 else
     echo -e "${YELLOW}⚠️  Tag ${TAG} already exists${NC}"
 fi
@@ -364,6 +408,7 @@ echo -e "   ${BLUE}https://github.com/PlusOne/dbbackup/releases/tag/${TAG}${NC}"
 echo ""
 echo -e "${BOLD}📊 Release Summary:${NC}"
 echo -e "   Version: ${TAG}"
+echo -e "   Remotes: ${REMOTES[*]}"
 echo -e "   Mode: $([ "$FAST_MODE" = true ] && echo "Fast (parallel)" || echo "Standard")"
 echo -e "   Security: $([ -n "$SECURITY_VALIDATED" ] && echo "${GREEN}Validated${NC}" || echo "Checked")"
 if [ "$FAST_MODE" = true ] && [ -n "$DURATION" ]; then

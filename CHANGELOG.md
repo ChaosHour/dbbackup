@@ -5,6 +5,22 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.77] - 2026-02-08
+
+### Release Script Hardening
+- **Dual-remote push** — automatically pushes to both `origin` (GitHub) and `uuxo`
+  remotes when both exist, including tags
+- **Pre-release suite integration** — runs `scripts/pre_release_suite.sh --quick`
+  before building (skipped with `--fast`)
+- **CHANGELOG guard** — warns if CHANGELOG.md doesn't mention the current version,
+  prompts to continue or abort
+- **Fixed security patterns** — glob patterns (`*.pem`) replaced with proper regex
+  (`\.pem$`) for `grep -E` compatibility
+- **Fixed version bump sed** — handles flexible whitespace in `version = "x.y.z"`
+  assignment so `--bump` works reliably
+- **Removed redundant GOARM assignment** in parallel build loop
+- **Release summary** — now shows list of remotes pushed to
+
 ## [5.8.76] - 2026-02-08
 
 ### Final Audit & v6.0 Release Preparation

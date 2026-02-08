@@ -559,7 +559,7 @@ func RunInteractiveMenu(cfg *config.Config, log logger.Logger) error {
 	}
 
 	m := NewMenuModel(cfg, log)
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithoutSignalHandler())
 
 	// Ensure cleanup on exit
 	defer func() {

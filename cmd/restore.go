@@ -34,6 +34,7 @@ var (
 	restoreJobs          int
 	restoreParallelDBs   int    // Number of parallel database restores
 	restoreProfile       string // Resource profile: conservative, balanced, aggressive, turbo, max-performance
+	restoreModeName      string // Restore WAL mode: safe, balanced, turbo
 	restoreTarget        string
 	restoreVerbose       bool
 	restoreNoProgress    bool
@@ -326,6 +327,7 @@ func init() {
 	restoreSingleCmd.Flags().BoolVar(&restoreCreate, "create", false, "Create target database if it doesn't exist")
 	restoreSingleCmd.Flags().StringVar(&restoreTarget, "target", "", "Target database name (defaults to original)")
 	restoreSingleCmd.Flags().StringVar(&restoreProfile, "profile", "balanced", "Resource profile: conservative, balanced, turbo (--jobs=8), max-performance")
+	restoreSingleCmd.Flags().StringVar(&restoreModeName, "restore-mode", "safe", "WAL logging strategy: safe (full WAL), balanced (UNLOGGED COPY, LOGGED indexes), turbo (UNLOGGED all, dev/test only)")
 	restoreSingleCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
@@ -354,6 +356,7 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreForce, "force", false, "Skip safety checks and confirmations")
 	restoreClusterCmd.Flags().BoolVar(&restoreCleanCluster, "clean-cluster", false, "Drop all existing user databases before restore (disaster recovery)")
 	restoreClusterCmd.Flags().StringVar(&restoreProfile, "profile", "conservative", "Resource profile: conservative, balanced, turbo (--jobs=8), max-performance")
+	restoreClusterCmd.Flags().StringVar(&restoreModeName, "restore-mode", "safe", "WAL logging strategy: safe (full WAL), balanced (UNLOGGED COPY, LOGGED indexes), turbo (UNLOGGED all, dev/test only)")
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto, overrides profile)")
 	restoreClusterCmd.Flags().IntVar(&restoreParallelDBs, "parallel-dbs", 0, "Number of databases to restore in parallel (0 = use profile, 1 = sequential, -1 = auto-detect, overrides profile)")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
@@ -397,6 +400,10 @@ func init() {
 			if c.Flags().Changed("fallback-tools") {
 				fallback, _ := c.Flags().GetBool("fallback-tools")
 				cfg.FallbackToTools = fallback
+			}
+			// Pass restore mode to config
+			if c.Flags().Changed("restore-mode") {
+				cfg.RestoreMode = restoreModeName
 			}
 			return nil
 		}
@@ -674,6 +681,9 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Target Database: %s\n", targetDB)
 		fmt.Printf("  Clean Before Restore: %v\n", restoreClean)
 		fmt.Printf("  Create If Missing: %v\n", restoreCreate)
+		if cfg.RestoreMode != "" && cfg.RestoreMode != "safe" {
+			fmt.Printf("  Restore Mode: %s\n", cfg.RestoreMode)
+		}
 		fmt.Println("\nTo execute this restore, add --confirm flag")
 		return nil
 	}
@@ -747,6 +757,12 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 
 	// Execute restore
 	log.Info("Starting restore...", "database", targetDB)
+
+	// Log restore mode if non-default
+	if cfg.RestoreMode != "" && cfg.RestoreMode != "safe" {
+		log.Info("Restore mode: "+cfg.RestoreMode,
+			"database", targetDB)
+	}
 
 	// Audit log: restore start
 	user := security.GetCurrentUser()

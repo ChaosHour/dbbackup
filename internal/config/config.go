@@ -56,9 +56,10 @@ type Config struct {
 	MemoryInfo  *cpu.MemoryInfo // System memory information
 
 	// Native engine options
-	UseNativeEngine   bool // Use pure Go native engines instead of external tools (default: true)
-	FallbackToTools   bool // Fallback to external tools if native engine fails
-	NativeEngineDebug bool // Enable detailed native engine debugging
+	UseNativeEngine   bool   // Use pure Go native engines instead of external tools (default: true)
+	FallbackToTools   bool   // Fallback to external tools if native engine fails
+	NativeEngineDebug bool   // Enable detailed native engine debugging
+	RestoreMode       string // Restore WAL mode: "safe", "balanced", "turbo" (default: "safe")
 
 	// Sample backup options
 	SampleStrategy string // "ratio", "percent", "count"

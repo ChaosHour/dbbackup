@@ -573,10 +573,28 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 		}
 	}()
 
+	// Parse restore mode from config
+	restoreMode := native.RestoreModeSafe // default
+	if e.cfg.RestoreMode != "" {
+		parsedMode, modeErr := native.ParseRestoreMode(e.cfg.RestoreMode)
+		if modeErr != nil {
+			e.log.Warn("Invalid restore mode, using safe", "mode", e.cfg.RestoreMode, "error", modeErr)
+		} else {
+			restoreMode = parsedMode
+		}
+	}
+
+	if restoreMode != native.RestoreModeSafe {
+		e.log.Info("Restore mode active",
+			"mode", restoreMode.String(),
+			"database", targetDB)
+	}
+
 	// Run parallel restore with progress callbacks
 	options := &native.ParallelRestoreOptions{
 		Workers:         parallelWorkers,
 		ContinueOnError: true,
+		RestoreMode:     restoreMode,
 		ProgressCallback: func(phase string, current, total int, tableName string) {
 			switch phase {
 			case "parsing":
@@ -602,10 +620,23 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 
 	e.log.Info("Parallel native restore completed",
 		"database", targetDB,
+		"restore_mode", result.RestoreMode.String(),
 		"tables", result.TablesRestored,
 		"rows", result.RowsRestored,
 		"indexes", result.IndexesCreated,
-		"duration", result.Duration)
+		"duration", result.Duration,
+		"data_phase", result.DataDuration,
+		"index_phase", result.IndexDuration)
+
+	// Log restore mode performance summary
+	if result.RestoreMode != native.RestoreModeSafe && result.TablesToggled > 0 {
+		e.log.Info("Restore mode performance summary",
+			"mode", result.RestoreMode.String(),
+			"tables_toggled", result.TablesToggled,
+			"switch_duration", result.SwitchDuration,
+			"data_phase", result.DataDuration,
+			"index_phase", result.IndexDuration)
+	}
 
 	return nil
 }

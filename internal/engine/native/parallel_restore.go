@@ -43,6 +43,7 @@ type ParallelRestoreEngine struct {
 type ParallelRestoreOptions struct {
 	Workers          int
 	ContinueOnError  bool
+	RestoreMode      RestoreMode // safe, balanced, turbo (default: safe)
 	ProgressCallback func(phase string, current, total int, tableName string)
 }
 
@@ -54,6 +55,13 @@ type ParallelRestoreResult struct {
 	RowsRestored     int64
 	IndexesCreated   int64
 	Errors           []string
+
+	// Phase timing for restore mode comparison
+	RestoreMode    RestoreMode
+	DataDuration   time.Duration // Time spent in COPY phase
+	IndexDuration  time.Duration // Time spent in post-data phase
+	SwitchDuration time.Duration // Time spent switching UNLOGGED→LOGGED
+	TablesToggled  int64         // Tables switched between UNLOGGED/LOGGED
 }
 
 // StatementType classifies SQL statements for execution ordering
@@ -159,9 +167,22 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 		options.Workers = e.parallelWorkers
 	}
 
+	restoreMode := options.RestoreMode
+	result.RestoreMode = restoreMode
+
 	e.log.Info("Starting STREAMING parallel restore (zero-buffer)",
 		"file", filePath,
-		"workers", options.Workers)
+		"workers", options.Workers,
+		"restore_mode", restoreMode.String())
+
+	// Apply turbo session settings early (connection-level optimizations)
+	if restoreMode == RestoreModeTurbo {
+		applyTurboSessionSettings(ctx, e.pool, e.log)
+	}
+
+	// Track tables for UNLOGGED→LOGGED transitions
+	var unloggedTables []string
+	var unloggedMu sync.Mutex
 
 	// ── Open file with context-aware cleanup ──
 	file, err := os.Open(filePath)
@@ -268,6 +289,15 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 			}
 
 			tableNum := atomic.AddInt64(&tablesStarted, 1)
+
+			// ── Restore mode: SET UNLOGGED before COPY ──
+			if restoreMode == RestoreModeBalanced || restoreMode == RestoreModeTurbo {
+				if err := setTableUnlogged(ctx, e.pool, tableName, e.log); err == nil {
+					unloggedMu.Lock()
+					unloggedTables = append(unloggedTables, tableName)
+					unloggedMu.Unlock()
+				}
+			}
 
 			// io.Pipe: scanner writes rows → pgx CopyFrom reads them
 			// No buffering. Rows go straight from gzip → PostgreSQL.
@@ -407,10 +437,46 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 
 	result.TablesRestored = atomic.LoadInt64(&tablesCompleted)
 	result.RowsRestored = atomic.LoadInt64(&totalRows)
+	result.DataDuration = time.Since(startTime)
 
 	copyErrMu.Lock()
 	result.Errors = append(result.Errors, copyErrors...)
 	copyErrMu.Unlock()
+
+	if ctx.Err() != nil {
+		return result, ctx.Err()
+	}
+
+	// ── Balanced mode: switch tables LOGGED before indexes ──
+	// This ensures indexes are WAL-logged (safe for PITR/replication)
+	// while the COPY phase ran without WAL overhead.
+	if restoreMode == RestoreModeBalanced && len(unloggedTables) > 0 {
+		switchStart := time.Now()
+		e.log.Info("Switching tables to LOGGED before index creation",
+			"tables", len(unloggedTables))
+
+		for _, tbl := range unloggedTables {
+			if ctx.Err() != nil {
+				break
+			}
+			if err := setTableLogged(ctx, e.pool, tbl, e.log); err != nil {
+				e.log.Warn("SET LOGGED failed", "table", tbl, "error", err)
+				result.Errors = append(result.Errors, fmt.Sprintf("SET LOGGED %s: %v", tbl, err))
+			} else {
+				result.TablesToggled++
+			}
+		}
+
+		// Force checkpoint to flush the LOGGED tables to WAL
+		if err := forceCheckpoint(ctx, e.pool, e.log); err != nil {
+			e.log.Warn("Post-switch CHECKPOINT failed", "error", err)
+		}
+
+		result.SwitchDuration = time.Since(switchStart)
+		e.log.Info("Tables switched to LOGGED",
+			"tables", result.TablesToggled,
+			"duration", result.SwitchDuration)
+	}
 
 	if ctx.Err() != nil {
 		return result, ctx.Err()
@@ -429,6 +495,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	})
 
 	postDataCount := len(postDataStmts)
+	indexStart := time.Now()
 	if postDataCount > 0 {
 		e.log.Info("Creating indexes and constraints...",
 			"statements", postDataCount,
@@ -503,19 +570,60 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 		pdWg.Wait()
 	}
 
+	result.IndexDuration = time.Since(indexStart)
+
 	if ctx.Err() != nil {
 		return result, ctx.Err()
 	}
 
+	// ── Turbo mode: deferred UNLOGGED→LOGGED switch (after indexes) ──
+	if restoreMode == RestoreModeTurbo && len(unloggedTables) > 0 {
+		switchStart := time.Now()
+		e.log.Info("Turbo mode: switching ALL tables to LOGGED (final step)",
+			"tables", len(unloggedTables))
+
+		for _, tbl := range unloggedTables {
+			if ctx.Err() != nil {
+				break
+			}
+			if err := setTableLogged(ctx, e.pool, tbl, e.log); err != nil {
+				e.log.Warn("SET LOGGED failed", "table", tbl, "error", err)
+				result.Errors = append(result.Errors, fmt.Sprintf("SET LOGGED %s: %v", tbl, err))
+			} else {
+				result.TablesToggled++
+			}
+		}
+
+		if err := forceCheckpoint(ctx, e.pool, e.log); err != nil {
+			e.log.Warn("Post-switch CHECKPOINT failed", "error", err)
+		}
+
+		result.SwitchDuration = time.Since(switchStart)
+		e.log.Info("Turbo finalize: tables switched to LOGGED",
+			"tables", result.TablesToggled,
+			"duration", result.SwitchDuration)
+	}
+
 	result.Duration = time.Since(startTime)
-	e.log.Info("Streaming restore completed",
+
+	// ── Summary ──
+	logFields := []interface{}{
 		"duration", result.Duration,
+		"restore_mode", restoreMode.String(),
 		"schema", result.SchemaStatements,
 		"tables", result.TablesRestored,
 		"rows", result.RowsRestored,
 		"indexes", result.IndexesCreated,
+		"data_phase", result.DataDuration,
+		"index_phase", result.IndexDuration,
 		"errors", len(result.Errors),
-		"lines", lineCount)
+		"lines", lineCount,
+	}
+	if result.TablesToggled > 0 {
+		logFields = append(logFields, "tables_toggled", result.TablesToggled)
+		logFields = append(logFields, "switch_duration", result.SwitchDuration)
+	}
+	e.log.Info("Streaming restore completed", logFields...)
 
 	return result, nil
 }

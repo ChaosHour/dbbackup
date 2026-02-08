@@ -596,7 +596,7 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle directory browsing mode
 		if m.browsingDir && m.dirBrowser != nil {
 			switch msg.String() {
-			case "esc":
+			case "ctrl+c", "esc":
 				m.browsingDir = false
 				m.dirBrowser.Hide()
 				return m, nil

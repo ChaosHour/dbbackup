@@ -477,7 +477,7 @@ func (v *CatalogDashboardView) getCurrentPageEntries() []*catalog.Entry {
 
 func (v *CatalogDashboardView) handleFilterKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "enter", "esc":
+	case "ctrl+c", "enter", "esc":
 		v.filterMode = false
 		v.cursor = 0
 		v.page = 0

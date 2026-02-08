@@ -256,7 +256,7 @@ func (v *DropDatabaseView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				v.confirmStep = 0
 				v.typedName = ""
 				return v, nil
-			case "esc":
+			case "ctrl+c", "esc":
 				v.confirmStep = 0
 				v.typedName = ""
 				v.message = ""
@@ -282,7 +282,7 @@ func (v *DropDatabaseView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				v.typedName = ""
 				v.message = StatusWarningStyle.Render(fmt.Sprintf("Type '%s' to confirm: ", v.databases[v.cursor]))
 				return v, nil
-			case "n", "N", "esc":
+			case "ctrl+c", "n", "N", "esc":
 				v.confirmStep = 0
 				v.message = ""
 				return v, nil

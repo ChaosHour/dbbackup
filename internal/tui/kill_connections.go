@@ -354,7 +354,7 @@ func (v *KillConnectionsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return v, v.killAllConnections()
 				}
 				return v, v.killConnection(v.confirmPID)
-			case "n", "N", "esc":
+			case "ctrl+c", "n", "N", "esc":
 				v.confirming = false
 				v.message = ""
 				return v, nil

@@ -1,0 +1,148 @@
+name: Pre-Release Validation Suite
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Test mode (full or quick)'
+        required: false
+        default: 'quick'
+        type: choice
+        options:
+          - full
+          - quick
+      test_number:
+        description: 'Run single test (1-10, or blank for all)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  pre-release-validation:
+    name: Pre-Release Validation
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -yqq postgresql-client
+
+      - name: Configure environment
+        run: |
+          echo "DBBACKUP_HOST=localhost" >> $GITHUB_ENV
+          echo "DBBACKUP_PORT=5432" >> $GITHUB_ENV
+          echo "DBBACKUP_USER=postgres" >> $GITHUB_ENV
+          echo "DBBACKUP_PASSWORD=postgres" >> $GITHUB_ENV
+
+      - name: Build binary
+        run: go build -o dbbackup_linux_amd64 .
+
+      - name: Determine suite arguments
+        id: args
+        run: |
+          ARGS=""
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ inputs.mode }}" == "quick" ]]; then
+              ARGS="--quick"
+            fi
+            if [[ -n "${{ inputs.test_number }}" ]]; then
+              ARGS="--test=${{ inputs.test_number }}"
+            fi
+          else
+            # Tag push — run full suite but skip Docker (services handle PG only)
+            ARGS="--skip-docker"
+          fi
+          echo "suite_args=$ARGS" >> $GITHUB_OUTPUT
+
+      - name: Run pre-release validation suite
+        run: |
+          chmod +x scripts/pre_release_suite.sh
+          bash scripts/pre_release_suite.sh ${{ steps.args.outputs.suite_args }}
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pre-release-report-${{ github.sha }}
+          path: /tmp/dbbackup_pre_release/
+          retention-days: 30
+
+      - name: Post summary
+        if: always()
+        run: |
+          REPORT="/tmp/dbbackup_pre_release/report.txt"
+          if [[ -f "$REPORT" ]]; then
+            echo "## Pre-Release Validation Report" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            head -40 "$REPORT" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Report file not found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Full Docker integration tests (manual trigger only — resource-intensive)
+  docker-integration:
+    name: Docker Multi-DB Integration
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -yqq postgresql-client mysql-client
+
+      - name: Build binary
+        run: go build -o dbbackup_linux_amd64 .
+
+      - name: Run multi-DB parity test
+        run: |
+          chmod +x scripts/pre_release_suite.sh
+          bash scripts/pre_release_suite.sh --test=3
+
+      - name: Upload multi-DB report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multi-db-report-${{ github.sha }}
+          path: /tmp/dbbackup_pre_release/
+          retention-days: 30

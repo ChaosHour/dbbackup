@@ -5,6 +5,50 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.75] - 2026-02-08
+
+### Pre-Release Validation Suite
+- **Comprehensive 10-Category Test Suite** (`scripts/pre_release_suite.sh`)
+  - Test 1: Race detector — `go test -race` across all packages with CGO_ENABLED=1
+  - Test 2: Memory & goroutine leak detection — 50-iteration stress tests, benchmem,
+    static analysis for unclosed Tickers and sql.Open without Close
+  - Test 3: Multi-database parity — source-level analysis (Engine interface compliance,
+    MySQL bulk-load optimizations, TUI MySQL branches) + Docker integration tests for
+    PostgreSQL 16, MySQL 8.0, and MariaDB 10.11 (when Docker available)
+  - Test 4: Signal handling — SIGINT cleanup, SIGTERM graceful shutdown, connection leak
+    detection, TUI InterruptMsg handler coverage verification
+  - Test 5: Backwards compatibility — old .meta.json formats, config file parsing,
+    archive format detection (9 formats: PG dump/SQL/gz, MySQL SQL/gz, cluster tar/dir)
+  - Test 6: TUI comprehensive validation — structural validation via `validate_tui.sh`,
+    screen inventory (27 screens), debug infrastructure (26 instrumentation points),
+    database-type awareness (14 files), WithoutSignalHandler on all tea.NewProgram calls
+  - Test 7: Large-scale restore — fakedbcreator, adaptive worker allocation, metadata-driven
+    planning, connection pool tuning verification, 100-table smoke test with row verification
+  - Test 8: Tiered restore — TableClassification, PriorityCritical/Important/Cold,
+    DetectOptimalRestoreMode, PhaseCallback wiring, 3-tier modes (safe/balanced/turbo)
+  - Test 9: Error injection — invalid restore mode, missing/corrupt backup files,
+    invalid database type, connection failure, no-panics verification across all error logs
+  - Test 10: Performance baseline — binary size (<60MB), startup latency (<3s), build time
+    (<30s), unit test speed, `go mod verify`, benchmark_restore.sh availability
+
+- **GitHub Actions Workflow** (`.github/workflows/pre-release.yml`)
+  - Triggered on tag push (`v*.*.*`) and manual `workflow_dispatch`
+  - PostgreSQL 16 service container with health checks
+  - Quick/full mode selection, single-test override via workflow inputs
+  - Separate Docker multi-DB integration job (manual full-mode only)
+  - Report artifact upload (30-day retention) + GitHub Step Summary
+
+- **Suite Features**
+  - `--quick` mode (tests 1-4 only, ~10s), `--skip-docker`, `--test=N` single-test mode
+  - Color-coded PASS/FAIL/WARN/SKIP output with emoji indicators
+  - Full report at `/tmp/dbbackup_pre_release/report.txt` with recommendation engine:
+    0 failures + ≤5 warnings → RELEASE CANDIDATE,
+    >5 warnings → RELEASE AS BETA,
+    any failure → DO NOT RELEASE
+  - Graceful Docker skip when Docker unavailable (no false failures)
+  - Integrates existing scripts: `validate_tui.sh`, `test-sigint-cleanup.sh`,
+    `benchmark_restore.sh`, `pre_production_check.sh`
+
 ## [5.8.74] - 2026-02-08
 
 ### Multi-Database Parity

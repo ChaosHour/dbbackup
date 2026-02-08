@@ -60,6 +60,10 @@ type Config struct {
 	FallbackToTools   bool   // Fallback to external tools if native engine fails
 	NativeEngineDebug bool   // Enable detailed native engine debugging
 	RestoreMode       string // Restore WAL mode: "safe", "balanced", "turbo" (default: "safe")
+	TieredRestore     bool     // Enable priority-based phased restore
+	CriticalTables    []string // Critical table patterns (restored first)
+	ImportantTables   []string // Important table patterns (restored second)
+	ColdTables        []string // Cold table patterns (restored last)
 
 	// Sample backup options
 	SampleStrategy string // "ratio", "percent", "count"

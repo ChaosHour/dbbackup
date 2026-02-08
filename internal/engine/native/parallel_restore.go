@@ -46,6 +46,18 @@ type ParallelRestoreOptions struct {
 	ContinueOnError  bool
 	RestoreMode      RestoreMode // safe, balanced, turbo (default: safe)
 	ProgressCallback func(phase string, current, total int, tableName string)
+
+	// TieredRestore enables priority-based phased restoration.
+	// Critical tables restore first → commit → app online → continue.
+	TieredRestore bool
+
+	// TableClassification defines which tables are critical/important/cold.
+	// If nil, uses DefaultTableClassification().
+	TableClassification *TableClassification
+
+	// PhaseCallback is called after each priority phase completes.
+	// phase: "critical", "important", "cold"
+	PhaseCallback func(phase string, err error)
 }
 
 // ParallelRestoreResult contains restore statistics
@@ -63,6 +75,16 @@ type ParallelRestoreResult struct {
 	IndexDuration  time.Duration // Time spent in post-data phase
 	SwitchDuration time.Duration // Time spent switching UNLOGGED→LOGGED
 	TablesToggled  int64         // Tables switched between UNLOGGED/LOGGED
+
+	// Tiered restore phase timings
+	TieredRestore     bool
+	CriticalDuration  time.Duration
+	ImportantDuration time.Duration
+	ColdDuration      time.Duration
+	CriticalTables    int
+	ImportantTables   int
+	ColdTables        int
+	RTO               time.Duration // Time until critical tables were available
 }
 
 // StatementType classifies SQL statements for execution ordering
@@ -356,6 +378,11 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 
 	restoreMode := options.RestoreMode
 	result.RestoreMode = restoreMode
+
+	// ── Tiered restore: dispatch to phased engine ──
+	if options.TieredRestore {
+		return e.restoreFileTiered(ctx, filePath, options)
+	}
 
 	// ── Adaptive worker allocation from .meta.json ──
 	var tableProfile *TableProfile
@@ -1056,6 +1083,629 @@ func (e *ParallelRestoreEngine) Close() error {
 		e.pool.Close()
 	}
 	return nil
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Tiered Restore — Priority-based RTO optimization
+// ════════════════════════════════════════════════════════════════════
+
+// preScanEntry holds metadata about a COPY block discovered during pre-scan.
+type preScanEntry struct {
+	TableName string
+	Priority  TablePriority
+}
+
+// preScanResult contains the classification of all tables found in a dump.
+type preScanResult struct {
+	SchemaSQL      []string       // All schema/SET statements (in order)
+	CopyTables     []string       // All table names with COPY data (in order)
+	PostDataSQL    []string       // All post-data statements (in order)
+	TablePriority  map[string]TablePriority
+	CriticalTables []string
+	ImportantTables []string
+	ColdTables     []string
+}
+
+// preScanDump reads through the dump file once, classifying tables by priority.
+// This is a lightweight scan — it reads lines but skips COPY data rows.
+func (e *ParallelRestoreEngine) preScanDump(ctx context.Context, filePath string, classification *TableClassification) (*preScanResult, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("pre-scan: failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	bufReader := bufio.NewReaderSize(file, 256*1024)
+	var reader io.Reader = bufReader
+	if strings.HasSuffix(filePath, ".gz") {
+		decompWorkers := runtime.NumCPU()
+		if decompWorkers > 16 {
+			decompWorkers = 16
+		}
+		gzReader, err := pgzip.NewReaderN(bufReader, 1<<20, decompWorkers)
+		if err != nil {
+			return nil, fmt.Errorf("pre-scan: failed to create gzip reader: %w", err)
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024)
+
+	result := &preScanResult{
+		TablePriority: make(map[string]TablePriority),
+	}
+
+	var stmtBuf strings.Builder
+	inCopy := false
+
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		// Skip COPY data rows (just advance past them)
+		if inCopy {
+			if line == "\\." {
+				inCopy = false
+			}
+			continue
+		}
+
+		// Skip blanks and comments
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+
+		upper := strings.ToUpper(trimmed)
+
+		// Detect COPY blocks
+		if strings.HasPrefix(upper, "COPY ") && strings.HasSuffix(trimmed, "FROM stdin;") {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 2 {
+				tableName := parts[1]
+				priority := classification.ClassifyTable(tableName)
+				result.CopyTables = append(result.CopyTables, tableName)
+				result.TablePriority[tableName] = priority
+				switch priority {
+				case PriorityCritical:
+					result.CriticalTables = append(result.CriticalTables, tableName)
+				case PriorityCold:
+					result.ColdTables = append(result.ColdTables, tableName)
+				default:
+					result.ImportantTables = append(result.ImportantTables, tableName)
+				}
+			}
+			inCopy = true
+			continue
+		}
+
+		// Accumulate multi-line statements
+		stmtBuf.WriteString(line)
+		stmtBuf.WriteByte('\n')
+
+		if !strings.HasSuffix(trimmed, ";") {
+			continue
+		}
+
+		sql := stmtBuf.String()
+		stmtBuf.Reset()
+
+		stmtType := classifyStatement(sql)
+		switch stmtType {
+		case StmtPostData:
+			result.PostDataSQL = append(result.PostDataSQL, sql)
+		default:
+			result.SchemaSQL = append(result.SchemaSQL, sql)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("pre-scan: scanner error: %w", err)
+	}
+
+	return result, nil
+}
+
+// restoreFileTiered implements priority-based phased restoration.
+// It pre-scans the dump to classify tables, then restores in 3 phases:
+//   Phase 1 (critical):  users, sessions, payments → app can come online
+//   Phase 2 (important): orders, products → core business functions
+//   Phase 3 (cold):      logs, analytics → background restoration
+func (e *ParallelRestoreEngine) restoreFileTiered(ctx context.Context, filePath string, options *ParallelRestoreOptions) (*ParallelRestoreResult, error) {
+	startTime := time.Now()
+	result := &ParallelRestoreResult{
+		TieredRestore: true,
+		RestoreMode:   options.RestoreMode,
+	}
+
+	classification := options.TableClassification
+	if classification == nil {
+		classification = DefaultTableClassification()
+	}
+
+	e.log.Info("Tiered restore: pre-scanning dump for table classification",
+		"file", filePath)
+
+	// Phase 0: Pre-scan — classify all tables
+	scanResult, err := e.preScanDump(ctx, filePath, classification)
+	if err != nil {
+		return result, fmt.Errorf("tiered restore pre-scan failed: %w", err)
+	}
+
+	result.CriticalTables = len(scanResult.CriticalTables)
+	result.ImportantTables = len(scanResult.ImportantTables)
+	result.ColdTables = len(scanResult.ColdTables)
+
+	e.log.Info("Tiered restore: table classification complete",
+		"critical", len(scanResult.CriticalTables),
+		"important", len(scanResult.ImportantTables),
+		"cold", len(scanResult.ColdTables),
+		"total_tables", len(scanResult.CopyTables),
+		"schema_stmts", len(scanResult.SchemaSQL),
+		"post_data_stmts", len(scanResult.PostDataSQL))
+
+	// Execute all schema statements first (CREATE TABLE, SET, etc.)
+	e.log.Info("Tiered restore: executing schema statements",
+		"count", len(scanResult.SchemaSQL))
+	for _, sql := range scanResult.SchemaSQL {
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
+		if err := e.executeStatement(ctx, sql); err != nil {
+			if options.ContinueOnError {
+				result.Errors = append(result.Errors, err.Error())
+			} else {
+				return result, fmt.Errorf("schema statement failed: %w", err)
+			}
+		}
+		result.SchemaStatements++
+	}
+
+	// Build a set of tables to restore in each phase
+	criticalSet := makeTableSet(scanResult.CriticalTables)
+	importantSet := makeTableSet(scanResult.ImportantTables)
+	coldSet := makeTableSet(scanResult.ColdTables)
+
+	// Phase 1: CRITICAL tables
+	if len(scanResult.CriticalTables) > 0 {
+		phaseStart := time.Now()
+		e.log.Info("🔴 Phase 1: Restoring CRITICAL tables",
+			"count", len(scanResult.CriticalTables),
+			"tables", scanResult.CriticalTables)
+
+		phaseResult, err := e.restorePhase(ctx, filePath, criticalSet, options)
+		result.CriticalDuration = time.Since(phaseStart)
+		result.RTO = result.CriticalDuration
+		mergePhaseResult(result, phaseResult)
+
+		if err != nil && !options.ContinueOnError {
+			return result, fmt.Errorf("critical phase failed: %w", err)
+		}
+
+		// Build indexes for critical tables
+		criticalIndexes := filterIndexesForTables(scanResult.PostDataSQL, criticalSet)
+		if len(criticalIndexes) > 0 {
+			e.log.Info("Creating indexes for critical tables", "count", len(criticalIndexes))
+			idxResult := e.executePostDataParallel(ctx, criticalIndexes, options)
+			result.IndexesCreated += idxResult
+		}
+
+		e.log.Info("✅ Phase 1 complete: CRITICAL tables restored",
+			"tables", len(scanResult.CriticalTables),
+			"duration", result.CriticalDuration,
+			"rto", result.RTO)
+
+		if options.PhaseCallback != nil {
+			options.PhaseCallback("critical", err)
+		}
+	}
+
+	if ctx.Err() != nil {
+		return result, ctx.Err()
+	}
+
+	// Phase 2: IMPORTANT tables
+	if len(scanResult.ImportantTables) > 0 {
+		phaseStart := time.Now()
+		e.log.Info("🟡 Phase 2: Restoring IMPORTANT tables",
+			"count", len(scanResult.ImportantTables),
+			"tables", scanResult.ImportantTables)
+
+		phaseResult, err := e.restorePhase(ctx, filePath, importantSet, options)
+		result.ImportantDuration = time.Since(phaseStart)
+		mergePhaseResult(result, phaseResult)
+
+		if err != nil && !options.ContinueOnError {
+			return result, fmt.Errorf("important phase failed: %w", err)
+		}
+
+		// Build indexes for important tables
+		importantIndexes := filterIndexesForTables(scanResult.PostDataSQL, importantSet)
+		if len(importantIndexes) > 0 {
+			e.log.Info("Creating indexes for important tables", "count", len(importantIndexes))
+			idxResult := e.executePostDataParallel(ctx, importantIndexes, options)
+			result.IndexesCreated += idxResult
+		}
+
+		e.log.Info("✅ Phase 2 complete: IMPORTANT tables restored",
+			"tables", len(scanResult.ImportantTables),
+			"duration", result.ImportantDuration)
+
+		if options.PhaseCallback != nil {
+			options.PhaseCallback("important", err)
+		}
+	}
+
+	if ctx.Err() != nil {
+		return result, ctx.Err()
+	}
+
+	// Phase 3: COLD tables
+	if len(scanResult.ColdTables) > 0 {
+		phaseStart := time.Now()
+		e.log.Info("🔵 Phase 3: Restoring COLD tables",
+			"count", len(scanResult.ColdTables),
+			"tables", scanResult.ColdTables)
+
+		phaseResult, err := e.restorePhase(ctx, filePath, coldSet, options)
+		result.ColdDuration = time.Since(phaseStart)
+		mergePhaseResult(result, phaseResult)
+
+		if err != nil && !options.ContinueOnError {
+			return result, fmt.Errorf("cold phase failed: %w", err)
+		}
+
+		// Build indexes for cold tables
+		coldIndexes := filterIndexesForTables(scanResult.PostDataSQL, coldSet)
+		if len(coldIndexes) > 0 {
+			e.log.Info("Creating indexes for cold tables", "count", len(coldIndexes))
+			idxResult := e.executePostDataParallel(ctx, coldIndexes, options)
+			result.IndexesCreated += idxResult
+		}
+
+		e.log.Info("✅ Phase 3 complete: COLD tables restored",
+			"tables", len(scanResult.ColdTables),
+			"duration", result.ColdDuration)
+
+		if options.PhaseCallback != nil {
+			options.PhaseCallback("cold", err)
+		}
+	}
+
+	// Execute remaining post-data statements that don't match any table
+	remainingPD := filterIndexesExcludingTables(scanResult.PostDataSQL, criticalSet, importantSet, coldSet)
+	if len(remainingPD) > 0 {
+		e.log.Info("Creating remaining indexes/constraints", "count", len(remainingPD))
+		idxResult := e.executePostDataParallel(ctx, remainingPD, options)
+		result.IndexesCreated += idxResult
+	}
+
+	result.Duration = time.Since(startTime)
+	result.DataDuration = result.CriticalDuration + result.ImportantDuration + result.ColdDuration
+
+	e.log.Info("Tiered restore completed",
+		"duration", result.Duration,
+		"rto", result.RTO,
+		"critical_tables", result.CriticalTables,
+		"critical_duration", result.CriticalDuration,
+		"important_tables", result.ImportantTables,
+		"important_duration", result.ImportantDuration,
+		"cold_tables", result.ColdTables,
+		"cold_duration", result.ColdDuration,
+		"total_tables", result.TablesRestored,
+		"total_rows", result.RowsRestored,
+		"indexes", result.IndexesCreated,
+		"errors", len(result.Errors))
+
+	return result, nil
+}
+
+// restorePhase re-reads the dump file and restores only tables in the given set.
+// Schema and post-data are skipped — only COPY blocks for matching tables are streamed.
+func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath string, tableSet map[string]bool, options *ParallelRestoreOptions) (*ParallelRestoreResult, error) {
+	result := &ParallelRestoreResult{}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return result, fmt.Errorf("phase restore: failed to open file: %w", err)
+	}
+
+	HintSequentialRead(file)
+
+	var cleanupOnce sync.Once
+	var gzReader *pgzip.Reader
+	cleanupFn := func() {
+		cleanupOnce.Do(func() {
+			if gzReader != nil {
+				gzReader.Close()
+			}
+			HintDoneWithFile(file)
+			file.Close()
+		})
+	}
+	defer cleanupFn()
+
+	bufReader := bufio.NewReaderSize(file, 256*1024)
+	var reader io.Reader = bufReader
+	if strings.HasSuffix(filePath, ".gz") {
+		decompWorkers := runtime.NumCPU()
+		if decompWorkers > 16 {
+			decompWorkers = 16
+		}
+		gzReader, err = pgzip.NewReaderN(bufReader, 1<<20, decompWorkers)
+		if err != nil {
+			return result, fmt.Errorf("phase restore: gzip reader failed: %w", err)
+		}
+		reader = gzReader
+	}
+
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024)
+
+	semaphore := make(chan struct{}, options.Workers)
+	var wg sync.WaitGroup
+	var totalRows int64
+	var tablesCompleted int64
+	var copyErrors []string
+	var copyErrMu sync.Mutex
+
+	inCopy := false
+
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			break
+		}
+
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		// Handle COPY data rows
+		if inCopy {
+			if line == "\\." {
+				inCopy = false
+			}
+			// If we're skipping this table, just consume lines
+			continue
+		}
+
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+
+		upper := strings.ToUpper(trimmed)
+
+		// Detect COPY blocks — only restore tables in our set
+		if strings.HasPrefix(upper, "COPY ") && strings.HasSuffix(trimmed, "FROM stdin;") {
+			parts := strings.Fields(trimmed)
+			tableName := ""
+			if len(parts) >= 2 {
+				tableName = parts[1]
+			}
+
+			if !tableSet[tableName] {
+				// Not in our phase — skip this COPY block
+				inCopy = true
+				continue
+			}
+
+			// This table is in our phase — stream it
+			pr, pw := io.Pipe()
+
+			acquired := false
+			select {
+			case semaphore <- struct{}{}:
+				acquired = true
+			case <-ctx.Done():
+			}
+			if !acquired {
+				pw.Close()
+				pr.Close()
+				break
+			}
+
+			wg.Add(1)
+			go func(tbl string, r *io.PipeReader) {
+				defer wg.Done()
+				defer func() { <-semaphore }()
+
+				copyStart := time.Now()
+				progressR := &ProgressReader{
+					r:          r,
+					tableName:  tbl,
+					lastReport: time.Now(),
+					log:        e.log,
+				}
+				rows, copyErr := e.streamCopy(ctx, tbl, progressR)
+
+				dur := time.Since(copyStart)
+				if copyErr != nil && ctx.Err() == nil {
+					e.log.Warn("COPY failed", "table", tbl, "error", copyErr, "duration", dur)
+					copyErrMu.Lock()
+					copyErrors = append(copyErrors, fmt.Sprintf("%s: %v", tbl, copyErr))
+					copyErrMu.Unlock()
+				} else if copyErr == nil {
+					atomic.AddInt64(&totalRows, rows)
+					atomic.AddInt64(&tablesCompleted, 1)
+					e.log.Info("COPY done", "table", tbl, "rows", rows, "duration", dur)
+				}
+			}(tableName, pr)
+
+			// Stream COPY data rows through pipe
+			bw := bufio.NewWriterSize(pw, 256*1024)
+			inCopy = true
+			for scanner.Scan() {
+				dataLine := scanner.Text()
+				if dataLine == "\\." {
+					inCopy = false
+					break
+				}
+				if _, werr := io.WriteString(bw, dataLine); werr != nil {
+					break
+				}
+				if _, werr := bw.Write([]byte{'\n'}); werr != nil {
+					break
+				}
+			}
+			bw.Flush()
+			pw.Close()
+			continue
+		}
+
+		// Skip all non-COPY statements (schema already executed, post-data handled separately)
+	}
+
+	wg.Wait()
+
+	result.TablesRestored = atomic.LoadInt64(&tablesCompleted)
+	result.RowsRestored = atomic.LoadInt64(&totalRows)
+
+	copyErrMu.Lock()
+	result.Errors = append(result.Errors, copyErrors...)
+	copyErrMu.Unlock()
+
+	if ctx.Err() != nil {
+		return result, ctx.Err()
+	}
+
+	return result, nil
+}
+
+// executePostDataParallel runs post-data statements (CREATE INDEX, constraints)
+// in parallel and returns the count of successfully created indexes.
+func (e *ParallelRestoreEngine) executePostDataParallel(ctx context.Context, stmts []string, options *ParallelRestoreOptions) int64 {
+	if len(stmts) == 0 {
+		return 0
+	}
+
+	// Sort: indexes first, then constraints
+	sort.SliceStable(stmts, func(i, j int) bool {
+		iIsIndex := isIndexStatement(stmts[i])
+		jIsIndex := isIndexStatement(stmts[j])
+		if iIsIndex != jIsIndex {
+			return iIsIndex
+		}
+		return false
+	})
+
+	semaphore := make(chan struct{}, options.Workers)
+	var wg sync.WaitGroup
+	var created int64
+
+	for _, sql := range stmts {
+		if ctx.Err() != nil {
+			break
+		}
+
+		wg.Add(1)
+		select {
+		case semaphore <- struct{}{}:
+		case <-ctx.Done():
+			wg.Done()
+			break
+		}
+
+		go func(stmt string) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+
+			if ctx.Err() != nil {
+				return
+			}
+
+			start := time.Now()
+			var err error
+			if isIndexStatement(stmt) {
+				err = e.executeIndexStatement(ctx, stmt)
+			} else {
+				err = e.executeStatement(ctx, stmt)
+			}
+
+			if err == nil {
+				atomic.AddInt64(&created, 1)
+				e.log.Info("Post-data completed",
+					"statement", extractIndexName(stmt),
+					"duration", time.Since(start))
+			} else if ctx.Err() == nil {
+				e.log.Warn("Post-data failed",
+					"statement", extractIndexName(stmt),
+					"error", err,
+					"duration", time.Since(start))
+			}
+		}(sql)
+	}
+
+	wg.Wait()
+	return atomic.LoadInt64(&created)
+}
+
+// makeTableSet creates a lookup set from a slice of table names.
+func makeTableSet(tables []string) map[string]bool {
+	set := make(map[string]bool, len(tables))
+	for _, t := range tables {
+		set[t] = true
+	}
+	return set
+}
+
+// mergePhaseResult adds phase counters into the overall result.
+func mergePhaseResult(total *ParallelRestoreResult, phase *ParallelRestoreResult) {
+	if phase == nil {
+		return
+	}
+	total.TablesRestored += phase.TablesRestored
+	total.RowsRestored += phase.RowsRestored
+	total.Errors = append(total.Errors, phase.Errors...)
+}
+
+// filterIndexesForTables returns post-data statements that reference tables in the set.
+func filterIndexesForTables(stmts []string, tableSet map[string]bool) []string {
+	var matched []string
+	for _, sql := range stmts {
+		if matchesTableSet(sql, tableSet) {
+			matched = append(matched, sql)
+		}
+	}
+	return matched
+}
+
+// filterIndexesExcludingTables returns post-data statements that don't match any table set.
+func filterIndexesExcludingTables(stmts []string, sets ...map[string]bool) []string {
+	var remaining []string
+	for _, sql := range stmts {
+		matched := false
+		for _, s := range sets {
+			if matchesTableSet(sql, s) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			remaining = append(remaining, sql)
+		}
+	}
+	return remaining
+}
+
+// matchesTableSet checks if a post-data SQL statement references any table in the set.
+// Looks for "ON <table>" (indexes) or "TABLE <table>" (constraints).
+func matchesTableSet(sql string, tableSet map[string]bool) bool {
+	fields := strings.Fields(sql)
+	for i, field := range fields {
+		upper := strings.ToUpper(field)
+		if (upper == "ON" || upper == "TABLE") && i+1 < len(fields) {
+			tableName := strings.TrimSuffix(fields[i+1], ";")
+			tableName = strings.TrimSuffix(tableName, "(")
+			if tableSet[tableName] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ════════════════════════════════════════════════════════════════════

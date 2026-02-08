@@ -215,6 +215,126 @@ func forceCheckpoint(ctx context.Context, pool *pgxpool.Pool, log logger.Logger)
 	return nil
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Priority-Based Tiered Restore — RTO optimization
+// ──────────────────────────────────────────────────────────────────
+
+// TablePriority defines restore order for RTO optimization.
+// Critical tables restore first so the application can come online
+// while cold data continues restoring in the background.
+type TablePriority int
+
+const (
+	// PriorityCritical tables restore first (users, sessions, payments).
+	// App can come online after this phase completes.
+	PriorityCritical TablePriority = 0
+
+	// PriorityImportant tables restore second (orders, products).
+	// Core business functions available after this phase.
+	PriorityImportant TablePriority = 1
+
+	// PriorityCold tables restore last (logs, analytics, archives).
+	// Background restoration, app already online.
+	PriorityCold TablePriority = 2
+
+	// PriorityDefault is the fallback for unclassified tables.
+	PriorityDefault TablePriority = 1
+)
+
+// String returns the priority level name.
+func (p TablePriority) String() string {
+	switch p {
+	case PriorityCritical:
+		return "critical"
+	case PriorityImportant:
+		return "important"
+	case PriorityCold:
+		return "cold"
+	default:
+		return "default"
+	}
+}
+
+// TableClassification maps table name patterns to priorities.
+// Users can customize this via CLI flags.
+type TableClassification struct {
+	CriticalPatterns  []string // e.g., ["user*", "session*", "payment*"]
+	ImportantPatterns []string // e.g., ["order*", "product*", "inventory*"]
+	ColdPatterns      []string // e.g., ["*_log", "*_archive", "analytics_*"]
+}
+
+// DefaultTableClassification returns sensible defaults for web applications.
+func DefaultTableClassification() *TableClassification {
+	return &TableClassification{
+		CriticalPatterns: []string{
+			"user*", "users", "account*", "session*",
+			"payment*", "transaction*", "auth*",
+		},
+		ImportantPatterns: []string{
+			"order*", "product*", "inventory*",
+			"cart*", "customer*", "invoice*",
+		},
+		ColdPatterns: []string{
+			"*_log", "*_logs", "*_archive", "*_history",
+			"audit_*", "analytics_*", "report_*", "old_*",
+		},
+	}
+}
+
+// ClassifyTable returns the priority for a given table name.
+// Strips schema prefix (public.users → users) before matching.
+func (tc *TableClassification) ClassifyTable(tableName string) TablePriority {
+	// Strip schema prefix
+	name := tableName
+	if idx := strings.LastIndex(name, "."); idx >= 0 {
+		name = name[idx+1:]
+	}
+	lower := strings.ToLower(name)
+
+	// Check critical patterns first
+	for _, pattern := range tc.CriticalPatterns {
+		if matchPattern(lower, strings.ToLower(pattern)) {
+			return PriorityCritical
+		}
+	}
+
+	// Check cold patterns (before important — logs should be cold even if important-looking)
+	for _, pattern := range tc.ColdPatterns {
+		if matchPattern(lower, strings.ToLower(pattern)) {
+			return PriorityCold
+		}
+	}
+
+	// Check important patterns
+	for _, pattern := range tc.ImportantPatterns {
+		if matchPattern(lower, strings.ToLower(pattern)) {
+			return PriorityImportant
+		}
+	}
+
+	return PriorityDefault
+}
+
+// matchPattern does simple wildcard matching (* only).
+func matchPattern(s, pattern string) bool {
+	if pattern == "*" {
+		return true
+	}
+	if !strings.Contains(pattern, "*") {
+		return s == pattern
+	}
+	if strings.HasPrefix(pattern, "*") && strings.HasSuffix(pattern, "*") {
+		return strings.Contains(s, strings.Trim(pattern, "*"))
+	}
+	if strings.HasPrefix(pattern, "*") {
+		return strings.HasSuffix(s, strings.TrimPrefix(pattern, "*"))
+	}
+	if strings.HasSuffix(pattern, "*") {
+		return strings.HasPrefix(s, strings.TrimSuffix(pattern, "*"))
+	}
+	return s == pattern
+}
+
 // applyTurboSessionSettings configures aggressive session-level optimizations.
 // Only used in turbo mode. These settings persist for the connection lifetime.
 func applyTurboSessionSettings(ctx context.Context, pool *pgxpool.Pool, log logger.Logger) {

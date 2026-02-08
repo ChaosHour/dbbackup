@@ -35,6 +35,13 @@ var (
 	restoreParallelDBs   int    // Number of parallel database restores
 	restoreProfile       string // Resource profile: conservative, balanced, aggressive, turbo, max-performance
 	restoreModeName      string // Restore WAL mode: safe, balanced, turbo
+
+	// Tiered restore flags
+	tieredRestore    bool     // Enable priority-based phased restore
+	criticalTables   []string // Critical table patterns
+	importantTables  []string // Important table patterns
+	coldTables       []string // Cold table patterns
+
 	restoreTarget        string
 	restoreVerbose       bool
 	restoreNoProgress    bool
@@ -328,6 +335,10 @@ func init() {
 	restoreSingleCmd.Flags().StringVar(&restoreTarget, "target", "", "Target database name (defaults to original)")
 	restoreSingleCmd.Flags().StringVar(&restoreProfile, "profile", "balanced", "Resource profile: conservative, balanced, turbo (--jobs=8), max-performance")
 	restoreSingleCmd.Flags().StringVar(&restoreModeName, "restore-mode", "safe", "WAL logging strategy: safe (full WAL), balanced (UNLOGGED COPY, LOGGED indexes), turbo (UNLOGGED all, dev/test only)")
+	restoreSingleCmd.Flags().BoolVar(&tieredRestore, "tiered-restore", false, "Enable priority-based phased restore (critical → important → cold) for RTO optimization")
+	restoreSingleCmd.Flags().StringSliceVar(&criticalTables, "critical-tables", nil, "Critical table patterns restored first (e.g., user*,session*,payment*)")
+	restoreSingleCmd.Flags().StringSliceVar(&importantTables, "important-tables", nil, "Important table patterns restored second (e.g., order*,product*)")
+	restoreSingleCmd.Flags().StringSliceVar(&coldTables, "cold-tables", nil, "Cold table patterns restored last (e.g., *_log,*_archive)")
 	restoreSingleCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
@@ -357,6 +368,10 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreCleanCluster, "clean-cluster", false, "Drop all existing user databases before restore (disaster recovery)")
 	restoreClusterCmd.Flags().StringVar(&restoreProfile, "profile", "conservative", "Resource profile: conservative, balanced, turbo (--jobs=8), max-performance")
 	restoreClusterCmd.Flags().StringVar(&restoreModeName, "restore-mode", "safe", "WAL logging strategy: safe (full WAL), balanced (UNLOGGED COPY, LOGGED indexes), turbo (UNLOGGED all, dev/test only)")
+	restoreClusterCmd.Flags().BoolVar(&tieredRestore, "tiered-restore", false, "Enable priority-based phased restore (critical → important → cold) for RTO optimization")
+	restoreClusterCmd.Flags().StringSliceVar(&criticalTables, "critical-tables", nil, "Critical table patterns restored first (e.g., user*,session*,payment*)")
+	restoreClusterCmd.Flags().StringSliceVar(&importantTables, "important-tables", nil, "Important table patterns restored second (e.g., order*,product*)")
+	restoreClusterCmd.Flags().StringSliceVar(&coldTables, "cold-tables", nil, "Cold table patterns restored last (e.g., *_log,*_archive)")
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto, overrides profile)")
 	restoreClusterCmd.Flags().IntVar(&restoreParallelDBs, "parallel-dbs", 0, "Number of databases to restore in parallel (0 = use profile, 1 = sequential, -1 = auto-detect, overrides profile)")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
@@ -404,6 +419,13 @@ func init() {
 			// Pass restore mode to config
 			if c.Flags().Changed("restore-mode") {
 				cfg.RestoreMode = restoreModeName
+			}
+			// Pass tiered restore settings to config
+			if tieredRestore {
+				cfg.TieredRestore = true
+				cfg.CriticalTables = criticalTables
+				cfg.ImportantTables = importantTables
+				cfg.ColdTables = coldTables
 			}
 			return nil
 		}

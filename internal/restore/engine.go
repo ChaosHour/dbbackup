@@ -595,6 +595,7 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 		Workers:         parallelWorkers,
 		ContinueOnError: true,
 		RestoreMode:     restoreMode,
+		TieredRestore:   e.cfg.TieredRestore,
 		ProgressCallback: func(phase string, current, total int, tableName string) {
 			switch phase {
 			case "parsing":
@@ -613,6 +614,33 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 		},
 	}
 
+	// Wire tiered restore classification if enabled
+	if e.cfg.TieredRestore {
+		classification := native.DefaultTableClassification()
+		if len(e.cfg.CriticalTables) > 0 {
+			classification.CriticalPatterns = e.cfg.CriticalTables
+		}
+		if len(e.cfg.ImportantTables) > 0 {
+			classification.ImportantPatterns = e.cfg.ImportantTables
+		}
+		if len(e.cfg.ColdTables) > 0 {
+			classification.ColdPatterns = e.cfg.ColdTables
+		}
+		options.TableClassification = classification
+		options.PhaseCallback = func(phase string, phaseErr error) {
+			if phaseErr != nil {
+				e.log.Error("Tiered restore phase failed", "phase", phase, "error", phaseErr)
+				return
+			}
+			e.log.Info("Tiered restore phase complete", "phase", phase)
+		}
+
+		e.log.Info("Tiered restore enabled",
+			"critical_patterns", classification.CriticalPatterns,
+			"important_patterns", classification.ImportantPatterns,
+			"cold_patterns", classification.ColdPatterns)
+	}
+
 	result, err := parallelEngine.RestoreFile(ctx, archivePath, options)
 	if err != nil {
 		return fmt.Errorf("parallel native restore failed: %w", err)
@@ -627,6 +655,19 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 		"duration", result.Duration,
 		"data_phase", result.DataDuration,
 		"index_phase", result.IndexDuration)
+
+	// Log tiered restore summary
+	if result.TieredRestore {
+		e.log.Info("Tiered restore summary",
+			"rto", result.RTO,
+			"critical_tables", result.CriticalTables,
+			"critical_duration", result.CriticalDuration,
+			"important_tables", result.ImportantTables,
+			"important_duration", result.ImportantDuration,
+			"cold_tables", result.ColdTables,
+			"cold_duration", result.ColdDuration,
+			"total_duration", result.Duration)
+	}
 
 	// Log restore mode performance summary
 	if result.RestoreMode != native.RestoreModeSafe && result.TablesToggled > 0 {

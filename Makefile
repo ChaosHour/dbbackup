@@ -14,9 +14,43 @@ all: lint test build
 
 ## build: Build the binary with optimizations
 build:
-	@echo "🔨 Building dbbackup $(VERSION)..."
+	@echo "Building dbbackup $(VERSION)..."
 	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o bin/dbbackup .
-	@echo "✅ Built bin/dbbackup"
+	@echo "Built bin/dbbackup"
+
+## build-pgo: Build with Profile-Guided Optimization (5-15% faster)
+## Requires a CPU profile: make pgo-profile, then make build-pgo
+build-pgo:
+	@if [ -f default.pgo ]; then \
+		echo "Building dbbackup $(VERSION) with PGO..."; \
+		CGO_ENABLED=0 go build -trimpath -pgo=default.pgo -ldflags="$(LDFLAGS)" -o bin/dbbackup . ; \
+		echo "Built bin/dbbackup (PGO-optimized)"; \
+	else \
+		echo "ERROR: default.pgo not found. Run 'make pgo-profile' first."; \
+		echo "  1. make pgo-profile"; \
+		echo "  2. Run a production workload (restore a real dump)"; \
+		echo "  3. Press Ctrl+C or wait for completion"; \
+		echo "  4. make build-pgo"; \
+		exit 1; \
+	fi
+
+## pgo-profile: Generate CPU profile for PGO builds
+## Start the binary with profiling, run your workload, then stop it.
+pgo-profile:
+	@echo "Building instrumented binary for profiling..."
+	CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)" -o bin/dbbackup-profile .
+	@echo ""
+	@echo "=== PGO Profiling Workflow ==="
+	@echo "1. Run a representative workload with CPU profiling:"
+	@echo "   go test -cpuprofile=default.pgo -bench=. -benchtime=30s ./internal/engine/native/"
+	@echo ""
+	@echo "   OR profile a real restore:"
+	@echo "   bin/dbbackup-profile restore single <dump.sql.gz> --target mydb --confirm &"
+	@echo "   PID=\$$!; sleep 60; kill -INT \$$PID"
+	@echo "   # Then merge profiles: go tool pprof -proto cpu.pprof > default.pgo"
+	@echo ""
+	@echo "2. Build with PGO: make build-pgo"
+	@echo ""
 
 ## build-debug: Build with debug symbols (for debugging)
 build-debug:

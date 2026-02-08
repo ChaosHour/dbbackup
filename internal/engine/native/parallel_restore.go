@@ -168,6 +168,12 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	if err != nil {
 		return result, fmt.Errorf("failed to open file: %w", err)
 	}
+
+	// Linux: tell the kernel we'll read this file sequentially.
+	// fadvise(FADV_SEQUENTIAL) doubles the readahead window.
+	// fadvise(FADV_WILLNEED) prefetches the first 32MB into page cache.
+	HintSequentialRead(file)
+
 	var cleanupOnce sync.Once
 	var gzReader *pgzip.Reader
 	cleanupFn := func() {
@@ -175,6 +181,9 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 			if gzReader != nil {
 				gzReader.Close()
 			}
+			// Linux: evict dump file pages from cache to free RAM
+			// for PostgreSQL shared_buffers during the restore.
+			HintDoneWithFile(file)
 			file.Close()
 		})
 	}
@@ -263,6 +272,12 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 			// io.Pipe: scanner writes rows → pgx CopyFrom reads them
 			// No buffering. Rows go straight from gzip → PostgreSQL.
 			pr, pw := io.Pipe()
+
+			// Note: io.Pipe is an in-process pipe (no kernel fd).
+			// splice(2) cannot be used here. The zero-copy path is
+			// available via SplicePipe for file-to-pipe transfers.
+			// For row streaming, the bufio.Writer below batches writes
+			// into 256KB chunks which is the optimal strategy.
 
 			// Acquire a worker slot (blocks if all workers busy — backpressure)
 			acquired := false

@@ -77,6 +77,7 @@ func fetchDatabases(cfg *config.Config, log logger.Logger) tea.Cmd {
 }
 
 func (m DatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "dbselector", msg)
 	switch msg := msg.(type) {
 	case databaseListMsg:
 		m.loading = false

@@ -522,7 +522,11 @@ func (m *HealthViewModel) checkDiskSpace() TUIHealthCheck {
 }
 
 func (m *HealthViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "health", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return m.parent, nil
+
 	case tickMsg:
 		if m.loading {
 			return m, tickCmd()

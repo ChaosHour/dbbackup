@@ -77,7 +77,11 @@ func (v *CompressionAdvisorView) runAnalysis() tea.Cmd {
 
 // Update handles messages
 func (v *CompressionAdvisorView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(v.config, v.logger, "compression_advisor", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return v.parent, nil
+
 	case compressionAnalysisMsg:
 		v.scanning = false
 		v.analysis = msg.analysis

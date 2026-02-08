@@ -98,7 +98,11 @@ func runDiagnosis(cfg *config.Config, log logger.Logger, archive ArchiveInfo) te
 }
 
 func (m DiagnoseViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "diagnose", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return m.parent, nil
+
 	case diagnoseCompleteMsg:
 		m.running = false
 		m.completed = true

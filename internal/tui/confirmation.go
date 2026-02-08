@@ -64,6 +64,7 @@ func (m ConfirmationModel) Init() tea.Cmd {
 type autoConfirmMsg struct{}
 
 func (m ConfirmationModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "confirmation", msg)
 	switch msg := msg.(type) {
 	case autoConfirmMsg:
 		// Auto-confirm triggered

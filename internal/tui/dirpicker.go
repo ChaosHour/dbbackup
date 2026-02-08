@@ -142,6 +142,12 @@ func (dp *DirectoryPicker) Init() tea.Cmd {
 
 func (dp *DirectoryPicker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		if dp.callback != nil {
+			dp.callback("") // Cancel
+		}
+		return dp, nil
+
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+c", "q", "esc"))):

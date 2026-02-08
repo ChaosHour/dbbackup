@@ -52,7 +52,14 @@ func (m InputModel) Init() tea.Cmd {
 type inputAutoConfirmMsg struct{}
 
 func (m InputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "input", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		if selector, ok := m.parent.(DatabaseSelectorModel); ok {
+			return selector.parent, nil
+		}
+		return m.parent, nil
+
 	case inputAutoConfirmMsg:
 		// Use default value and proceed
 		if selector, ok := m.parent.(DatabaseSelectorModel); ok {

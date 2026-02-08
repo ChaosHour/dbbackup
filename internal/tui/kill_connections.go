@@ -261,7 +261,11 @@ func (v *KillConnectionsView) doKillAllConnections() error {
 
 // Update handles messages
 func (v *KillConnectionsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(v.config, v.logger, "kill_connections", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return v.parent, nil
+
 	case connectionsLoadedMsg:
 		v.loading = false
 		v.connections = msg.connections

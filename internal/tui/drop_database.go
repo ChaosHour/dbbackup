@@ -181,7 +181,11 @@ func (v *DropDatabaseView) doDropDatabase(dbName string) error {
 
 // Update handles messages
 func (v *DropDatabaseView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(v.config, v.logger, "drop_database", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return v.parent, nil
+
 	case databasesLoadedMsg:
 		v.loading = false
 		v.databases = msg.databases

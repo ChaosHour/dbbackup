@@ -90,6 +90,9 @@ func (v *CatalogDashboardView) Init() tea.Cmd {
 // Update handles messages
 func (v *CatalogDashboardView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return v, tea.Quit
+
 	case tea.WindowSizeMsg:
 		v.width = msg.Width
 		v.height = msg.Height

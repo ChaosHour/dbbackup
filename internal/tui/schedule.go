@@ -170,7 +170,11 @@ func parseTimerList(output string) []TimerInfo {
 }
 
 func (s *ScheduleView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(s.config, s.logger, "schedule", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return s.parent, nil
+
 	case scheduleLoadedMsg:
 		s.loading = false
 		if msg.err != nil {

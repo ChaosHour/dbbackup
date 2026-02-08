@@ -169,6 +169,7 @@ func buildDSNFromConfig(cfg *config.Config) string {
 
 // Update handles messages
 func (m *ProfileModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "profile", msg)
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

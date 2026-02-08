@@ -174,6 +174,7 @@ func generateMetaFromDatabases(archivePath string, databases []restore.DatabaseI
 }
 
 func (m ClusterDatabaseSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "cluster_db_selector", msg)
 	switch msg := msg.(type) {
 	case clusterDatabaseListMsg:
 		m.loading = false

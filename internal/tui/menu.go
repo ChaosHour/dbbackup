@@ -157,6 +157,7 @@ func (m *MenuModel) Init() tea.Cmd {
 
 // Update handles messages
 func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "menu", msg)
 	switch msg := msg.(type) {
 	case autoSelectMsg:
 		// Handle auto-selection

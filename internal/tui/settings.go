@@ -604,7 +604,11 @@ type settingsAutoQuitMsg struct{}
 
 // Update handles messages
 func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "settings", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return m.parent, nil
+
 	case settingsAutoQuitMsg:
 		return m.parent, tea.Quit
 

@@ -59,10 +59,16 @@ func (v *MetadataGeneratorView) Init() tea.Cmd {
 
 // Update handles messages
 func (v *MetadataGeneratorView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(v.config, v.logger, "metadata_generator", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return v.parent, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q", "esc", "enter":
+		case "ctrl+c", "q", "esc":
+			return v.parent, nil
+		case "enter":
 			if v.done {
 				return v.parent, nil
 			}

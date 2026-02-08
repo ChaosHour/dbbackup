@@ -118,7 +118,11 @@ func fetchStatus(cfg *config.Config, log logger.Logger) tea.Cmd {
 }
 
 func (m StatusViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "status", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return m.parent, nil
+
 	case statusAutoQuitMsg:
 		return m.parent, tea.Quit
 

@@ -117,6 +117,7 @@ func (m HistoryViewModel) Init() tea.Cmd {
 }
 
 func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "history", msg)
 	maxVisible := 15 // Show max 15 items at once
 
 	// Auto-forward in auto-confirm mode
@@ -125,6 +126,9 @@ func (m HistoryViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return m.parent, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":

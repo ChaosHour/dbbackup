@@ -234,7 +234,11 @@ func (b *BlobStatsView) scanColumnStats(ctx context.Context, db *sql.DB, col *Bl
 
 // Update handles messages
 func (b *BlobStatsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(b.config, b.logger, "blob_stats", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return b.parent, nil
+
 	case blobScanMsg:
 		b.scanning = false
 		b.scanned = true

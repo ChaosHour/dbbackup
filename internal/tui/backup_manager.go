@@ -75,7 +75,11 @@ type verifyResultMsg struct {
 }
 
 func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "backup_manager", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return m.parent, nil
+
 	case managerTickMsg:
 		// Update spinner frame
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)

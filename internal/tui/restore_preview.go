@@ -310,6 +310,7 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 }
 
 func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "restore_preview", msg)
 	switch msg := msg.(type) {
 	case safetyCheckCompleteMsg:
 		m.checking = false

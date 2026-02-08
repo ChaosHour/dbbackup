@@ -53,6 +53,7 @@ TUI Automation Flags (for testing and CI/CD):
   --auto-confirm            Auto-confirm all prompts (no user interaction)
   --dry-run                 Simulate operations without execution
   --verbose-tui             Enable detailed TUI event logging
+  --tui-debug               Trace TUI state machine transitions (msg types, keys, screen switches)
   --tui-log-file <path>     Write TUI events to log file`,
 	Aliases: []string{"menu", "ui"},
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -64,6 +65,7 @@ TUI Automation Flags (for testing and CI/CD):
 		cfg.TUIAutoConfirm, _ = cmd.Flags().GetBool("auto-confirm")
 		cfg.TUIDryRun, _ = cmd.Flags().GetBool("dry-run")
 		cfg.TUIVerbose, _ = cmd.Flags().GetBool("verbose-tui")
+		cfg.TUIDebug, _ = cmd.Flags().GetBool("tui-debug")
 		cfg.TUILogFile, _ = cmd.Flags().GetString("tui-log-file")
 
 		// FIXED: Only set default profile if user hasn't configured one
@@ -92,7 +94,7 @@ TUI Automation Flags (for testing and CI/CD):
 
 		// Use verbose logger if TUI verbose mode enabled
 		var interactiveLog logger.Logger
-		if cfg.TUIVerbose {
+		if cfg.TUIVerbose || cfg.TUIDebug {
 			interactiveLog = log
 		} else {
 			interactiveLog = logger.NewSilent()
@@ -112,6 +114,7 @@ func init() {
 	interactiveCmd.Flags().Bool("auto-confirm", false, "Auto-confirm all prompts")
 	interactiveCmd.Flags().Bool("dry-run", false, "Simulate operations without execution")
 	interactiveCmd.Flags().Bool("verbose-tui", false, "Enable verbose TUI logging")
+	interactiveCmd.Flags().Bool("tui-debug", false, "Trace TUI state machine transitions")
 	interactiveCmd.Flags().String("tui-log-file", "", "Write TUI events to file")
 }
 

@@ -173,6 +173,7 @@ type Config struct {
 	TUIAutoConfirm  bool   // Auto-confirm all prompts
 	TUIDryRun       bool   // TUI dry-run mode (simulate without execution)
 	TUIVerbose      bool   // Verbose TUI logging
+	TUIDebug        bool   // Debug TUI state machine transitions
 	TUILogFile      string // TUI event log file path
 
 	// Safety options
@@ -327,6 +328,7 @@ func New() *Config {
 		TUIAutoConfirm:  getEnvBool("TUI_AUTO_CONFIRM", false), // Manual confirm by default
 		TUIDryRun:       getEnvBool("TUI_DRY_RUN", false),      // Execute by default
 		TUIVerbose:      getEnvBool("TUI_VERBOSE", false),      // Quiet by default
+		TUIDebug:        getEnvBool("TUI_DEBUG", false),        // No state machine tracing by default
 		TUILogFile:      getEnvString("TUI_LOG_FILE", ""),      // No log file by default
 
 		// Cloud storage defaults (v2.0)

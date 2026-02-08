@@ -158,7 +158,11 @@ func buildBackupChain(ctx context.Context, cat *catalog.SQLiteCatalog, database 
 }
 
 func (c *ChainView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(c.config, c.logger, "chain", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return c.parent, nil
+
 	case chainLoadedMsg:
 		c.loading = false
 		if msg.err != nil {

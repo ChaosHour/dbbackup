@@ -59,7 +59,11 @@ func (t *ToolsMenu) Init() tea.Cmd {
 
 // Update handles messages
 func (t *ToolsMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(t.config, t.logger, "tools", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return t.parent, nil
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":

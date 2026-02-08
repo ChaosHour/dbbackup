@@ -715,6 +715,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 }
 
 func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "restore_exec", msg)
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		// Update terminal dimensions for rich progress view

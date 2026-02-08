@@ -167,6 +167,7 @@ func loadArchives(cfg *config.Config, log logger.Logger) tea.Cmd {
 }
 
 func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "archive_browser", msg)
 	switch msg := msg.(type) {
 	case archiveListMsg:
 		m.loading = false

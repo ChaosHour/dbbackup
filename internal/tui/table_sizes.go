@@ -184,7 +184,11 @@ func (v *TableSizesView) fetchMySQLTableSizes(ctx context.Context, db *sql.DB) (
 
 // Update handles messages
 func (v *TableSizesView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(v.config, v.logger, "table_sizes", msg)
 	switch msg := msg.(type) {
+	case tea.InterruptMsg:
+		return v.parent, nil
+
 	case tableSizesLoadedMsg:
 		v.loading = false
 		v.tables = msg.tables

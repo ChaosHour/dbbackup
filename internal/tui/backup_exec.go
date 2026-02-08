@@ -331,6 +331,7 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 }
 
 func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	tuiDebugLog(m.config, m.logger, "backup_exec", msg)
 	switch msg := msg.(type) {
 	case backupTickMsg:
 		if !m.done {

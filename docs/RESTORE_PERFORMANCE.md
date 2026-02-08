@@ -237,6 +237,44 @@ AND state = 'active'
 ORDER BY duration DESC;
 ```
 
+## Native Streaming Engine Optimizations (v5.8.60+)
+
+The native streaming restore engine (`ParallelRestoreEngine`) applies these
+optimizations automatically during SQL-format restores:
+
+### Data Phase (COPY Streaming)
+
+| Optimization | Description |
+|---|---|
+| Buffered pipe writer | 256KB `bufio.Writer` batches row writes into large chunks, halving syscall overhead |
+| Buffered file reader | 256KB `bufio.Reader` wrapping the dump file for filesystem readahead |
+| Tuned pgzip | `pgzip.NewReaderN` with 1MB blocks and CPU-scaled workers (cap 16) |
+| Progress reporting | Per-table throughput logged every 10 seconds (MB processed) |
+| Zero-buffer streaming | `io.Pipe` backpressure -- rows flow from gzip to PostgreSQL with no intermediate memory |
+
+### Index Phase (Post-Data)
+
+| Optimization | Description |
+|---|---|
+| Index-specific session | `maintenance_work_mem = 2GB`, `max_parallel_maintenance_workers = 4` |
+| Relaxed durability | `synchronous_commit = off`, `checkpoint_timeout = 30min` |
+| SSD tuning | `effective_io_concurrency = 200`, `random_page_cost = 1.1` |
+| 4-hour timeout | CREATE INDEX timeout extended from 1 hour to 4 hours for fragmented data |
+| Sorted execution | CREATE INDEX runs before ADD CONSTRAINT/FOREIGN KEY to avoid FK seqscans |
+| Slow detection | Warning logged for any post-data statement exceeding 5 minutes |
+
+### Per-Connection Bulk-Load Settings
+
+```sql
+SET synchronous_commit = 'off';
+SET session_replication_role = 'replica';
+SET work_mem = '256MB';
+SET maintenance_work_mem = '2GB';
+```
+
+These are applied automatically per COPY connection. No manual PostgreSQL
+configuration changes are required.
+
 ## Best Practices Summary
 
 1. **Use `--profile turbo` for production restores** - matches `pg_restore -j8`
@@ -245,3 +283,5 @@ ORDER BY duration DESC;
 4. **For cluster restores, use `--parallel-dbs 4`** - balances I/O and speed
 5. **Tune PostgreSQL** - `maintenance_work_mem`, `max_wal_size`
 6. **Run benchmark script** - identify your specific bottlenecks
+7. **Use SSD storage** - the native engine sets `effective_io_concurrency = 200` for index builds
+8. **Check slow operation warnings** - statements over 5 minutes are logged as potential fragmented data indicators

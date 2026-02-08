@@ -138,7 +138,30 @@ type BufferPool struct {
 - Reduces GC pause times
 - Thread-safe concurrent access
 
-### 3.2 Compression Configuration (`internal/performance/compression.go`)
+### 3.2 Streaming Restore Engine I/O (`internal/engine/native/parallel_restore.go`)
+
+The native streaming restore engine applies layered I/O optimizations:
+
+```go
+// File readahead: 256KB buffered reader wrapping the dump file
+bufReader := bufio.NewReaderSize(file, 256*1024)
+
+// Decompression: pgzip with tuned block size and CPU-scaled workers
+pgzip.NewReaderN(bufReader, 1<<20, runtime.NumCPU())  // 1MB blocks
+
+// COPY pipe: 256KB buffered writer batching row writes
+bw := bufio.NewWriterSize(pw, 256*1024)
+```
+
+Data flow: `file -> bufio.Reader -> pgzip -> scanner -> bufio.Writer -> io.Pipe -> pgx CopyFrom`
+
+Post-data optimizations for index builds:
+- Sorted execution: CREATE INDEX before ADD CONSTRAINT (avoids FK seqscans)
+- Per-connection: `maintenance_work_mem = 2GB`, `max_parallel_maintenance_workers = 4`
+- SSD hints: `effective_io_concurrency = 200`, `random_page_cost = 1.1`
+- 4-hour timeout for CREATE INDEX on fragmented data
+
+### 3.3 Compression Configuration (`internal/performance/compression.go`)
 
 ```go
 // Optimal settings for different scenarios
@@ -156,7 +179,7 @@ func MaxThroughputConfig() CompressionConfig {
 - **Restore**: Use maximum workers for decompression
 - **Storage-constrained**: Use `Default` (level 6) for better ratio
 
-### 3.3 Pipeline Stage System (`internal/performance/pipeline.go`)
+### 3.4 Pipeline Stage System (`internal/performance/pipeline.go`)
 
 ```go
 // Multi-stage data processing pipeline
@@ -179,7 +202,7 @@ type PipelineStage struct {
 - Per-stage metrics collection
 - Automatic backpressure handling
 
-### 3.4 Worker Pool (`internal/performance/workers.go`)
+### 3.5 Worker Pool (`internal/performance/workers.go`)
 
 ```go
 type WorkerPoolConfig struct {
@@ -195,7 +218,7 @@ type WorkerPoolConfig struct {
 - Graceful shutdown with work completion
 - Metrics: completed, failed, active workers
 
-### 3.5 Restore Optimization (`internal/performance/restore.go`)
+### 3.6 Restore Optimization (`internal/performance/restore.go`)
 
 ```go
 // PostgreSQL-specific optimizations

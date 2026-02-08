@@ -119,7 +119,9 @@
 - [x] **SQL script execution**: Native psql replacement
 - [ ] **Custom format restore**: Parse and restore from binary format
 - [x] **Selective restore**: Schema-only, data-only, table-specific
-- [ ] **Parallel restore**: Multi-worker restoration
+- [x] **Parallel restore**: Zero-buffer streaming with `io.Pipe`, buffered I/O (256KB),
+  tuned pgzip decompression, sorted post-data execution, index-specific optimizations
+  (`maintenance_work_mem = 2GB`, parallel workers, SSD I/O hints)
 - [x] **Error handling**: Continue on error, skip existing objects
 
 #### MySQL Restore Engine  

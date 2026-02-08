@@ -108,6 +108,25 @@ dbbackup restore cluster backup.tar.gz --profile=turbo --confirm
 | Stability | Most stable | Stable | Good | Good |
 | Best For | Small VMs | General use | Powerful servers | DR/Large DBs |
 
+### Native Streaming Engine (v5.8.60+)
+
+When using the native streaming restore engine (default for SQL-format dumps),
+additional per-connection optimizations are applied automatically regardless of
+profile:
+
+| Setting | Value | Purpose |
+|---------|-------|----------|
+| Pipe buffer | 256KB `bufio.Writer` | Batches row writes, halves syscall overhead |
+| File readahead | 256KB `bufio.Reader` | Sequential scan prefetch |
+| pgzip workers | CPU count (cap 16) | Parallel decompression with 1MB blocks |
+| `maintenance_work_mem` | 2GB | Faster index builds |
+| `max_parallel_maintenance_workers` | 4 | Parallel CREATE INDEX |
+| `effective_io_concurrency` | 200 | SSD-optimized I/O for index builds |
+| `random_page_cost` | 1.1 | SSD cost model |
+| Post-data ordering | Indexes before FKs | Avoids FK validation seqscans |
+| COPY progress | Every 10 seconds | Per-table MB throughput logging |
+| Slow detection | >5 minutes | Warning for fragmented data indicators |
+
 ## Overriding Profile Settings
 
 You can override specific profile settings:

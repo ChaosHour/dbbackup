@@ -5,6 +5,39 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.61] - 2026-02-08
+
+### Performance
+- **Streaming Restore Engine -- I/O Optimizations**
+  - Buffered pipe writer (256KB `bufio.Writer`) wrapping the `io.Pipe` in COPY streaming.
+    Previously every row caused two unbuffered pipe writes (data + newline). Now batched
+    into large chunks, halving syscall overhead on the data phase.
+  - Buffered file reader (256KB `bufio.Reader`) wrapping the dump file before pgzip
+    decompression, improving filesystem readahead for sequential scan.
+  - Tuned `pgzip.NewReaderN` with 1MB block size and CPU-scaled worker count (capped at 16).
+    Previously used `pgzip.NewReader` with default untuned settings.
+  - Wired `ProgressReader` into `streamCopy` -- per-table COPY throughput is now logged
+    every 10 seconds with MB processed. Was previously defined but never used (dead code).
+  - Post-data statements (CREATE INDEX, ADD CONSTRAINT) are now sorted: all CREATE INDEX
+    statements execute before FK constraints. FK validation does a sequential scan if the
+    referenced index has not been built yet, so ordering matters on fragmented data.
+  - Added `effective_io_concurrency = 200` and `random_page_cost = 1.1` to
+    `executeIndexStatement` for SSD-optimized parallel index builds.
+
+## [5.8.60] - 2026-02-08
+
+### Performance
+- **Streaming Restore Engine -- Fragmented Data Optimizations**
+  - Added `ProgressReader` type for COPY streaming visibility (logs throughput every 10s).
+  - Increased `maintenance_work_mem` from 512MB to 2GB in `streamCopy` bulk-load settings.
+  - Added `executeIndexStatement` method with index-specific optimizations: 2GB
+    `maintenance_work_mem`, 4 parallel maintenance workers, relaxed `synchronous_commit`,
+    extended `checkpoint_timeout` (30min), and 4-hour statement timeout (was 1 hour).
+  - Added `extractIndexName` and `isIndexStatement` helper functions for post-data
+    statement classification and human-readable logging.
+  - Post-data execution loop now logs per-statement timing, warns on operations exceeding
+    5 minutes (fragmented data indicator), and passes index names to progress callbacks.
+
 ## [5.8.59] - 2026-02-07
 
 ### Fixed

@@ -108,9 +108,9 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 		// Sanitize and validate path
 		targetPath := filepath.Join(destDir, header.Name)
 
-		// Security check: ensure path is within destDir (prevent path traversal)
-		if !strings.HasPrefix(filepath.Clean(targetPath), filepath.Clean(destDir)) {
-			e.log.Warn("Skipping potentially malicious path in archive", "path", header.Name)
+		// Security: prevent path traversal (e.g., ../../../etc/cron.d/evil)
+		if err := validateTarPath(header.Name, destDir); err != nil {
+			e.log.Warn("Blocked malicious path in archive", "path", header.Name, "error", err)
 			continue
 		}
 
@@ -154,7 +154,18 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 			}
 			outFile.Close()
 		case tar.TypeSymlink:
-			// Handle symlinks (common in some archives)
+			// Security: validate symlink target is within destDir
+			linkTarget := header.Linkname
+			if !filepath.IsAbs(linkTarget) {
+				linkTarget = filepath.Join(filepath.Dir(targetPath), linkTarget)
+			}
+			cleanTarget := filepath.Clean(linkTarget)
+			cleanDest := filepath.Clean(destDir) + string(os.PathSeparator)
+			if !strings.HasPrefix(cleanTarget, cleanDest) && cleanTarget != filepath.Clean(destDir) {
+				e.log.Warn("Blocked symlink escaping extraction directory",
+					"path", header.Name, "target", header.Linkname)
+				continue
+			}
 			if err := os.Symlink(header.Linkname, targetPath); err != nil {
 				// Ignore symlink errors (may already exist or not supported)
 				e.log.Debug("Could not create symlink", "path", targetPath, "target", header.Linkname)
@@ -176,6 +187,27 @@ type progressReader struct {
 	desc        string
 	lastReport  time.Time
 	reportEvery time.Duration
+}
+
+// validateTarPath checks that a tar entry path doesn't escape the base directory.
+// Prevents path traversal attacks via malicious archive entries like "../../../etc/cron.d/evil".
+func validateTarPath(headerName string, baseDir string) error {
+	// Block absolute paths
+	if filepath.IsAbs(headerName) {
+		return fmt.Errorf("illegal absolute path in archive: %s", headerName)
+	}
+
+	// Resolve the target path and ensure it's within baseDir
+	targetPath := filepath.Join(baseDir, headerName)
+	cleanPath := filepath.Clean(targetPath)
+	cleanBase := filepath.Clean(baseDir) + string(os.PathSeparator)
+
+	// The cleaned path must start with the base directory
+	if !strings.HasPrefix(cleanPath, cleanBase) && cleanPath != filepath.Clean(baseDir) {
+		return fmt.Errorf("path escapes base directory: %s", headerName)
+	}
+
+	return nil
 }
 
 func (pr *progressReader) Read(p []byte) (n int, err error) {

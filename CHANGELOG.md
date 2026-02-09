@@ -5,6 +5,17 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.5] - 2026-02-09
+
+### Security
+
+- **Path traversal protection in tar extraction**: Malicious backup archives with entries like `dumps/../../../etc/cron.d/evil` are now blocked. All 3 extraction paths (full cluster, single DB, multi DB) validated via `validateTarPath()`. Symlink targets also validated to prevent escape from extraction directory.
+- **SQL injection in DROP DATABASE**: TUI drop database now uses proper identifier validation + quoting (`quotePGIdent`/`quoteMySQLIdent`) instead of raw string interpolation. Prevents injection via database names containing `"` or `` ` ``.
+
+### Fixed
+
+- **Ignored pgzip.NewReader error**: `diagnose.go` gzip integrity check no longer ignores reader creation failure — was a potential nil-pointer crash on corrupted archives.
+
 ## [6.0.4] - 2026-02-09
 
 ### Added

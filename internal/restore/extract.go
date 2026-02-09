@@ -267,6 +267,12 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 
 		// Check if this is the database we're looking for
 		if strings.HasPrefix(header.Name, targetPattern) && !header.FileInfo().IsDir() {
+			// Security: validate path doesn't escape output directory
+			if err := validateTarPath(header.Name, outputDir); err != nil {
+				log.Warn("Blocked malicious path in archive", "path", header.Name, "error", err)
+				continue
+			}
+
 			filename := filepath.Base(header.Name)
 			extractedPath = filepath.Join(outputDir, filename)
 
@@ -410,6 +416,12 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 
 		// Check if this is one of the databases we're looking for
 		if strings.HasPrefix(header.Name, "dumps/") && !header.FileInfo().IsDir() {
+			// Security: validate path doesn't escape output directory
+			if err := validateTarPath(header.Name, outputDir); err != nil {
+				log.Warn("Blocked malicious path in archive", "path", header.Name, "error", err)
+				continue
+			}
+
 			filename := filepath.Base(header.Name)
 
 			// Extract database name

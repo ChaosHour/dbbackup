@@ -163,12 +163,19 @@ func (v *DropDatabaseView) doDropDatabase(dbName string) error {
 	}
 
 	// Now drop the database
-	// Note: We can't use parameterized queries for database names
+	// Note: DDL statements can't use parameterized queries for identifiers.
+	// Use proper validation + quoting to prevent SQL injection.
 	switch v.dbType {
 	case "mysql":
-		_, err = db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE `%s`", dbName))
+		if err := validateDBIdentifier(dbName, 64); err != nil {
+			return fmt.Errorf("invalid database name: %w", err)
+		}
+		_, err = db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE %s", quoteMySQLIdent(dbName)))
 	default:
-		_, err = db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE \"%s\"", dbName))
+		if err := validateDBIdentifier(dbName, 63); err != nil {
+			return fmt.Errorf("invalid database name: %w", err)
+		}
+		_, err = db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE %s", quotePGIdent(dbName)))
 	}
 
 	if err != nil {
@@ -360,4 +367,31 @@ func (v *DropDatabaseView) View() string {
 	}
 
 	return s.String()
+}
+
+// validateDBIdentifier checks that a database name is safe for use in DDL statements.
+// Rejects empty names, names exceeding maxLen, and names with control characters or null bytes.
+func validateDBIdentifier(name string, maxLen int) error {
+	if len(name) == 0 {
+		return fmt.Errorf("database name cannot be empty")
+	}
+	if len(name) > maxLen {
+		return fmt.Errorf("database name too long (max %d chars)", maxLen)
+	}
+	for _, c := range name {
+		if c == 0 { // null byte
+			return fmt.Errorf("database name contains null byte")
+		}
+	}
+	return nil
+}
+
+// quotePGIdent safely quotes a PostgreSQL identifier by doubling internal double-quotes.
+func quotePGIdent(name string) string {
+	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// quoteMySQLIdent safely quotes a MySQL identifier by doubling internal backticks.
+func quoteMySQLIdent(name string) string {
+	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
 }

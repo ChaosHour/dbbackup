@@ -239,7 +239,14 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 
 	// Verify full gzip stream integrity by reading to end
 	file.Seek(0, 0)
-	gz, _ = pgzip.NewReader(file)
+	gz, err = pgzip.NewReader(file)
+	if err != nil {
+		result.IsValid = false
+		result.IsCorrupted = true
+		result.Errors = append(result.Errors,
+			fmt.Sprintf("Cannot create gzip reader for integrity check: %v", err))
+		return
+	}
 
 	var totalRead int64
 	buf := make([]byte, 32*1024)

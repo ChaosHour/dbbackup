@@ -677,8 +677,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 		}
 
 		log.Info("Checking disk space...")
-		multiplier := 3.0 // Assume 3x expansion for safety
-		if err := safety.CheckDiskSpace(archivePath, multiplier); err != nil {
+		if err := safety.CheckDiskSpace(archivePath, 0); err != nil { // 0 = auto-detect from metadata/format
 			return fmt.Errorf("disk space check failed: %w", err)
 		}
 

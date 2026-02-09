@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.6] - 2026-02-09
+
+### Fixed
+
+- **Two more hardcoded 3× multipliers**: The extraction-phase disk space check in `engine.go` and single-database restore in `cmd/restore.go` still used hardcoded `× 3` — now both use `DiskSpaceChecker` with metadata-aware auto-detection. This was the actual cause of the "need 296.1 GB, have 198 GB (archive size: 98.7 GB × 3)" failure on archives with 1:1 compression ratio.
+
 ## [6.0.5] - 2026-02-09
 
 ### Security

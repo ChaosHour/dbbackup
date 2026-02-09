@@ -1636,22 +1636,30 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			"path", tempDir,
 			"optimization", "skipping duplicate extraction")
 	} else {
-		// Check disk space for extraction (need ~3x archive size: compressed + extracted + working space)
+		// Check disk space for extraction using metadata-aware DiskSpaceChecker
 		if archiveInfo != nil {
-			requiredBytes := uint64(archiveInfo.Size()) * 3
-			extractionCheck := checks.CheckDiskSpace(workDir)
-			if extractionCheck.AvailableBytes < requiredBytes {
-				operation.Fail("Insufficient disk space for extraction")
-				return fmt.Errorf("insufficient disk space for extraction in %s: need %.1f GB, have %.1f GB (archive size: %.1f GB × 3)",
-					workDir,
-					float64(requiredBytes)/(1024*1024*1024),
-					float64(extractionCheck.AvailableBytes)/(1024*1024*1024),
-					float64(archiveInfo.Size())/(1024*1024*1024))
+			clusterMeta, _ := metadata.LoadCluster(archivePath)
+			checker := &DiskSpaceChecker{
+				ExtractPath:        workDir,
+				ArchivePath:        archivePath,
+				ArchiveSize:        archiveInfo.Size(),
+				Metadata:           clusterMeta,
+				Log:                e.log,
+				MultiplierOverride: e.cfg.DiskSpaceMultiplier,
 			}
-			e.log.Info("Disk space check for extraction passed",
-				"workdir", workDir,
-				"required_gb", float64(requiredBytes)/(1024*1024*1024),
-				"available_gb", float64(extractionCheck.AvailableBytes)/(1024*1024*1024))
+			result, checkErr := checker.Check()
+			if checkErr != nil {
+				e.log.Warn("Cannot check disk space for extraction", "error", checkErr)
+			} else if !result.Sufficient {
+				operation.Fail("Insufficient disk space for extraction")
+				return result.FormatError()
+			} else {
+				e.log.Info("Disk space check for extraction passed",
+					"workdir", workDir,
+					"required", FormatBytes(result.RequiredBytes),
+					"available", FormatBytes(result.Info.AvailableBytes),
+					"multiplier", fmt.Sprintf("%.1fx (%s)", result.Multiplier, result.MultiplierSource))
+			}
 		}
 
 		// Need to extract archive ourselves

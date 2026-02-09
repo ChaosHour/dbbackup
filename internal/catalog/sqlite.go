@@ -56,6 +56,11 @@ func NewSQLiteCatalog(dbPath string) (*SQLiteCatalog, error) {
 	return catalog, nil
 }
 
+// DB returns the underlying *sql.DB for advanced operations (e.g., integrity checks)
+func (c *SQLiteCatalog) DB() *sql.DB {
+	return c.db
+}
+
 // initialize creates the database schema
 func (c *SQLiteCatalog) initialize() error {
 	schema := `

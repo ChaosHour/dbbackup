@@ -59,6 +59,11 @@ type Config struct {
 	MaxRetries     int    // Maximum retry attempts (default: 3)
 	Concurrency    int    // Upload/download concurrency (default: 5)
 	BandwidthLimit int64  // Maximum upload/download bandwidth in bytes/sec (0 = unlimited)
+
+	// S3 Object Lock (immutable backups / ransomware protection)
+	ObjectLockEnabled bool   // Enable S3 Object Lock on uploaded objects
+	ObjectLockMode    string // "GOVERNANCE" or "COMPLIANCE"
+	ObjectLockDays    int    // Retention period in days (default: 30)
 }
 
 // NewBackend creates a new cloud storage backend based on the provider

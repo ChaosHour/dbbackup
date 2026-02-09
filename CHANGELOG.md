@@ -5,6 +5,50 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-02-11
+
+### Added — Production-Readiness Features
+
+- **Automated GFS Retention Enforcement**
+  - New `dbbackup catalog prune --policy gfs` command with Grandfather-Father-Son retention
+  - Configurable daily/weekly/monthly/yearly retention: `--keep-daily 7 --keep-weekly 4 --keep-monthly 12 --keep-yearly 3`
+  - Weekly tier: keeps the oldest backup per ISO week for the most recent N weeks
+  - Monthly tier: keeps the oldest backup per calendar month for the most recent N months
+  - Yearly tier: keeps the oldest backup per calendar year for the most recent N years
+  - Tier priority: daily → weekly → monthly → yearly (first classification wins)
+  - `--delete-files` flag to also remove backup files from disk (+ sidecar .meta.json, .sha256)
+  - `--dry-run` mode with full preview of what would be kept/deleted
+  - `--database` filter for per-database retention enforcement
+  - Formatted output with tier breakdown (daily/weekly/monthly/yearly kept counts)
+  - Systemd timer files: `deploy/systemd/dbbackup-prune.service` + `dbbackup-prune.timer`
+  - Default prune schedule: daily at 02:00 with 10-minute randomized delay
+  - Environment-based configuration via `/etc/dbbackup/prune.env`
+  - 9 unit tests covering all GFS classification scenarios
+
+- **S3 Object Lock — Immutable Backups**
+  - New `--object-lock` flag on `dbbackup cloud upload` for ransomware-proof backups
+  - Supports both GOVERNANCE and COMPLIANCE retention modes: `--object-lock-mode GOVERNANCE`
+  - Configurable retention period: `--object-lock-days 30` (default: 30 days)
+  - Applied to both simple uploads (<100MB) and multipart uploads (>100MB)
+  - Pre-upload validation: checks bucket has Object Lock enabled via `GetObjectLockConfiguration`
+  - Actionable error messages with `aws s3api create-bucket` hints
+  - Environment variables: `DBBACKUP_OBJECT_LOCK_MODE`, `DBBACKUP_OBJECT_LOCK_DAYS`
+  - 6 unit tests for Object Lock header injection and configuration
+
+- **Troubleshooting Helper — `dbbackup diagnose`**
+  - New `dbbackup diagnose` command with 9 automated diagnostic checks
+  - Checks: config, tools, permissions, disk-space, postgresql, mysql, catalog, cloud, cron
+  - `--auto-fix` flag automatically fixes common issues (create directories, fix permissions, init catalog)
+  - `--check <name>` to run a single specific diagnostic
+  - `--format json` for monitoring integration (Prometheus, Datadog, etc.)
+  - Exit codes: 0 (ok), 1 (warning), 2 (critical) — compatible with Nagios/Icinga
+  - Targeted fix suggestions: error-specific remediation steps per check
+  - SQLite catalog integrity verification via `PRAGMA integrity_check`
+  - Systemd timer and crontab detection for scheduled backup validation
+  - System info collection: OS, arch, hostname, CPU count
+  - Color-coded terminal output with status indicators
+  - 7 unit tests for diagnose logic and status aggregation
+
 ## [5.8.79] - 2026-02-10
 
 ### Added — Restore Performance Optimizations

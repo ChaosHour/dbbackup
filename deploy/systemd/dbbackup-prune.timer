@@ -1,0 +1,11 @@
+[Unit]
+Description=Run dbbackup GFS retention prune daily
+Documentation=https://github.com/PlusOne/dbbackup
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,31 @@
+[Unit]
+Description=dbbackup GFS retention pruning
+Documentation=https://github.com/PlusOne/dbbackup
+After=network.target
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+
+# Load GFS policy from environment file
+EnvironmentFile=-/etc/dbbackup/prune.env
+
+ExecStart=/usr/local/bin/dbbackup catalog prune \
+    --policy gfs \
+    --keep-daily ${KEEP_DAILY} \
+    --keep-weekly ${KEEP_WEEKLY} \
+    --keep-monthly ${KEEP_MONTHLY} \
+    --keep-yearly ${KEEP_YEARLY} \
+    --delete-files \
+    --verbose
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=read-only
+NoNewPrivileges=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/dbbackup /home/postgres/db_backups
+
+[Install]
+WantedBy=multi-user.target

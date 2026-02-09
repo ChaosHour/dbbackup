@@ -118,6 +118,11 @@ var (
 	cloudVerbose        bool
 	cloudConfirm        bool
 	cloudBandwidthLimit string
+
+	// S3 Object Lock (immutable backups)
+	cloudObjectLock     bool
+	cloudObjectLockMode string
+	cloudObjectLockDays int
 )
 
 func init() {
@@ -137,12 +142,26 @@ func init() {
 		cmd.Flags().BoolVarP(&cloudVerbose, "verbose", "v", false, "Verbose output")
 	}
 
+	// Object Lock flags (upload-specific — also available on other commands for validation)
+	cloudUploadCmd.Flags().BoolVar(&cloudObjectLock, "object-lock", false, "Enable S3 Object Lock (immutable backups)")
+	cloudUploadCmd.Flags().StringVar(&cloudObjectLockMode, "object-lock-mode", getEnv("DBBACKUP_OBJECT_LOCK_MODE", "GOVERNANCE"), "Object Lock mode: GOVERNANCE or COMPLIANCE")
+	cloudUploadCmd.Flags().IntVar(&cloudObjectLockDays, "object-lock-days", envInt("DBBACKUP_OBJECT_LOCK_DAYS", 30), "Object Lock retention period in days")
+
 	cloudDeleteCmd.Flags().BoolVar(&cloudConfirm, "confirm", false, "Skip confirmation prompt")
 }
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+func envInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		if n, err := fmt.Sscanf(value, "%d", &defaultValue); n == 1 && err == nil {
+			return defaultValue
+		}
 	}
 	return defaultValue
 }
@@ -159,18 +178,21 @@ func getCloudBackend() (cloud.Backend, error) {
 	}
 
 	cfg := &cloud.Config{
-		Provider:       cloudProvider,
-		Bucket:         cloudBucket,
-		Region:         cloudRegion,
-		Endpoint:       cloudEndpoint,
-		AccessKey:      cloudAccessKey,
-		SecretKey:      cloudSecretKey,
-		Prefix:         cloudPrefix,
-		UseSSL:         true,
-		PathStyle:      cloudProvider == "minio",
-		Timeout:        300,
-		MaxRetries:     3,
-		BandwidthLimit: bandwidthLimit,
+		Provider:          cloudProvider,
+		Bucket:            cloudBucket,
+		Region:            cloudRegion,
+		Endpoint:          cloudEndpoint,
+		AccessKey:         cloudAccessKey,
+		SecretKey:         cloudSecretKey,
+		Prefix:            cloudPrefix,
+		UseSSL:            true,
+		PathStyle:         cloudProvider == "minio",
+		Timeout:           300,
+		MaxRetries:        3,
+		BandwidthLimit:    bandwidthLimit,
+		ObjectLockEnabled: cloudObjectLock,
+		ObjectLockMode:    cloudObjectLockMode,
+		ObjectLockDays:    cloudObjectLockDays,
 	}
 
 	if cfg.Bucket == "" {
@@ -197,6 +219,18 @@ func runCloudUpload(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := context.Background()
+
+	// Validate Object Lock configuration if enabled
+	if cloudObjectLock {
+		if s3b, ok := backend.(*cloud.S3Backend); ok {
+			if err := s3b.ValidateObjectLock(ctx); err != nil {
+				return fmt.Errorf("object lock validation failed: %w", err)
+			}
+			fmt.Printf("🔒 Object Lock: %s mode, %d-day retention\n", cloudObjectLockMode, cloudObjectLockDays)
+		} else {
+			return fmt.Errorf("object lock is only supported with S3-compatible backends")
+		}
+	}
 
 	// Expand glob patterns
 	var files []string

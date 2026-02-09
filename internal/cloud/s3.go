@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 // S3Backend implements the Backend interface for AWS S3 and compatible services
@@ -86,6 +87,53 @@ func (s *S3Backend) Name() string {
 	return "s3"
 }
 
+// applyObjectLock sets Object Lock retention fields on a PutObjectInput if enabled
+func (s *S3Backend) applyObjectLock(input *s3.PutObjectInput) {
+	if !s.config.ObjectLockEnabled {
+		return
+	}
+
+	mode := types.ObjectLockModeGovernance
+	if strings.EqualFold(s.config.ObjectLockMode, "COMPLIANCE") {
+		mode = types.ObjectLockModeCompliance
+	}
+
+	days := s.config.ObjectLockDays
+	if days <= 0 {
+		days = 30
+	}
+
+	retainUntil := time.Now().UTC().Add(time.Duration(days) * 24 * time.Hour)
+
+	input.ObjectLockMode = mode
+	input.ObjectLockRetainUntilDate = aws.Time(retainUntil)
+}
+
+// ValidateObjectLock checks if the bucket has Object Lock enabled
+func (s *S3Backend) ValidateObjectLock(ctx context.Context) error {
+	if !s.config.ObjectLockEnabled {
+		return nil
+	}
+
+	_, err := s.client.GetObjectLockConfiguration(ctx, &s3.GetObjectLockConfigurationInput{
+		Bucket: aws.String(s.bucket),
+	})
+	if err != nil {
+		return fmt.Errorf("bucket %q does not have Object Lock enabled or is not accessible: %w\n"+
+			"  Hint: Object Lock must be enabled at bucket creation time.\n"+
+			"  Create a new bucket with: aws s3api create-bucket --bucket %s --object-lock-enabled-for-bucket",
+			s.bucket, err, s.bucket)
+	}
+
+	// Validate mode
+	mode := strings.ToUpper(s.config.ObjectLockMode)
+	if mode != "" && mode != "GOVERNANCE" && mode != "COMPLIANCE" {
+		return fmt.Errorf("invalid object lock mode %q: must be GOVERNANCE or COMPLIANCE", s.config.ObjectLockMode)
+	}
+
+	return nil
+}
+
 // buildKey creates the full S3 key from filename
 func (s *S3Backend) buildKey(filename string) string {
 	if s.prefix == "" {
@@ -144,11 +192,14 @@ func (s *S3Backend) uploadSimple(ctx context.Context, file *os.File, key string,
 		}
 
 		// Upload to S3
-		_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		input := &s3.PutObjectInput{
 			Bucket: aws.String(s.bucket),
 			Key:    aws.String(key),
 			Body:   reader,
-		})
+		}
+		s.applyObjectLock(input)
+
+		_, err := s.client.PutObject(ctx, input)
 
 		if err != nil {
 			return fmt.Errorf("failed to upload to S3: %w", err)
@@ -200,11 +251,14 @@ func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key stri
 		}
 
 		// Upload with multipart
-		_, err := uploader.Upload(ctx, &s3.PutObjectInput{
+		input := &s3.PutObjectInput{
 			Bucket: aws.String(s.bucket),
 			Key:    aws.String(key),
 			Body:   reader,
-		})
+		}
+		s.applyObjectLock(input)
+
+		_, err := uploader.Upload(ctx, input)
 
 		if err != nil {
 			return fmt.Errorf("multipart upload failed: %w", err)

@@ -190,6 +190,11 @@ This command can remove:
   - Entries older than a specified retention period
   - Failed or corrupted backups
   - Entries marked as deleted
+  - Backups outside a GFS (Grandfather-Father-Son) retention policy
+
+GFS Retention Policy:
+  Keeps the most recent N daily, weekly, monthly, and yearly backups.
+  All other completed backups are pruned.
 
 Examples:
   # Remove entries for missing backup files
@@ -201,8 +206,14 @@ Examples:
   # Remove failed backups
   dbbackup catalog prune --status failed
 
+  # GFS retention: keep 7 daily, 4 weekly, 12 monthly, 3 yearly
+  dbbackup catalog prune --policy gfs --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --keep-yearly 3
+
+  # GFS with file deletion (also remove backup files from disk)
+  dbbackup catalog prune --policy gfs --keep-daily 7 --delete-files
+
   # Dry run (preview without deleting)
-  dbbackup catalog prune --missing --dry-run
+  dbbackup catalog prune --policy gfs --keep-daily 7 --dry-run
 
   # Combined: remove missing and old entries
   dbbackup catalog prune --missing --older-than 30d`,
@@ -293,6 +304,14 @@ func init() {
 	catalogPruneCmd.Flags().String("status", "", "Remove entries with specific status (failed, corrupted, deleted)")
 	catalogPruneCmd.Flags().Bool("dry-run", false, "Preview changes without actually deleting")
 	catalogPruneCmd.Flags().StringVar(&catalogDatabase, "database", "", "Only prune entries for specific database")
+
+	// GFS retention policy flags
+	catalogPruneCmd.Flags().String("policy", "", "Retention policy: gfs (Grandfather-Father-Son)")
+	catalogPruneCmd.Flags().Int("keep-daily", 7, "Number of daily backups to keep")
+	catalogPruneCmd.Flags().Int("keep-weekly", 4, "Number of weekly backups to keep")
+	catalogPruneCmd.Flags().Int("keep-monthly", 12, "Number of monthly backups to keep")
+	catalogPruneCmd.Flags().Int("keep-yearly", 3, "Number of yearly backups to keep")
+	catalogPruneCmd.Flags().Bool("delete-files", false, "Also delete backup files from disk (with --policy gfs)")
 
 	// Generate flags
 	catalogGenerateCmd.Flags().BoolVarP(&catalogVerbose, "verbose", "v", false, "Show detailed output")
@@ -815,10 +834,16 @@ func runCatalogPrune(cmd *cobra.Command, args []string) error {
 	olderThan, _ := cmd.Flags().GetString("older-than")
 	status, _ := cmd.Flags().GetString("status")
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	policy, _ := cmd.Flags().GetString("policy")
+
+	// GFS policy mode
+	if policy == "gfs" {
+		return runGFSPrune(ctx, cmd, cat, dryRun)
+	}
 
 	// Validate that at least one criterion is specified
 	if !missing && olderThan == "" && status == "" {
-		return fmt.Errorf("at least one prune criterion must be specified (--missing, --older-than, or --status)")
+		return fmt.Errorf("at least one prune criterion must be specified (--missing, --older-than, --status, or --policy gfs)")
 	}
 
 	// Parse olderThan duration
@@ -903,6 +928,110 @@ func runCatalogPrune(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		fmt.Printf("\n[INFO] This was a dry run. Run without --dry-run to actually delete entries.\n")
+	}
+
+	return nil
+}
+
+// runGFSPrune runs GFS retention pruning
+func runGFSPrune(ctx context.Context, cmd *cobra.Command, cat *catalog.SQLiteCatalog, dryRun bool) error {
+	keepDaily, _ := cmd.Flags().GetInt("keep-daily")
+	keepWeekly, _ := cmd.Flags().GetInt("keep-weekly")
+	keepMonthly, _ := cmd.Flags().GetInt("keep-monthly")
+	keepYearly, _ := cmd.Flags().GetInt("keep-yearly")
+	deleteFiles, _ := cmd.Flags().GetBool("delete-files")
+
+	gfsPolicy := &catalog.GFSPolicy{
+		KeepDaily:   keepDaily,
+		KeepWeekly:  keepWeekly,
+		KeepMonthly: keepMonthly,
+		KeepYearly:  keepYearly,
+		DryRun:      dryRun,
+		DeleteFiles: deleteFiles,
+		Database:    catalogDatabase,
+	}
+
+	fmt.Printf("=====================================================\n")
+	if dryRun {
+		fmt.Printf("  GFS Retention Prune (DRY RUN)\n")
+	} else {
+		fmt.Printf("  GFS Retention Prune\n")
+	}
+	fmt.Printf("=====================================================\n\n")
+	fmt.Printf("  Policy:\n")
+	fmt.Printf("    Keep daily:   %d\n", keepDaily)
+	fmt.Printf("    Keep weekly:  %d\n", keepWeekly)
+	fmt.Printf("    Keep monthly: %d\n", keepMonthly)
+	fmt.Printf("    Keep yearly:  %d\n", keepYearly)
+	if catalogDatabase != "" {
+		fmt.Printf("    Database:     %s\n", catalogDatabase)
+	}
+	if deleteFiles {
+		fmt.Printf("    Delete files: yes\n")
+	}
+	fmt.Println()
+
+	result, err := cat.PruneByGFS(ctx, gfsPolicy)
+	if err != nil {
+		return err
+	}
+
+	if result.TotalBackups == 0 {
+		fmt.Printf("[INFO] No completed backups found in catalog\n")
+		return nil
+	}
+
+	// Show kept backups summary
+	fmt.Printf("=====================================================\n")
+	fmt.Printf("  GFS Prune Results\n")
+	fmt.Printf("=====================================================\n")
+	fmt.Printf("  [TOTAL]  Total backups:  %d\n", result.TotalBackups)
+	fmt.Printf("  [KEEP]   Kept:           %d\n", result.Kept)
+	fmt.Printf("    ├── Daily:   %d\n", result.KeptByTier["daily"])
+	fmt.Printf("    ├── Weekly:  %d\n", result.KeptByTier["weekly"])
+	fmt.Printf("    ├── Monthly: %d\n", result.KeptByTier["monthly"])
+	fmt.Printf("    └── Yearly:  %d\n", result.KeptByTier["yearly"])
+
+	if dryRun {
+		fmt.Printf("  [WAIT]   Would remove:   %d\n", result.Removed)
+	} else {
+		fmt.Printf("  [DEL]    Removed:        %d\n", result.Removed)
+	}
+	fmt.Printf("  [TIME]   Duration:       %.2fs\n", result.Duration)
+	fmt.Printf("=====================================================\n")
+
+	// Show what was/would be deleted
+	if len(result.ToDelete) > 0 {
+		if dryRun {
+			fmt.Printf("\nBackups that would be removed:\n")
+		} else {
+			fmt.Printf("\nRemoved backups:\n")
+		}
+		for _, d := range result.ToDelete {
+			fmt.Printf("  • %s — %s (%s, %s)\n", d.Database, d.Path, catalog.FormatSize(d.Size), d.Age)
+		}
+	}
+
+	if result.SpaceFreed > 0 {
+		if dryRun {
+			fmt.Printf("\n[SAVE] Space that would be freed: %s\n", catalog.FormatSize(result.SpaceFreed))
+		} else {
+			fmt.Printf("\n[SAVE] Space freed: %s\n", catalog.FormatSize(result.SpaceFreed))
+		}
+	}
+
+	if !dryRun && deleteFiles {
+		fmt.Printf("[FILE] Files deleted: %d\n", result.FilesDeleted)
+		if len(result.FileErrors) > 0 {
+			fmt.Printf("[WARN] File deletion errors:\n")
+			for _, e := range result.FileErrors {
+				fmt.Printf("  ! %s\n", e)
+			}
+		}
+	}
+
+	if dryRun {
+		fmt.Printf("\n[INFO] This was a dry run. Run without --dry-run to actually prune.\n")
 	}
 
 	return nil

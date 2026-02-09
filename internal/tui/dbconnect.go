@@ -51,17 +51,30 @@ func openTUIDatabase(cfg *config.Config, dbNameOverride string) (*sql.DB, error)
 			dbName = "postgres"
 		}
 
-		connStr := fmt.Sprintf("host=%s port=%d user=%s dbname=%s",
-			cfg.Host, cfg.Port, cfg.User, dbName)
-		if password != "" {
-			connStr += fmt.Sprintf(" password=%s", password)
-		}
+		var connStr string
 
-		sslMode := cfg.SSLMode
-		if sslMode == "" {
-			sslMode = "disable"
+		if password == "" {
+			// No password available — try peer auth via Unix socket for local connections
+			if cfg.Host == "localhost" || cfg.Host == "127.0.0.1" || cfg.Host == "" {
+				// Peer authentication: OS user matches PG user, no password needed
+				connStr = fmt.Sprintf("host=/var/run/postgresql port=%d user=%s dbname=%s sslmode=disable",
+					cfg.Port, cfg.User, dbName)
+			} else {
+				// Remote connection requires a password
+				return nil, fmt.Errorf("no password available for %s@%s:%d (check .pgpass, PGPASSWORD, or use --password flag)",
+					cfg.User, cfg.Host, cfg.Port)
+			}
+		} else {
+			// Password available — use TCP connection
+			connStr = fmt.Sprintf("host=%s port=%d user=%s dbname=%s password=%s",
+				cfg.Host, cfg.Port, cfg.User, dbName, password)
+
+			sslMode := cfg.SSLMode
+			if sslMode == "" {
+				sslMode = "disable"
+			}
+			connStr += fmt.Sprintf(" sslmode=%s", sslMode)
 		}
-		connStr += fmt.Sprintf(" sslmode=%s", sslMode)
 
 		return sql.Open("pgx", connStr)
 	}

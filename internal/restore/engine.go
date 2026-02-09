@@ -3079,8 +3079,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 			// Update config so subsequent connections also use the working user
 			e.cfg.User = "postgres"
 		} else {
-			return nil, fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s: %w",
-				e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
+			return nil, peerAuthHint(e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
 		}
 	}
 	defer db.Close()

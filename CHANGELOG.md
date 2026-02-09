@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.7] - 2026-02-09
+
+### Improved
+
+- **Actionable peer auth error**: When running `dbbackup` as root (or any non-postgres OS user) and peer authentication fails, the error now explains exactly why and gives 3 fix options: (1) run as postgres user, (2) add pg_ident mapping with exact commands, (3) set a password. Replaces the cryptic "FATAL: Peer authentication failed" message.
+
 ## [6.0.6] - 2026-02-09
 
 ### Fixed

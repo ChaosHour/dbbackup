@@ -752,3 +752,44 @@ func (e *Engine) buildConnStringForUser(user string) string {
 	}
 	return dsn
 }
+
+// peerAuthHint returns an actionable error when peer authentication fails,
+// typically because the TUI is running as root but PostgreSQL expects 'postgres'.
+func peerAuthHint(host string, port int, user string, origErr error) error {
+	errMsg := origErr.Error()
+
+	// Detect peer auth failure
+	if !strings.Contains(errMsg, "Peer authentication failed") {
+		return fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s: %w",
+			host, port, user, origErr)
+	}
+
+	osUser := os.Getenv("USER")
+	if osUser == "" {
+		osUser = "unknown"
+	}
+
+	return fmt.Errorf(`PostgreSQL peer authentication failed (OS user %q ≠ DB user %q)
+
+Peer auth requires the OS user to match the PostgreSQL user.
+You are running as %q but connecting as %q.
+
+Fix options (pick one):
+
+  1. Run dbbackup as the postgres user:
+     sudo -u postgres dbbackup restore cluster <archive>
+
+  2. Add a pg_ident mapping so %s can connect as %s:
+     echo "dbbackup_map  %s  %s" >> /etc/postgresql/*/main/pg_ident.conf
+     # Also add: dbbackup_map  postgres  postgres
+     # Then in pg_hba.conf, change:
+     #   local all postgres peer
+     # to:
+     #   local all postgres peer map=dbbackup_map
+     sudo systemctl reload postgresql
+
+  3. Set a password for the postgres user and use --password:
+     sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'yourpass'"
+     dbbackup restore cluster <archive> --password yourpass`,
+		osUser, user, osUser, user, osUser, user, osUser, user)
+}

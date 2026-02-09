@@ -147,7 +147,8 @@ type Config struct {
 	SMTPFrom     string
 	SMTPTo       []string
 	SMTPTLS      bool
-	SMTPStartTLS bool
+	SMTPStartTLS   bool
+	SMTPInsecureTLS bool // Skip TLS certificate verification (auto-enabled for localhost)
 
 	// Webhook configuration
 	WebhookEnabled bool

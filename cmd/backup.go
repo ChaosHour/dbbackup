@@ -279,6 +279,14 @@ func init() {
 
 	// Mark the strategy flags as mutually exclusive
 	sampleCmd.MarkFlagsMutuallyExclusive("sample-ratio", "sample-percent", "sample-count")
+
+	// Galera cluster flags for single and cluster backup (MySQL/MariaDB)
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd} {
+		cmd.Flags().Bool("galera-desync", false, "Enable Galera desync mode during backup (reduces cluster impact)")
+		cmd.Flags().Int("galera-min-cluster-size", 2, "Minimum Galera cluster size required for backup")
+		cmd.Flags().String("galera-prefer-node", "", "Preferred Galera node name for backup (empty = current node)")
+		cmd.Flags().Bool("galera-health-check", true, "Verify Galera node health before backup")
+	}
 }
 
 // parseCloudURIFlag parses the --cloud URI flag and updates config

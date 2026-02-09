@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"dbbackup/internal/checks"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/engine"
 	"dbbackup/internal/notify"
 	"dbbackup/internal/security"
 	"dbbackup/internal/validation"
@@ -267,6 +269,15 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 	rateLimiter.RecordSuccess(host)
+
+	// Galera cluster detection (MySQL/MariaDB only)
+	if cfg.IsMySQL() {
+		myDB := db.(*database.MySQL)
+		if err := handleGaleraCluster(ctx, myDB.GetConn()); err != nil {
+			auditLogger.LogBackupFailed(user, databaseName, err)
+			return err
+		}
+	}
 
 	// Verify database exists
 	exists, err := db.DatabaseExists(ctx, databaseName)
@@ -738,6 +749,67 @@ func validateBackupParams(cfg *config.Config) error {
 
 	if len(errs) > 0 {
 		return fmt.Errorf("validation failed: %s", strings.Join(errs, "; "))
+	}
+
+	return nil
+}
+
+// handleGaleraCluster detects and validates Galera cluster state before backup.
+// For non-Galera MySQL/MariaDB nodes this is a silent no-op.
+func handleGaleraCluster(ctx context.Context, sqlDB *sql.DB) error {
+	galeraInfo, err := engine.DetectGaleraCluster(ctx, sqlDB)
+	if err != nil {
+		// "not a Galera cluster" is expected for standalone MySQL/MariaDB — silently skip
+		if err.Error() == "not a Galera cluster" {
+			return nil
+		}
+		// Unexpected error (connection issue, etc.)
+		log.Warn("Failed to detect Galera cluster", "error", err)
+		return nil
+	}
+
+	// Galera cluster detected — log info
+	log.Info("Galera cluster detected",
+		"node", galeraInfo.NodeName,
+		"cluster_size", galeraInfo.ClusterSize,
+		"local_state", galeraInfo.LocalStateString(),
+		"cluster_status", galeraInfo.ClusterStatus,
+		"flow_control", fmt.Sprintf("%.1f%%", galeraInfo.FlowControl*100))
+
+	// Health check
+	if cfg.GaleraHealthCheck && !galeraInfo.IsHealthyForBackup() {
+		return fmt.Errorf("Galera node %s not healthy for backup: %s",
+			galeraInfo.NodeName, galeraInfo.HealthSummary())
+	}
+
+	// Cluster size check
+	if cfg.GaleraMinClusterSize > 0 && galeraInfo.ClusterSize < cfg.GaleraMinClusterSize {
+		return fmt.Errorf("Galera cluster size %d below required minimum %d",
+			galeraInfo.ClusterSize, cfg.GaleraMinClusterSize)
+	}
+
+	// Preferred node check
+	if cfg.GaleraPreferNode != "" {
+		_, err := engine.SelectBestNode(ctx, sqlDB, cfg.GaleraPreferNode)
+		if err != nil {
+			log.Warn("Galera preferred node mismatch", "error", err)
+		}
+	}
+
+	// Optional: Enable desync mode
+	if cfg.GaleraDesync {
+		log.Info("Enabling Galera desync mode to reduce cluster impact")
+		if err := engine.SetDesyncMode(ctx, sqlDB, true); err != nil {
+			log.Warn("Failed to enable Galera desync mode", "error", err)
+		} else {
+			// Note: defer in caller's scope — re-sync happens when backup function returns
+			defer func() {
+				log.Info("Re-syncing Galera node with cluster")
+				if err := engine.SetDesyncMode(ctx, sqlDB, false); err != nil {
+					log.Error("Failed to re-sync Galera node", "error", err)
+				}
+			}()
+		}
 	}
 
 	return nil

@@ -130,6 +130,12 @@ type Config struct {
 	RequireRowFormat      bool   // Require ROW format for binlog
 	RequireGTID           bool   // Require GTID mode enabled
 
+	// Galera Cluster options (MariaDB/MySQL)
+	GaleraDesync         bool   // Enable desync mode during backup (reduces cluster impact)
+	GaleraMinClusterSize int    // Minimum cluster size required for backup (default: 2)
+	GaleraPreferNode     string // Preferred node name for backup (empty = current node)
+	GaleraHealthCheck    bool   // Verify node health before backup (default: true)
+
 	// pg_basebackup options (physical backup)
 	PhysicalBackup       bool   // Use pg_basebackup for physical backup
 	PhysicalFormat       string // "plain" or "tar" (default: tar)
@@ -372,6 +378,22 @@ func (c *Config) UpdateFromEnvironment() {
 	// MYSQL_PWD works for both mysql and mariadb
 	if password := os.Getenv("MYSQL_PWD"); password != "" && (c.DatabaseType == "mysql" || c.DatabaseType == "mariadb") {
 		c.Password = password
+	}
+
+	// Galera Cluster settings
+	if v := os.Getenv("GALERA_DESYNC"); v != "" {
+		c.GaleraDesync = strings.EqualFold(v, "true") || v == "1"
+	}
+	if v := os.Getenv("GALERA_MIN_CLUSTER_SIZE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.GaleraMinClusterSize = n
+		}
+	}
+	if v := os.Getenv("GALERA_PREFER_NODE"); v != "" {
+		c.GaleraPreferNode = v
+	}
+	if v := os.Getenv("GALERA_HEALTH_CHECK"); v != "" {
+		c.GaleraHealthCheck = strings.EqualFold(v, "true") || v == "1"
 	}
 }
 

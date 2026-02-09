@@ -82,7 +82,47 @@ All cloud backends are database-agnostic:
 | MySQL parallel restore | Planned | v6.1 |
 | MySQL WAL-based incremental | Planned | v6.1 |
 | PostgreSQL custom format | Planned | v6.2 |
-| MariaDB Galera cluster backup | Under evaluation | TBD |
+| MariaDB Galera cluster backup | ✅ Implemented | v5.9 |
+
+## Galera Cluster Support (MariaDB/MySQL)
+
+dbbackup automatically detects Galera cluster nodes and validates health before backup.
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Auto-detection | ✅ | Queries `wsrep_on` and `wsrep_*` status variables |
+| Health check | ✅ | Validates sync state, cluster status, flow control |
+| Desync mode | ✅ | `--galera-desync` flag (reduces cluster impact) |
+| Cluster size check | ✅ | `--galera-min-cluster-size` (default: 2) |
+| Node preference | ✅ | `--galera-prefer-node` for manual donor selection |
+| Multi-node backup | ❌ | Single-node backup recommended |
+
+### CLI Examples
+
+```bash
+# Auto-detect Galera (no flags needed — detection is automatic)
+dbbackup backup single mydb --db-type mariadb --host galera-node1
+
+# With desync mode (reduces cluster impact during heavy backups)
+dbbackup backup single mydb --db-type mariadb --galera-desync
+
+# Strict health check with minimum cluster size
+dbbackup backup single mydb --db-type mariadb \
+    --galera-health-check \
+    --galera-min-cluster-size 3
+
+# Prefer a specific node
+dbbackup backup single mydb --db-type mariadb --galera-prefer-node node2
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GALERA_DESYNC` | `false` | Enable desync mode during backup |
+| `GALERA_MIN_CLUSTER_SIZE` | `2` | Minimum cluster size required |
+| `GALERA_PREFER_NODE` | (empty) | Preferred node name |
+| `GALERA_HEALTH_CHECK` | `true` | Verify node health before backup |
 
 ---
 

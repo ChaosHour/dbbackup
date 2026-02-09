@@ -19,6 +19,7 @@ import (
 //   NOTIFY_SMTP_TO       - Comma-separated recipient list
 //   NOTIFY_SMTP_TLS      - Use TLS (default: false)
 //   NOTIFY_SMTP_STARTTLS - Use STARTTLS (default: true)
+//   NOTIFY_SMTP_INSECURE - Skip TLS certificate verification (default: auto for localhost)
 //
 // Webhook Configuration:
 //   NOTIFY_WEBHOOK_URL    - Webhook URL (enables webhook when set)
@@ -56,6 +57,9 @@ func ConfigFromEnv() Config {
 	}
 	if starttls := os.Getenv("NOTIFY_SMTP_STARTTLS"); starttls != "" {
 		cfg.SMTPStartTLS = parseBool(starttls, true)
+	}
+	if insecure := os.Getenv("NOTIFY_SMTP_INSECURE"); insecure != "" {
+		cfg.SMTPInsecureTLS = parseBool(insecure, false)
 	}
 
 	// Webhook configuration

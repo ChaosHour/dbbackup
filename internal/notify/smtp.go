@@ -98,8 +98,10 @@ func (s *SMTPNotifier) sendMail(ctx context.Context, message string) error {
 
 	if s.config.SMTPTLS {
 		// Direct TLS connection (port 465)
+		insecure := s.config.SMTPInsecureTLS || s.isLoopback()
 		tlsConfig := &tls.Config{
-			ServerName: s.config.SMTPHost,
+			ServerName:         s.config.SMTPHost,
+			InsecureSkipVerify: insecure,
 		}
 		conn, err = tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
 	} else {
@@ -120,8 +122,11 @@ func (s *SMTPNotifier) sendMail(ctx context.Context, message string) error {
 	// STARTTLS if needed (and not already using TLS)
 	if s.config.SMTPStartTLS && !s.config.SMTPTLS {
 		if ok, _ := client.Extension("STARTTLS"); ok {
+			// Skip TLS verification for localhost/loopback or when explicitly configured
+			insecure := s.config.SMTPInsecureTLS || s.isLoopback()
 			tlsConfig := &tls.Config{
-				ServerName: s.config.SMTPHost,
+				ServerName:         s.config.SMTPHost,
+				InsecureSkipVerify: insecure,
 			}
 			if err = client.StartTLS(tlsConfig); err != nil {
 				return fmt.Errorf("starttls failed: %w", err)
@@ -169,6 +174,13 @@ func (s *SMTPNotifier) sendMail(ctx context.Context, message string) error {
 	// Some servers return "250 2.0.0 Ok: queued as..." which isn't an error
 	_ = client.Quit()
 	return nil
+}
+
+// isLoopback returns true if the SMTP host is a loopback address (localhost, 127.0.0.1, ::1)
+// Local postfix relays often have TLS certs for external domains, not localhost.
+func (s *SMTPNotifier) isLoopback() bool {
+	host := strings.ToLower(s.config.SMTPHost)
+	return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]"
 }
 
 // getPriority returns X-Priority header value based on severity

@@ -8,21 +8,26 @@ import (
 	"strings"
 
 	"github.com/klauspost/pgzip"
+
+	"dbbackup/internal/compression"
 )
 
 // ArchiveFormat represents the type of backup archive
 type ArchiveFormat string
 
 const (
-	FormatPostgreSQLDump   ArchiveFormat = "PostgreSQL Dump (.dump)"
-	FormatPostgreSQLDumpGz ArchiveFormat = "PostgreSQL Dump Compressed (.dump.gz)"
-	FormatPostgreSQLSQL    ArchiveFormat = "PostgreSQL SQL (.sql)"
-	FormatPostgreSQLSQLGz  ArchiveFormat = "PostgreSQL SQL Compressed (.sql.gz)"
-	FormatMySQLSQL         ArchiveFormat = "MySQL SQL (.sql)"
-	FormatMySQLSQLGz       ArchiveFormat = "MySQL SQL Compressed (.sql.gz)"
-	FormatClusterTarGz     ArchiveFormat = "Cluster Archive (.tar.gz)"
-	FormatClusterDir       ArchiveFormat = "Cluster Directory (plain)"
-	FormatUnknown          ArchiveFormat = "Unknown"
+	FormatPostgreSQLDump     ArchiveFormat = "PostgreSQL Dump (.dump)"
+	FormatPostgreSQLDumpGz   ArchiveFormat = "PostgreSQL Dump Compressed (.dump.gz)"
+	FormatPostgreSQLDumpZst  ArchiveFormat = "PostgreSQL Dump Compressed (.dump.zst)"
+	FormatPostgreSQLSQL      ArchiveFormat = "PostgreSQL SQL (.sql)"
+	FormatPostgreSQLSQLGz    ArchiveFormat = "PostgreSQL SQL Compressed (.sql.gz)"
+	FormatPostgreSQLSQLZst   ArchiveFormat = "PostgreSQL SQL Compressed (.sql.zst)"
+	FormatMySQLSQL           ArchiveFormat = "MySQL SQL (.sql)"
+	FormatMySQLSQLGz         ArchiveFormat = "MySQL SQL Compressed (.sql.gz)"
+	FormatMySQLSQLZst        ArchiveFormat = "MySQL SQL Compressed (.sql.zst)"
+	FormatClusterTarGz       ArchiveFormat = "Cluster Archive (.tar.gz)"
+	FormatClusterDir         ArchiveFormat = "Cluster Directory (plain)"
+	FormatUnknown            ArchiveFormat = "Unknown"
 )
 
 // backupMetadata represents the structure of .meta.json files
@@ -60,6 +65,11 @@ func DetectArchiveFormat(filename string) ArchiveFormat {
 
 	// For .dump files, assume PostgreSQL custom format based on extension
 	// If the file exists and can be read, verify with magic bytes
+	if strings.HasSuffix(lower, ".dump.zst") || strings.HasSuffix(lower, ".dump.zstd") {
+		// zstd-compressed dump — trust the extension (can't easily peek inside zstd)
+		return FormatPostgreSQLDumpZst
+	}
+
 	if strings.HasSuffix(lower, ".dump.gz") {
 		// Check if file exists and has content signature
 		result := isCustomFormat(filename, true)
@@ -78,6 +88,22 @@ func DetectArchiveFormat(filename string) ArchiveFormat {
 			return FormatPostgreSQLDump
 		}
 		return FormatPostgreSQLSQL
+	}
+
+	// Check for zstd-compressed SQL formats (before .sql check to avoid partial match)
+	if strings.HasSuffix(lower, ".sql.zst") || strings.HasSuffix(lower, ".sql.zstd") {
+		// First, try to determine from metadata file
+		if dbType := readMetadataDBType(filename); dbType != "" {
+			if dbType == "mysql" || dbType == "mariadb" {
+				return FormatMySQLSQLZst
+			}
+			return FormatPostgreSQLSQLZst
+		}
+		// Fallback: determine if MySQL or PostgreSQL based on naming convention
+		if strings.Contains(lower, "mysql") || strings.Contains(lower, "mariadb") {
+			return FormatMySQLSQLZst
+		}
+		return FormatPostgreSQLSQLZst
 	}
 
 	// Check for compressed SQL formats
@@ -199,9 +225,31 @@ func isCustomFormat(filename string, compressed bool) formatCheckResult {
 // IsCompressed returns true if the archive format is compressed
 func (f ArchiveFormat) IsCompressed() bool {
 	return f == FormatPostgreSQLDumpGz ||
+		f == FormatPostgreSQLDumpZst ||
 		f == FormatPostgreSQLSQLGz ||
+		f == FormatPostgreSQLSQLZst ||
 		f == FormatMySQLSQLGz ||
+		f == FormatMySQLSQLZst ||
 		f == FormatClusterTarGz
+}
+
+// IsZstd returns true if the archive uses zstd compression
+func (f ArchiveFormat) IsZstd() bool {
+	return f == FormatPostgreSQLDumpZst ||
+		f == FormatPostgreSQLSQLZst ||
+		f == FormatMySQLSQLZst
+}
+
+// CompressionAlgorithm returns the compression algorithm used by this format
+func (f ArchiveFormat) CompressionAlgorithm() compression.Algorithm {
+	switch {
+	case f.IsZstd():
+		return compression.AlgorithmZstd
+	case f.IsCompressed():
+		return compression.AlgorithmGzip
+	default:
+		return compression.AlgorithmNone
+	}
 }
 
 // IsClusterBackup returns true if the archive is a cluster backup (.tar.gz or plain directory)
@@ -222,15 +270,17 @@ func (f ArchiveFormat) CanBeClusterRestore() bool {
 func (f ArchiveFormat) IsPostgreSQL() bool {
 	return f == FormatPostgreSQLDump ||
 		f == FormatPostgreSQLDumpGz ||
+		f == FormatPostgreSQLDumpZst ||
 		f == FormatPostgreSQLSQL ||
 		f == FormatPostgreSQLSQLGz ||
+		f == FormatPostgreSQLSQLZst ||
 		f == FormatClusterTarGz ||
 		f == FormatClusterDir
 }
 
 // IsMySQL returns true if format is MySQL
 func (f ArchiveFormat) IsMySQL() bool {
-	return f == FormatMySQLSQL || f == FormatMySQLSQLGz
+	return f == FormatMySQLSQL || f == FormatMySQLSQLGz || f == FormatMySQLSQLZst
 }
 
 // String returns human-readable format name
@@ -240,14 +290,20 @@ func (f ArchiveFormat) String() string {
 		return "PostgreSQL Dump"
 	case FormatPostgreSQLDumpGz:
 		return "PostgreSQL Dump (gzip)"
+	case FormatPostgreSQLDumpZst:
+		return "PostgreSQL Dump (zstd)"
 	case FormatPostgreSQLSQL:
 		return "PostgreSQL SQL"
 	case FormatPostgreSQLSQLGz:
 		return "PostgreSQL SQL (gzip)"
+	case FormatPostgreSQLSQLZst:
+		return "PostgreSQL SQL (zstd)"
 	case FormatMySQLSQL:
 		return "MySQL SQL"
 	case FormatMySQLSQLGz:
 		return "MySQL SQL (gzip)"
+	case FormatMySQLSQLZst:
+		return "MySQL SQL (zstd)"
 	case FormatClusterTarGz:
 		return "Cluster Archive (tar.gz)"
 	case FormatClusterDir:

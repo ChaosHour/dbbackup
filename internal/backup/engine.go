@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +19,7 @@ import (
 	"dbbackup/internal/checks"
 	"dbbackup/internal/cleanup"
 	"dbbackup/internal/cloud"
+	comp "dbbackup/internal/compression"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/engine/native"
@@ -31,8 +31,6 @@ import (
 	"dbbackup/internal/security"
 	"dbbackup/internal/swap"
 	"dbbackup/internal/verification"
-
-	"github.com/klauspost/pgzip"
 )
 
 // ProgressCallback is called with byte-level progress updates during backup operations
@@ -484,7 +482,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	var plainOutput bool // Track if we're doing plain (uncompressed) output
 	
 	if e.cfg.ShouldOutputCompressed() {
-		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("cluster_%s.tar.gz", timestamp))
+		clusterExt := e.cfg.GetClusterExtension()
+		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("cluster_%s%s", timestamp, clusterExt))
 		plainOutput = false
 	} else {
 		// Plain output: create a directory instead of archive
@@ -630,9 +629,10 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			parallel := e.cfg.DumpJobs
 
 			// USE NATIVE ENGINE if configured
-			// This creates .sql.gz files using pure Go (no pg_dump)
+			// This creates .sql.gz/.sql.zst files using pure Go (no pg_dump)
 			if e.cfg.UseNativeEngine {
-				sqlFile := filepath.Join(tempDir, "dumps", name+".sql.gz")
+				algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
+				sqlFile := filepath.Join(tempDir, "dumps", name+".sql"+comp.FileExtension(algo))
 				mu.Lock()
 				e.printf("       Using native Go engine (pure Go, no pg_dump)\n")
 				mu.Unlock()
@@ -695,11 +695,12 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 						monitorCtx, cancelMonitor := context.WithCancel(ctx)
 						go e.monitorFileSize(monitorCtx, sqlFile, completedBytes, 2*time.Second)
 
-						// Use pgzip for parallel compression
-						gzWriter, _ := pgzip.NewWriterLevel(outFile, compressionLevel)
+						// Use parallel compression (gzip or zstd based on config)
+						algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
+						compWriter, _ := comp.NewCompressor(outFile, algo, compressionLevel)
 
-						result, backupErr := nativeEngine.Backup(ctx, gzWriter)
-						gzWriter.Close()
+						result, backupErr := nativeEngine.Backup(ctx, compWriter.Writer)
+						compWriter.Close()
 						outFile.Close()
 						nativeEngine.Close()
 
@@ -785,7 +786,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			} else {
 				// Update completed bytes for size-weighted ETA
 				atomic.AddInt64(&completedBytes, thisDbSize)
-				compressedCandidate := strings.TrimSuffix(dumpFile, ".dump") + ".sql.gz"
+				compAlgo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
+				compressedCandidate := strings.TrimSuffix(dumpFile, ".dump") + ".sql" + comp.FileExtension(compAlgo)
 				mu.Lock()
 				if info, err := os.Stat(compressedCandidate); err == nil {
 					e.printf("   [OK] Completed %s (%s)\n", name, formatBytes(info.Size()))
@@ -991,7 +993,7 @@ func (e *Engine) monitorCommandProgress(stderr io.ReadCloser, tracker *progress.
 }
 
 // executeMySQLWithProgressAndCompression handles MySQL backup with compression and progress
-// Uses in-process pgzip for parallel compression (2-4x faster on multi-core systems)
+// Uses in-process parallel compression (gzip/zstd, 2-6x faster on multi-core systems)
 func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmdArgs []string, outputFile string, tracker *progress.OperationTracker) error {
 	// Create mysqldump command
 	dumpCmd := cleanup.SafeCommand(ctx, cmdArgs[0], cmdArgs[1:]...)
@@ -1007,14 +1009,15 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	}
 	defer outFile.Close()
 
-	// Create parallel gzip writer using pgzip
-	gzWriter, err := fs.NewParallelGzipWriter(outFile, e.cfg.CompressionLevel)
+	// Create parallel compression writer (gzip or zstd based on config)
+	algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
+	compWriter, err := comp.NewCompressor(outFile, algo, e.cfg.CompressionLevel)
 	if err != nil {
-		return fmt.Errorf("failed to create gzip writer: %w", err)
+		return fmt.Errorf("failed to create compression writer: %w", err)
 	}
-	defer gzWriter.Close()
+	defer compWriter.Close()
 
-	// Set up pipeline: mysqldump stdout -> pgzip writer -> file
+	// Set up pipeline: mysqldump stdout -> compressor -> file
 	pipe, err := dumpCmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create pipe: %w", err)
@@ -1038,10 +1041,10 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 		return fmt.Errorf("failed to start mysqldump: %w", err)
 	}
 
-	// Copy mysqldump output through pgzip in a goroutine
+	// Copy mysqldump output through compressor in a goroutine
 	copyDone := make(chan error, 1)
 	go func() {
-		_, err := fs.CopyWithContext(ctx, gzWriter, pipe)
+		_, err := fs.CopyWithContext(ctx, compWriter.Writer, pipe)
 		copyDone <- err
 	}()
 
@@ -1071,8 +1074,8 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	}
 
 	// Close gzip writer to flush all data
-	if err := gzWriter.Close(); err != nil {
-		return fmt.Errorf("failed to close gzip writer: %w", err)
+	if err := compWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close compression writer: %w", err)
 	}
 
 	if dumpErr != nil {
@@ -1083,7 +1086,7 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 }
 
 // executeMySQLWithCompression handles MySQL backup with compression
-// Uses in-process pgzip for parallel compression (2-4x faster on multi-core systems)
+// Uses in-process parallel compression (gzip/zstd, 2-6x faster on multi-core systems)
 func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []string, outputFile string) error {
 	// Create mysqldump command
 	dumpCmd := cleanup.SafeCommand(ctx, cmdArgs[0], cmdArgs[1:]...)
@@ -1099,14 +1102,15 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	}
 	defer outFile.Close()
 
-	// Create parallel gzip writer using pgzip
-	gzWriter, err := fs.NewParallelGzipWriter(outFile, e.cfg.CompressionLevel)
+	// Create parallel compression writer (gzip or zstd based on config)
+	algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
+	compWriter, err := comp.NewCompressor(outFile, algo, e.cfg.CompressionLevel)
 	if err != nil {
-		return fmt.Errorf("failed to create gzip writer: %w", err)
+		return fmt.Errorf("failed to create compression writer: %w", err)
 	}
-	defer gzWriter.Close()
+	defer compWriter.Close()
 
-	// Set up pipeline: mysqldump stdout -> pgzip writer -> file
+	// Set up pipeline: mysqldump stdout -> compressor -> file
 	pipe, err := dumpCmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create pipe: %w", err)
@@ -1117,10 +1121,10 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 		return fmt.Errorf("failed to start mysqldump: %w", err)
 	}
 
-	// Copy mysqldump output through pgzip in a goroutine
+	// Copy mysqldump output through compressor in a goroutine
 	copyDone := make(chan error, 1)
 	go func() {
-		_, err := fs.CopyWithContext(ctx, gzWriter, pipe)
+		_, err := fs.CopyWithContext(ctx, compWriter.Writer, pipe)
 		copyDone <- err
 	}()
 
@@ -1146,9 +1150,9 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 		return fmt.Errorf("compression failed: %w", copyErr)
 	}
 
-	// Close gzip writer to flush all data
-	if err := gzWriter.Close(); err != nil {
-		return fmt.Errorf("failed to close gzip writer: %w", err)
+	// Close compression writer to flush all data
+	if err := compWriter.Close(); err != nil {
+		return fmt.Errorf("failed to close compression writer: %w", err)
 	}
 
 	if dumpErr != nil {
@@ -1510,17 +1514,17 @@ func (e *Engine) verifyClusterArchive(ctx context.Context, archivePath string) e
 		return fmt.Errorf("archive suspiciously small (%d bytes)", info.Size())
 	}
 
-	// Verify tar.gz structure by reading ONLY the first header
+	// Verify tar.gz/tar.zst structure by reading ONLY the first header
 	// Reading all headers would require decompressing the entire archive
 	// which is extremely slow for large backups (99GB+ takes 15+ minutes)
-	gzipReader, err := pgzip.NewReader(file)
+	decompReader, err := comp.NewDecompressor(file, archivePath)
 	if err != nil {
-		return fmt.Errorf("invalid gzip format: %w", err)
+		return fmt.Errorf("invalid compressed format: %w", err)
 	}
-	defer gzipReader.Close()
+	defer decompReader.Close()
 
 	// Read just the first tar header to verify archive structure
-	tarReader := tar.NewReader(gzipReader)
+	tarReader := tar.NewReader(decompReader.Reader)
 	header, err := tarReader.Next()
 	if err == io.EOF {
 		return fmt.Errorf("archive contains no files")
@@ -1755,22 +1759,23 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 	return nil
 }
 
-// executeWithStreamingCompression handles plain format dumps with in-process pgzip compression
-// Uses: pg_dump stdout → pgzip.Writer → file.sql.gz (no external process)
+// executeWithStreamingCompression handles plain format dumps with in-process parallel compression
+// Uses: pg_dump stdout → compression.Writer → file.sql.gz/.sql.zst (no external process)
 func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []string, outputFile string) error {
-	e.log.Debug("Using in-process pgzip compression for large database")
+	algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
+	ext := comp.FileExtension(algo)
+	e.log.Debug("Using in-process parallel compression for large database", "algorithm", string(algo))
 
 	// Derive compressed output filename. If the output was named *.dump we replace that
-	// with *.sql.gz; otherwise append .gz to the provided output file so we don't
-	// accidentally create unwanted double extensions.
+	// with *.sql.gz/.sql.zst; otherwise append the compression extension.
 	var compressedFile string
 	lowerOut := strings.ToLower(outputFile)
 	if strings.HasSuffix(lowerOut, ".dump") {
-		compressedFile = strings.TrimSuffix(outputFile, ".dump") + ".sql.gz"
+		compressedFile = strings.TrimSuffix(outputFile, ".dump") + ".sql" + ext
 	} else if strings.HasSuffix(lowerOut, ".sql") {
-		compressedFile = outputFile + ".gz"
+		compressedFile = outputFile + ext
 	} else {
-		compressedFile = outputFile + ".gz"
+		compressedFile = outputFile + ext
 	}
 
 	// Create pg_dump command
@@ -1812,39 +1817,29 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	}
 	defer outFile.Close()
 
-	// Create pgzip writer with parallel compression
-	// Use configured Jobs or default to NumCPU
-	workers := e.cfg.Jobs
-	if workers <= 0 {
-		workers = runtime.NumCPU()
-	}
-	gzWriter, err := pgzip.NewWriterLevel(outFile, pgzip.BestSpeed)
+	// Create compressor with parallel compression
+	// For streaming, use fastest compression level for throughput
+	compWriter, err := comp.NewCompressor(outFile, algo, 1)
 	if err != nil {
-		return fmt.Errorf("failed to create pgzip writer: %w", err)
+		return fmt.Errorf("failed to create compression writer: %w", err)
 	}
-	if err := gzWriter.SetConcurrency(256*1024, workers); err != nil {
-		e.log.Warn("Failed to set pgzip concurrency", "error", err)
-	}
-	e.log.Debug("Using pgzip for parallel compression", "workers", workers)
+	e.log.Debug("Using parallel compression", "algorithm", string(algo))
 
 	// Start pg_dump
 	if err := dumpCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start pg_dump: %w", err)
 	}
 
-	// Start file size monitoring for live progress (monitors the growing .sql.gz file)
-	// This is handled by the caller through monitorFileSize for the output file
-	// The caller monitors the dumpFile path, but streaming creates compressedFile
-	// So we start a separate monitor here for the compressed output
+	// Start file size monitoring for live progress
 	monitorCtx, cancelMonitor := context.WithCancel(ctx)
 	baseBytes := atomic.LoadInt64(&e.liveBytesDone) // Current completed bytes from other DBs
 	go e.monitorFileSize(monitorCtx, compressedFile, baseBytes, 2*time.Second)
 	defer cancelMonitor()
 
-	// Copy from pg_dump stdout to pgzip writer in a goroutine
+	// Copy from pg_dump stdout to compressor in a goroutine
 	copyDone := make(chan error, 1)
 	go func() {
-		_, copyErr := fs.CopyWithContext(ctx, gzWriter, dumpStdout)
+		_, copyErr := fs.CopyWithContext(ctx, compWriter.Writer, dumpStdout)
 		copyDone <- copyErr
 	}()
 
@@ -1869,8 +1864,8 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	// Wait for copy to complete
 	copyErr := <-copyDone
 
-	// Close gzip writer to flush remaining data
-	gzCloseErr := gzWriter.Close()
+	// Close compression writer to flush remaining data
+	compCloseErr := compWriter.Close()
 
 	// Check errors in order of priority
 	if dumpErr != nil {
@@ -1879,8 +1874,8 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	if copyErr != nil {
 		return fmt.Errorf("compression copy failed: %w", copyErr)
 	}
-	if gzCloseErr != nil {
-		return fmt.Errorf("compression flush failed: %w", gzCloseErr)
+	if compCloseErr != nil {
+		return fmt.Errorf("compression flush failed: %w", compCloseErr)
 	}
 
 	// Sync file to disk to ensure durability (prevents truncation on power loss)
@@ -1888,7 +1883,7 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 		e.log.Warn("Failed to sync output file", "error", err)
 	}
 
-	e.log.Debug("In-process pgzip compression completed", "output", compressedFile)
+	e.log.Debug("In-process parallel compression completed", "output", compressedFile, "algorithm", string(algo))
 	return nil
 }
 

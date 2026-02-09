@@ -5,6 +5,48 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.79] - 2026-02-10
+
+### Added — Restore Performance Optimizations
+
+- **zstd compression support (backup + restore)**
+  - New `--compression-algorithm` flag for backup commands: `gzip` (default) or `zstd`
+  - zstd delivers 4–6× faster decompression than gzip with similar or better compression ratios
+  - Unified `internal/compression` package with auto-detection from file extension (`.zst`, `.zstd`)
+  - Full backup/restore round-trip: `backup --compression-algorithm zstd` → `restore` auto-detects
+  - All decompression paths updated: sequential restore, parallel restore, format detection
+  - Environment variable: `COMPRESSION_ALGORITHM=zstd`
+
+- **MySQL DISABLE KEYS optimization**
+  - Automatically wraps restore INSERTs with `ALTER TABLE DISABLE KEYS` / `ENABLE KEYS`
+  - Tracks current table via `extractMySQLTableName()` helper (handles backtick-quoted, schema.table, IF NOT EXISTS)
+  - Re-enables keys on all tables at function end (safety net)
+  - Typical speedup: 2–5× for tables with secondary indexes
+
+- **MySQL parallel LOAD DATA INFILE**
+  - New 4-phase parallel restore engine: parse dump → schema → parallel LOAD DATA → post-data
+  - Converts INSERT VALUES to TSV files, loads via `LOAD DATA LOCAL INFILE` with per-connection optimizations
+  - Per-connection: `FK_CHECKS=0`, `UNIQUE_CHECKS=0`, `DISABLE KEYS`
+  - Automatic fallback to INSERT if LOAD DATA fails
+  - Activated when `--jobs > 1` and native engine enabled
+
+- **PostgreSQL binary COPY format**
+  - `BinaryCopyTo()` / `BinaryCopyFrom()` using pgx `PgConn().CopyFrom/CopyTo`
+  - `COPY FROM STDIN WITH (FORMAT binary, FREEZE)` for maximum restore throughput
+  - `DetectBinaryHeader()` — auto-detects 11-byte `PGCOPY` signature
+  - Per-connection bulk optimizations: `sync_commit=off`, `session_replication_role=replica`
+
+### Changed
+- Backup engine now uses unified `internal/compression` package instead of direct pgzip calls
+- `GetBackupExtension()` returns `.sql.zst` for zstd, `.sql.gz` for gzip
+- `GetClusterExtension()` returns `.tar.zst` for zstd, `.tar.gz` for gzip
+- `klauspost/compress v1.18.3` promoted from indirect to direct dependency
+
+### Tests
+- `internal/compression/decompress_test.go` — 12 tests + 4 benchmarks (algorithm detection, round-trips, ParseAlgorithm)
+- `internal/engine/native/restore_optimizations_test.go` — tests for extractMySQLTableName, parseInsertValues, convertRowToTSV, sanitizeFileName, DetectBinaryHeader
+- `internal/restore/formats_zstd_test.go` — tests for zstd format detection, IsZstd, CompressionAlgorithm
+
 ## [5.8.78] - 2026-02-09
 
 ### Added

@@ -2,7 +2,6 @@ package native
 
 import (
 	"bufio"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -16,8 +15,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/klauspost/pgzip"
 
+	comp "dbbackup/internal/compression"
 	"dbbackup/internal/logger"
 )
 
@@ -235,12 +234,12 @@ func classifyIndexType(sql string) IndexType {
 // and returns a TableProfile for adaptive worker allocation.
 // Returns nil if metadata is unavailable (backward compatible — uses defaults).
 func loadTableProfile(filePath string, log logger.Logger) *TableProfile {
-	// Try both <file>.meta.json and <file-without-.gz>.meta.json
+	// Try both <file>.meta.json and <file-without-compression-ext>.meta.json
 	candidates := []string{
 		filePath + ".meta.json",
 	}
-	if strings.HasSuffix(filePath, ".gz") {
-		candidates = append(candidates, strings.TrimSuffix(filePath, ".gz")+".meta.json")
+	if stripped := comp.StripExtension(filePath); stripped != filePath {
+		candidates = append(candidates, stripped+".meta.json")
 	}
 
 	for _, metaPath := range candidates {
@@ -426,11 +425,11 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	HintSequentialRead(file)
 
 	var cleanupOnce sync.Once
-	var gzReader *pgzip.Reader
+	var decompCloser io.Closer
 	cleanupFn := func() {
 		cleanupOnce.Do(func() {
-			if gzReader != nil {
-				gzReader.Close()
+			if decompCloser != nil {
+				decompCloser.Close()
 			}
 			// Linux: evict dump file pages from cache to free RAM
 			// for PostgreSQL shared_buffers during the restore.
@@ -454,17 +453,14 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	// Wrap file with buffered reader for filesystem readahead (256KB)
 	bufReader := bufio.NewReaderSize(file, 256*1024)
 	var reader io.Reader = bufReader
-	if strings.HasSuffix(filePath, ".gz") {
-		// Use pgzip with tuned block size (1MB) and parallel workers
-		decompWorkers := runtime.NumCPU()
-		if decompWorkers > 16 {
-			decompWorkers = 16
-		}
-		gzReader, err = pgzip.NewReaderN(bufReader, 1<<20, decompWorkers)
+	if algo := comp.DetectAlgorithm(filePath); algo != comp.AlgorithmNone {
+		decomp, err := comp.NewDecompressorWithAlgorithm(bufReader, algo)
 		if err != nil {
-			return result, fmt.Errorf("failed to create gzip reader: %w", err)
+			return result, fmt.Errorf("failed to create %s reader: %w", algo, err)
 		}
-		reader = gzReader
+		decompCloser = decomp
+		reader = decomp.Reader
+		e.log.Info("Parallel restore decompression", "algorithm", algo)
 	}
 
 	// ── COPY worker infrastructure ──
@@ -1117,17 +1113,13 @@ func (e *ParallelRestoreEngine) preScanDump(ctx context.Context, filePath string
 
 	bufReader := bufio.NewReaderSize(file, 256*1024)
 	var reader io.Reader = bufReader
-	if strings.HasSuffix(filePath, ".gz") {
-		decompWorkers := runtime.NumCPU()
-		if decompWorkers > 16 {
-			decompWorkers = 16
-		}
-		gzReader, err := pgzip.NewReaderN(bufReader, 1<<20, decompWorkers)
+	if algo := comp.DetectAlgorithm(filePath); algo != comp.AlgorithmNone {
+		decomp, err := comp.NewDecompressorWithAlgorithm(bufReader, algo)
 		if err != nil {
-			return nil, fmt.Errorf("pre-scan: failed to create gzip reader: %w", err)
+			return nil, fmt.Errorf("pre-scan: failed to create %s reader: %w", algo, err)
 		}
-		defer gzReader.Close()
-		reader = gzReader
+		defer decomp.Close()
+		reader = decomp.Reader
 	}
 
 	scanner := bufio.NewScanner(reader)
@@ -1418,11 +1410,11 @@ func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath strin
 	HintSequentialRead(file)
 
 	var cleanupOnce sync.Once
-	var gzReader *pgzip.Reader
+	var decompCloser io.Closer
 	cleanupFn := func() {
 		cleanupOnce.Do(func() {
-			if gzReader != nil {
-				gzReader.Close()
+			if decompCloser != nil {
+				decompCloser.Close()
 			}
 			HintDoneWithFile(file)
 			file.Close()
@@ -1432,16 +1424,13 @@ func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath strin
 
 	bufReader := bufio.NewReaderSize(file, 256*1024)
 	var reader io.Reader = bufReader
-	if strings.HasSuffix(filePath, ".gz") {
-		decompWorkers := runtime.NumCPU()
-		if decompWorkers > 16 {
-			decompWorkers = 16
-		}
-		gzReader, err = pgzip.NewReaderN(bufReader, 1<<20, decompWorkers)
+	if algo := comp.DetectAlgorithm(filePath); algo != comp.AlgorithmNone {
+		decomp, err := comp.NewDecompressorWithAlgorithm(bufReader, algo)
 		if err != nil {
-			return result, fmt.Errorf("phase restore: gzip reader failed: %w", err)
+			return result, fmt.Errorf("phase restore: %s reader failed: %w", algo, err)
 		}
-		reader = gzReader
+		decompCloser = decomp
+		reader = decomp.Reader
 	}
 
 	scanner := bufio.NewScanner(reader)
@@ -1814,6 +1803,3 @@ func (e *ParallelRestoreEngine) parseStatementsWithContext(ctx context.Context, 
 
 	return statements, nil
 }
-
-// Ensure gzip import is used
-var _ = gzip.BestCompression

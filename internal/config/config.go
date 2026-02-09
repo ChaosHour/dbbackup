@@ -36,6 +36,7 @@ type Config struct {
 	CompressionLevel      int
 	AutoDetectCompression bool   // Auto-detect optimal compression based on blob analysis
 	CompressionMode       string // "auto", "always", "never" - controls compression behavior
+	CompressionAlgorithm  string // "gzip" or "zstd" - compression algorithm for backups
 	BackupOutputFormat    string // "compressed" or "plain" - output format for backups
 	TrustFilesystemCompress bool  // Trust filesystem-level compression (ZFS/Btrfs), skip app compression
 	Jobs                  int
@@ -273,6 +274,7 @@ func New() *Config {
 		// Backup defaults - use recommended profile's settings for small VMs
 		BackupDir:          backupDir,
 		CompressionLevel:   getEnvInt("COMPRESS_LEVEL", 6),
+		CompressionAlgorithm: getEnvString("COMPRESSION_ALGORITHM", "gzip"),
 		BackupOutputFormat: getEnvString("BACKUP_OUTPUT_FORMAT", "compressed"),
 		Jobs:               getEnvInt("JOBS", recommendedProfile.Jobs),
 		DumpJobs:         getEnvInt("DUMP_JOBS", recommendedProfile.DumpJobs),
@@ -405,6 +407,10 @@ func (c *Config) Validate() error {
 
 	if c.CompressionLevel < 0 || c.CompressionLevel > 9 {
 		return &ConfigError{Field: "compression", Value: string(rune(c.CompressionLevel)), Message: "must be between 0-9"}
+	}
+
+	if c.CompressionAlgorithm != "" && c.CompressionAlgorithm != "gzip" && c.CompressionAlgorithm != "zstd" {
+		return &ConfigError{Field: "compression-algorithm", Value: c.CompressionAlgorithm, Message: "must be 'gzip' or 'zstd'"}
 	}
 
 	if c.Jobs < 1 {
@@ -726,7 +732,11 @@ func (c *Config) GetBackupExtension(dbType string) string {
 		if dbType == "postgres" || dbType == "postgresql" {
 			return ".dump" // PostgreSQL custom format (includes compression)
 		}
-		return ".sql.gz" // MySQL/MariaDB compressed SQL
+		// MySQL/MariaDB: use extension matching the compression algorithm
+		if c.CompressionAlgorithm == "zstd" {
+			return ".sql.zst"
+		}
+		return ".sql.gz" // MySQL/MariaDB compressed SQL (default gzip)
 	}
 	// Plain output
 	return ".sql"
@@ -735,6 +745,9 @@ func (c *Config) GetBackupExtension(dbType string) string {
 // GetClusterExtension returns the appropriate extension for cluster backups
 func (c *Config) GetClusterExtension() string {
 	if c.ShouldOutputCompressed() {
+		if c.CompressionAlgorithm == "zstd" {
+			return ".tar.zst"
+		}
 		return ".tar.gz"
 	}
 	return "" // Plain directory (no extension)

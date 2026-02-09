@@ -355,11 +355,14 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024) // 10MB max line
 
 	var (
-		stmtBuffer   bytes.Buffer
-		stmtCount    int64
-		rowsRestored int64
-		inMultiLine  bool
-		delimiter    = ";"
+		stmtBuffer       bytes.Buffer
+		stmtCount        int64
+		rowsRestored     int64
+		inMultiLine      bool
+		delimiter        = ";"
+		currentTable     string        // Track current table for DISABLE KEYS
+		disabledTables   []string      // Tables with disabled keys (for deferred ENABLE)
+		tableInsertCount int64         // INSERT count for current table
 	)
 
 	// Note: Foreign key checks already disabled in optimizations above
@@ -406,6 +409,33 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 				continue
 			}
 
+			// Track CREATE TABLE for DISABLE KEYS optimization
+			if strings.HasPrefix(upperStmt, "CREATE TABLE") {
+				// Extract table name from CREATE TABLE statement
+				if tbl := extractMySQLTableName(stmt); tbl != "" {
+					// ENABLE KEYS for previous table if we had one
+					if currentTable != "" && tableInsertCount > 0 {
+						if _, err := r.engine.db.ExecContext(ctx,
+							fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", currentTable)); err != nil {
+							r.engine.log.Debug("ENABLE KEYS failed (non-critical)", "table", currentTable, "error", err)
+						}
+					}
+					currentTable = tbl
+					tableInsertCount = 0
+				}
+			}
+
+			// DISABLE KEYS before first INSERT into a table (deferred until data load)
+			if strings.HasPrefix(upperStmt, "INSERT") && currentTable != "" && tableInsertCount == 0 {
+				if _, err := r.engine.db.ExecContext(ctx,
+					fmt.Sprintf("ALTER TABLE %s DISABLE KEYS", currentTable)); err != nil {
+					r.engine.log.Debug("DISABLE KEYS not supported (MyISAM only)", "table", currentTable, "error", err)
+				} else {
+					disabledTables = append(disabledTables, currentTable)
+					r.engine.log.Debug("Disabled keys for bulk load", "table", currentTable)
+				}
+			}
+
 			// Execute the statement
 			res, err := r.engine.db.ExecContext(ctx, stmt)
 			if err != nil {
@@ -421,6 +451,10 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 			}
 			stmtCount++
 
+			if strings.HasPrefix(upperStmt, "INSERT") {
+				tableInsertCount++
+			}
+
 			if options.ProgressCallback != nil && stmtCount%100 == 0 {
 				options.ProgressCallback(&RestoreProgress{
 					Operation:        "SQL",
@@ -431,6 +465,19 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 		} else {
 			inMultiLine = true
 		}
+	}
+
+	// ENABLE KEYS for the last table
+	if currentTable != "" && tableInsertCount > 0 {
+		if _, err := r.engine.db.ExecContext(ctx,
+			fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", currentTable)); err != nil {
+			r.engine.log.Debug("ENABLE KEYS failed (non-critical)", "table", currentTable, "error", err)
+		}
+	}
+
+	// Re-enable keys on all tables that were disabled (safety net)
+	for _, tbl := range disabledTables {
+		r.engine.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", tbl))
 	}
 
 	// Handle any remaining statement
@@ -454,6 +501,81 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 	r.engine.log.Info("Restore completed", "statements", stmtCount, "rows", rowsRestored, "duration", result.Duration)
 
 	return result, nil
+}
+
+// extractMySQLTableName extracts the table name from a CREATE TABLE statement.
+// Handles backtick-quoted, double-quoted, and unquoted table names.
+func extractMySQLTableName(stmt string) string {
+	// Normalize to find CREATE TABLE
+	upper := strings.ToUpper(strings.TrimSpace(stmt))
+	idx := strings.Index(upper, "CREATE TABLE")
+	if idx < 0 {
+		return ""
+	}
+	rest := strings.TrimSpace(stmt[idx+len("CREATE TABLE"):])
+
+	// Skip IF NOT EXISTS
+	upperRest := strings.ToUpper(rest)
+	if strings.HasPrefix(upperRest, "IF NOT EXISTS") {
+		rest = strings.TrimSpace(rest[len("IF NOT EXISTS"):])
+	}
+
+	// Extract table name (may be schema.table or just table)
+	var name strings.Builder
+	i := 0
+	for i < len(rest) {
+		ch := rest[i]
+		if ch == '`' {
+			// Backtick-quoted identifier
+			name.WriteByte('`')
+			i++
+			for i < len(rest) && rest[i] != '`' {
+				name.WriteByte(rest[i])
+				i++
+			}
+			if i < len(rest) {
+				name.WriteByte('`')
+				i++
+			}
+			// Check for schema.table dot
+			if i < len(rest) && rest[i] == '.' {
+				name.WriteByte('.')
+				i++
+				continue
+			}
+			break
+		} else if ch == '"' {
+			// Double-quoted identifier
+			name.WriteByte('"')
+			i++
+			for i < len(rest) && rest[i] != '"' {
+				name.WriteByte(rest[i])
+				i++
+			}
+			if i < len(rest) {
+				name.WriteByte('"')
+				i++
+			}
+			break
+		} else if ch == ' ' || ch == '(' || ch == '\n' || ch == '\r' || ch == '\t' {
+			break
+		} else {
+			name.WriteByte(ch)
+			i++
+			// Check for schema.table dot
+			if i < len(rest) && rest[i] == '.' {
+				name.WriteByte('.')
+				i++
+				continue
+			}
+		}
+	}
+
+	result := name.String()
+	if result == "" {
+		return ""
+	}
+	return result
 }
 
 // Ping checks database connectivity

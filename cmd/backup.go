@@ -173,6 +173,11 @@ func init() {
 		cmd.Flags().BoolVarP(&backupDryRun, "dry-run", "n", false, "Validate configuration without executing backup")
 	}
 
+	// Compression algorithm flag for all backup commands
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
+		cmd.Flags().String("compression-algorithm", "gzip", "Compression algorithm: gzip or zstd (zstd is 4-6x faster decompression)")
+	}
+
 	// Verification flag for all backup commands (HIGH priority #9)
 	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
 		cmd.Flags().Bool("no-verify", false, "Skip automatic backup verification after creation")
@@ -237,6 +242,12 @@ func init() {
 			if c.Flags().Changed("no-verify") {
 				noVerify, _ := c.Flags().GetBool("no-verify")
 				cfg.VerifyAfterBackup = !noVerify
+			}
+
+			// Handle --compression-algorithm flag
+			if c.Flags().Changed("compression-algorithm") {
+				algo, _ := c.Flags().GetString("compression-algorithm")
+				cfg.CompressionAlgorithm = algo
 			}
 
 			return nil

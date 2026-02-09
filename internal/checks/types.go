@@ -27,3 +27,8 @@ func formatBytes(bytes uint64) string {
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
+
+// FormatBytesUint64 formats bytes as a human-readable string (exported version)
+func FormatBytesUint64(bytes uint64) string {
+	return formatBytes(bytes)
+}

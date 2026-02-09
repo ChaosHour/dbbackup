@@ -51,11 +51,32 @@ func CheckDiskSpace(path string) *DiskSpaceCheck {
 }
 
 // CheckDiskSpaceForRestore checks if there's enough space for restore (needs 4x archive size)
+// Deprecated: Use CheckDiskSpaceForExtraction for cluster restores where archives
+// contain already-compressed pg_dump files. The 4x multiplier is overly conservative.
 func CheckDiskSpaceForRestore(path string, archiveSize int64) *DiskSpaceCheck {
 	check := CheckDiskSpace(path)
 	requiredBytes := uint64(archiveSize) * 4 // Account for decompression
 
 	// Override status based on required space
+	if check.AvailableBytes < requiredBytes {
+		check.Critical = true
+		check.Sufficient = false
+		check.Warning = false
+	} else if check.AvailableBytes < requiredBytes*2 {
+		check.Warning = true
+		check.Sufficient = false
+	}
+
+	return check
+}
+
+// CheckDiskSpaceForExtraction checks if there's enough space to extract a compressed archive.
+// Uses a 2x multiplier — cluster archives contain pg_dump custom-format files which are
+// already compressed, so extraction ratio is approximately 1:1. The 2x provides headroom.
+func CheckDiskSpaceForExtraction(path string, archiveSize int64) *DiskSpaceCheck {
+	check := CheckDiskSpace(path)
+	requiredBytes := uint64(archiveSize) * 2
+
 	if check.AvailableBytes < requiredBytes {
 		check.Critical = true
 		check.Sufficient = false

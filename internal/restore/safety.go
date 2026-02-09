@@ -346,7 +346,7 @@ func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplie
 	}
 
 	if availableSpace < requiredSpace {
-		return fmt.Errorf("insufficient disk space for restore: %.1f%% used - need at least 4x archive size\\n"+
+		return fmt.Errorf("insufficient disk space for restore: %.1f%% used\n"+
 			"  Required: %s\\n"+
 			"  Available: %s\\n"+
 			"  Archive: %s\\n"+

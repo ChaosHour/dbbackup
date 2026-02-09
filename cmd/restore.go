@@ -1108,13 +1108,17 @@ func runFullClusterRestore(archivePath string) error {
 				}
 			}
 
+			// Propagate --workdir to config so GetEffectiveWorkDir() uses it
+			// for extraction (ValidateAndExtractCluster) and restore engine
+			cfg.WorkDir = restoreWorkdir
+
 			log.Warn("[WARN] Using alternative working directory for extraction")
 			log.Warn("    This is recommended when system disk space is limited")
 			log.Warn("    Location: " + restoreWorkdir)
 		}
 
 		log.Info("Checking disk space...")
-		multiplier := 4.0 // Cluster needs more space for extraction
+		multiplier := 2.0 // Cluster archives contain already-compressed pg_dump files
 		if err := safety.CheckDiskSpaceAt(archivePath, checkDir, multiplier); err != nil {
 			return fmt.Errorf("disk space check failed: %w", err)
 		}

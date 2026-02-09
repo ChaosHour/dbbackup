@@ -5,6 +5,15 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.3] - 2026-02-09
+
+### Fixed
+
+- **Cluster restore disk space check**: Was checking `BackupDir` filesystem instead of the workdir where extraction actually happens — caused false "insufficient disk space" errors when archive and extraction are on different volumes
+- **`--workdir` flag ignored**: The `--workdir` flag was never propagated to `cfg.WorkDir`, so `ValidateAndExtractCluster` extracted to `/tmp` (often a tiny tmpfs) instead of the specified directory
+- **Overly conservative 4× multiplier**: Cluster archives contain already-compressed pg_dump files (extraction ratio ~1:1). Reduced disk space requirement from 4× to 2× archive size across all restore paths (CLI, TUI, engine)
+- **Better error messages**: Disk space errors now show required/available/archive sizes and the checked directory
+
 ## [6.0.2] - 2026-02-09
 
 ### Fixed

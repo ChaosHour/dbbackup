@@ -1573,11 +1573,26 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 		e.log.Info("Checking disk space for restore")
 		archiveInfo, err = os.Stat(archivePath)
 		if err == nil {
-			spaceCheck := checks.CheckDiskSpaceForRestore(e.cfg.BackupDir, archiveInfo.Size())
+			// Check the workdir filesystem — that's where extraction actually happens,
+			// NOT BackupDir (which may be on a different volume holding the archive).
+			// Use 2x multiplier: cluster archives contain pg_dump custom-format files
+			// which are already compressed, so extraction ratio is ~1:1.
+			checkDir := e.cfg.GetEffectiveWorkDir()
+			spaceCheck := checks.CheckDiskSpaceForExtraction(checkDir, archiveInfo.Size())
 
 			if spaceCheck.Critical {
 				operation.Fail("Insufficient disk space")
-				return fmt.Errorf("insufficient disk space for restore: %.1f%% used - need at least 4x archive size", spaceCheck.UsedPercent)
+				return fmt.Errorf("insufficient disk space for restore: %.1f%% used - need at least 2x archive size for extraction\n"+
+					"  Required:  %s\n"+
+					"  Available: %s\n"+
+					"  Archive:   %s\n"+
+					"  Work dir:  %s\n\n"+
+					"Tip: Use --workdir to specify a directory with more space",
+					spaceCheck.UsedPercent,
+					checks.FormatBytesUint64(uint64(archiveInfo.Size())*2),
+					checks.FormatBytesUint64(spaceCheck.AvailableBytes),
+					checks.FormatBytesUint64(uint64(archiveInfo.Size())),
+					checkDir)
 			}
 
 			if spaceCheck.Warning {

@@ -87,6 +87,9 @@ type RestoreExecutionModel struct {
 	dbBytesTotal int64 // Total bytes across all databases (from pg_database_size)
 	dbBytesDone  int64 // Bytes completed (sum of finished DB sizes)
 
+	// Metadata quality tracking for tiered progress display
+	metadataSource string // "accurate", "extrapolated", "unknown"
+
 	// Results
 	done       bool
 	cancelling bool // True when user has requested cancellation
@@ -187,6 +190,9 @@ type sharedProgressState struct {
 	dbBytesTotal int64 // Total bytes across all databases
 	dbBytesDone  int64 // Bytes completed (sum of finished DB sizes)
 
+	// Metadata quality tracking
+	metadataSource string // "accurate", "extrapolated", "unknown"
+
 	// Rolling window for speed calculation
 	speedSamples []restoreSpeedSample
 
@@ -221,7 +227,7 @@ func clearCurrentRestoreProgress() {
 	currentRestoreProgressState = nil
 }
 
-func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration, currentDB string, overallPhase int, extractionDone bool, dbBytesTotal, dbBytesDone int64, phase3StartTime time.Time) {
+func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description string, hasUpdate bool, dbTotal, dbDone int, speed float64, dbPhaseElapsed, dbAvgPerDB time.Duration, currentDB string, overallPhase int, extractionDone bool, dbBytesTotal, dbBytesDone int64, phase3StartTime time.Time, metadataSource string) {
 	// CRITICAL: Add panic recovery
 	defer func() {
 		if r := recover(); r != nil {
@@ -236,7 +242,7 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 	currentRestoreProgressMu.Unlock()
 
 	if state == nil {
-		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false, 0, 0, time.Time{}
+		return 0, 0, "", false, 0, 0, 0, 0, 0, "", 0, false, 0, 0, time.Time{}, "unknown"
 	}
 
 	state.mu.Lock()
@@ -253,6 +259,8 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 		dbPhaseElapsed = state.dbPhaseElapsed
 	}
 
+	metadataSource = state.metadataSource
+
 	return state.bytesTotal, state.bytesDone,
 		state.description, state.hasUpdate,
 		state.dbTotal, state.dbDone, speed,
@@ -260,7 +268,8 @@ func getCurrentRestoreProgress() (bytesTotal, bytesDone int64, description strin
 		state.currentDB, state.overallPhase,
 		state.extractionDone,
 		state.dbBytesTotal, state.dbBytesDone,
-		state.phase3StartTime
+		state.phase3StartTime,
+		metadataSource
 }
 
 // getUnifiedProgress returns the unified progress tracker if available
@@ -443,7 +452,16 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 		// Set up progress callback for detailed progress reporting
 		// We use a shared pointer that can be queried by the TUI ticker
 		progressState := &sharedProgressState{
-			speedSamples: make([]restoreSpeedSample, 0, 100),
+			speedSamples:   make([]restoreSpeedSample, 0, 100),
+			metadataSource: "unknown",
+		}
+
+		// Detect metadata quality for tiered progress display
+		if restoreType == "restore-cluster" {
+			metaPath := archive.Path + ".meta.json"
+			if _, err := os.Stat(metaPath); err == nil {
+				progressState.metadataSource = "accurate"
+			}
 		}
 
 		// Initialize unified progress tracker for cluster restores
@@ -747,7 +765,10 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Poll shared progress state for real-time updates
 			// Note: dbPhaseElapsed is now calculated in realtime inside getCurrentRestoreProgress()
-			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed, dbPhaseElapsed, dbAvgPerDB, currentDB, overallPhase, extractionDone, dbBytesTotal, dbBytesDone, _ := getCurrentRestoreProgress()
+			bytesTotal, bytesDone, description, hasUpdate, dbTotal, dbDone, speed, dbPhaseElapsed, dbAvgPerDB, currentDB, overallPhase, extractionDone, dbBytesTotal, dbBytesDone, _, metaSrc := getCurrentRestoreProgress()
+			if metaSrc != "" {
+				m.metadataSource = metaSrc
+			}
 			if hasUpdate && bytesTotal > 0 && !extractionDone {
 				// Phase 1: Extraction
 				m.bytesTotal = bytesTotal

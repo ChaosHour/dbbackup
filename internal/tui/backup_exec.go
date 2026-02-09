@@ -68,6 +68,18 @@ type BackupExecutionModel struct {
 
 	// EMA-based speed/ETA estimator for smooth, accurate predictions
 	etaEstimator *progress.EMAEstimator
+
+	// Metadata quality tracking for tiered progress display
+	metadataSource   string                      // "accurate", "extrapolated", "unknown"
+	completedBackups []completedDBBackup          // Track completed DBs for extrapolation
+	bytesPerDB       map[string]int64             // db name → final backup size
+	extrapolatedTotal int64                       // Extrapolated total bytes from completed DBs
+}
+
+// completedDBBackup tracks a completed database backup for extrapolation
+type completedDBBackup struct {
+	Name      string
+	FinalSize int64 // Actual bytes transferred for this DB
 }
 
 // sharedBackupProgressState holds progress state that can be safely accessed from callbacks
@@ -84,6 +96,11 @@ type sharedBackupProgressState struct {
 	dbAvgPerDB      time.Duration // Average time per database backup
 	bytesDone       int64         // Size-weighted progress: bytes completed
 	bytesTotal      int64         // Size-weighted progress: total bytes
+
+	// Metadata quality tracking
+	metadataSource   string              // "accurate", "extrapolated", "unknown"
+	completedDBs     []completedDBBackup // Completed DBs for extrapolation
+	lastDbDone       int                 // Track when a new DB completes
 }
 
 // Package-level shared progress state for backup operations
@@ -104,7 +121,7 @@ func clearCurrentBackupProgress() {
 	currentBackupProgressState = nil
 }
 
-func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhase int, phaseDesc string, hasUpdate bool, dbPhaseElapsed, dbAvgPerDB time.Duration, phase2StartTime time.Time, bytesDone, bytesTotal int64) {
+func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhase int, phaseDesc string, hasUpdate bool, dbPhaseElapsed, dbAvgPerDB time.Duration, phase2StartTime time.Time, bytesDone, bytesTotal int64, metadataSource string) {
 	// CRITICAL: Add panic recovery
 	defer func() {
 		if r := recover(); r != nil {
@@ -117,12 +134,12 @@ func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhas
 	defer currentBackupProgressMu.Unlock()
 
 	if currentBackupProgressState == nil {
-		return 0, 0, "", 0, "", false, 0, 0, time.Time{}, 0, 0
+		return 0, 0, "", 0, "", false, 0, 0, time.Time{}, 0, 0, "unknown"
 	}
 
 	// Double-check state isn't nil after lock
 	if currentBackupProgressState == nil {
-		return 0, 0, "", 0, "", false, 0, 0, time.Time{}, 0, 0
+		return 0, 0, "", 0, "", false, 0, 0, time.Time{}, 0, 0, "unknown"
 	}
 
 	currentBackupProgressState.mu.Lock()
@@ -139,12 +156,15 @@ func getCurrentBackupProgress() (dbTotal, dbDone int, dbName string, overallPhas
 		dbPhaseElapsed = currentBackupProgressState.dbPhaseElapsed
 	}
 
+	metadataSource = currentBackupProgressState.metadataSource
+
 	return currentBackupProgressState.dbTotal, currentBackupProgressState.dbDone,
 		currentBackupProgressState.dbName, currentBackupProgressState.overallPhase,
 		currentBackupProgressState.phaseDesc, hasUpdate,
 		dbPhaseElapsed, currentBackupProgressState.dbAvgPerDB,
 		currentBackupProgressState.phase2StartTime,
-		currentBackupProgressState.bytesDone, currentBackupProgressState.bytesTotal
+		currentBackupProgressState.bytesDone, currentBackupProgressState.bytesTotal,
+		metadataSource
 }
 
 func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, backupType, dbName string, ratio int) BackupExecutionModel {
@@ -162,8 +182,10 @@ func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model,
 		status:       "Initializing...",
 		startTime:    time.Now(),
 		details:      []string{},
-		spinnerFrame: 0,
-		etaEstimator: progress.NewDefaultEMAEstimator(),
+		spinnerFrame:   0,
+		etaEstimator:   progress.NewDefaultEMAEstimator(),
+		metadataSource: "unknown",
+		bytesPerDB:     make(map[string]int64),
 	}
 }
 
@@ -226,7 +248,16 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 		}
 
 		// Setup shared progress state for TUI polling
-		progressState := &sharedBackupProgressState{}
+		progressState := &sharedBackupProgressState{
+			metadataSource: "unknown",
+		}
+
+		// Check for previous backup metadata to determine progress accuracy tier
+		if backupType == "cluster" {
+			metaSource := detectBackupMetadataSource(cfg.BackupDir)
+			progressState.metadataSource = metaSource
+		}
+
 		setCurrentBackupProgress(progressState)
 		defer clearCurrentBackupProgress()
 
@@ -292,6 +323,24 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 			}
 			// Calculate elapsed time immediately
 			progressState.dbPhaseElapsed = time.Since(progressState.phase2StartTime)
+
+			// Track completed DBs for extrapolation (upgrade unknown → extrapolated)
+			if done > progressState.lastDbDone && done > 0 {
+				// A new database just completed — record it for extrapolation
+				progressState.completedDBs = append(progressState.completedDBs, completedDBBackup{
+					Name:      currentDB,
+					FinalSize: bytesDone, // bytesDone = cumulative completed bytes at this point
+				})
+				progressState.lastDbDone = done
+
+				// Upgrade metadata source from "unknown" to "extrapolated" after first DB
+				if progressState.metadataSource == "unknown" && len(progressState.completedDBs) > 0 {
+					progressState.metadataSource = "extrapolated"
+					log.Info("Progress tier upgraded to extrapolated",
+						"completed_dbs", len(progressState.completedDBs),
+						"total_dbs", total)
+				}
+			}
 		})
 
 		var backupErr error
@@ -361,7 +410,8 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				var phase2Start time.Time
 				var phaseElapsed time.Duration
 				var bytesDone, bytesTotal int64
-				dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, phaseElapsed, dbAvgPerDB, phase2Start, bytesDone, bytesTotal = getCurrentBackupProgress()
+				var metaSrc string
+				dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, phaseElapsed, dbAvgPerDB, phase2Start, bytesDone, bytesTotal, metaSrc = getCurrentBackupProgress()
 				_ = phaseElapsed // We recalculate this below from phase2StartTime
 				if !phase2Start.IsZero() && m.phase2StartTime.IsZero() {
 					m.phase2StartTime = phase2Start
@@ -369,6 +419,10 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Always update size info for accurate ETA
 				m.bytesDone = bytesDone
 				m.bytesTotal = bytesTotal
+				// Update metadata source for tiered display
+				if metaSrc != "" {
+					m.metadataSource = metaSrc
+				}
 			}()
 
 			if hasUpdate {
@@ -485,69 +539,192 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// renderBackupDatabaseProgressBarWithTiming renders database backup progress with EMA-based speed and ETA
-func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed time.Duration, bytesDone, bytesTotal int64, estimator *progress.EMAEstimator) string {
+// detectBackupMetadataSource checks the backup directory for previous .meta.json files
+// Returns "accurate" if recent cluster metadata exists, "unknown" otherwise
+func detectBackupMetadataSource(backupDir string) string {
+	if backupDir == "" {
+		return "unknown"
+	}
+
+	// Look for any cluster_*.meta.json files
+	matches, err := filepath.Glob(filepath.Join(backupDir, "cluster_*meta.json"))
+	if err != nil || len(matches) == 0 {
+		return "unknown"
+	}
+
+	// We have previous backup metadata — try to load the most recent one
+	for i := len(matches) - 1; i >= 0; i-- {
+		data, err := os.ReadFile(matches[i])
+		if err == nil && len(data) > 10 {
+			// Valid metadata file exists
+			return "accurate"
+		}
+	}
+
+	return "unknown"
+}
+
+// extrapolateBackupTotal extrapolates total bytes based on completed DB backups
+// Uses average completed DB size × total DB count with 10% safety buffer
+func extrapolateBackupTotal(completedDBs []completedDBBackup, dbTotal int, currentEstimate int64) int64 {
+	if len(completedDBs) == 0 || dbTotal == 0 {
+		return currentEstimate
+	}
+
+	// Calculate average bytes per completed DB
+	var totalCompleted int64
+	for _, db := range completedDBs {
+		totalCompleted += db.FinalSize
+	}
+	avgSize := totalCompleted / int64(len(completedDBs))
+
+	// Extrapolate to all DBs with 10% buffer for compression/WAL variance
+	extrapolated := int64(float64(avgSize*int64(dbTotal)) * 1.10)
+
+	// If extrapolated is much larger than pg_database_size estimate, trust it
+	// If smaller, still use it — completed DBs are more accurate than estimates
+	return extrapolated
+}
+
+// renderBackupDatabaseProgressBarWithTiming renders database backup progress with 4-tier display:
+// Tier 1 (accurate): .meta.json exists → full bar + ETA
+// Tier 2 (extrapolated): 1+ DBs completed → bar with ~estimate + ~ETA
+// Tier 3 (unknown): no completed DBs → throughput only, no ETA/percentage
+// Tier 4 (over-budget): transferred > estimated × 1.05 → drop ETA
+func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed time.Duration, bytesDone, bytesTotal int64, estimator *progress.EMAEstimator, metadataSource string) string {
 	if total == 0 {
 		return ""
 	}
 
-	// Use size-weighted progress if available, otherwise fall back to count-based
-	var percent float64
-	if bytesTotal > 0 {
-		percent = float64(bytesDone) / float64(bytesTotal)
-	} else {
-		percent = float64(done) / float64(total)
-	}
-	if percent > 1.0 {
-		percent = 1.0
+	// Determine display tier based on metadata quality
+	tier := metadataSource
+	if tier == "" {
+		tier = "unknown"
 	}
 
-	// Build progress bar
-	barWidth := 50
-	filled := int(float64(barWidth) * percent)
-	if filled > barWidth {
-		filled = barWidth
+	// Check for over-budget condition (Tier 4)
+	overBudget := bytesTotal > 0 && bytesDone > int64(float64(bytesTotal)*1.05)
+	if overBudget && tier != "accurate" {
+		tier = "over-budget"
 	}
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 
-	// Speed display from EMA estimator
+	// Speed display from EMA estimator (shared across all tiers)
 	var speedStr string
 	if estimator != nil && estimator.IsWarmupComplete() {
-		speedStr = fmt.Sprintf(" | %s", estimator.FormatSpeed())
+		speedStr = estimator.FormatSpeed()
+	} else {
+		speedStr = "0 MB/s"
 	}
 
-	// ETA from EMA estimator (smooth, adaptive) — replaces simple elapsed/done calculation
-	var etaStr string
-	if estimator != nil && bytesTotal > 0 {
-		remainingBytes := bytesTotal - bytesDone
-		if eta, ready := estimator.EstimateETA(remainingBytes); ready {
-			etaStr = fmt.Sprintf(" | ETA: %s", formatDuration(eta))
+	var s strings.Builder
+
+	switch tier {
+	case "accurate":
+		// Tier 1: Full progress bar with accurate ETA
+		percent := float64(0)
+		if bytesTotal > 0 {
+			percent = float64(bytesDone) / float64(bytesTotal)
+			if percent > 1.0 {
+				percent = 1.0 // Cap at 100% even with accurate data (compression savings)
+			}
 		} else {
-			etaStr = " | ETA: calculating..."
+			percent = float64(done) / float64(total)
 		}
-	} else if bytesDone > 0 && bytesDone < bytesTotal && bytesTotal > 0 {
-		// Fallback: simple elapsed-based if no EMA estimator
-		remainingBytes := bytesTotal - bytesDone
-		eta := time.Duration(float64(dbPhaseElapsed) * float64(remainingBytes) / float64(bytesDone))
-		etaStr = fmt.Sprintf(" | ETA: ~%s", formatDuration(eta))
-	} else if done > 0 && done < total && bytesTotal == 0 {
-		// Fallback to count-based if no size info
-		avgPerDB := dbPhaseElapsed / time.Duration(done)
-		remaining := total - done
-		eta := avgPerDB * time.Duration(remaining)
-		etaStr = fmt.Sprintf(" | ETA: ~%s", formatDuration(eta))
-	} else if done == total {
-		etaStr = " | Complete"
+
+		barWidth := 50
+		filled := int(float64(barWidth) * percent)
+		if filled > barWidth {
+			filled = barWidth
+		}
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+
+		var etaStr string
+		if estimator != nil && bytesTotal > 0 {
+			remainingBytes := bytesTotal - bytesDone
+			if remainingBytes < 0 {
+				remainingBytes = 0
+			}
+			if eta, ready := estimator.EstimateETA(remainingBytes); ready {
+				etaStr = fmt.Sprintf("ETA: %s", formatDuration(eta))
+			} else {
+				etaStr = "ETA: calculating..."
+			}
+		} else if done == total {
+			etaStr = "Complete"
+		} else {
+			etaStr = "ETA: calculating..."
+		}
+
+		pct := int(percent * 100)
+		sizeInfo := ""
+		if bytesTotal > 0 {
+			sizeInfo = fmt.Sprintf(" (%s / %s)", FormatBytes(bytesDone), FormatBytes(bytesTotal))
+		}
+		s.WriteString(fmt.Sprintf("  Databases: [%s] %d/%d%s %d%% | %s | %s\n",
+			bar, done, total, sizeInfo, pct, speedStr, etaStr))
+
+	case "extrapolated":
+		// Tier 2: Progress bar with ~estimate and ~ETA
+		percent := float64(0)
+		if bytesTotal > 0 {
+			percent = float64(bytesDone) / float64(bytesTotal)
+			if percent > 1.0 {
+				percent = 1.0
+			}
+		}
+
+		barWidth := 50
+		filled := int(float64(barWidth) * percent)
+		if filled > barWidth {
+			filled = barWidth
+		}
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+
+		var etaStr string
+		if estimator != nil && bytesTotal > 0 {
+			remainingBytes := bytesTotal - bytesDone
+			if remainingBytes < 0 {
+				remainingBytes = 0
+			}
+			if eta, ready := estimator.EstimateETA(remainingBytes); ready {
+				etaStr = fmt.Sprintf("ETA: ~%s", formatDuration(eta))
+			} else {
+				etaStr = "ETA: calculating..."
+			}
+		} else if done == total {
+			etaStr = "Complete"
+		} else {
+			etaStr = "ETA: calculating..."
+		}
+
+		pct := int(percent * 100)
+		sizeInfo := ""
+		if bytesTotal > 0 {
+			sizeInfo = fmt.Sprintf(" (%s / ~%s est.)", FormatBytes(bytesDone), FormatBytes(bytesTotal))
+		}
+		s.WriteString(fmt.Sprintf("  Databases: [%s] %d/%d%s %d%% | %s | %s\n",
+			bar, done, total, sizeInfo, pct, speedStr, etaStr))
+
+	case "over-budget":
+		// Tier 4: Transferred > estimated — drop ETA, show throughput
+		sizeInfo := ""
+		if bytesTotal > 0 {
+			sizeInfo = fmt.Sprintf(" (%s / %s est.)", FormatBytes(bytesDone), FormatBytes(bytesTotal))
+		}
+		s.WriteString(fmt.Sprintf("  Databases: %d/%d%s | %s | Calculating...\n",
+			done, total, sizeInfo, speedStr))
+
+	default:
+		// Tier 3: Unknown — no percentage/ETA, just throughput + elapsed
+		sizeInfo := ""
+		if bytesDone > 0 {
+			sizeInfo = fmt.Sprintf(" (%s transferred)", FormatBytes(bytesDone))
+		}
+		s.WriteString(fmt.Sprintf("  Databases: %d/%d%s | %s | Elapsed: %s\n",
+			done, total, sizeInfo, speedStr, formatDuration(dbPhaseElapsed)))
 	}
 
-	// Show size progress if available
-	var sizeInfo string
-	if bytesTotal > 0 {
-		sizeInfo = fmt.Sprintf(" (%s/%s)", FormatBytes(bytesDone), FormatBytes(bytesTotal))
-	}
-
-	return fmt.Sprintf("  Databases: [%s] %d/%d%s%s | Elapsed: %s%s\n",
-		bar, done, total, sizeInfo, speedStr, formatDuration(dbPhaseElapsed), etaStr)
+	return s.String()
 }
 
 func (m BackupExecutionModel) View() string {
@@ -600,10 +777,13 @@ func (m BackupExecutionModel) View() string {
 			if m.overallPhase == backupPhaseDatabases && m.dbTotal > 0 {
 				// Phase 2: Database backups - contributes 15-90%
 				// Use SIZE-WEIGHTED progress (bytesDone/bytesTotal) for accuracy
-				// Fallback to count-based only when byte info is unavailable
+				// Handle tiered display: cap at 100% and gracefully handle over-budget
 				var dbPct int
 				if m.bytesTotal > 0 {
 					dbPct = int((m.bytesDone * 100) / m.bytesTotal)
+				} else if m.metadataSource == "unknown" {
+					// Tier 3: unknown — use count-based as rough estimate
+					dbPct = int((int64(m.dbDone) * 100) / int64(m.dbTotal))
 				} else {
 					dbPct = int((int64(m.dbDone) * 100) / int64(m.dbTotal))
 				}
@@ -646,8 +826,8 @@ func (m BackupExecutionModel) View() string {
 				}
 				s.WriteString("\n")
 
-				// Database progress bar with EMA-based speed and ETA
-				s.WriteString(renderBackupDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.bytesDone, m.bytesTotal, m.etaEstimator))
+				// Database progress bar with EMA-based speed and ETA (4-tier display)
+				s.WriteString(renderBackupDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.bytesDone, m.bytesTotal, m.etaEstimator, m.metadataSource))
 				s.WriteString("\n")
 			} else {
 				// Intermediate phase (globals)
@@ -787,6 +967,9 @@ func (m BackupExecutionModel) viewSimple() string {
 			var pct int
 			if m.bytesTotal > 0 {
 				pct = int((m.bytesDone * 100) / m.bytesTotal)
+				if pct > 100 {
+					pct = 100
+				}
 			} else {
 				pct = (m.dbDone * 100) / m.dbTotal
 			}

@@ -5,6 +5,20 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.2] - 2026-02-09
+
+### Fixed
+
+- **TUI peer authentication**: Local connections now use Unix socket (`/var/run/postgresql`) for peer auth when no password is available — fixes SASL auth failure for `postgres` user running TUI tools (Drop Database, etc.)
+- **4-tier progress display**: Progress bar no longer shows >100% or broken ETA when `pg_database_size()` estimate is inaccurate (WAL overhead, compression variance, TOAST tables)
+  - Tier 1 (accurate): `.meta.json` from previous backup → full bar + ETA
+  - Tier 2 (extrapolated): 1+ DBs completed → bar with ~estimate + ~ETA
+  - Tier 3 (unknown): first backup, no DBs completed → throughput only
+  - Tier 4 (over-budget): transferred > estimate × 1.05 → drops ETA, shows "Calculating..."
+- **EMA-based ETA**: Smooth, stable speed/ETA using exponential moving average (replaces simple elapsed/done)
+- **Size-weighted progress**: Overall % based on bytes transferred, not database count
+- **Remote auth error message**: Clear error when connecting to remote host without password (was: cryptic SASL failure)
+
 ## [6.0.0] - 2026-02-11
 
 ### Added — Production-Readiness Features

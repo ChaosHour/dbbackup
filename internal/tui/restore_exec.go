@@ -83,6 +83,10 @@ type RestoreExecutionModel struct {
 	termWidth        int  // Terminal width for rich progress
 	termHeight       int  // Terminal height for rich progress
 
+	// Size-weighted database progress (for accurate overall %)
+	dbBytesTotal int64 // Total bytes across all databases (from pg_database_size)
+	dbBytesDone  int64 // Bytes completed (sum of finished DB sizes)
+
 	// Results
 	done       bool
 	cancelling bool // True when user has requested cancellation
@@ -777,6 +781,8 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Use weighted progress by bytes if available, otherwise use count
 				if dbBytesTotal > 0 {
+					m.dbBytesTotal = dbBytesTotal
+					m.dbBytesDone = dbBytesDone
 					weightedPercent := int((dbBytesDone * 100) / dbBytesTotal)
 					m.phase = fmt.Sprintf("Phase 3/3: Databases (%d/%d) - %.1f%% by size", dbDone, dbTotal, float64(dbBytesDone*100)/float64(dbBytesTotal))
 					m.progress = weightedPercent
@@ -1063,7 +1069,16 @@ func (m RestoreExecutionModel) View() string {
 				phaseLabel = "Phase 2/3: Restoring Globals"
 			} else if m.dbTotal > 0 {
 				// Phase 3: Database restores - contributes 65-100%
-				dbPct := int((int64(m.dbDone) * 100) / int64(m.dbTotal))
+				// Use size-weighted progress if byte info is available
+				var dbPct int
+				if m.dbBytesTotal > 0 {
+					dbPct = int((m.dbBytesDone * 100) / m.dbBytesTotal)
+				} else {
+					dbPct = int((int64(m.dbDone) * 100) / int64(m.dbTotal))
+				}
+				if dbPct > 100 {
+					dbPct = 100
+				}
 				overallProgress = 65 + (dbPct * 35 / 100)
 				phaseLabel = fmt.Sprintf("Phase 3/3: Databases (%d/%d)", m.dbDone, m.dbTotal)
 			}

@@ -16,6 +16,7 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/progress"
 )
 
 // isInteractiveBackupTTY checks if we have an interactive terminal for progress display
@@ -64,6 +65,9 @@ type BackupExecutionModel struct {
 	phase2StartTime time.Time     // When phase 2 started (for realtime elapsed calculation)
 	bytesDone       int64         // Size-weighted progress: bytes completed
 	bytesTotal      int64         // Size-weighted progress: total bytes
+
+	// EMA-based speed/ETA estimator for smooth, accurate predictions
+	etaEstimator *progress.EMAEstimator
 }
 
 // sharedBackupProgressState holds progress state that can be safely accessed from callbacks
@@ -159,6 +163,7 @@ func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model,
 		startTime:    time.Now(),
 		details:      []string{},
 		spinnerFrame: 0,
+		etaEstimator: progress.NewDefaultEMAEstimator(),
 	}
 }
 
@@ -380,6 +385,11 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.dbPhaseElapsed = time.Since(m.phase2StartTime)
 			}
 
+			// Feed EMA estimator with current byte progress for smooth speed/ETA
+			if m.bytesDone > 0 && m.etaEstimator != nil {
+				m.etaEstimator.Update(m.bytesDone, time.Now())
+			}
+
 			// Update status based on progress and elapsed time
 			elapsedSec := int(time.Since(m.startTime).Seconds())
 
@@ -475,8 +485,8 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// renderBackupDatabaseProgressBarWithTiming renders database backup progress with size-weighted ETA
-func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed time.Duration, bytesDone, bytesTotal int64) string {
+// renderBackupDatabaseProgressBarWithTiming renders database backup progress with EMA-based speed and ETA
+func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed time.Duration, bytesDone, bytesTotal int64, estimator *progress.EMAEstimator) string {
 	if total == 0 {
 		return ""
 	}
@@ -500,13 +510,26 @@ func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed t
 	}
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 
-	// Calculate size-weighted ETA (much more accurate for mixed database sizes)
+	// Speed display from EMA estimator
+	var speedStr string
+	if estimator != nil && estimator.IsWarmupComplete() {
+		speedStr = fmt.Sprintf(" | %s", estimator.FormatSpeed())
+	}
+
+	// ETA from EMA estimator (smooth, adaptive) — replaces simple elapsed/done calculation
 	var etaStr string
-	if bytesDone > 0 && bytesDone < bytesTotal && bytesTotal > 0 {
-		// Size-weighted: ETA = elapsed * (remaining_bytes / done_bytes)
+	if estimator != nil && bytesTotal > 0 {
+		remainingBytes := bytesTotal - bytesDone
+		if eta, ready := estimator.EstimateETA(remainingBytes); ready {
+			etaStr = fmt.Sprintf(" | ETA: %s", formatDuration(eta))
+		} else {
+			etaStr = " | ETA: calculating..."
+		}
+	} else if bytesDone > 0 && bytesDone < bytesTotal && bytesTotal > 0 {
+		// Fallback: simple elapsed-based if no EMA estimator
 		remainingBytes := bytesTotal - bytesDone
 		eta := time.Duration(float64(dbPhaseElapsed) * float64(remainingBytes) / float64(bytesDone))
-		etaStr = fmt.Sprintf(" | ETA: %s", formatDuration(eta))
+		etaStr = fmt.Sprintf(" | ETA: ~%s", formatDuration(eta))
 	} else if done > 0 && done < total && bytesTotal == 0 {
 		// Fallback to count-based if no size info
 		avgPerDB := dbPhaseElapsed / time.Duration(done)
@@ -523,8 +546,8 @@ func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed t
 		sizeInfo = fmt.Sprintf(" (%s/%s)", FormatBytes(bytesDone), FormatBytes(bytesTotal))
 	}
 
-	return fmt.Sprintf("  Databases: [%s] %d/%d%s | Elapsed: %s%s\n",
-		bar, done, total, sizeInfo, formatDuration(dbPhaseElapsed), etaStr)
+	return fmt.Sprintf("  Databases: [%s] %d/%d%s%s | Elapsed: %s%s\n",
+		bar, done, total, sizeInfo, speedStr, formatDuration(dbPhaseElapsed), etaStr)
 }
 
 func (m BackupExecutionModel) View() string {
@@ -576,7 +599,17 @@ func (m BackupExecutionModel) View() string {
 
 			if m.overallPhase == backupPhaseDatabases && m.dbTotal > 0 {
 				// Phase 2: Database backups - contributes 15-90%
-				dbPct := int((int64(m.dbDone) * 100) / int64(m.dbTotal))
+				// Use SIZE-WEIGHTED progress (bytesDone/bytesTotal) for accuracy
+				// Fallback to count-based only when byte info is unavailable
+				var dbPct int
+				if m.bytesTotal > 0 {
+					dbPct = int((m.bytesDone * 100) / m.bytesTotal)
+				} else {
+					dbPct = int((int64(m.dbDone) * 100) / int64(m.dbTotal))
+				}
+				if dbPct > 100 {
+					dbPct = 100
+				}
 				overallProgress = 15 + (dbPct * 75 / 100)
 				phaseLabel = m.phaseDesc
 			} else if m.overallPhase == backupPhaseCompressing {
@@ -613,8 +646,8 @@ func (m BackupExecutionModel) View() string {
 				}
 				s.WriteString("\n")
 
-				// Database progress bar with size-weighted timing
-				s.WriteString(renderBackupDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.bytesDone, m.bytesTotal))
+				// Database progress bar with EMA-based speed and ETA
+				s.WriteString(renderBackupDatabaseProgressBarWithTiming(m.dbDone, m.dbTotal, m.dbPhaseElapsed, m.bytesDone, m.bytesTotal, m.etaEstimator))
 				s.WriteString("\n")
 			} else {
 				// Intermediate phase (globals)
@@ -750,9 +783,19 @@ func (m BackupExecutionModel) viewSimple() string {
 	// Progress output - simple format for log files
 	if m.backupType == "cluster" {
 		if m.dbTotal > 0 {
-			pct := (m.dbDone * 100) / m.dbTotal
-			s.WriteString(fmt.Sprintf("[%s] Databases %d/%d (%d%%) - Current: %s\n",
-				formatDuration(elapsed), m.dbDone, m.dbTotal, pct, m.dbName))
+			// Use size-weighted progress if available
+			var pct int
+			if m.bytesTotal > 0 {
+				pct = int((m.bytesDone * 100) / m.bytesTotal)
+			} else {
+				pct = (m.dbDone * 100) / m.dbTotal
+			}
+			var speedInfo string
+			if m.etaEstimator != nil && m.etaEstimator.IsWarmupComplete() {
+				speedInfo = fmt.Sprintf(" %s", m.etaEstimator.FormatSpeed())
+			}
+			s.WriteString(fmt.Sprintf("[%s] Databases %d/%d (%d%%)%s - Current: %s\n",
+				formatDuration(elapsed), m.dbDone, m.dbTotal, pct, speedInfo, m.dbName))
 		} else {
 			s.WriteString(fmt.Sprintf("[%s] %s - %s\n", formatDuration(elapsed), m.phaseDesc, m.status))
 		}

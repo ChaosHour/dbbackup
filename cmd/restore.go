@@ -47,8 +47,9 @@ var (
 	restoreNoProgress    bool
 	restoreNoTUI         bool // Disable TUI for maximum performance (benchmark mode)
 	restoreQuiet         bool // Suppress all output except errors
-	restoreWorkdir       string
-	restoreCleanCluster  bool
+	restoreWorkdir              string
+	restoreDiskSpaceMultiplier  float64
+	restoreCleanCluster         bool
 	restoreDiagnose      bool   // Run diagnosis before restore
 	restoreSaveDebugLog  string // Path to save debug log on failure
 	restoreDebugLocks    bool   // Enable detailed lock debugging
@@ -375,6 +376,7 @@ func init() {
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto, overrides profile)")
 	restoreClusterCmd.Flags().IntVar(&restoreParallelDBs, "parallel-dbs", 0, "Number of databases to restore in parallel (0 = use profile, 1 = sequential, -1 = auto-detect, overrides profile)")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
+	restoreClusterCmd.Flags().Float64Var(&restoreDiskSpaceMultiplier, "disk-space-multiplier", 0, "Override disk space multiplier (0 = auto-detect from metadata/format)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreClusterCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
@@ -1117,9 +1119,14 @@ func runFullClusterRestore(archivePath string) error {
 			log.Warn("    Location: " + restoreWorkdir)
 		}
 
+		// Propagate --disk-space-multiplier to config
+		if restoreDiskSpaceMultiplier > 0 {
+			cfg.DiskSpaceMultiplier = restoreDiskSpaceMultiplier
+			log.Info("Using custom disk space multiplier", "multiplier", restoreDiskSpaceMultiplier)
+		}
+
 		log.Info("Checking disk space...")
-		multiplier := 2.0 // Cluster archives contain already-compressed pg_dump files
-		if err := safety.CheckDiskSpaceAt(archivePath, checkDir, multiplier); err != nil {
+		if err := safety.CheckDiskSpaceAt(archivePath, checkDir, 0); err != nil {
 			return fmt.Errorf("disk space check failed: %w", err)
 		}
 

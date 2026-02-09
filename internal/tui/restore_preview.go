@@ -213,11 +213,8 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 		// 3. Disk space
 	diskSpaceCheck:
 		check = SafetyCheck{Name: "Disk space", Status: "checking", Critical: true}
-		multiplier := 3.0
-		if archive.Format.IsClusterBackup() {
-			multiplier = 2.0 // Cluster archives contain already-compressed pg_dump files
-		}
-		if err := safety.CheckDiskSpace(archive.Path, multiplier); err != nil {
+		// Multiplier 0 = auto-detect from metadata or format
+		if err := safety.CheckDiskSpace(archive.Path, 0); err != nil {
 			check.Status = "warning"
 			check.Message = err.Error()
 			// Not critical - just warning

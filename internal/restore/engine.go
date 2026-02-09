@@ -1573,32 +1573,32 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 		e.log.Info("Checking disk space for restore")
 		archiveInfo, err = os.Stat(archivePath)
 		if err == nil {
+			// Load cluster metadata for accurate compression ratio
+			clusterMeta, _ := metadata.LoadCluster(archivePath)
+
 			// Check the workdir filesystem — that's where extraction actually happens,
 			// NOT BackupDir (which may be on a different volume holding the archive).
-			// Use 2x multiplier: cluster archives contain pg_dump custom-format files
-			// which are already compressed, so extraction ratio is ~1:1.
-			checkDir := e.cfg.GetEffectiveWorkDir()
-			spaceCheck := checks.CheckDiskSpaceForExtraction(checkDir, archiveInfo.Size())
-
-			if spaceCheck.Critical {
-				operation.Fail("Insufficient disk space")
-				return fmt.Errorf("insufficient disk space for restore: %.1f%% used - need at least 2x archive size for extraction\n"+
-					"  Required:  %s\n"+
-					"  Available: %s\n"+
-					"  Archive:   %s\n"+
-					"  Work dir:  %s\n\n"+
-					"Tip: Use --workdir to specify a directory with more space",
-					spaceCheck.UsedPercent,
-					checks.FormatBytesUint64(uint64(archiveInfo.Size())*2),
-					checks.FormatBytesUint64(spaceCheck.AvailableBytes),
-					checks.FormatBytesUint64(uint64(archiveInfo.Size())),
-					checkDir)
+			checker := &DiskSpaceChecker{
+				ExtractPath:        e.cfg.GetEffectiveWorkDir(),
+				ArchivePath:        archivePath,
+				ArchiveSize:        archiveInfo.Size(),
+				Metadata:           clusterMeta,
+				Log:                e.log,
+				MultiplierOverride: e.cfg.DiskSpaceMultiplier,
 			}
 
-			if spaceCheck.Warning {
+			result, checkErr := checker.Check()
+			if checkErr != nil {
+				e.log.Warn("Cannot check disk space", "error", checkErr)
+			} else if !result.Sufficient {
+				operation.Fail("Insufficient disk space")
+				return result.FormatError()
+			} else if result.Warning {
 				e.log.Warn("Low disk space - restore may fail",
-					"available_gb", float64(spaceCheck.AvailableBytes)/(1024*1024*1024),
-					"used_percent", spaceCheck.UsedPercent)
+					"available", FormatBytes(result.Info.AvailableBytes),
+					"required", FormatBytes(result.RequiredBytes),
+					"multiplier", fmt.Sprintf("%.1fx", result.Multiplier),
+					"source", result.MultiplierSource)
 			}
 		}
 	} else {

@@ -12,6 +12,7 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/metadata"
 
 	"github.com/klauspost/pgzip"
 )
@@ -307,9 +308,8 @@ func (s *Safety) ValidateAndExtractCluster(ctx context.Context, archivePath stri
 	return tempDir, nil
 }
 
-// CheckDiskSpace verifies sufficient disk space for restore
-// Uses the effective work directory (WorkDir if set, otherwise BackupDir) since
-// that's where extraction actually happens for large databases
+// CheckDiskSpace verifies sufficient disk space for restore using the new DiskSpaceChecker.
+// Uses metadata and format detection for accurate multiplier calculation.
 func (s *Safety) CheckDiskSpace(archivePath string, multiplier float64) error {
 	checkDir := s.cfg.GetEffectiveWorkDir()
 	if checkDir == "" {
@@ -326,44 +326,44 @@ func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplie
 		return fmt.Errorf("cannot stat archive: %w", err)
 	}
 
-	archiveSize := stat.Size()
+	// Load cluster metadata for accurate compression ratio
+	clusterMeta, _ := metadata.LoadCluster(archivePath)
 
-	// Estimate required space (archive size * multiplier for decompression/extraction)
-	requiredSpace := int64(float64(archiveSize) * multiplier)
+	// Use DiskSpaceChecker for accurate, metadata-aware check
+	checker := &DiskSpaceChecker{
+		ExtractPath:        checkDir,
+		ArchivePath:        archivePath,
+		ArchiveSize:        stat.Size(),
+		Metadata:           clusterMeta,
+		Log:                s.log,
+		MultiplierOverride: s.cfg.DiskSpaceMultiplier,
+	}
 
-	// Get available disk space
-	availableSpace, err := getDiskSpace(checkDir)
-	if err != nil {
+	// If config override is 0 and caller passed a specific multiplier, use it as fallback
+	if s.cfg.DiskSpaceMultiplier == 0 && multiplier > 0 {
+		// Only use caller's multiplier if metadata/format detection doesn't apply
+		// DiskSpaceChecker will auto-detect from metadata or format first
+	}
+
+	result, checkErr := checker.Check()
+	if checkErr != nil {
 		if s.log != nil {
-			s.log.Warn("Cannot check disk space", "error", err)
+			s.log.Warn("Cannot check disk space", "error", checkErr)
 		}
 		return nil // Don't fail if we can't check
 	}
 
-	usagePercent := float64(availableSpace-requiredSpace) / float64(availableSpace) * 100
-	if usagePercent < 0 {
-		usagePercent = 100 + usagePercent // Show how much over we are
-	}
-
-	if availableSpace < requiredSpace {
-		return fmt.Errorf("insufficient disk space for restore: %.1f%% used\n"+
-			"  Required: %s\\n"+
-			"  Available: %s\\n"+
-			"  Archive: %s\\n"+
-			"  Check location: %s\\n\\n"+
-			"Tip: Use --workdir to specify extraction directory with more space (e.g., --workdir /mnt/storage/restore_tmp)",
-			usagePercent,
-			FormatBytes(requiredSpace),
-			FormatBytes(availableSpace),
-			FormatBytes(archiveSize),
-			checkDir)
+	if !result.Sufficient {
+		return result.FormatError()
 	}
 
 	if s.log != nil {
 		s.log.Info("Disk space check passed",
 			"location", checkDir,
-			"required", FormatBytes(requiredSpace),
-			"available", FormatBytes(availableSpace))
+			"filesystem", result.Info.Filesystem,
+			"available", FormatBytes(result.Info.AvailableBytes),
+			"required", FormatBytes(result.RequiredBytes),
+			"multiplier", fmt.Sprintf("%.1fx (%s)", result.Multiplier, result.MultiplierSource))
 	}
 
 	return nil

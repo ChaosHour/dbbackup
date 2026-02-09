@@ -5,6 +5,38 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.4] - 2026-02-09
+
+### Added
+
+- **Dynamic disk space multiplier**: Restore now calculates the required space multiplier from 3 sources (priority order): metadata (actual compression ratio from `.meta.json`), format detection (magic bytes + extension → per-format defaults), or config override (`--disk-space-multiplier`)
+- **`--disk-space-multiplier` CLI flag**: Override auto-detected multiplier for `restore cluster` (0 = auto-detect)
+- **Filesystem diagnostics**: Disk space errors now show filesystem type (ext4/xfs/btrfs/tmpfs/zfs/nfs/cifs), total/used/available bytes, used%, and actionable solutions
+- **Compression format detection**: Detects gzip, zstd, bzip2, xz via magic bytes with extension fallback
+- **Filesystem type detection**: Linux magic numbers for ext4, tmpfs, zfs, btrfs, xfs, nfs, cifs, overlayfs
+
+### Fixed
+
+- **Broken used% calculation**: Was computing `(available-required)/available×100` — showed "0.0% used" on every failure. Now correctly uses `(total-free)/total×100` from filesystem stats
+- **Double-escaped newlines**: Error messages had literal `\n` instead of actual newlines (was `\\n` in Go source)
+- **Hardcoded multipliers everywhere**: TUI preview used 3.0/2.0, CLI used 2.0, engine used 2.0 — all now auto-detect from metadata/format
+- **Cross-platform support**: DiskSpaceChecker for Linux, OpenBSD, Windows (GetDiskFreeSpaceExW), NetBSD (safe stub)
+
+## [6.0.4] - 2026-02-09
+
+### Improved
+
+- **Smart disk space checking**: Dynamic multiplier based on metadata compression ratio, archive format detection, and filesystem type — replaces hardcoded 2× multiplier
+  - Priority 1: Metadata — reads `.meta.json` sidecar for actual `total_size_bytes`, calculates exact compression ratio
+  - Priority 2: Format detection — identifies compression format via magic bytes + extension (`.tar.gz`→3×, `.tar`→1.5×, `.sql.gz`→4×, `.custom`→2×)
+  - Priority 3: Config override — `--disk-space-multiplier` CLI flag or `DiskSpaceMultiplier` config field
+  - Priority 4: Safe fallback (3×) when nothing else is available
+- **Accurate disk usage display**: Fixed broken 0.0% used calculation — now shows correct filesystem usage percentage
+- **Rich diagnostic errors**: Disk space failures now include filesystem type, mount point, multiplier source, used/available/required breakdown, and actionable solutions
+- **`--disk-space-multiplier` flag**: Override auto-detected multiplier for `restore cluster` command (e.g., `--disk-space-multiplier 1.5`)
+- **Filesystem type detection**: Identifies ext4, XFS, Btrfs, tmpfs, ZFS, NFS and warns about problematic filesystems (tmpfs too small, NFS may be slow)
+- **Cross-platform support**: Full implementation for Linux, OpenBSD, Windows (GetDiskFreeSpaceExW), NetBSD (stub)
+
 ## [6.0.3] - 2026-02-09
 
 ### Fixed

@@ -15,6 +15,7 @@ import (
 	"dbbackup/internal/compression"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/engine"
 	"dbbackup/internal/logger"
 )
 
@@ -120,6 +121,11 @@ func (m *HealthViewModel) runHealthChecks() tea.Cmd {
 		// 11. Filesystem compression detection
 		checks = append(checks, m.checkFilesystemCompression())
 
+		// 12. Galera cluster status (MariaDB/MySQL only)
+		if m.config.IsMySQL() {
+			checks = append(checks, m.checkGaleraCluster())
+		}
+
 		// Calculate overall status
 		overallStatus := m.calculateOverallStatus(checks)
 
@@ -164,6 +170,8 @@ func (m *HealthViewModel) generateRecommendations(checks []TUIHealthCheck) []str
 			recs = append(recs, "Clean orphans: dbbackup catalog cleanup")
 		case check.Name == "Database Connectivity" && check.Status != HealthStatusHealthy:
 			recs = append(recs, "Check .dbbackup.conf settings")
+		case check.Name == "Galera Cluster" && check.Status == HealthStatusWarning:
+			recs = append(recs, "Check Galera cluster health: --galera-health-check")
 		}
 	}
 	return recs
@@ -649,6 +657,71 @@ func formatHealthBytes(bytes uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// checkGaleraCluster checks Galera cluster status for MariaDB/MySQL
+func (m *HealthViewModel) checkGaleraCluster() TUIHealthCheck {
+	check := TUIHealthCheck{
+		Name:   "Galera Cluster",
+		Status: HealthStatusHealthy,
+	}
+
+	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
+	defer cancel()
+
+	db, err := database.New(m.config, m.logger)
+	if err != nil {
+		check.Status = HealthStatusWarning
+		check.Message = "Cannot create DB client"
+		check.Details = err.Error()
+		return check
+	}
+	defer db.Close()
+
+	if err := db.Connect(ctx); err != nil {
+		check.Status = HealthStatusWarning
+		check.Message = "Cannot connect for Galera check"
+		check.Details = err.Error()
+		return check
+	}
+
+	galeraInfo, err := engine.DetectGaleraCluster(ctx, db.(*database.MySQL).GetConn())
+	if err != nil {
+		// Not a Galera cluster — that's fine, just informational
+		check.Message = "Not a Galera cluster (standalone)"
+		check.Details = "Standard MySQL/MariaDB instance"
+		return check
+	}
+
+	// Galera detected — show status
+	stateIcon := "[!] Not Ready"
+	switch galeraInfo.LocalState {
+	case "4":
+		stateIcon = "[+] Synced"
+	case "2":
+		stateIcon = "[~] Donor/Desynced"
+	case "3":
+		stateIcon = "[~] Joined"
+	case "1":
+		stateIcon = "[!] Joining"
+	}
+
+	check.Message = fmt.Sprintf("Node: %s | Size: %d | %s",
+		galeraInfo.NodeName, galeraInfo.ClusterSize, stateIcon)
+	check.Details = fmt.Sprintf("Status: %s | Flow Control: %.1f%% | UUID: %s",
+		galeraInfo.ClusterStatus, galeraInfo.FlowControl*100, galeraInfo.ClusterUUID)
+
+	if !galeraInfo.IsHealthyForBackup() {
+		check.Status = HealthStatusWarning
+		check.Details += " | " + galeraInfo.HealthSummary()
+	}
+
+	if galeraInfo.ReadOnly {
+		check.Status = HealthStatusWarning
+		check.Details += " | Node is read-only"
+	}
+
+	return check
 }
 
 // checkFilesystemCompression checks for transparent filesystem compression (ZFS/Btrfs)

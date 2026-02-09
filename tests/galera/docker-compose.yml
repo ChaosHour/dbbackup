@@ -1,0 +1,114 @@
+# Galera Cluster test environment for dbbackup integration tests
+#
+# Usage:
+#   docker-compose -f tests/galera/docker-compose.yml up -d
+#   # Wait for cluster to form (~30s)
+#   go test -v ./internal/engine/ -run TestGaleraCluster -tags=integration
+#   docker-compose -f tests/galera/docker-compose.yml down -v
+#
+# Ports:
+#   3306 → galera-1 (bootstrap node)
+#   3307 → galera-2
+#   3308 → galera-3
+
+version: '3.8'
+
+services:
+  galera-1:
+    image: mariadb:11.4
+    container_name: galera-1
+    hostname: galera-1
+    environment:
+      MYSQL_ROOT_PASSWORD: testpass
+      MYSQL_DATABASE: testdb
+      MARIADB_GALERA_CLUSTER_NAME: test_cluster
+      MARIADB_GALERA_CLUSTER_BOOTSTRAP: "yes"
+      MARIADB_GALERA_CLUSTER_ADDRESS: gcomm://
+      MARIADB_EXTRA_FLAGS: >-
+        --wsrep-on=ON
+        --wsrep-provider=/usr/lib/galera/libgalera_smm.so
+        --wsrep-cluster-name=test_cluster
+        --wsrep-cluster-address=gcomm://
+        --wsrep-node-name=node1
+        --wsrep-node-address=galera-1
+        --wsrep-sst-method=rsync
+        --binlog-format=ROW
+        --default-storage-engine=InnoDB
+        --innodb-autoinc-lock-mode=2
+    ports:
+      - "3306:3306"
+    networks:
+      - galera-net
+    healthcheck:
+      test: ["CMD", "mariadb", "-uroot", "-ptestpass", "-e", "SHOW STATUS LIKE 'wsrep_ready'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  galera-2:
+    image: mariadb:11.4
+    container_name: galera-2
+    hostname: galera-2
+    depends_on:
+      galera-1:
+        condition: service_healthy
+    environment:
+      MYSQL_ROOT_PASSWORD: testpass
+      MARIADB_GALERA_CLUSTER_NAME: test_cluster
+      MARIADB_GALERA_CLUSTER_ADDRESS: gcomm://galera-1
+      MARIADB_EXTRA_FLAGS: >-
+        --wsrep-on=ON
+        --wsrep-provider=/usr/lib/galera/libgalera_smm.so
+        --wsrep-cluster-name=test_cluster
+        --wsrep-cluster-address=gcomm://galera-1,galera-2,galera-3
+        --wsrep-node-name=node2
+        --wsrep-node-address=galera-2
+        --wsrep-sst-method=rsync
+        --binlog-format=ROW
+        --default-storage-engine=InnoDB
+        --innodb-autoinc-lock-mode=2
+    ports:
+      - "3307:3306"
+    networks:
+      - galera-net
+    healthcheck:
+      test: ["CMD", "mariadb", "-uroot", "-ptestpass", "-e", "SHOW STATUS LIKE 'wsrep_ready'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  galera-3:
+    image: mariadb:11.4
+    container_name: galera-3
+    hostname: galera-3
+    depends_on:
+      galera-1:
+        condition: service_healthy
+    environment:
+      MYSQL_ROOT_PASSWORD: testpass
+      MARIADB_GALERA_CLUSTER_NAME: test_cluster
+      MARIADB_GALERA_CLUSTER_ADDRESS: gcomm://galera-1
+      MARIADB_EXTRA_FLAGS: >-
+        --wsrep-on=ON
+        --wsrep-provider=/usr/lib/galera/libgalera_smm.so
+        --wsrep-cluster-name=test_cluster
+        --wsrep-cluster-address=gcomm://galera-1,galera-2,galera-3
+        --wsrep-node-name=node3
+        --wsrep-node-address=galera-3
+        --wsrep-sst-method=rsync
+        --binlog-format=ROW
+        --default-storage-engine=InnoDB
+        --innodb-autoinc-lock-mode=2
+    ports:
+      - "3308:3306"
+    networks:
+      - galera-net
+    healthcheck:
+      test: ["CMD", "mariadb", "-uroot", "-ptestpass", "-e", "SHOW STATUS LIKE 'wsrep_ready'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  galera-net:
+    driver: bridge

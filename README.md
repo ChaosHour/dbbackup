@@ -146,6 +146,25 @@ dbbackup restore single dump.sql.gz \
 
 TUI shows database type indicator (🐘/🐬) and adapts features automatically.
 
+### 🔄 MariaDB Galera Cluster Support (NEW)
+
+- **Auto-detection**: Automatic Galera cluster detection via `wsrep_*` status variables
+- **Health validation**: Pre-backup checks (sync state, flow control, cluster size)
+- **Desync mode**: `--galera-desync` to temporarily isolate node during backup
+- **Zero-downtime**: Backup from donor node without impacting cluster performance
+
+```bash
+# Backup from Galera cluster with desync mode
+dbbackup backup single mydb \
+    --db-type mariadb \
+    --host galera-node2 \
+    --galera-desync \
+    --galera-min-cluster-size 3
+
+# Health check only (auto-detected)
+dbbackup backup single mydb --db-type mariadb --galera-health-check
+```
+
 ### 🧪 Quality Assurance
 
 - **1358-line pre-release test suite** covering 10 categories with 43+ checks

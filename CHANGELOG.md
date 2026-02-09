@@ -5,6 +5,28 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.78] - 2026-02-09
+
+### Added
+- **MariaDB Galera Cluster support**
+  - Auto-detection of Galera nodes via `wsrep_on` and `GLOBAL_STATUS` variables
+  - Pre-backup health validation (sync state=4, cluster status=Primary, flow control<25%)
+  - `--galera-desync` flag to enable `wsrep_desync` during backup (reduces cluster impact)
+  - `--galera-min-cluster-size` flag (default: 2) — abort if cluster too small
+  - `--galera-prefer-node` flag for manual donor selection
+  - `--galera-health-check` flag (default: true) — verify node health before backup
+  - Environment variables: `GALERA_DESYNC`, `GALERA_MIN_CLUSTER_SIZE`, `GALERA_PREFER_NODE`, `GALERA_HEALTH_CHECK`
+  - Comprehensive test suite with 15+ tests using go-sqlmock
+  - TUI health check integration — Galera status displayed in health screen
+- **TUI Galera status** in health check screen — shows node name, cluster size, sync state, flow control
+
+### Fixed
+- **SMTP TLS for localhost relay** — skip certificate verification for loopback addresses (127.0.0.1, localhost, ::1)
+- Added `NOTIFY_SMTP_INSECURE` environment variable for explicit TLS skip
+
+### Changed
+- Updated `docs/DATABASE_COMPATIBILITY.md` — Galera row changed from "Under evaluation" to "✅ Implemented"
+
 ## [5.8.77] - 2026-02-08
 
 ### Release Script Hardening

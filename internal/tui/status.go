@@ -10,6 +10,7 @@ import (
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/engine"
 	"dbbackup/internal/logger"
 )
 
@@ -24,6 +25,7 @@ type StatusViewModel struct {
 	dbCount   int
 	dbVersion string
 	connected bool
+	galeraInfo *engine.GaleraClusterInfo
 }
 
 func NewStatusView(cfg *config.Config, log logger.Logger, parent tea.Model) StatusViewModel {
@@ -61,11 +63,12 @@ func tickCmd() tea.Cmd {
 }
 
 type statusMsg struct {
-	status    string
-	err       error
-	dbCount   int
-	dbVersion string
-	connected bool
+	status     string
+	err        error
+	dbCount    int
+	dbVersion  string
+	connected  bool
+	galeraInfo *engine.GaleraClusterInfo
 }
 
 func fetchStatus(cfg *config.Config, log logger.Logger) tea.Cmd {
@@ -107,12 +110,21 @@ func fetchStatus(cfg *config.Config, log logger.Logger) tea.Cmd {
 			}
 		}
 
+		// Detect Galera cluster (MySQL/MariaDB only)
+		var galeraInfo *engine.GaleraClusterInfo
+		if cfg.IsMySQL() {
+			if myDB, ok := dbClient.(*database.MySQL); ok {
+				galeraInfo, _ = engine.DetectGaleraCluster(ctx, myDB.GetConn())
+			}
+		}
+
 		return statusMsg{
-			status:    "Database connection successful",
-			err:       nil,
-			dbCount:   len(databases),
-			dbVersion: version,
-			connected: true,
+			status:     "Database connection successful",
+			err:        nil,
+			dbCount:    len(databases),
+			dbVersion:  version,
+			connected:  true,
+			galeraInfo: galeraInfo,
 		}
 	}
 }
@@ -143,6 +155,7 @@ func (m StatusViewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dbVersion = msg.dbVersion
 		}
 		m.connected = msg.connected
+		m.galeraInfo = msg.galeraInfo
 		// Auto-forward in auto-confirm mode after status loads
 		if m.config.TUIAutoConfirm {
 			return m.parent, tea.Quit
@@ -194,6 +207,25 @@ func (m StatusViewModel) View() string {
 
 		if m.dbCount > 0 {
 			s.WriteString(fmt.Sprintf("Databases Found: %s\n", successStyle.Render(fmt.Sprintf("%d", m.dbCount))))
+		}
+
+		// Galera Cluster info (MySQL/MariaDB only)
+		if m.galeraInfo != nil {
+			s.WriteString("\n[GALERA] Cluster Status\n")
+			stateIcon := "[!]"
+			stateStyle := StatusWarningStyle
+			if m.galeraInfo.LocalState == "4" {
+				stateIcon = "[+]"
+				stateStyle = successStyle
+			}
+			s.WriteString(fmt.Sprintf("  Node:         %s\n", m.galeraInfo.NodeName))
+			s.WriteString(fmt.Sprintf("  Cluster Size: %d\n", m.galeraInfo.ClusterSize))
+			s.WriteString(stateStyle.Render(fmt.Sprintf("  State:        %s %s\n", stateIcon, m.galeraInfo.LocalStateString())))
+			s.WriteString(fmt.Sprintf("  Status:       %s\n", m.galeraInfo.ClusterStatus))
+			s.WriteString(fmt.Sprintf("  Flow Control: %.1f%%\n", m.galeraInfo.FlowControl*100))
+			if m.galeraInfo.DesyncActive {
+				s.WriteString(StatusWarningStyle.Render("  Desync:       Active\n"))
+			}
 		}
 
 		s.WriteString("\n")

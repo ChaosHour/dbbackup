@@ -21,16 +21,26 @@ type LocalConfig struct {
 	Database string
 	SSLMode  string
 
+	// Engine settings
+	UseNativeEngine bool
+	FallbackToTools bool
+
 	// Backup settings
-	BackupDir   string
-	WorkDir     string // Working directory for large operations
-	Compression int
-	Jobs        int
-	DumpJobs    int
+	BackupDir               string
+	WorkDir                 string // Working directory for large operations
+	Compression             int
+	Jobs                    int
+	DumpJobs                int
+	ClusterParallelism      int    // Concurrent databases during cluster operations
+	CompressionMode         string // always, auto, never
+	AutoDetectCompression   bool
+	BackupOutputFormat      string // compressed, plain
+	TrustFilesystemCompress bool
 
 	// Performance settings
 	CPUWorkload     string
 	MaxCores        int
+	AutoDetectCores bool
 	ClusterTimeout  int // Cluster operation timeout in minutes (default: 1440 = 24 hours)
 	ResourceProfile string
 	LargeDBMode     bool // Enable large database mode (reduces parallelism, increases locks)
@@ -41,6 +51,15 @@ type LocalConfig struct {
 
 	// Safety settings
 	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
+
+	// Cloud settings
+	CloudEnabled   bool
+	CloudProvider  string
+	CloudBucket    string
+	CloudRegion    string
+	CloudAccessKey string
+	CloudSecretKey string
+	CloudAutoUpload bool
 
 	// Security settings
 	RetentionDays int
@@ -152,6 +171,13 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 			case "ssl_mode":
 				cfg.SSLMode = value
 			}
+		case "engine":
+			switch key {
+			case "native_engine":
+				cfg.UseNativeEngine = value == "true" || value == "1"
+			case "fallback_tools":
+				cfg.FallbackToTools = value == "true" || value == "1"
+			}
 		case "backup":
 			switch key {
 			case "backup_dir":
@@ -170,6 +196,18 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				if dj, err := strconv.Atoi(value); err == nil {
 					cfg.DumpJobs = dj
 				}
+			case "cluster_parallelism":
+				if cp, err := strconv.Atoi(value); err == nil {
+					cfg.ClusterParallelism = cp
+				}
+			case "compression_mode":
+				cfg.CompressionMode = value
+			case "auto_detect_compression":
+				cfg.AutoDetectCompression = value == "true" || value == "1"
+			case "backup_output_format":
+				cfg.BackupOutputFormat = value
+			case "trust_filesystem_compress":
+				cfg.TrustFilesystemCompress = value == "true" || value == "1"
 			}
 		case "performance":
 			switch key {
@@ -179,6 +217,8 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				if mc, err := strconv.Atoi(value); err == nil {
 					cfg.MaxCores = mc
 				}
+			case "auto_detect_cores":
+				cfg.AutoDetectCores = value == "true" || value == "1"
 			case "cluster_timeout":
 				if ct, err := strconv.Atoi(value); err == nil {
 					cfg.ClusterTimeout = ct
@@ -211,6 +251,23 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 			switch key {
 			case "skip_preflight_checks":
 				cfg.SkipPreflightChecks = value == "true" || value == "1"
+			}
+		case "cloud":
+			switch key {
+			case "enabled":
+				cfg.CloudEnabled = value == "true" || value == "1"
+			case "provider":
+				cfg.CloudProvider = value
+			case "bucket":
+				cfg.CloudBucket = value
+			case "region":
+				cfg.CloudRegion = value
+			case "access_key":
+				cfg.CloudAccessKey = value
+			case "secret_key":
+				cfg.CloudSecretKey = value
+			case "auto_upload":
+				cfg.CloudAutoUpload = value == "true" || value == "1"
 			}
 		}
 	}
@@ -246,6 +303,12 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	sb.WriteString(fmt.Sprintf("ssl_mode = %s\n", cfg.SSLMode))
 	sb.WriteString("\n")
 
+	// Engine section
+	sb.WriteString("[engine]\n")
+	sb.WriteString(fmt.Sprintf("native_engine = %t\n", cfg.UseNativeEngine))
+	sb.WriteString(fmt.Sprintf("fallback_tools = %t\n", cfg.FallbackToTools))
+	sb.WriteString("\n")
+
 	// Backup section - ALWAYS write all values (including 0)
 	sb.WriteString("[backup]\n")
 	sb.WriteString(fmt.Sprintf("backup_dir = %s\n", cfg.BackupDir))
@@ -255,12 +318,22 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	sb.WriteString(fmt.Sprintf("compression = %d\n", cfg.Compression))
 	sb.WriteString(fmt.Sprintf("jobs = %d\n", cfg.Jobs))
 	sb.WriteString(fmt.Sprintf("dump_jobs = %d\n", cfg.DumpJobs))
+	sb.WriteString(fmt.Sprintf("cluster_parallelism = %d\n", cfg.ClusterParallelism))
+	if cfg.CompressionMode != "" {
+		sb.WriteString(fmt.Sprintf("compression_mode = %s\n", cfg.CompressionMode))
+	}
+	sb.WriteString(fmt.Sprintf("auto_detect_compression = %t\n", cfg.AutoDetectCompression))
+	if cfg.BackupOutputFormat != "" {
+		sb.WriteString(fmt.Sprintf("backup_output_format = %s\n", cfg.BackupOutputFormat))
+	}
+	sb.WriteString(fmt.Sprintf("trust_filesystem_compress = %t\n", cfg.TrustFilesystemCompress))
 	sb.WriteString("\n")
 
 	// Performance section - ALWAYS write all values
 	sb.WriteString("[performance]\n")
 	sb.WriteString(fmt.Sprintf("cpu_workload = %s\n", cfg.CPUWorkload))
 	sb.WriteString(fmt.Sprintf("max_cores = %d\n", cfg.MaxCores))
+	sb.WriteString(fmt.Sprintf("auto_detect_cores = %t\n", cfg.AutoDetectCores))
 	sb.WriteString(fmt.Sprintf("cluster_timeout = %d\n", cfg.ClusterTimeout))
 	if cfg.ResourceProfile != "" {
 		sb.WriteString(fmt.Sprintf("resource_profile = %s\n", cfg.ResourceProfile))
@@ -282,6 +355,30 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 		sb.WriteString("[safety]\n")
 		sb.WriteString("# WARNING: Skipping preflight checks can lead to failed restores!\n")
 		sb.WriteString(fmt.Sprintf("skip_preflight_checks = %t\n", cfg.SkipPreflightChecks))
+		sb.WriteString("\n")
+	}
+
+	// Cloud section - only write if cloud is configured
+	if cfg.CloudEnabled || cfg.CloudProvider != "" || cfg.CloudBucket != "" {
+		sb.WriteString("[cloud]\n")
+		sb.WriteString(fmt.Sprintf("enabled = %t\n", cfg.CloudEnabled))
+		if cfg.CloudProvider != "" {
+			sb.WriteString(fmt.Sprintf("provider = %s\n", cfg.CloudProvider))
+		}
+		if cfg.CloudBucket != "" {
+			sb.WriteString(fmt.Sprintf("bucket = %s\n", cfg.CloudBucket))
+		}
+		if cfg.CloudRegion != "" {
+			sb.WriteString(fmt.Sprintf("region = %s\n", cfg.CloudRegion))
+		}
+		if cfg.CloudAccessKey != "" {
+			sb.WriteString(fmt.Sprintf("access_key = %s\n", cfg.CloudAccessKey))
+		}
+		if cfg.CloudSecretKey != "" {
+			sb.WriteString(fmt.Sprintf("secret_key = %s\n", cfg.CloudSecretKey))
+		}
+		sb.WriteString(fmt.Sprintf("auto_upload = %t\n", cfg.CloudAutoUpload))
+		sb.WriteString("\n")
 	}
 
 	// Use 0644 permissions for readability
@@ -341,11 +438,35 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.DumpJobs != 0 {
 		cfg.DumpJobs = local.DumpJobs
 	}
+	if local.ClusterParallelism != 0 {
+		cfg.ClusterParallelism = local.ClusterParallelism
+	}
+	if local.UseNativeEngine {
+		cfg.UseNativeEngine = true
+	}
+	if local.FallbackToTools {
+		cfg.FallbackToTools = true
+	}
+	if local.CompressionMode != "" {
+		cfg.CompressionMode = local.CompressionMode
+	}
+	if local.AutoDetectCompression {
+		cfg.AutoDetectCompression = true
+	}
+	if local.BackupOutputFormat != "" {
+		cfg.BackupOutputFormat = local.BackupOutputFormat
+	}
+	if local.TrustFilesystemCompress {
+		cfg.TrustFilesystemCompress = true
+	}
 	if local.CPUWorkload != "" {
 		cfg.CPUWorkloadType = local.CPUWorkload
 	}
 	if local.MaxCores != 0 {
 		cfg.MaxCores = local.MaxCores
+	}
+	if local.AutoDetectCores {
+		cfg.AutoDetectCores = true
 	}
 	if local.ClusterTimeout != 0 {
 		cfg.ClusterTimeoutMinutes = local.ClusterTimeout
@@ -377,32 +498,70 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.SkipPreflightChecks {
 		cfg.SkipPreflightChecks = true
 	}
+
+	// Cloud settings
+	if local.CloudEnabled {
+		cfg.CloudEnabled = true
+	}
+	if local.CloudProvider != "" {
+		cfg.CloudProvider = local.CloudProvider
+	}
+	if local.CloudBucket != "" {
+		cfg.CloudBucket = local.CloudBucket
+	}
+	if local.CloudRegion != "" {
+		cfg.CloudRegion = local.CloudRegion
+	}
+	if local.CloudAccessKey != "" {
+		cfg.CloudAccessKey = local.CloudAccessKey
+	}
+	if local.CloudSecretKey != "" {
+		cfg.CloudSecretKey = local.CloudSecretKey
+	}
+	if local.CloudAutoUpload {
+		cfg.CloudAutoUpload = true
+	}
 }
 
 // ConfigFromConfig creates a LocalConfig from a Config
 func ConfigFromConfig(cfg *Config) *LocalConfig {
 	return &LocalConfig{
-		DBType:              cfg.DatabaseType,
-		Host:                cfg.Host,
-		Port:                cfg.Port,
-		User:                cfg.User,
-		Database:            cfg.Database,
-		SSLMode:             cfg.SSLMode,
-		BackupDir:           cfg.BackupDir,
-		WorkDir:             cfg.WorkDir,
-		Compression:         cfg.CompressionLevel,
-		Jobs:                cfg.Jobs,
-		DumpJobs:            cfg.DumpJobs,
-		CPUWorkload:         cfg.CPUWorkloadType,
-		MaxCores:            cfg.MaxCores,
-		ClusterTimeout:      cfg.ClusterTimeoutMinutes,
-		ResourceProfile:     cfg.ResourceProfile,
-		LargeDBMode:         cfg.LargeDBMode,
-		AdaptiveJobs:        cfg.AdaptiveJobs,
-		SkipDiskCheck:       cfg.SkipDiskCheck,
-		SkipPreflightChecks: cfg.SkipPreflightChecks,
-		RetentionDays:       cfg.RetentionDays,
-		MinBackups:          cfg.MinBackups,
-		MaxRetries:          cfg.MaxRetries,
+		DBType:                  cfg.DatabaseType,
+		Host:                    cfg.Host,
+		Port:                    cfg.Port,
+		User:                    cfg.User,
+		Database:                cfg.Database,
+		SSLMode:                 cfg.SSLMode,
+		UseNativeEngine:         cfg.UseNativeEngine,
+		FallbackToTools:         cfg.FallbackToTools,
+		BackupDir:               cfg.BackupDir,
+		WorkDir:                 cfg.WorkDir,
+		Compression:             cfg.CompressionLevel,
+		Jobs:                    cfg.Jobs,
+		DumpJobs:                cfg.DumpJobs,
+		ClusterParallelism:      cfg.ClusterParallelism,
+		CompressionMode:         cfg.CompressionMode,
+		AutoDetectCompression:   cfg.AutoDetectCompression,
+		BackupOutputFormat:      cfg.BackupOutputFormat,
+		TrustFilesystemCompress: cfg.TrustFilesystemCompress,
+		CPUWorkload:             cfg.CPUWorkloadType,
+		MaxCores:                cfg.MaxCores,
+		AutoDetectCores:         cfg.AutoDetectCores,
+		ClusterTimeout:          cfg.ClusterTimeoutMinutes,
+		ResourceProfile:         cfg.ResourceProfile,
+		LargeDBMode:             cfg.LargeDBMode,
+		AdaptiveJobs:            cfg.AdaptiveJobs,
+		SkipDiskCheck:           cfg.SkipDiskCheck,
+		SkipPreflightChecks:     cfg.SkipPreflightChecks,
+		CloudEnabled:            cfg.CloudEnabled,
+		CloudProvider:           cfg.CloudProvider,
+		CloudBucket:             cfg.CloudBucket,
+		CloudRegion:             cfg.CloudRegion,
+		CloudAccessKey:          cfg.CloudAccessKey,
+		CloudSecretKey:          cfg.CloudSecretKey,
+		CloudAutoUpload:         cfg.CloudAutoUpload,
+		RetentionDays:           cfg.RetentionDays,
+		MinBackups:              cfg.MinBackups,
+		MaxRetries:              cfg.MaxRetries,
 	}
 }

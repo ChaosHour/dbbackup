@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,27 +17,62 @@ func TestConfigSaveLoad(t *testing.T) {
 
 	configPath := filepath.Join(tmpDir, ".dbbackup.conf")
 
-	// Create test config with ALL fields set
+	// Create test config with ALL fields set (mirrors every TUI setting)
 	original := &LocalConfig{
-		DBType:          "postgres",
-		Host:            "test-host-123",
-		Port:            5432,
-		User:            "testuser",
-		Database:        "testdb",
-		SSLMode:         "require",
-		BackupDir:       "/test/backups",
-		WorkDir:         "/test/work",
-		Compression:     9,
-		Jobs:            16,
-		DumpJobs:        8,
-		CPUWorkload:     "aggressive",
+		// Database settings (TUI: database_type, host, port, user, database, ssl_mode)
+		DBType:   "postgres",
+		Host:     "test-host-123",
+		Port:     5432,
+		User:     "testuser",
+		Database: "testdb",
+		SSLMode:  "require",
+
+		// Engine settings (TUI: native_engine)
+		UseNativeEngine: true,
+		FallbackToTools: false,
+
+		// Backup settings (TUI: backup_dir, work_dir, compression_level, jobs, dump_jobs,
+		//   cluster_parallelism, compression_mode, backup_output_format, trust_filesystem_compress)
+		BackupDir:               "/test/backups",
+		WorkDir:                 "/test/work",
+		Compression:             9,
+		Jobs:                    16,
+		DumpJobs:                8,
+		ClusterParallelism:      4,
+		CompressionMode:         "auto",
+		AutoDetectCompression:   true,
+		BackupOutputFormat:      "plain",
+		TrustFilesystemCompress: true,
+
+		// Performance settings (TUI: cpu_workload, resource_profile, auto_detect_cores, large_db_mode)
+		CPUWorkload:     "cpu-intensive",
 		MaxCores:        32,
+		AutoDetectCores: true,
 		ClusterTimeout:  180,
-		ResourceProfile: "high",
+		ResourceProfile: "turbo",
 		LargeDBMode:     true,
-		RetentionDays:   14,
-		MinBackups:      3,
-		MaxRetries:      5,
+
+		// Restore optimization (TUI: adaptive_jobs, skip_disk_check)
+		AdaptiveJobs:  true,
+		SkipDiskCheck: true,
+
+		// Safety (TUI: skip_preflight_checks)
+		SkipPreflightChecks: true,
+
+		// Cloud settings (TUI: cloud_enabled, cloud_provider, cloud_bucket, cloud_region,
+		//   cloud_access_key, cloud_secret_key, cloud_auto_upload)
+		CloudEnabled:    true,
+		CloudProvider:   "s3",
+		CloudBucket:     "my-backup-bucket",
+		CloudRegion:     "eu-west-1",
+		CloudAccessKey:  "AKIAIOSFODNN7EXAMPLE",
+		CloudSecretKey:  "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+		CloudAutoUpload: true,
+
+		// Security settings
+		RetentionDays: 14,
+		MinBackups:    3,
+		MaxRetries:    5,
 	}
 
 	// Save to specific path
@@ -60,66 +96,201 @@ func TestConfigSaveLoad(t *testing.T) {
 		t.Fatal("Loaded config is nil")
 	}
 
-	// Verify ALL values
-	if loaded.DBType != original.DBType {
-		t.Errorf("DBType mismatch: got %s, want %s", loaded.DBType, original.DBType)
-	}
-	if loaded.Host != original.Host {
-		t.Errorf("Host mismatch: got %s, want %s", loaded.Host, original.Host)
-	}
-	if loaded.Port != original.Port {
-		t.Errorf("Port mismatch: got %d, want %d", loaded.Port, original.Port)
-	}
-	if loaded.User != original.User {
-		t.Errorf("User mismatch: got %s, want %s", loaded.User, original.User)
-	}
-	if loaded.Database != original.Database {
-		t.Errorf("Database mismatch: got %s, want %s", loaded.Database, original.Database)
-	}
-	if loaded.SSLMode != original.SSLMode {
-		t.Errorf("SSLMode mismatch: got %s, want %s", loaded.SSLMode, original.SSLMode)
-	}
-	if loaded.BackupDir != original.BackupDir {
-		t.Errorf("BackupDir mismatch: got %s, want %s", loaded.BackupDir, original.BackupDir)
-	}
-	if loaded.WorkDir != original.WorkDir {
-		t.Errorf("WorkDir mismatch: got %s, want %s", loaded.WorkDir, original.WorkDir)
-	}
-	if loaded.Compression != original.Compression {
-		t.Errorf("Compression mismatch: got %d, want %d", loaded.Compression, original.Compression)
-	}
-	if loaded.Jobs != original.Jobs {
-		t.Errorf("Jobs mismatch: got %d, want %d", loaded.Jobs, original.Jobs)
-	}
-	if loaded.DumpJobs != original.DumpJobs {
-		t.Errorf("DumpJobs mismatch: got %d, want %d", loaded.DumpJobs, original.DumpJobs)
-	}
-	if loaded.CPUWorkload != original.CPUWorkload {
-		t.Errorf("CPUWorkload mismatch: got %s, want %s", loaded.CPUWorkload, original.CPUWorkload)
-	}
-	if loaded.MaxCores != original.MaxCores {
-		t.Errorf("MaxCores mismatch: got %d, want %d", loaded.MaxCores, original.MaxCores)
-	}
-	if loaded.ClusterTimeout != original.ClusterTimeout {
-		t.Errorf("ClusterTimeout mismatch: got %d, want %d", loaded.ClusterTimeout, original.ClusterTimeout)
-	}
-	if loaded.ResourceProfile != original.ResourceProfile {
-		t.Errorf("ResourceProfile mismatch: got %s, want %s", loaded.ResourceProfile, original.ResourceProfile)
-	}
-	if loaded.LargeDBMode != original.LargeDBMode {
-		t.Errorf("LargeDBMode mismatch: got %t, want %t", loaded.LargeDBMode, original.LargeDBMode)
-	}
-	if loaded.RetentionDays != original.RetentionDays {
-		t.Errorf("RetentionDays mismatch: got %d, want %d", loaded.RetentionDays, original.RetentionDays)
-	}
-	if loaded.MinBackups != original.MinBackups {
-		t.Errorf("MinBackups mismatch: got %d, want %d", loaded.MinBackups, original.MinBackups)
-	}
-	if loaded.MaxRetries != original.MaxRetries {
-		t.Errorf("MaxRetries mismatch: got %d, want %d", loaded.MaxRetries, original.MaxRetries)
+	// Verify ALL values - database
+	checks := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"DBType", loaded.DBType, original.DBType},
+		{"Host", loaded.Host, original.Host},
+		{"Port", loaded.Port, original.Port},
+		{"User", loaded.User, original.User},
+		{"Database", loaded.Database, original.Database},
+		{"SSLMode", loaded.SSLMode, original.SSLMode},
+		// Engine
+		{"UseNativeEngine", loaded.UseNativeEngine, original.UseNativeEngine},
+		{"FallbackToTools", loaded.FallbackToTools, original.FallbackToTools},
+		// Backup
+		{"BackupDir", loaded.BackupDir, original.BackupDir},
+		{"WorkDir", loaded.WorkDir, original.WorkDir},
+		{"Compression", loaded.Compression, original.Compression},
+		{"Jobs", loaded.Jobs, original.Jobs},
+		{"DumpJobs", loaded.DumpJobs, original.DumpJobs},
+		{"ClusterParallelism", loaded.ClusterParallelism, original.ClusterParallelism},
+		{"CompressionMode", loaded.CompressionMode, original.CompressionMode},
+		{"AutoDetectCompression", loaded.AutoDetectCompression, original.AutoDetectCompression},
+		{"BackupOutputFormat", loaded.BackupOutputFormat, original.BackupOutputFormat},
+		{"TrustFilesystemCompress", loaded.TrustFilesystemCompress, original.TrustFilesystemCompress},
+		// Performance
+		{"CPUWorkload", loaded.CPUWorkload, original.CPUWorkload},
+		{"MaxCores", loaded.MaxCores, original.MaxCores},
+		{"AutoDetectCores", loaded.AutoDetectCores, original.AutoDetectCores},
+		{"ClusterTimeout", loaded.ClusterTimeout, original.ClusterTimeout},
+		{"ResourceProfile", loaded.ResourceProfile, original.ResourceProfile},
+		{"LargeDBMode", loaded.LargeDBMode, original.LargeDBMode},
+		// Restore optimization
+		{"AdaptiveJobs", loaded.AdaptiveJobs, original.AdaptiveJobs},
+		{"SkipDiskCheck", loaded.SkipDiskCheck, original.SkipDiskCheck},
+		// Safety
+		{"SkipPreflightChecks", loaded.SkipPreflightChecks, original.SkipPreflightChecks},
+		// Cloud
+		{"CloudEnabled", loaded.CloudEnabled, original.CloudEnabled},
+		{"CloudProvider", loaded.CloudProvider, original.CloudProvider},
+		{"CloudBucket", loaded.CloudBucket, original.CloudBucket},
+		{"CloudRegion", loaded.CloudRegion, original.CloudRegion},
+		{"CloudAccessKey", loaded.CloudAccessKey, original.CloudAccessKey},
+		{"CloudSecretKey", loaded.CloudSecretKey, original.CloudSecretKey},
+		{"CloudAutoUpload", loaded.CloudAutoUpload, original.CloudAutoUpload},
+		// Security
+		{"RetentionDays", loaded.RetentionDays, original.RetentionDays},
+		{"MinBackups", loaded.MinBackups, original.MinBackups},
+		{"MaxRetries", loaded.MaxRetries, original.MaxRetries},
 	}
 
-	t.Log("✅ All config fields save/load correctly!")
+	failed := 0
+	for _, c := range checks {
+		if fmt.Sprintf("%v", c.got) != fmt.Sprintf("%v", c.want) {
+			t.Errorf("  ✗ %s: got %v, want %v", c.name, c.got, c.want)
+			failed++
+		}
+	}
+
+	if failed == 0 {
+		t.Logf("✅ All %d config fields save/load correctly!", len(checks))
+	} else {
+		t.Errorf("✗ %d/%d fields failed round-trip", failed, len(checks))
+	}
+}
+
+// TestConfigFullRoundTrip tests the complete chain: Config → ConfigFromConfig → Save → Load → ApplyLocalConfig → Config
+func TestConfigFullRoundTrip(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "dbbackup-roundtrip-test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configPath := filepath.Join(tmpDir, ".dbbackup.conf")
+
+	// Step 1: Create a Config with all TUI-settable fields
+	src := &Config{
+		DatabaseType:            "mariadb",
+		Host:                    "db.example.com",
+		Port:                    3306,
+		User:                    "admin",
+		Database:                "production",
+		SSLMode:                 "verify-full",
+		UseNativeEngine:         true,
+		FallbackToTools:         false,
+		BackupDir:               "/mnt/backups",
+		WorkDir:                 "/mnt/work",
+		CompressionLevel:        6,
+		Jobs:                    12,
+		DumpJobs:                4,
+		ClusterParallelism:      3,
+		CompressionMode:         "never",
+		AutoDetectCompression:   false,
+		BackupOutputFormat:      "compressed",
+		TrustFilesystemCompress: true,
+		CPUWorkloadType:         "io-intensive",
+		MaxCores:                8,
+		AutoDetectCores:         true,
+		ClusterTimeoutMinutes:   720,
+		ResourceProfile:         "performance",
+		LargeDBMode:             true,
+		AdaptiveJobs:            true,
+		SkipDiskCheck:           true,
+		SkipPreflightChecks:     true,
+		CloudEnabled:            true,
+		CloudProvider:           "azure",
+		CloudBucket:             "backups-container",
+		CloudRegion:             "eastus2",
+		CloudAccessKey:          "myaccount",
+		CloudSecretKey:          "mysecretkey123",
+		CloudAutoUpload:         true,
+		RetentionDays:           30,
+		MinBackups:              5,
+		MaxRetries:              3,
+	}
+
+	// Step 2: Convert to LocalConfig
+	local := ConfigFromConfig(src)
+
+	// Step 3: Save to disk
+	err = SaveLocalConfigToPath(local, configPath)
+	if err != nil {
+		t.Fatalf("Failed to save config: %v", err)
+	}
+
+	// Step 4: Load from disk
+	loaded, err := LoadLocalConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Step 5: Apply to fresh Config
+	dst := &Config{}
+	ApplyLocalConfig(dst, loaded)
+
+	// Step 6: Verify all fields survived the round-trip
+	checks := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"DatabaseType", dst.DatabaseType, src.DatabaseType},
+		{"Host", dst.Host, src.Host},
+		{"Port", dst.Port, src.Port},
+		{"User", dst.User, src.User},
+		{"Database", dst.Database, src.Database},
+		{"SSLMode", dst.SSLMode, src.SSLMode},
+		{"UseNativeEngine", dst.UseNativeEngine, src.UseNativeEngine},
+		{"FallbackToTools", dst.FallbackToTools, src.FallbackToTools},
+		{"BackupDir", dst.BackupDir, src.BackupDir},
+		{"WorkDir", dst.WorkDir, src.WorkDir},
+		{"CompressionLevel", dst.CompressionLevel, src.CompressionLevel},
+		{"Jobs", dst.Jobs, src.Jobs},
+		{"DumpJobs", dst.DumpJobs, src.DumpJobs},
+		{"ClusterParallelism", dst.ClusterParallelism, src.ClusterParallelism},
+		{"CompressionMode", dst.CompressionMode, src.CompressionMode},
+		{"AutoDetectCompression", dst.AutoDetectCompression, src.AutoDetectCompression},
+		{"BackupOutputFormat", dst.BackupOutputFormat, src.BackupOutputFormat},
+		{"TrustFilesystemCompress", dst.TrustFilesystemCompress, src.TrustFilesystemCompress},
+		{"CPUWorkloadType", dst.CPUWorkloadType, src.CPUWorkloadType},
+		{"MaxCores", dst.MaxCores, src.MaxCores},
+		{"AutoDetectCores", dst.AutoDetectCores, src.AutoDetectCores},
+		{"ClusterTimeoutMinutes", dst.ClusterTimeoutMinutes, src.ClusterTimeoutMinutes},
+		{"ResourceProfile", dst.ResourceProfile, src.ResourceProfile},
+		{"LargeDBMode", dst.LargeDBMode, src.LargeDBMode},
+		{"AdaptiveJobs", dst.AdaptiveJobs, src.AdaptiveJobs},
+		{"SkipDiskCheck", dst.SkipDiskCheck, src.SkipDiskCheck},
+		{"SkipPreflightChecks", dst.SkipPreflightChecks, src.SkipPreflightChecks},
+		{"CloudEnabled", dst.CloudEnabled, src.CloudEnabled},
+		{"CloudProvider", dst.CloudProvider, src.CloudProvider},
+		{"CloudBucket", dst.CloudBucket, src.CloudBucket},
+		{"CloudRegion", dst.CloudRegion, src.CloudRegion},
+		{"CloudAccessKey", dst.CloudAccessKey, src.CloudAccessKey},
+		{"CloudSecretKey", dst.CloudSecretKey, src.CloudSecretKey},
+		{"CloudAutoUpload", dst.CloudAutoUpload, src.CloudAutoUpload},
+		{"RetentionDays", dst.RetentionDays, src.RetentionDays},
+		{"MinBackups", dst.MinBackups, src.MinBackups},
+		{"MaxRetries", dst.MaxRetries, src.MaxRetries},
+	}
+
+	failed := 0
+	for _, c := range checks {
+		if fmt.Sprintf("%v", c.got) != fmt.Sprintf("%v", c.want) {
+			t.Errorf("  ✗ %s: got %v, want %v", c.name, c.got, c.want)
+			failed++
+		}
+	}
+
+	if failed == 0 {
+		t.Logf("✅ Full round-trip: all %d fields survived Config→LocalConfig→Save→Load→ApplyLocalConfig→Config", len(checks))
+	} else {
+		t.Errorf("✗ %d/%d fields failed full round-trip", failed, len(checks))
+	}
 }
 
 func TestConfigSaveZeroValues(t *testing.T) {

@@ -46,8 +46,9 @@ type LocalConfig struct {
 	LargeDBMode     bool // Enable large database mode (reduces parallelism, increases locks)
 
 	// Restore optimization settings
-	AdaptiveJobs  bool // Enable adaptive per-database job sizing
-	SkipDiskCheck bool // Skip disk space checks
+	AdaptiveJobs  bool   // Enable adaptive per-database job sizing
+	SkipDiskCheck bool   // Skip disk space checks
+	IOGovernor    string // I/O governor: auto, noop, deadline, mq-deadline, bfq
 
 	// Safety settings
 	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
@@ -229,6 +230,8 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.LargeDBMode = value == "true" || value == "1"
 			case "adaptive_jobs":
 				cfg.AdaptiveJobs = value == "true" || value == "1"
+			case "io_governor":
+				cfg.IOGovernor = value
 			case "skip_disk_check":
 				cfg.SkipDiskCheck = value == "true" || value == "1"
 			}
@@ -340,6 +343,9 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	}
 	sb.WriteString(fmt.Sprintf("large_db_mode = %t\n", cfg.LargeDBMode))
 	sb.WriteString(fmt.Sprintf("adaptive_jobs = %t\n", cfg.AdaptiveJobs))
+	if cfg.IOGovernor != "" {
+		sb.WriteString(fmt.Sprintf("io_governor = %s\n", cfg.IOGovernor))
+	}
 	sb.WriteString(fmt.Sprintf("skip_disk_check = %t\n", cfg.SkipDiskCheck))
 	sb.WriteString("\n")
 
@@ -480,6 +486,9 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.AdaptiveJobs {
 		cfg.AdaptiveJobs = true
 	}
+	if local.IOGovernor != "" {
+		cfg.IOGovernor = local.IOGovernor
+	}
 	if local.SkipDiskCheck {
 		cfg.SkipDiskCheck = true
 	}
@@ -551,6 +560,7 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		ResourceProfile:         cfg.ResourceProfile,
 		LargeDBMode:             cfg.LargeDBMode,
 		AdaptiveJobs:            cfg.AdaptiveJobs,
+		IOGovernor:              cfg.IOGovernor,
 		SkipDiskCheck:           cfg.SkipDiskCheck,
 		SkipPreflightChecks:     cfg.SkipPreflightChecks,
 		CloudEnabled:            cfg.CloudEnabled,

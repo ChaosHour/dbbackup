@@ -53,6 +53,9 @@ type Engine struct {
 	// Live progress tracking for real-time byte updates
 	liveBytesDone  int64 // Atomic: tracks live bytes during restore
 	liveBytesTotal int64 // Atomic: total expected bytes
+
+	// I/O governor for BLOB scheduling (v6.14.0+)
+	blobGovernor IOGovernor
 }
 
 // New creates a new restore engine
@@ -611,6 +614,35 @@ func (e *Engine) detectBLOBsInArchive(dbName string, archivePath string) (bool, 
 	return false, "none"
 }
 
+// logGovernorStats periodically logs I/O governor statistics during restore.
+func (e *Engine) logGovernorStats(ctx context.Context, gov IOGovernor) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Final stats on exit
+			stats := gov.Stats()
+			e.log.Info("[IO-GOVERNOR] Final statistics",
+				"governor", gov.Name(),
+				"total_requests", stats.TotalRequests,
+				"starvations", stats.Starvations,
+				"merged", stats.MergedRequests,
+			)
+			return
+		case <-ticker.C:
+			stats := gov.Stats()
+			e.log.Info("[IO-GOVERNOR] Statistics",
+				"governor", gov.Name(),
+				"queue_depth", stats.QueueDepth,
+				"total_requests", stats.TotalRequests,
+				"starvations", stats.Starvations,
+				"merged", stats.MergedRequests,
+			)
+		}
+	}
+}
 
 // restoreWithNativeEngine restores a SQL file using the pure Go native engine
 func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targetDB string, compressed bool) error {
@@ -635,6 +667,8 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 	}
 
 	// Adaptive mode: override worker count based on dump file size and CPU cores
+	var hasBLOBs bool
+	var blobStrategy string
 	if e.cfg.AdaptiveJobs {
 		var fileSize int64
 		if fi, err := os.Stat(archivePath); err == nil {
@@ -643,6 +677,18 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 		if fileSize > 0 {
 			parallelWorkers = e.adaptiveJobCount(targetDB, fileSize, archivePath)
 		}
+		// Detect BLOBs for governor selection
+		hasBLOBs, blobStrategy = e.detectBLOBsInArchive(targetDB, archivePath)
+	}
+
+	// Select I/O governor for BLOB scheduling
+	if hasBLOBs {
+		governor := SelectGovernor(blobStrategy, parallelWorkers, e.cfg, e.log)
+		e.blobGovernor = governor
+		defer governor.Close()
+
+		// Periodically log governor stats
+		go e.logGovernorStats(ctx, governor)
 	}
 
 	e.log.Info("Using PARALLEL native restore engine",

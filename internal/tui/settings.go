@@ -166,6 +166,45 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Adaptive mode overlays the profile: sizes parallel jobs per-database based on dump size and CPU cores.",
 		},
 		{
+			Key:         "io_governor",
+			DisplayName: "I/O Governor",
+			Value: func(c *config.Config) string {
+				gov := c.IOGovernor
+				if gov == "" {
+					gov = "auto"
+				}
+				switch gov {
+				case "auto":
+					return "auto (match BLOB strategy)"
+				case "noop":
+					return "noop (FIFO, no BLOBs)"
+				case "bfq":
+					return "bfq (budget fair, bundled)"
+				case "mq-deadline":
+					return "mq-deadline (multi-queue)"
+				case "deadline":
+					return "deadline (starvation guard)"
+				default:
+					return gov
+				}
+			},
+			Update: func(c *config.Config, v string) error {
+				governors := []string{"auto", "noop", "bfq", "mq-deadline", "deadline"}
+				currentIdx := 0
+				for i, g := range governors {
+					if c.IOGovernor == g {
+						currentIdx = i
+						break
+					}
+				}
+				nextIdx := (currentIdx + 1) % len(governors)
+				c.IOGovernor = governors[nextIdx]
+				return nil
+			},
+			Type:        "selector",
+			Description: "I/O scheduling policy for BLOB operations. auto = match BLOB strategy (recommended). Press Enter to cycle.",
+		},
+		{
 			Key:         "skip_disk_check",
 			DisplayName: "Skip Disk Check",
 			Value: func(c *config.Config) string {

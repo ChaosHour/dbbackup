@@ -5,6 +5,23 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.15.0] - 2026-02-10
+
+### Added - I/O Scheduler Governors for BLOB Operations
+
+- **4 I/O governors** inspired by Linux kernel I/O schedulers:
+  - `noop` — simple FIFO, zero overhead (for standard/no BLOBs)
+  - `bfq` — Budget Fair Queueing with per-class budgets (for bundled BLOBs)
+  - `mq-deadline` — multi-queue deadline with round-robin distribution (for parallel-stream BLOBs)
+  - `deadline` — single-queue deadline with starvation prevention (for large-object/lo_* BLOBs)
+
+- **Auto-selection** maps BLOB strategy → optimal governor automatically
+- **Manual override** via `--io-governor` flag or `IO_GOVERNOR` env var
+- **TUI integration** — I/O Governor setting in Configuration Settings (cycles through auto/noop/bfq/mq-deadline/deadline)
+- **Config persistence** — governor choice saved/loaded from config file
+- **Periodic stats logging** — `[IO-GOVERNOR]` statistics every 10s during BLOB restore
+- **36 unit tests** including interface compliance, starvation detection, round-robin distribution, concurrent safety
+
 ## [6.14.0] - 2026-02-10
 
 ### Added - Engine-Aware Adaptive Job Sizing (V2)

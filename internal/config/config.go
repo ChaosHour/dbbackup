@@ -58,6 +58,9 @@ type Config struct {
 	CPUInfo     *cpu.CPUInfo
 	MemoryInfo  *cpu.MemoryInfo // System memory information
 
+	// I/O Governor for BLOB operations
+	IOGovernor string // "auto", "noop", "deadline", "mq-deadline", "bfq"
+
 	// Native engine options
 	UseNativeEngine   bool     // Use pure Go native engines instead of external tools (default: true)
 	FallbackToTools   bool     // Fallback to external tools if native engine fails
@@ -357,6 +360,9 @@ func New() *Config {
 
 		// Adaptive job sizing (v6.14.0+: engine-aware V2)
 		AdaptiveJobs: getEnvBool("ADAPTIVE_JOBS", true),
+
+		// I/O Governor for BLOB operations (v6.14.0+)
+		IOGovernor: getEnvString("IO_GOVERNOR", "auto"),
 
 		// Native engine defaults (pure Go, no external tools required)
 		UseNativeEngine: getEnvBool("USE_NATIVE_ENGINE", true),

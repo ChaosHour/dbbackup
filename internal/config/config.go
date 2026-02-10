@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"dbbackup/internal/cpu"
 )
@@ -695,12 +696,35 @@ func GetCurrentOSUser() string {
 	return getCurrentUser()
 }
 
-// GetEffectiveWorkDir returns the configured WorkDir or system temp as fallback
+// GetEffectiveWorkDir returns the configured WorkDir or a suitable disk-backed fallback.
+// Avoids tmpfs (/tmp on many Linux systems) which is RAM-backed and too small for
+// large backup operations. Falls back to /var/tmp (always disk-backed) or ~/.dbbackup/tmp.
 func (c *Config) GetEffectiveWorkDir() string {
 	if c.WorkDir != "" {
 		return c.WorkDir
 	}
-	return os.TempDir()
+
+	tmpDir := os.TempDir()
+
+	// Check if tmpDir is on a tmpfs filesystem (RAM-backed, typically small)
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(tmpDir, &stat); err == nil {
+		const tmpfsMagic = 0x01021994
+		if stat.Type == tmpfsMagic {
+			// tmpfs detected — use /var/tmp (always disk-backed on Linux)
+			if info, err := os.Stat("/var/tmp"); err == nil && info.IsDir() {
+				return "/var/tmp"
+			}
+			// Last resort: home directory
+			if home, err := os.UserHomeDir(); err == nil {
+				fallback := filepath.Join(home, ".dbbackup", "tmp")
+				_ = os.MkdirAll(fallback, 0700)
+				return fallback
+			}
+		}
+	}
+
+	return tmpDir
 }
 
 // ShouldAutoDetectCompression returns true if compression should be auto-detected

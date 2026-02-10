@@ -225,7 +225,7 @@ func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string
 	if err != nil {
 		e.progress.Fail(fmt.Sprintf("Restore failed: %v", err))
 		operation.Fail(fmt.Sprintf("Restore failed: %v", err))
-		return err
+		return fmt.Errorf("restore failed for database %q: %w", targetDB, err)
 	}
 
 	e.progress.Complete(fmt.Sprintf("Database '%s' restored successfully", targetDB))

@@ -63,7 +63,7 @@ func RecordRestore(record RestoreRecord) error {
 		homeDir, _ := os.UserHomeDir()
 		dataDir := filepath.Join(homeDir, ".dbbackup")
 		if err := InitMetrics(dataDir); err != nil {
-			return err
+			return fmt.Errorf("failed to initialize restore metrics: %w", err)
 		}
 	}
 
@@ -123,7 +123,7 @@ func (m *RestoreMetricsFile) load() error {
 		if os.IsNotExist(err) {
 			return nil // OK, no previous data
 		}
-		return err
+		return fmt.Errorf("failed to read metrics file: %w", err)
 	}
 	return json.Unmarshal(data, m)
 }
@@ -136,13 +136,13 @@ func (m *RestoreMetricsFile) save() error {
 
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal metrics data: %w", err)
 	}
 
 	// Atomic write
 	tmpPath := metricsFilePath + ".tmp"
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
-		return err
+		return fmt.Errorf("failed to write metrics temp file: %w", err)
 	}
 	return os.Rename(tmpPath, metricsFilePath)
 }

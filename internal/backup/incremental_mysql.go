@@ -57,7 +57,7 @@ func (e *MySQLIncrementalEngine) FindChangedFiles(ctx context.Context, config *I
 
 	err = filepath.Walk(config.DataDirectory, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to access %s: %w", path, err)
 		}
 
 		// Skip directories

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -406,7 +407,7 @@ func (c *Config) UpdateFromEnvironment() {
 // Validate validates the configuration
 func (c *Config) Validate() error {
 	if err := c.SetDatabaseType(c.DatabaseType); err != nil {
-		return err
+		return fmt.Errorf("invalid database type: %w", err)
 	}
 
 	if c.CompressionLevel < 0 || c.CompressionLevel > 9 {
@@ -506,7 +507,7 @@ func (c *Config) OptimizeForCPU() error {
 	if c.CPUInfo == nil {
 		info, err := c.CPUDetector.DetectCPU()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to detect CPU for optimization: %w", err)
 		}
 		c.CPUInfo = info
 	}

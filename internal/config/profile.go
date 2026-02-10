@@ -87,7 +87,7 @@ func GetRestoreProfile(profileName string) (*RestoreProfile, error) {
 func ApplyProfile(cfg *Config, profileName string, explicitJobs, explicitParallelDBs int) error {
 	profile, err := GetRestoreProfile(profileName)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to apply restore profile: %w", err)
 	}
 
 	// Show profile being used

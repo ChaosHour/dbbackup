@@ -318,7 +318,7 @@ func RunBackupInTUI(ctx context.Context, cfg *config.Config, log logger.Logger,
 	// Update final status
 	if err != nil {
 		tracker.Fail(fmt.Sprintf("Backup failed: %v", err))
-		return err
+		return fmt.Errorf("%s backup failed: %w", backupType, err)
 	} else {
 		tracker.Complete(fmt.Sprintf("%s backup completed successfully", backupType))
 		return nil

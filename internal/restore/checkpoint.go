@@ -92,13 +92,13 @@ func (cp *RestoreCheckpoint) Save(checkpointPath string) error {
 
 	data, err := json.MarshalIndent(cp, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal checkpoint data: %w", err)
 	}
 
 	// Write to temp file first, then rename (atomic)
 	tmpPath := checkpointPath + ".tmp"
 	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
-		return err
+		return fmt.Errorf("failed to write checkpoint temp file: %w", err)
 	}
 
 	return os.Rename(tmpPath, checkpointPath)

@@ -206,7 +206,10 @@ func (v *KillConnectionsView) doKillConnection(pid int) error {
 		_, err = db.ExecContext(ctx, "SELECT pg_terminate_backend($1)", pid)
 	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to kill connection %d: %w", pid, err)
+	}
+	return nil
 }
 
 // killAllConnections terminates all connections to the selected database
@@ -237,7 +240,7 @@ func (v *KillConnectionsView) doKillAllConnections() error {
 		// MySQL: need to get PIDs and kill them one by one
 		rows, err := db.QueryContext(ctx, "SELECT ID FROM information_schema.PROCESSLIST WHERE DB = ? AND ID != CONNECTION_ID()", v.database)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to query MySQL connections for database %q: %w", v.database, err)
 		}
 		defer rows.Close()
 		for rows.Next() {
@@ -256,7 +259,10 @@ func (v *KillConnectionsView) doKillAllConnections() error {
 			  AND pid != pg_backend_pid()`, v.database)
 	}
 
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to terminate connections for database %q: %w", v.database, err)
+	}
+	return nil
 }
 
 // Update handles messages

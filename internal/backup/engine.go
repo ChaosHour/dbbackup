@@ -1569,14 +1569,14 @@ func (e *Engine) uploadToCloud(ctx context.Context, backupFile string, tracker *
 	backend, err := cloud.NewBackend(cloudCfg)
 	if err != nil {
 		uploadStep.Fail(fmt.Errorf("failed to create cloud backend: %w", err))
-		return err
+		return fmt.Errorf("failed to create cloud backend: %w", err)
 	}
 
 	// Get file info
 	info, err := os.Stat(backupFile)
 	if err != nil {
 		uploadStep.Fail(fmt.Errorf("failed to stat backup file: %w", err))
-		return err
+		return fmt.Errorf("failed to stat backup file for upload: %w", err)
 	}
 
 	filename := filepath.Base(backupFile)
@@ -1600,7 +1600,7 @@ func (e *Engine) uploadToCloud(ctx context.Context, backupFile string, tracker *
 	if err != nil {
 		bar.Fail("Upload failed")
 		uploadStep.Fail(fmt.Errorf("cloud upload failed: %w", err))
-		return err
+		return fmt.Errorf("cloud upload failed: %w", err)
 	}
 
 	_ = bar.Finish()

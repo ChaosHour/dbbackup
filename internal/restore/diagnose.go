@@ -933,7 +933,7 @@ func (d *Diagnoser) PrintDiagnosis(result *DiagnoseResult) {
 func (d *Diagnoser) PrintDiagnosisJSON(result *DiagnoseResult) error {
 	output, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal diagnosis to JSON: %w", err)
 	}
 	fmt.Println(string(output))
 	return nil

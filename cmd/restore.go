@@ -47,6 +47,7 @@ var (
 	restoreNoProgress          bool
 	restoreNoTUI               bool // Disable TUI for maximum performance (benchmark mode)
 	restoreAdaptive            bool // Enable adaptive per-database job sizing
+	restoreSkipDiskCheck       bool // Skip disk space checks entirely
 	restoreQuiet               bool // Suppress all output except errors
 	restoreWorkdir             string
 	restoreDiskSpaceMultiplier float64
@@ -345,6 +346,7 @@ func init() {
 	restoreSingleCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
 	restoreSingleCmd.Flags().BoolVar(&restoreAdaptive, "adaptive", false, "Enable adaptive job sizing based on dump file size and CPU cores")
+	restoreSingleCmd.Flags().BoolVar(&restoreSkipDiskCheck, "skip-disk-check", false, "Skip disk space checks (use when you know there's enough space)")
 	restoreSingleCmd.Flags().BoolVar(&restoreQuiet, "quiet", false, "Suppress all output except errors")
 	restoreSingleCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel pg_restore jobs (0 = auto, like pg_restore -j)")
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
@@ -378,6 +380,7 @@ func init() {
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto, overrides profile)")
 	restoreClusterCmd.Flags().IntVar(&restoreParallelDBs, "parallel-dbs", 0, "Number of databases to restore in parallel (0 = use profile, 1 = sequential, -1 = auto-detect, overrides profile)")
 	restoreClusterCmd.Flags().BoolVar(&restoreAdaptive, "adaptive", false, "Enable adaptive per-database job sizing based on dump file size and CPU cores")
+	restoreClusterCmd.Flags().BoolVar(&restoreSkipDiskCheck, "skip-disk-check", false, "Skip disk space checks (use when you know there's enough space)")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
 	restoreClusterCmd.Flags().Float64Var(&restoreDiskSpaceMultiplier, "disk-space-multiplier", 0, "Override disk space multiplier (0 = auto-detect from metadata/format)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
@@ -585,6 +588,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 
 	// Enable adaptive job sizing if requested
 	cfg.AdaptiveJobs = restoreAdaptive
+	cfg.SkipDiskCheck = restoreSkipDiskCheck
 
 	// Validate restore parameters
 	if err := validateRestoreParams(cfg, restoreTarget, restoreJobs); err != nil {
@@ -682,9 +686,13 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("archive validation failed: %w", err)
 		}
 
-		log.Info("Checking disk space...")
-		if err := safety.CheckDiskSpace(archivePath, 0); err != nil { // 0 = auto-detect from metadata/format
-			return fmt.Errorf("disk space check failed: %w", err)
+		if cfg.SkipDiskCheck {
+			log.Warn("Disk space check SKIPPED (--skip-disk-check)")
+		} else {
+			log.Info("Checking disk space...")
+			if err := safety.CheckDiskSpace(archivePath, 0); err != nil { // 0 = auto-detect from metadata/format
+				return fmt.Errorf("disk space check failed: %w", err)
+			}
 		}
 
 		// Verify tools (skip if using native engine)
@@ -1052,6 +1060,7 @@ func runFullClusterRestore(archivePath string) error {
 
 	// Enable adaptive job sizing if requested
 	cfg.AdaptiveJobs = restoreAdaptive
+	cfg.SkipDiskCheck = restoreSkipDiskCheck
 
 	// Validate restore parameters
 	if err := validateRestoreParams(cfg, restoreTarget, restoreJobs); err != nil {
@@ -1133,9 +1142,13 @@ func runFullClusterRestore(archivePath string) error {
 			log.Info("Using custom disk space multiplier", "multiplier", restoreDiskSpaceMultiplier)
 		}
 
-		log.Info("Checking disk space...")
-		if err := safety.CheckDiskSpaceAt(archivePath, checkDir, 0); err != nil {
-			return fmt.Errorf("disk space check failed: %w", err)
+		if cfg.SkipDiskCheck {
+			log.Warn("Disk space check SKIPPED (--skip-disk-check)")
+		} else {
+			log.Info("Checking disk space...")
+			if err := safety.CheckDiskSpaceAt(archivePath, checkDir, 0); err != nil {
+				return fmt.Errorf("disk space check failed: %w", err)
+			}
 		}
 
 		// Verify tools (skip if using native engine)

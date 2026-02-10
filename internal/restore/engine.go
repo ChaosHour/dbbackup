@@ -1617,14 +1617,27 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	if !usingPreExtracted {
 		e.log.Info("Checking disk space for restore")
 		archiveInfo, err = os.Stat(archivePath)
-		if err == nil {
+		if e.cfg.SkipDiskCheck {
+			e.log.Warn("Disk space check SKIPPED (--skip-disk-check)")
+			if archiveInfo == nil {
+				archiveInfo, _ = os.Stat(archivePath)
+			}
+		} else if err == nil {
 			// Load cluster metadata for accurate compression ratio
 			clusterMeta, _ := metadata.LoadCluster(archivePath)
 
 			// Check the workdir filesystem — that's where extraction actually happens,
 			// NOT BackupDir (which may be on a different volume holding the archive).
+			extractPath := e.cfg.GetEffectiveWorkDir()
+			e.log.Info("DISK CHECK: Pre-extraction check",
+				"extractPath", extractPath,
+				"archiveSize", FormatBytes(archiveInfo.Size()),
+				"cfgWorkDir", e.cfg.WorkDir,
+				"hasMetadata", clusterMeta != nil,
+				"multiplierOverride", e.cfg.DiskSpaceMultiplier)
+
 			checker := &DiskSpaceChecker{
-				ExtractPath:        e.cfg.GetEffectiveWorkDir(),
+				ExtractPath:        extractPath,
 				ArchivePath:        archivePath,
 				ArchiveSize:        archiveInfo.Size(),
 				Metadata:           clusterMeta,
@@ -1636,6 +1649,12 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			if checkErr != nil {
 				e.log.Warn("Cannot check disk space", "error", checkErr)
 			} else if !result.Sufficient {
+				e.log.Error("DISK CHECK FAILED",
+					"extractPath", extractPath,
+					"available", FormatBytes(result.Info.AvailableBytes),
+					"required", FormatBytes(result.RequiredBytes),
+					"multiplier", fmt.Sprintf("%.1fx", result.Multiplier),
+					"source", result.MultiplierSource)
 				operation.Fail("Insufficient disk space")
 				return result.FormatError()
 			} else if result.Warning {
@@ -1682,8 +1701,14 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			"optimization", "skipping duplicate extraction")
 	} else {
 		// Check disk space for extraction using metadata-aware DiskSpaceChecker
-		if archiveInfo != nil {
+		if archiveInfo != nil && !e.cfg.SkipDiskCheck {
 			clusterMeta, _ := metadata.LoadCluster(archivePath)
+			e.log.Info("DISK CHECK: Extraction check",
+				"workDir", workDir,
+				"archiveSize", FormatBytes(archiveInfo.Size()),
+				"hasMetadata", clusterMeta != nil,
+				"multiplierOverride", e.cfg.DiskSpaceMultiplier)
+
 			checker := &DiskSpaceChecker{
 				ExtractPath:        workDir,
 				ArchivePath:        archivePath,
@@ -1696,6 +1721,12 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			if checkErr != nil {
 				e.log.Warn("Cannot check disk space for extraction", "error", checkErr)
 			} else if !result.Sufficient {
+				e.log.Error("DISK CHECK FAILED (extraction)",
+					"workDir", workDir,
+					"available", FormatBytes(result.Info.AvailableBytes),
+					"required", FormatBytes(result.RequiredBytes),
+					"multiplier", fmt.Sprintf("%.1fx", result.Multiplier),
+					"source", result.MultiplierSource)
 				operation.Fail("Insufficient disk space for extraction")
 				return result.FormatError()
 			} else {

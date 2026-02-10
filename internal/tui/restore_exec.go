@@ -102,6 +102,15 @@ type RestoreExecutionModel struct {
 
 // NewRestoreExecution creates a new restore execution model
 func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool, workDir string) RestoreExecutionModel {
+	// CRITICAL: Propagate the TUI-resolved workDir into cfg so the engine's
+	// GetEffectiveWorkDir() returns the correct path. Without this, the engine
+	// would resolve its own workDir independently and may hit tmpfs /tmp (16 GB)
+	// instead of the TUI-selected disk-backed path (e.g. /var/tmp, 262 GB).
+	if workDir != "" {
+		log.Info("Propagating TUI workDir to config", "workDir", workDir, "previous", cfg.WorkDir)
+		cfg.WorkDir = workDir
+	}
+
 	// Create a cancellable context derived from parent
 	childCtx, cancel := context.WithCancel(ctx)
 	return RestoreExecutionModel{

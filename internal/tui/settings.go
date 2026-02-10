@@ -166,6 +166,22 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Adaptive mode overlays the profile: sizes parallel jobs per-database based on dump size and CPU cores.",
 		},
 		{
+			Key:         "skip_disk_check",
+			DisplayName: "Skip Disk Check",
+			Value: func(c *config.Config) string {
+				if c.SkipDiskCheck {
+					return "ON (⚠ no space validation)"
+				}
+				return "OFF (check before restore)"
+			},
+			Update: func(c *config.Config, v string) error {
+				c.SkipDiskCheck = !c.SkipDiskCheck
+				return nil
+			},
+			Type:        "selector",
+			Description: "Skip disk space checks. Use when you know there's enough space or the checker gives false positives.",
+		},
+		{
 			Key:         "large_db_mode",
 			DisplayName: "Large DB Mode",
 			Value: func(c *config.Config) string {

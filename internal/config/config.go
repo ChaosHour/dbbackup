@@ -96,6 +96,7 @@ type Config struct {
 	// Working directory for large operations (extraction, diagnosis)
 	WorkDir             string  // Alternative temp directory for large operations (default: system temp)
 	DiskSpaceMultiplier float64 // Override disk space multiplier for restore (0 = auto-detect from format/metadata)
+	SkipDiskCheck       bool    // Skip disk space checks entirely (use when you know there's enough space)
 
 	// Swap file management (for large backups)
 	SwapFilePath   string // Path to temporary swap file

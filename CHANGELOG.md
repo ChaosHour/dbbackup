@@ -5,6 +5,28 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.14.0] - 2026-02-10
+
+### Added - Engine-Aware Adaptive Job Sizing (V2)
+
+- **Engine-aware adaptive worker calculation** (`CalculateOptimalJobsV2`)
+  - 3-stage pipeline: BLOB adjustment → native engine boost → memory ceiling
+  - Replaces size-only heuristic with full engine context awareness
+
+- **BLOB engine integration**
+  - `parallel-stream`: halves main workers (BLOB engine handles I/O internally)
+  - `bundle`: boosts 1.5× (bundled small BLOBs = low overhead)
+  - `large-object`: reduces 25% (lo_ API contention)
+  - SQL dump file scanning for BLOB indicators (lo_create, bytea, X-Blob-Strategy headers)
+
+- **Native engine boost**: 1.3× for native Go restore, 1.5× when combined with BLOBs
+- **Memory ceiling**: caps workers based on available RAM (8GB→16, 16GB→24, 32GB→28, 64GB→32)
+- **Physical CPU core detection**: uses `CPUInfo.PhysicalCores` instead of `runtime.NumCPU()` logical cores
+- **Full [ADAPTIVE-V2] debug trace**: logs all stages (base→blob→native→memory→final) per database
+
+### Tests
+- 96+ test cases across 8 test suites including full matrix (4 sizes × 4 BLOB strategies × 2 engines × 3 memory tiers)
+
 ## [6.13.0] - 2026-02-10
 
 ### Added - Disk Space Debug Instrumentation & CLI Fixes

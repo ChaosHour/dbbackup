@@ -503,35 +503,114 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 // adaptiveJobCount returns an optimal number of parallel workers for a restore
 // based on the dump file size and available CPU cores. This prevents over-parallelizing
 // tiny databases (wasted goroutines/connections) and under-parallelizing huge ones.
-func (e *Engine) adaptiveJobCount(dbName string, dumpFileSize int64) int {
+//
+// V2 (v6.13.0+): Engine-aware — considers BLOB engine, native engine, and system
+// resources for optimal worker count instead of size-only heuristics.
+func (e *Engine) adaptiveJobCount(dbName string, dumpFileSize int64, archivePath string) int {
+	// Build engine-aware context
+	hasBLOBs, blobStrategy := e.detectBLOBsInArchive(dbName, archivePath)
+
 	cpuCores := runtime.NumCPU()
-	var workers int
-	const mb50 int64 = 50 << 20
-	const mb500 int64 = 500 << 20
-	const gb1 int64 = 1 << 30
-	const gb10 int64 = 10 << 30
-	switch {
-	case dumpFileSize < mb50: // <50 MB — tiny DB, minimal parallelism
-		workers = minInt(2, cpuCores)
-	case dumpFileSize < mb500: // <500 MB — small DB
-		workers = minInt(4, cpuCores/2)
-	case dumpFileSize < gb1: // <1 GB — medium DB
-		workers = minInt(6, cpuCores*2/3)
-	case dumpFileSize < gb10: // <10 GB — large DB
-		workers = minInt(12, cpuCores*3/4)
-	default: // ≥10 GB — huge DB, go all-in
-		workers = minInt(32, cpuCores)
+	if e.cfg.CPUInfo != nil && e.cfg.CPUInfo.PhysicalCores > 0 {
+		cpuCores = e.cfg.CPUInfo.PhysicalCores
 	}
-	if workers < 1 {
-		workers = 1
+
+	memoryGB := 0
+	if e.cfg.MemoryInfo != nil {
+		memoryGB = e.cfg.MemoryInfo.TotalGB
 	}
-	e.log.Info("Adaptive job sizing",
+
+	ctx := native.EngineAwareContext{
+		DBSizeBytes:     dumpFileSize,
+		DBName:          dbName,
+		HasBLOBs:        hasBLOBs,
+		BLOBStrategy:    blobStrategy,
+		UseNativeEngine: e.cfg.UseNativeEngine,
+		CPUCores:        cpuCores,
+		MemoryGB:        memoryGB,
+	}
+
+	result := native.CalculateOptimalJobsV2(ctx)
+
+	e.log.Info("[ADAPTIVE-V2] Engine-aware job calculation",
 		"database", dbName,
 		"dump_size_mb", dumpFileSize/(1<<20),
 		"cpu_cores", cpuCores,
-		"adaptive_workers", workers)
-	return workers
+		"memory_gb", memoryGB,
+		"has_blobs", hasBLOBs,
+		"blob_strategy", blobStrategy,
+		"native_engine", e.cfg.UseNativeEngine,
+		"base_jobs", result.BaseJobs,
+		"blob_adjustment", result.BLOBAdjustment,
+		"native_boost", fmt.Sprintf("%.1f×", result.NativeBoost),
+		"memory_capped", result.MemoryCap,
+		"optimal_jobs", result.FinalJobs)
+
+	return result.FinalJobs
 }
+
+// detectBLOBsInArchive scans the first 256KB of a SQL dump file for BLOB
+// indicators. This is a lightweight heuristic — if the backup catalog later
+// provides explicit BLOB metadata, that takes priority.
+//
+// Detection signals:
+//   - lo_create / lo_import / lo_open → large-object strategy
+//   - BLOB pipeline markers (X-Blob-Strategy headers) → exact strategy
+//   - bytea columns in COPY headers → standard BLOB
+//
+// Returns (hasBLOBs, strategy) where strategy is one of:
+// "none", "standard", "bundle", "parallel-stream", "large-object"
+func (e *Engine) detectBLOBsInArchive(dbName string, archivePath string) (bool, string) {
+	if archivePath == "" {
+		return false, "none"
+	}
+
+	f, err := os.Open(archivePath)
+	if err != nil {
+		e.log.Debug("[ADAPTIVE-V2] Cannot open archive for BLOB detection",
+			"database", dbName, "error", err)
+		return false, "none"
+	}
+	defer f.Close()
+
+	// Read first 256KB — enough to catch schema definitions and BLOB markers
+	buf := make([]byte, 256*1024)
+	n, _ := f.Read(buf)
+	if n == 0 {
+		return false, "none"
+	}
+	header := string(buf[:n])
+
+	// Check for explicit BLOB pipeline strategy markers (set by dbbackup during backup)
+	if strings.Contains(header, "X-Blob-Strategy: parallel-stream") {
+		e.log.Debug("[ADAPTIVE-V2] BLOB strategy from archive header",
+			"database", dbName, "strategy", "parallel-stream")
+		return true, "parallel-stream"
+	}
+	if strings.Contains(header, "X-Blob-Strategy: bundle") {
+		e.log.Debug("[ADAPTIVE-V2] BLOB strategy from archive header",
+			"database", dbName, "strategy", "bundle")
+		return true, "bundle"
+	}
+
+	// Check for PostgreSQL Large Object API calls
+	if strings.Contains(header, "lo_create") || strings.Contains(header, "lo_import") ||
+		strings.Contains(header, "lo_open") || strings.Contains(header, "SELECT pg_catalog.lo_create") {
+		e.log.Debug("[ADAPTIVE-V2] Large Object API detected in archive",
+			"database", dbName)
+		return true, "large-object"
+	}
+
+	// Check for bytea columns in COPY statements (standard BLOB indicator)
+	if strings.Contains(header, "bytea") {
+		e.log.Debug("[ADAPTIVE-V2] bytea columns detected in archive",
+			"database", dbName)
+		return true, "standard"
+	}
+
+	return false, "none"
+}
+
 
 // restoreWithNativeEngine restores a SQL file using the pure Go native engine
 func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targetDB string, compressed bool) error {
@@ -562,7 +641,7 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 			fileSize = fi.Size()
 		}
 		if fileSize > 0 {
-			parallelWorkers = e.adaptiveJobCount(targetDB, fileSize)
+			parallelWorkers = e.adaptiveJobCount(targetDB, fileSize, archivePath)
 		}
 	}
 

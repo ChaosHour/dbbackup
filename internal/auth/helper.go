@@ -259,7 +259,9 @@ func getCommandLine() string {
 	return strings.Join(parts, " ")
 }
 
-// LoadPasswordFromPgpass attempts to load password from .pgpass file
+// LoadPasswordFromPgpass attempts to load password from .pgpass file.
+// Returns the password and true if found, or empty string and false.
+// Searches: $HOME/.pgpass, /var/lib/pgsql/.pgpass, /home/<user>/.pgpass
 func LoadPasswordFromPgpass(cfg *config.Config) (string, bool) {
 	pgpassLocations := []string{
 		filepath.Join(os.Getenv("HOME"), ".pgpass"),
@@ -269,6 +271,7 @@ func LoadPasswordFromPgpass(cfg *config.Config) (string, bool) {
 
 	for _, pgpassPath := range pgpassLocations {
 		if password := parsePgpass(pgpassPath, cfg); password != "" {
+			// Log which file matched (caller will log at debug level)
 			return password, true
 		}
 	}

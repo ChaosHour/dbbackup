@@ -720,6 +720,9 @@ func (e *Engine) buildConnStringForUser(user string) string {
 		if e.cfg.Password != "" {
 			dsn += fmt.Sprintf(" password=%s", e.cfg.Password)
 		}
+		e.log.Debug("Boost DSN: using explicit Unix socket",
+			"user", user, "socket_dir", e.cfg.Host,
+			"password_set", e.cfg.Password != "")
 		return dsn
 	}
 
@@ -733,10 +736,14 @@ func (e *Engine) buildConnStringForUser(user string) string {
 		for _, dir := range socketDirs {
 			socketPath := fmt.Sprintf("%s/.s.PGSQL.%d", dir, e.cfg.Port)
 			if _, err := os.Stat(socketPath); err == nil {
+				e.log.Debug("Boost DSN: using Unix socket (peer auth)",
+					"user", user, "socket", socketPath)
 				// Unix socket found - use peer auth (no password needed)
 				return fmt.Sprintf("user=%s dbname=postgres host=%s sslmode=disable", user, dir)
 			}
 		}
+		e.log.Debug("Boost DSN: no Unix socket found, falling through to TCP",
+			"user", user, "searched", strings.Join(socketDirs, ", "))
 		// No socket found, fall through to TCP
 	}
 
@@ -750,6 +757,9 @@ func (e *Engine) buildConnStringForUser(user string) string {
 	if e.cfg.Password != "" {
 		dsn += fmt.Sprintf(" password=%s", e.cfg.Password)
 	}
+	e.log.Debug("Boost DSN: using TCP connection",
+		"user", user, "host", host, "port", e.cfg.Port,
+		"password_set", e.cfg.Password != "")
 	return dsn
 }
 

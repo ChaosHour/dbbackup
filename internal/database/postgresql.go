@@ -35,13 +35,55 @@ func NewPostgreSQL(cfg *config.Config, log logger.Logger) *PostgreSQL {
 
 // Connect establishes a connection to PostgreSQL using pgx for better performance
 func (p *PostgreSQL) Connect(ctx context.Context) error {
+	osUser := config.GetCurrentOSUser()
+	passwordSource := "none"
+
+	if p.cfg.Debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] PostgreSQL connection: os_user=%s db_user=%s host=%s port=%d database=%s password_set=%v\n",
+			osUser, p.cfg.User, p.cfg.Host, p.cfg.Port, p.cfg.Database, p.cfg.Password != "")
+	}
+	p.log.Debug("PostgreSQL connection attempt",
+		"os_user", osUser,
+		"db_user", p.cfg.User,
+		"host", p.cfg.Host,
+		"port", p.cfg.Port,
+		"database", p.cfg.Database,
+		"password_set", p.cfg.Password != "",
+		"ssl_mode", p.cfg.SSLMode,
+		"insecure", p.cfg.Insecure,
+	)
+
+	if p.cfg.Password != "" {
+		passwordSource = "flag/env"
+	}
+
 	// Try to load password from .pgpass if not provided
 	if p.cfg.Password == "" {
 		if password, found := auth.LoadPasswordFromPgpass(p.cfg); found {
 			p.cfg.Password = password
+			passwordSource = "pgpass"
+			if p.cfg.Debug {
+				fmt.Fprintf(os.Stderr, "[DEBUG] Loaded password from .pgpass file\n")
+			}
 			p.log.Debug("Loaded password from .pgpass file")
+		} else {
+			if p.cfg.Debug {
+				fmt.Fprintf(os.Stderr, "[DEBUG] No .pgpass password found — will rely on peer/trust auth or fail\n")
+			}
+			p.log.Debug("No .pgpass password found — will rely on peer/trust auth or fail")
 		}
 	}
+
+	// Detect expected authentication method
+	authMethod := auth.DetectPostgreSQLAuthMethod(p.cfg.Host, p.cfg.Port, p.cfg.User)
+	if p.cfg.Debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] Detected auth method=%s password_source=%s\n",
+			string(authMethod), passwordSource)
+	}
+	p.log.Debug("Detected PostgreSQL auth method",
+		"method", string(authMethod),
+		"password_source", passwordSource,
+	)
 
 	// Check for authentication mismatch before attempting connection
 	if mismatch, msg := auth.CheckAuthenticationMismatch(p.cfg); mismatch {
@@ -53,12 +95,20 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 	dsn := p.buildPgxDSN()
 	p.dsn = dsn
 
+	if p.cfg.Debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] DSN: %s\n", sanitizeDSN(dsn))
+	}
 	p.log.Debug("Connecting to PostgreSQL with pgx", "dsn", sanitizeDSN(dsn))
 
 	// Parse config with optimizations for large databases
 	config, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
-		return fmt.Errorf("failed to parse pgx config: %w", err)
+		p.log.Error("Failed to parse PostgreSQL DSN",
+			"dsn", sanitizeDSN(dsn),
+			"error", err,
+		)
+		return fmt.Errorf("failed to parse pgx config: %w\n%s", err,
+			getConnectionHint(err.Error(), p.cfg.Host, p.cfg.Port, p.cfg.User, passwordSource))
 	}
 
 	// Optimize connection pool for backup workloads
@@ -83,13 +133,30 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 	// Create connection pool
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
-		return fmt.Errorf("failed to create pgx pool: %w", err)
+		p.log.Error("Failed to create PostgreSQL connection pool",
+			"host", p.cfg.Host,
+			"port", p.cfg.Port,
+			"user", p.cfg.User,
+			"password_source", passwordSource,
+			"error", err,
+		)
+		return fmt.Errorf("failed to create pgx pool: %w\n%s", err,
+			getConnectionHint(err.Error(), p.cfg.Host, p.cfg.Port, p.cfg.User, passwordSource))
 	}
 
 	// Test connection
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return fmt.Errorf("failed to ping PostgreSQL: %w", err)
+		p.log.Error("PostgreSQL ping failed after pool creation",
+			"host", p.cfg.Host,
+			"port", p.cfg.Port,
+			"user", p.cfg.User,
+			"password_source", passwordSource,
+			"os_user", osUser,
+			"error", err,
+		)
+		return fmt.Errorf("failed to ping PostgreSQL: %w\n%s", err,
+			getConnectionHint(err.Error(), p.cfg.Host, p.cfg.Port, p.cfg.User, passwordSource))
 	}
 
 	// Also create stdlib connection for compatibility
@@ -609,9 +676,25 @@ func (p *PostgreSQL) buildPgxDSN() string {
 	return dsn.String()
 }
 
-// sanitizeDSN removes password from DSN for logging
+// sanitizeDSN removes password from DSN for logging.
+// Handles both keyword=value format (password=xxx) and URL format (postgres://user:pass@host).
 func sanitizeDSN(dsn string) string {
-	// Simple password removal for logging
+	// Handle URL format: postgres://user:password@host:port/db
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		// Find :// then user:pass@
+		schemeEnd := strings.Index(dsn, "://") + 3
+		rest := dsn[schemeEnd:]
+		atIdx := strings.Index(rest, "@")
+		if atIdx >= 0 {
+			userPart := rest[:atIdx]
+			if colonIdx := strings.Index(userPart, ":"); colonIdx >= 0 {
+				return dsn[:schemeEnd] + userPart[:colonIdx] + ":***" + dsn[schemeEnd+atIdx:]
+			}
+		}
+		return dsn
+	}
+
+	// Handle keyword=value format
 	parts := strings.Split(dsn, " ")
 	var sanitized []string
 
@@ -624,4 +707,55 @@ func sanitizeDSN(dsn string) string {
 	}
 
 	return strings.Join(sanitized, " ")
+}
+
+// getConnectionHint maps common PostgreSQL connection error patterns to
+// actionable fix suggestions. The returned string is empty when no hint applies.
+func getConnectionHint(errMsg, host string, port int, user, passwordSource string) string {
+	e := strings.ToLower(errMsg)
+
+	switch {
+	case strings.Contains(e, "password authentication failed"):
+		hint := fmt.Sprintf("Hint: password authentication failed for user %q (password via %s).\n", user, passwordSource)
+		if passwordSource == "pgpass" {
+			hint += "  Check that ~/.pgpass password matches the actual PostgreSQL role password.\n"
+			hint += fmt.Sprintf("  Verify with: sudo -u postgres psql -c \"ALTER USER %s PASSWORD 'newpass'\"\n", user)
+		} else if passwordSource == "none" {
+			hint += "  No password was provided. Set one via --password, PGPASSWORD, or ~/.pgpass\n"
+		} else {
+			hint += fmt.Sprintf("  Verify the password for role %q in PostgreSQL.\n", user)
+		}
+		return hint
+
+	case strings.Contains(e, "peer authentication failed"):
+		osUser := config.GetCurrentOSUser()
+		return fmt.Sprintf("Hint: peer auth requires OS user == DB user. Running as %q, connecting as %q.\n"+
+			"  Fix: sudo -u %s dbbackup ... OR set a password and use --password\n", osUser, user, user)
+
+	case strings.Contains(e, "connection refused"):
+		return fmt.Sprintf("Hint: PostgreSQL is not listening on %s:%d.\n"+
+			"  Check: sudo systemctl status postgresql\n"+
+			"  Check: listen_addresses and port in postgresql.conf\n", host, port)
+
+	case strings.Contains(e, "no such host"), strings.Contains(e, "hostname resolving error"):
+		return fmt.Sprintf("Hint: hostname %q could not be resolved. Check spelling or DNS.\n", host)
+
+	case strings.Contains(e, "timeout"), strings.Contains(e, "timed out"):
+		return fmt.Sprintf("Hint: connection to %s:%d timed out.\n"+
+			"  Check: firewall rules, network path, PostgreSQL listen_addresses.\n", host, port)
+
+	case strings.Contains(e, "role") && strings.Contains(e, "does not exist"):
+		return fmt.Sprintf("Hint: role %q does not exist in PostgreSQL.\n"+
+			"  Create it: sudo -u postgres createuser --superuser %s\n", user, user)
+
+	case strings.Contains(e, "database") && strings.Contains(e, "does not exist"):
+		return "Hint: the target database does not exist. Check --database value.\n"
+
+	case strings.Contains(e, "ssl") && strings.Contains(e, "not supported"):
+		return "Hint: SSL connection requested but server doesn't support it.\n" +
+			"  Try adding --insecure or setting ssl_mode=disable.\n"
+
+	default:
+		return ""
+	}
 }

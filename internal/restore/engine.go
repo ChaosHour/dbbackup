@@ -3130,14 +3130,39 @@ type OriginalSettings struct {
 // NOTE: max_locks_per_transaction requires a PostgreSQL RESTART to take effect!
 // maintenance_work_mem can be changed with pg_reload_conf().
 func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int) (*OriginalSettings, error) {
+	osUser := config.GetCurrentOSUser()
+	passwordSource := "none"
+	if e.cfg.Password != "" {
+		passwordSource = "flag/env/pgpass"
+	}
+
+	e.log.Debug("Boost: connecting to PostgreSQL for settings tuning",
+		"os_user", osUser,
+		"db_user", e.cfg.User,
+		"host", e.cfg.Host,
+		"port", e.cfg.Port,
+		"password_set", e.cfg.Password != "",
+		"password_source", passwordSource,
+		"target_lock_value", lockBoostValue,
+	)
+
 	if e.cfg.DebugLocks {
 		e.log.Debug("boostPostgreSQLSettings: starting lock boost procedure",
 			"target_lock_value", lockBoostValue)
 	}
 
 	connStr := e.buildConnString()
+	e.log.Debug("Boost: DSN built", "dsn", sanitizeConnStr(connStr))
+
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {
+		e.log.Error("Boost: failed to open PostgreSQL driver",
+			"user", e.cfg.User,
+			"host", e.cfg.Host,
+			"port", e.cfg.Port,
+			"password_source", passwordSource,
+			"error", err,
+		)
 		if e.cfg.DebugLocks {
 			e.log.Error("Lock debug: failed to connect to PostgreSQL",
 				"user", e.cfg.User, "error", err)
@@ -3148,11 +3173,22 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	// Verify the connection actually works (sql.Open may not connect immediately)
 	if pingErr := db.PingContext(ctx); pingErr != nil {
 		db.Close()
+
+		e.log.Error("Boost: PostgreSQL ping failed",
+			"user", e.cfg.User,
+			"host", e.cfg.Host,
+			"port", e.cfg.Port,
+			"password_source", passwordSource,
+			"os_user", osUser,
+			"error", pingErr,
+		)
+
 		// If connection fails and we're not already trying 'postgres', retry with 'postgres' user
 		if e.cfg.User != "postgres" {
 			e.log.Warn("Connection failed with current user, retrying with 'postgres' user",
 				"failed_user", e.cfg.User, "error", pingErr)
 			fallbackStr := e.buildConnStringForUser("postgres")
+			e.log.Debug("Boost: fallback DSN", "dsn", sanitizeConnStr(fallbackStr))
 			db, err = sql.Open("pgx", fallbackStr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to connect to PostgreSQL as user 'postgres' (fallback): %w", err)
@@ -3171,6 +3207,9 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 		}
 	}
 	defer db.Close()
+
+	e.log.Debug("Boost: PostgreSQL connection established successfully",
+		"user", e.cfg.User)
 
 	original := &OriginalSettings{}
 
@@ -3453,4 +3492,18 @@ func sleepWithContext(ctx context.Context, d time.Duration) {
 	case <-ctx.Done():
 	case <-time.After(d):
 	}
+}
+
+// sanitizeConnStr removes password from a keyword=value DSN for safe logging.
+func sanitizeConnStr(dsn string) string {
+	parts := strings.Split(dsn, " ")
+	var sanitized []string
+	for _, part := range parts {
+		if strings.HasPrefix(part, "password=") {
+			sanitized = append(sanitized, "password=***")
+		} else {
+			sanitized = append(sanitized, part)
+		}
+	}
+	return strings.Join(sanitized, " ")
 }

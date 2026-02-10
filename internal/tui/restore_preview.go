@@ -64,6 +64,17 @@ func NewRestorePreview(cfg *config.Config, log logger.Logger, parent tea.Model, 
 		targetDB = cfg.Database
 	}
 
+	// Determine initial workDir mode based on config state
+	var initialWorkDir string
+	var initialMode WorkDirMode
+	if cfg.WorkDir != "" {
+		initialWorkDir = cfg.WorkDir
+		initialMode = WorkDirConfig
+	} else {
+		initialWorkDir = ""
+		initialMode = WorkDirSystemTemp
+	}
+
 	return RestorePreviewModel{
 		config:          cfg,
 		logger:          log,
@@ -75,7 +86,8 @@ func NewRestorePreview(cfg *config.Config, log logger.Logger, parent tea.Model, 
 		cleanFirst:      false,
 		createIfMissing: true,
 		checking:        true,
-		workDir:         cfg.WorkDir, // Use configured work directory
+		workDir:         initialWorkDir,
+		workDirMode:     initialMode,
 		safetyChecks: []SafetyCheck{
 			{Name: "Archive integrity", Status: "pending", Critical: true},
 			{Name: "Dump validity", Status: "pending", Critical: true},
@@ -398,7 +410,7 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case WorkDirBackup:
 				m.workDirMode = WorkDirSystemTemp
 				m.workDir = ""
-				m.message = infoStyle.Render("[3/3 SYSTEM] Work directory: /tmp (system temp)")
+				m.message = infoStyle.Render(fmt.Sprintf("[3/3 SYSTEM] Work directory: %s (system temp)", m.config.GetEffectiveWorkDir()))
 			}
 
 		case "enter", " ":
@@ -462,11 +474,18 @@ func (m RestorePreviewModel) launchPreflightAndRestore() (tea.Model, tea.Cmd) {
 	if m.debugLocks {
 		m.config.DebugLocks = true
 	}
+	// Resolve effective workDir: SystemTemp mode uses GetEffectiveWorkDir() (avoids tmpfs)
+	var resolvedWorkDir string
+	if m.workDirMode == WorkDirSystemTemp || m.workDir == "" {
+		resolvedWorkDir = m.config.GetEffectiveWorkDir()
+	} else {
+		resolvedWorkDir = m.workDir
+	}
 	checklist := NewPreRestoreChecklist(
 		m.config, m.logger, m.parent, m.ctx,
 		m.archive, m.targetDB, m.mode,
 		m.cleanFirst, m.createIfMissing, m.cleanClusterFirst,
-		m.existingDBs, m.saveDebugLog, m.workDir, m.debugLocks,
+		m.existingDBs, m.saveDebugLog, resolvedWorkDir, m.debugLocks,
 	)
 	return checklist, checklist.Init()
 }
@@ -710,7 +729,7 @@ func (m RestorePreviewModel) View() string {
 	case WorkDirSystemTemp:
 		workDirIcon = "[SYS]"
 		workDirSource = "SYSTEM TEMP"
-		workDirValue = "/tmp"
+		workDirValue = m.config.GetEffectiveWorkDir()
 	case WorkDirConfig:
 		workDirIcon = "[CFG]"
 		workDirSource = "CONFIG"
@@ -728,8 +747,11 @@ func (m RestorePreviewModel) View() string {
 	s.WriteString(infoStyle.Render("      Press 'w' to cycle: SYSTEM → CONFIG → BACKUP → SYSTEM"))
 	s.WriteString("\n")
 	if m.workDirMode == WorkDirSystemTemp {
-		s.WriteString(CheckWarningStyle.Render("      ⚠ WARN: Large archives need more space than /tmp may have!"))
-		s.WriteString("\n")
+		effective := m.config.GetEffectiveWorkDir()
+		if effective == "/tmp" || effective == os.TempDir() {
+			s.WriteString(CheckWarningStyle.Render("      ⚠ WARN: Large archives need more space than /tmp may have!"))
+			s.WriteString("\n")
+		}
 	}
 
 	// Debug log option

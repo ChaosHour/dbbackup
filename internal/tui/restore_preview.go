@@ -572,6 +572,10 @@ func (m RestorePreviewModel) View() string {
 		} else {
 			s.WriteString(fmt.Sprintf("  Resource Profile: %s\n", m.config.ResourceProfile))
 		}
+		// Show Adaptive Jobs status
+		if m.config.AdaptiveJobs {
+			s.WriteString("  Adaptive Jobs: ON (per-database sizing by dump size + CPU)\n")
+		}
 		// Show Large DB Mode status
 		if m.config.LargeDBMode {
 			s.WriteString("  Large DB Mode: ON (reduced parallelism, high locks)\n")

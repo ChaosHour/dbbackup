@@ -150,6 +150,22 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Resource profile. 'turbo' = fastest (matches pg_restore -j8). Press Enter to cycle.",
 		},
 		{
+			Key:         "adaptive_jobs",
+			DisplayName: "Adaptive Jobs",
+			Value: func(c *config.Config) string {
+				if c.AdaptiveJobs {
+					return "ON (auto-size per database)"
+				}
+				return "OFF (use profile jobs)"
+			},
+			Update: func(c *config.Config, v string) error {
+				c.AdaptiveJobs = !c.AdaptiveJobs
+				return nil
+			},
+			Type:        "selector",
+			Description: "Adaptive mode overlays the profile: sizes parallel jobs per-database based on dump size and CPU cores.",
+		},
+		{
 			Key:         "large_db_mode",
 			DisplayName: "Large DB Mode",
 			Value: func(c *config.Config) string {

@@ -1,6 +1,6 @@
 # dbbackup v6.0.0 Release Notes
 
-## 🎉 Highlights
+## Highlights
 
 **Performance:** 2–4× faster restore with 90% RTO reduction capability.
 **Stability:** 1358-line test suite with race detector, leak tests, multi-DB validation.
@@ -8,7 +8,7 @@
 
 ---
 
-## 🚀 Major Features
+## Major Features
 
 ### Tiered Restore (v5.8.71)
 
@@ -64,7 +64,7 @@ All three database engines are now production-ready:
 
 - **PostgreSQL:** UNLOGGED tables, parallel DDL, connection pool tuning, restore mode auto-detection
 - **MySQL/MariaDB:** FOREIGN_KEY_CHECKS=0, UNIQUE_CHECKS=0, sql_log_bin=0, innodb_flush_log_at_trx_commit=2, sort/bulk insert buffers
-- **TUI:** Database-type indicators (🐘 PostgreSQL / 🐬 MySQL), DB-appropriate tool names, generic error messages
+- **TUI:** Database-type indicators (PostgreSQL / MySQL), DB-appropriate tool names, generic error messages
 
 ### Pre-Release Validation Suite (v5.8.75)
 
@@ -91,7 +91,7 @@ bash scripts/pre_release_suite.sh --skip-docker
 
 ---
 
-## 📊 Performance
+## Performance
 
 | Scenario | Standard | Optimized | Improvement |
 |----------|----------|-----------|-------------|
@@ -108,7 +108,7 @@ Binary: 55 MB (stripped), 189ms startup latency.
 
 ---
 
-## 🛡️ Quality Assurance
+## Quality Assurance
 
 - **Race detector:** Clean across all packages (CGO_ENABLED=1)
 - **Leak tests:** 50-iteration goroutine stress + unclosed resource scanning
@@ -120,7 +120,7 @@ Binary: 55 MB (stripped), 189ms startup latency.
 
 ---
 
-## 🐛 Notable Fixes Since v5.0
+## Notable Fixes Since v5.0
 
 | Version | Fix |
 |---------|-----|
@@ -137,7 +137,7 @@ Binary: 55 MB (stripped), 189ms startup latency.
 
 ---
 
-## 📚 New Documentation
+## New Documentation
 
 - [docs/DATABASE_COMPATIBILITY.md](docs/DATABASE_COMPATIBILITY.md) — Feature matrix across PG/MySQL/MariaDB
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — Common issues and solutions
@@ -146,7 +146,7 @@ Binary: 55 MB (stripped), 189ms startup latency.
 
 ---
 
-## ⬆️ Upgrading
+## Upgrading
 
 v6.0 is **fully backwards compatible** with v5.x. No configuration changes required.
 
@@ -167,7 +167,7 @@ See [docs/MIGRATION_FROM_V5.md](docs/MIGRATION_FROM_V5.md) for detailed upgrade 
 
 ---
 
-## 🔗 Links
+## Links
 
 - **Repository:** https://git.uuxo.net/UUXO/dbbackup
 - **Mirror:** https://github.com/PlusOne/dbbackup

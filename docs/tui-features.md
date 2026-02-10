@@ -1,10 +1,10 @@
 # TUI Features Reference
 
-> Production-hardened interactive terminal UI for dbbackup v6.1.0+
+> Production-hardened interactive terminal UI for dbbackup v6.15.0
 
 ## Overview
 
-The `dbbackup interactive` command launches a full-screen terminal UI built with [Bubbletea](https://github.com/charmbracelet/bubbletea). Starting with v6.1.0, the TUI includes four bulletproofing features that prevent common production mistakes.
+The `dbbackup interactive` command launches a full-screen terminal UI built with [Bubbletea](https://github.com/charmbracelet/bubbletea). The TUI includes bulletproofing features that prevent common production mistakes, engine-aware adaptive job sizing, and I/O scheduler governor selection.
 
 ## Connection Health Indicator
 
@@ -177,6 +177,67 @@ The warning appears when ALL of these are true:
 
 ---
 
+## I/O Governor Selector (v6.15.0)
+
+**What:** A setting in Configuration Settings to choose the I/O scheduling governor for BLOB operations.
+
+**Why:** Different BLOB strategies benefit from different I/O scheduling patterns. Auto-selection maps the BLOB strategy to the optimal governor, but manual override is available for tuning.
+
+### Governors
+
+| Governor | Strategy | Description |
+|----------|----------|-------------|
+| `auto` | Auto-select | Maps BLOB strategy to optimal governor automatically |
+| `noop` | Standard/no BLOBs | Simple FIFO, zero overhead |
+| `bfq` | Bundled BLOBs | Budget Fair Queueing with per-class budgets |
+| `mq-deadline` | Parallel-stream BLOBs | Multi-queue deadline with round-robin distribution |
+| `deadline` | Large-object (lo_*) | Single-queue deadline with starvation prevention |
+
+### TUI Behavior
+
+In Configuration Settings, the I/O Governor entry cycles through `auto -> noop -> bfq -> mq-deadline -> deadline` on each press. The selected governor is persisted to the config file.
+
+### CLI Override
+
+```bash
+dbbackup restore cluster backup.tar.gz --io-governor=bfq --confirm
+```
+
+Or via environment variable:
+
+```bash
+IO_GOVERNOR=mq-deadline dbbackup restore cluster backup.tar.gz --confirm
+```
+
+---
+
+## Adaptive Jobs (v6.14.0)
+
+**What:** Engine-aware adaptive worker calculation that automatically sizes parallel jobs per database.
+
+**Why:** Different databases have different restore characteristics. A 50MB database should not get the same parallelism as a 50GB database. The adaptive system uses a 3-stage pipeline to determine optimal worker count.
+
+### 3-Stage Pipeline
+
+1. **BLOB adjustment** -- adjusts base worker count based on BLOB strategy:
+   - `parallel-stream`: halves workers (BLOB engine handles I/O internally)
+   - `bundle`: boosts 1.5x (bundled small BLOBs = low overhead)
+   - `large-object`: reduces 25% (lo_ API contention)
+
+2. **Native engine boost** -- 1.3x for native Go restore, 1.5x when combined with BLOBs
+
+3. **Memory ceiling** -- caps workers based on available RAM:
+   - 8GB: max 16 workers
+   - 16GB: max 24 workers
+   - 32GB: max 28 workers
+   - 64GB: max 32 workers
+
+### TUI Behavior
+
+Adaptive Jobs is enabled by default. Toggle ON/OFF in Configuration Settings. When enabled, the adaptive system overlays resource profiles. Full debug trace is logged with `[ADAPTIVE-V2]` prefix when debug logging is active.
+
+---
+
 ## CLI Automation Flags
 
 For CI/CD pipelines and scripted use, these flags bypass interactive prompts:
@@ -258,4 +319,4 @@ See [testing/phase1-manual-tests.md](testing/phase1-manual-tests.md) for step-by
 
 ---
 
-*Last updated: 2026-02-10 — v6.1.0 release*
+*Last updated: 2026-02-10 -- v6.15.0*

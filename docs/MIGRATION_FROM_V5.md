@@ -96,7 +96,7 @@ MySQL and MariaDB are now fully supported with native engine and bulk load optim
 dbbackup backup single mydb --database-type=mysql
 dbbackup restore single dump.sql --database-type=mysql --confirm
 
-# TUI auto-detects and shows 🐘 or 🐬
+# TUI auto-detects and shows the database type
 dbbackup interactive --db-type mysql
 ```
 

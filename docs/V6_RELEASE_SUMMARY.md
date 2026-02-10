@@ -59,9 +59,9 @@
 
 | Engine | Backup | Restore | Parallel | Tiered |
 |--------|--------|---------|----------|--------|
-| PostgreSQL | ✅ Native | ✅ Native | ✅ | ✅ |
-| MySQL | ✅ Native | ✅ Native | ❌ (planned) | ✅ |
-| MariaDB | ✅ Native | ✅ Native | ❌ (planned) | ✅ |
+| PostgreSQL | Yes (native) | Yes (native) | Yes | Yes |
+| MySQL | Yes (native) | Yes (native) | No (planned) | Yes |
+| MariaDB | Yes (native) | Yes (native) | No (planned) | Yes |
 
 ### TUI Screens (27 total)
 
@@ -90,27 +90,27 @@ check, profile, drill testing, backup diagnosis.
 
 | Check | Status |
 |-------|--------|
-| Race detector | ✅ Clean (requires CGO) |
-| Goroutine leak tests | ✅ 50 iterations clean |
-| Memory benchmarks | ✅ Stable allocations |
-| Multi-DB source parity | ✅ All checks pass |
-| Signal handling (SIGINT) | ✅ Clean shutdown |
-| Signal handling (SIGTERM) | ✅ Clean shutdown |
-| Connection leak detection | ✅ Zero leaked |
-| TUI InterruptMsg coverage | ✅ 28/28 handlers |
-| Backwards compatibility | ✅ v5.x formats |
-| Error injection | ✅ No panics |
-| Module integrity | ✅ go mod verify |
-| Unit tests | ✅ All pass (4s) |
+| Race detector | Yes -- Clean (requires CGO) |
+| Goroutine leak tests | Yes -- 50 iterations clean |
+| Memory benchmarks | Yes -- Stable allocations |
+| Multi-DB source parity | Yes -- All checks pass |
+| Signal handling (SIGINT) | Yes -- Clean shutdown |
+| Signal handling (SIGTERM) | Yes -- Clean shutdown |
+| Connection leak detection | Yes -- Zero leaked |
+| TUI InterruptMsg coverage | Yes -- 28/28 handlers |
+| Backwards compatibility | Yes -- v5.x formats |
+| Error injection | Yes -- No panics |
+| Module integrity | Yes -- go mod verify |
+| Unit tests | Yes -- All pass (4s) |
 
 ### Pre-Release Suite Results
 
 ```
 Total checks:     43
-✅ Passed:        37
-❌ Failed:        0
-⚠️  Warnings:     6
-⏭️  Skipped:      1
+Passed:        37
+Failed:        0
+Warnings:     6
+Skipped:      1
 
 Recommendation:   RELEASE CANDIDATE
 ```
@@ -119,11 +119,11 @@ Recommendation:   RELEASE CANDIDATE
 
 | Category | Status |
 |----------|--------|
-| go mod verify | ✅ All modules verified |
-| go mod tidy | ✅ Clean |
-| go vet | ✅ No issues |
-| Stdlib vulnerabilities | ⚠️ 5 (Go 1.24.9 → fixed in 1.24.11) |
-| Third-party vulnerabilities | ✅ 0 affecting code paths |
+| go mod verify | Yes -- All modules verified |
+| go mod tidy | Yes -- Clean |
+| go vet | Yes -- No issues |
+| Stdlib vulnerabilities | Warning: 5 (Go 1.24.9 → fixed in 1.24.11) |
+| Third-party vulnerabilities | Yes -- 0 affecting code paths |
 | TODO/FIXME comments | 16 (non-critical, roadmap items) |
 
 ## Files Changed (v5.8.72 → v6.0.0)

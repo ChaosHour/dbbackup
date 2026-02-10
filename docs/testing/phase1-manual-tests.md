@@ -115,15 +115,15 @@ sudo systemctl start postgresql
 
 | # | Check | Expected |
 |---|-------|----------|
-| 1 | `archive_exists` | ✅ File found |
-| 2 | `archive_integrity` | ✅ Valid gzip/tar |
-| 3 | `disk_space` | ✅ Sufficient space |
-| 4 | `required_tools` | ✅ pg_restore/psql found |
-| 5 | `target_db_check` | ✅ Target DB state verified |
-| 6 | `privileges_check` | ✅ CREATEDB or superuser |
-| 7 | `locks_sufficient` | ✅ max_locks adequate |
+| 1 | `archive_exists` | OK -- File found |
+| 2 | `archive_integrity` | OK -- Valid gzip/tar |
+| 3 | `disk_space` | OK -- Sufficient space |
+| 4 | `required_tools` | OK -- pg_restore/psql found |
+| 5 | `target_db_check` | OK -- Target DB state verified |
+| 6 | `privileges_check` | OK -- CREATEDB or superuser |
+| 7 | `locks_sufficient` | OK -- max_locks adequate |
 
-**Pass criteria:** All 7 checks shown sequentially, each with ✅ status.
+**Pass criteria:** All 7 checks shown sequentially, each with OK status.
 
 ### 2.3 Missing Archive
 

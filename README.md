@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.1.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.15.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -12,6 +12,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 ## Table of Contents
 
 - [Quick Start](#quick-start-30-seconds)
+- [Production-Hardened](#production-hardened)
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -59,22 +60,24 @@ chmod +x dbbackup-linux-amd64
 
 **That's it!** Backups are stored in `./backups/` by default. See [QUICK.md](QUICK.md) for more real-world examples.
 
-## 🛡️ Production-Hardened (NEW in v6.1.0)
+## Production-Hardened
 
-The interactive TUI now includes **bulletproof reliability features**:
+The interactive TUI includes **bulletproof reliability features**:
 
-- ✅ **Connection health check** — Know immediately if your DB is reachable
-- ✅ **Pre-restore validation** — Catch issues BEFORE extraction (corrupted archives, disk space, privileges)
-- ✅ **Safe abort** — Ctrl+C properly cleans up processes and temp files
-- ✅ **Destructive warnings** — Type-to-confirm prevents accidental data loss
+- **Connection health check** -- Know immediately if your DB is reachable
+- **Pre-restore validation** -- Catch issues BEFORE extraction (corrupted archives, disk space, privileges)
+- **Safe abort** -- Ctrl+C properly cleans up processes and temp files
+- **Destructive warnings** -- Type-to-confirm prevents accidental data loss
+- **I/O Governor selector** -- Choose I/O scheduling strategy per workload (noop/bfq/mq-deadline/deadline)
+- **Adaptive Jobs toggle** -- Auto-sizes parallel workers per database with engine-aware 3-stage pipeline
 
-**Try it:** `./dbbackup interactive` — safer, smarter, faster.
+**Try it:** `./dbbackup interactive` -- safer, smarter, faster.
 
 See [docs/tui-features.md](docs/tui-features.md) for full details.
 
 ## Features
 
-### NEW in 5.8: Enterprise Physical Backup & Operations
+### Enterprise Physical Backup and Operations
 
 **Major enterprise features for production DBAs:**
 
@@ -86,9 +89,9 @@ See [docs/tui-features.md](docs/tui-features.md) for full details.
 - **Intelligent Compression**: Detects blob types (JPEG, PDF, archives) and recommends optimal compression
 - **ZFS/Btrfs Detection**: Auto-detects filesystem compression and adjusts recommendations
 
-### Native Database Engines (v5.0+)
+### Native Database Engines
 
-**We built our own database engines - no external tools required.**
+**We built our own database engines -- no external tools required.**
 
 - **Pure Go Implementation**: Direct PostgreSQL (pgx) and MySQL (go-sql-driver) protocol communication
 - **No External Dependencies**: No pg_dump, mysqldump, pg_restore, mysql, psql, mysqlbinlog
@@ -126,17 +129,21 @@ See [docs/tui-features.md](docs/tui-features.md) for full details.
 - **Cross-Region Sync**: Sync backups between cloud regions for disaster recovery
 - **Encryption Key Rotation**: Secure key management with rotation support
 
-### ⚡ Performance Features (v5.8.64–v6.0)
+### Performance Features
 
-- **5–10× faster parallel restore** vs pg_dump/pg_restore baseline
+- **5-10x faster parallel restore** vs pg_dump/pg_restore baseline
 - **90% RTO reduction** with tiered restore (critical tables first)
-- **Adaptive worker allocation** based on table size metadata
+- **Engine-aware adaptive job sizing** -- 3-stage pipeline: BLOB adjustment, native engine boost, memory ceiling
+- **I/O scheduler governors** -- noop, bfq, mq-deadline, deadline (auto-selected per BLOB strategy)
+- **BLOB Pipeline Matrix** -- native large object backup/restore with parallel streaming
+- **Nuclear Restore Engine** -- pure Go streaming SQL parser, global index builder, transaction batcher
 - **Streaming I/O** with 256KB batch pipeline (constant memory usage)
 - **UNLOGGED table optimization** during COPY phase (PostgreSQL balanced/turbo mode)
 - **Bulk load optimizations** for MySQL/MariaDB (FOREIGN_KEY_CHECKS, UNIQUE_CHECKS, sql_log_bin, innodb_flush_log)
-- **Index type detection** — GIN/GIST indexes get 4GB RAM allocation and 8 parallel workers
+- **Index type detection** -- GIN/GIST indexes get 4GB RAM allocation and 8 parallel workers
+- **Adaptive worker allocation** based on table size metadata with physical CPU core detection
 
-### 🎯 Restore Modes
+### Restore Modes
 
 | Mode | Speed | Safety | Use Case |
 |------|-------|--------|----------|
@@ -151,15 +158,15 @@ dbbackup restore single dump.sql.gz \
     --critical-tables="user*,session*,payment*"
 ```
 
-### 🐘 🐬 Multi-Database Support
+### Multi-Database Support
 
-- **PostgreSQL 10+** — Fully optimized (UNLOGGED tables, parallel DDL, adaptive workers)
-- **MySQL 5.7+** — Native engine with bulk load optimizations
-- **MariaDB 10.3+** — Full parity with MySQL engine
+- **PostgreSQL 10+** -- Fully optimized (UNLOGGED tables, parallel DDL, adaptive workers)
+- **MySQL 5.7+** -- Native engine with bulk load optimizations
+- **MariaDB 10.3+** -- Full parity with MySQL engine
 
-TUI shows database type indicator (🐘/🐬) and adapts features automatically.
+TUI shows database type indicator and adapts features automatically.
 
-### 🔄 MariaDB Galera Cluster Support (NEW)
+### MariaDB Galera Cluster Support
 
 - **Auto-detection**: Automatic Galera cluster detection via `wsrep_*` status variables
 - **Health validation**: Pre-backup checks (sync state, flow control, cluster size)
@@ -178,7 +185,7 @@ dbbackup backup single mydb \
 dbbackup backup single mydb --db-type mariadb --galera-health-check
 ```
 
-### 🧪 Quality Assurance
+### Quality Assurance
 
 - **1358-line pre-release test suite** covering 10 categories with 43+ checks
 - **GitHub Actions CI** with race detector, leak tests, multi-DB validation
@@ -207,7 +214,7 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v5.8.61/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.15.0/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
@@ -237,12 +244,14 @@ export MYSQL_PWD='secret'
 dbbackup interactive --db-type mysql --user root
 ```
 
-**What's new in v6.1.0:**
+**TUI Features:**
 - **Real-time connection status** in menu header ([OK] / [FAIL])
 - **Pre-restore validation screen** catches issues early (7 automated checks)
 - **Safe abort** with Ctrl+C (no orphaned processes or temp files)
 - **Type-to-confirm warnings** for destructive operations (database overwrites)
-- **Adaptive Jobs toggle** in settings — auto-sizes parallel workers per database
+- **Adaptive Jobs toggle** in settings -- auto-sizes parallel workers per database
+- **I/O Governor selector** -- cycle through auto/noop/bfq/mq-deadline/deadline
+- **Resource profile presets** -- conservative, balanced, performance, max-performance
 
 The TUI automatically:
 - Tests database connectivity on startup (5s timeout)
@@ -392,11 +401,14 @@ Configuration Settings
   Backup Dir: /var/backups/postgres
   Compression: Level 6
   Profile: balanced | Cluster: 2 parallel | Jobs: 4
+  I/O Governor: auto | Adaptive Jobs: ON
 
 > Database Type: postgres
   CPU Workload Type: balanced
   Resource Profile: balanced (P:2 J:4)
   Cluster Parallelism: 2
+  I/O Governor: auto
+  Adaptive Jobs: ON
   Backup Directory: /var/backups/postgres
   Work Directory: (system temp)
   Compression Level: 6
@@ -469,11 +481,11 @@ dbbackup backup single myapp_db --backup-type incremental --base-backup base.tar
 # Restore single database
 dbbackup restore single backup.dump --target myapp_db --create --confirm
 
-# Restore cluster
+# Restore cluster (adaptive job sizing is enabled by default)
 dbbackup restore cluster cluster_backup.tar.gz --confirm
 
-# Restore with adaptive job sizing (auto-sizes workers per database)
-dbbackup restore cluster backup.tar.gz --adaptive --confirm
+# Restore with specific I/O governor (for BLOB-heavy databases)
+dbbackup restore cluster backup.tar.gz --io-governor=bfq --confirm
 
 # Restore with resource profile (for resource-constrained servers)
 dbbackup restore cluster backup.tar.gz --profile=conservative --confirm
@@ -542,12 +554,14 @@ dbbackup backup single mydb --dry-run
 | `--compression` | Compression level (0-9) | 6 |
 | `--jobs` | Parallel jobs | 8 |
 | `--profile` | Resource profile (conservative/balanced/aggressive) | balanced |
-| `--adaptive` | Adaptive per-DB job sizing (overlays profile) | false |
+| `--adaptive` | Adaptive per-DB job sizing (overlays profile) | true |
+| `--io-governor` | I/O scheduler governor (auto/noop/bfq/mq-deadline/deadline) | auto |
 | `--cloud` | Cloud storage URI | - |
 | `--encrypt` | Enable encryption | false |
 | `--dry-run, -n` | Run preflight checks only | false |
-| `--debug` | Enable debug logging | false |
+| `--debug` | Enable debug logging (activates DEBUG log level) | false |
 | `--save-debug-log` | Save error report to file on failure | - |
+| `--native-engine` | Use native Go restore engine | true |
 
 ## Encryption
 
@@ -1276,11 +1290,12 @@ See [docs/testing/phase1-manual-tests.md](docs/testing/phase1-manual-tests.md) f
 - [docs/SYSTEMD.md](docs/SYSTEMD.md) — Systemd installation & scheduling
 
 **Reference:**
-- [SECURITY.md](SECURITY.md) — Security considerations
-- [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution guidelines
-- [CHANGELOG.md](CHANGELOG.md) — Version history
-- [RELEASE_NOTES_v6.0.md](RELEASE_NOTES_v6.0.md) — v6.0.0 release notes
-- [docs/LOCK_DEBUGGING.md](docs/LOCK_DEBUGGING.md) — Lock troubleshooting
+- [SECURITY.md](SECURITY.md) -- Security considerations
+- [CONTRIBUTING.md](CONTRIBUTING.md) -- Contribution guidelines
+- [CHANGELOG.md](CHANGELOG.md) -- Version history
+- [RELEASE_NOTES_v6.0.md](RELEASE_NOTES_v6.0.md) -- v6.0.0 release notes
+- [docs/tui-features.md](docs/tui-features.md) -- TUI feature reference
+- [docs/LOCK_DEBUGGING.md](docs/LOCK_DEBUGGING.md) -- Lock troubleshooting
 
 ## License
 

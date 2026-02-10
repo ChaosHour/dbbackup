@@ -80,13 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Pre-Restore Validation Screen**: Comprehensive preflight checks before restore begins
   - 7 automated checks: archive exists, integrity (gzip test), disk space, required tools, target DB status, user privileges (CREATEDB/superuser), max_locks_per_transaction capacity
-  - Sequential execution with live progress (○ pending → ⟳ running → ✓ pass / ✗ fail / ⚠ warn)
+  - Sequential execution with live progress (pending -> running -> pass / fail / warn)
   - Catches issues BEFORE time-consuming extraction phase
   - Smart disk space calculation using metadata-aware multipliers
   - Validates PostgreSQL lock capacity to prevent mid-restore failures
 
 - **Two-Stage Abort with Full Cleanup**: Safe cancellation of long-running operations
-  - First Ctrl+C: Shows confirmation prompt "⚠ Abort operation? [Y/n]"
+  - First Ctrl+C: Shows confirmation prompt "Abort operation? [Y/n]"
   - Second Ctrl+C or Y: Executes full cleanup sequence
   - Cleanup includes: context cancellation, killing child processes (pg_dump/pg_restore PIDs), removing temporary extraction directories, resetting boosted PostgreSQL settings
   - LIFO cleanup stack ensures proper resource release order
@@ -313,7 +313,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `NOTIFY_SMTP_INSECURE` environment variable for explicit TLS skip
 
 ### Changed
-- Updated `docs/DATABASE_COMPATIBILITY.md` — Galera row changed from "Under evaluation" to "✅ Implemented"
+- Updated `docs/DATABASE_COMPATIBILITY.md` — Galera row changed from "Under evaluation" to "Implemented"
 
 ## [5.8.77] - 2026-02-08
 
@@ -355,7 +355,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated release badge to v6.0.0
   - Added Performance Features section (5–10× faster, 90% RTO, adaptive workers)
   - Added Restore Modes table (safe/balanced/turbo with speed/safety comparison)
-  - Added Multi-Database Support section (🐘 PostgreSQL / 🐬 MySQL indicators)
+  - Added Multi-Database Support section (PostgreSQL / MySQL indicators)
   - Added Quality Assurance section (1358-line test suite, 27 TUI screens, CI)
   - Updated Performance section with restore benchmarks and throughput data
   - Updated Requirements to reflect native engine (external tools optional)
@@ -436,7 +436,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **DB-Agnostic TUI**
   - `dropDatabaseCLI()` in `restore_exec.go` now dispatches to `psql` (PostgreSQL) or
     `mysql` (MySQL/MariaDB) based on config — previously hardcoded to `psql` only.
-  - TUI main menu header now shows database icon (🐘 PostgreSQL / 🐬 MySQL) and
+  - TUI main menu header now shows database icon (PostgreSQL / MySQL) and
     `DisplayDatabaseType()` in the brand line for at-a-glance DB identification.
   - Restore preview "Engine Mode" now shows DB-appropriate tool names: `psql` for PG,
     `mysql`/`mysqldump` for MySQL, instead of always showing `psql`/`pg_restore`.

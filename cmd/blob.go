@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"archive/tar"
 	"context"
 	"database/sql"
 	"fmt"
@@ -9,6 +10,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"dbbackup/internal/backup"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -30,8 +34,8 @@ The blob commands help you identify and manage this data.
 
 Available Commands:
   stats      Scan database for blob columns and show size statistics
-  extract    Extract blobs to external storage (coming soon)
-  rehydrate  Restore blobs from external storage (coming soon)`,
+  backup     Backup BLOBs using parallel pipeline matrix (bundling + streaming)
+  restore    Restore BLOBs from a blob archive`,
 }
 
 var blobStatsCmd = &cobra.Command{
@@ -56,9 +60,66 @@ Example:
 	RunE: runBlobStats,
 }
 
+var blobBackupCmd = &cobra.Command{
+	Use:   "backup",
+	Short: "Backup BLOBs using parallel pipeline matrix",
+	Long: `Backup Large Objects and BYTEA columns using the BLOB Pipeline Matrix.
+
+Strategy selection is automatic based on BLOB size distribution:
+  - Small BLOBs (<100KB): Bundled into compressed packs
+  - Large BLOBs (>1MB):   Parallel streamed via pgx Large Objects API
+  - Medium BLOBs:         Standard backup via COPY protocol
+
+Output is a tar archive containing:
+  - lo_manifest.json: Metadata about all backed-up BLOBs
+  - pack_*.blob:      Compressed BLOB packs (bundled small BLOBs)
+  - stream_*.blob:    Individual large BLOBs (zstd compressed)
+  - bytea_*.copy:     BYTEA column data (COPY format)
+
+Examples:
+  dbbackup blob backup -o /backups/blobs.tar
+  dbbackup blob backup -o /backups/blobs.tar --workers 16
+  dbbackup blob backup -o /backups/blobs.tar --bundle-size 2048`,
+	RunE: runBlobBackup,
+}
+
+var blobRestoreCmd = &cobra.Command{
+	Use:   "restore",
+	Short: "Restore BLOBs from a blob archive",
+	Long: `Restore Large Objects and BYTEA data from a blob archive created by 'blob backup'.
+
+Reads the tar archive and restores:
+  - BLOB packs → unbundled → parallel lo_create
+  - Streamed Large Objects → lo_create + lo_write
+  - BYTEA columns → COPY protocol streaming
+
+Examples:
+  dbbackup blob restore -i /backups/blobs.tar
+  dbbackup blob restore -i /backups/blobs.tar --workers 16`,
+	RunE: runBlobRestore,
+}
+
+var (
+	blobOutputFile string
+	blobInputFile  string
+	blobWorkers    int
+	blobBundleSize int
+)
+
 func init() {
 	rootCmd.AddCommand(blobCmd)
 	blobCmd.AddCommand(blobStatsCmd)
+	blobCmd.AddCommand(blobBackupCmd)
+	blobCmd.AddCommand(blobRestoreCmd)
+
+	blobBackupCmd.Flags().StringVarP(&blobOutputFile, "output", "o", "", "Output file path for blob archive (required)")
+	blobBackupCmd.Flags().IntVar(&blobWorkers, "workers", 8, "Number of parallel workers")
+	blobBackupCmd.Flags().IntVar(&blobBundleSize, "bundle-size", 1024, "BLOBs per pack for bundling")
+	_ = blobBackupCmd.MarkFlagRequired("output")
+
+	blobRestoreCmd.Flags().StringVarP(&blobInputFile, "input", "i", "", "Input blob archive file (required)")
+	blobRestoreCmd.Flags().IntVar(&blobWorkers, "workers", 8, "Number of parallel workers")
+	_ = blobRestoreCmd.MarkFlagRequired("input")
 }
 
 func runBlobStats(cmd *cobra.Command, args []string) error {
@@ -315,4 +376,141 @@ func truncateBlobStr(s string, max int) string {
 		return s
 	}
 	return s[:max-1] + "…"
+}
+
+func runBlobBackup(cmd *cobra.Command, args []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+	defer cancel()
+
+	if !cfg.IsPostgreSQL() {
+		return fmt.Errorf("blob backup currently only supports PostgreSQL")
+	}
+
+	op := log.StartOperation("blob-backup")
+
+	// Create output file
+	f, err := os.Create(blobOutputFile)
+	if err != nil {
+		op.Fail("Failed to create output file", "error", err)
+		return fmt.Errorf("create output file: %w", err)
+	}
+	defer f.Close()
+
+	tw := tar.NewWriter(f)
+	defer tw.Close()
+
+	// Configure BLOB engine
+	engineCfg := &backup.BLOBEngineConfig{
+		Host:       cfg.Host,
+		Port:       cfg.Port,
+		User:       cfg.User,
+		Password:   cfg.Password,
+		Database:   cfg.Database,
+		SSLMode:    cfg.SSLMode,
+		Workers:    blobWorkers,
+		BundleSize: blobBundleSize,
+	}
+
+	engine, err := backup.NewBLOBEngine(engineCfg, log)
+	if err != nil {
+		op.Fail("Failed to create BLOB engine", "error", err)
+		return fmt.Errorf("create blob engine: %w", err)
+	}
+	defer engine.Close()
+
+	fmt.Printf("Starting BLOB backup to %s\n", blobOutputFile)
+	fmt.Printf("  Workers:     %d\n", blobWorkers)
+	fmt.Printf("  Bundle size: %d BLOBs per pack\n", blobBundleSize)
+	fmt.Println()
+
+	// Backup Large Objects
+	result, err := engine.BackupLargeObjects(ctx, tw)
+	if err != nil {
+		op.Fail("BLOB backup failed", "error", err)
+		return fmt.Errorf("blob backup: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("═══════════════════════════════════════════════════════════════════\n")
+	fmt.Printf("BLOB BACKUP COMPLETE\n")
+	fmt.Printf("═══════════════════════════════════════════════════════════════════\n")
+	fmt.Printf("  Total BLOBs:    %d\n", result.TotalBLOBs)
+	fmt.Printf("  Total bytes:    %s\n", formatBytesHuman(result.TotalBytes))
+	fmt.Printf("  Packs written:  %d\n", result.PacksWritten)
+	fmt.Printf("  Streamed BLOBs: %d\n", result.BLOBsStreamed)
+	fmt.Printf("  Duration:       %s\n", result.Duration.Truncate(time.Millisecond))
+	fmt.Printf("  Output:         %s\n", blobOutputFile)
+	fmt.Printf("═══════════════════════════════════════════════════════════════════\n")
+
+	op.Complete("BLOB backup complete",
+		"total_blobs", result.TotalBLOBs,
+		"total_bytes", result.TotalBytes,
+		"output", blobOutputFile)
+
+	return nil
+}
+
+func runBlobRestore(cmd *cobra.Command, args []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+	defer cancel()
+
+	if !cfg.IsPostgreSQL() {
+		return fmt.Errorf("blob restore currently only supports PostgreSQL")
+	}
+
+	op := log.StartOperation("blob-restore")
+
+	// Open input file
+	f, err := os.Open(blobInputFile)
+	if err != nil {
+		op.Fail("Failed to open input file", "error", err)
+		return fmt.Errorf("open input file: %w", err)
+	}
+	defer f.Close()
+
+	// Connect to database
+	connStr := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=%s",
+		cfg.Host, cfg.Port, cfg.User, cfg.Database, cfg.SSLMode)
+	if cfg.Password != "" {
+		connStr += fmt.Sprintf(" password=%s", cfg.Password)
+	}
+
+	pool, err := pgxpool.New(ctx, connStr)
+	if err != nil {
+		op.Fail("Failed to connect", "error", err)
+		return fmt.Errorf("connect to database: %w", err)
+	}
+	defer pool.Close()
+
+	fmt.Printf("Starting BLOB restore from %s\n", blobInputFile)
+	fmt.Printf("  Workers: %d\n", blobWorkers)
+	fmt.Println()
+
+	// Create restore engine
+	restoreEngine := backup.NewBLOBRestoreEngine(pool, log, blobWorkers)
+
+	// Restore from tar
+	result, err := restoreEngine.RestoreFromTar(ctx, f)
+	if err != nil {
+		op.Fail("BLOB restore failed", "error", err)
+		return fmt.Errorf("blob restore: %w", err)
+	}
+
+	fmt.Println()
+	fmt.Printf("═══════════════════════════════════════════════════════════════════\n")
+	fmt.Printf("BLOB RESTORE COMPLETE\n")
+	fmt.Printf("═══════════════════════════════════════════════════════════════════\n")
+	fmt.Printf("  Large Objects:  %d\n", result.LargeObjectsRestored)
+	fmt.Printf("  Packs:          %d\n", result.PacksProcessed)
+	fmt.Printf("  Bytes restored: %s\n", formatBytesHuman(result.BytesRestored))
+	fmt.Printf("  Failed:         %d\n", result.FailedRestores)
+	fmt.Printf("  Duration:       %s\n", result.Duration.Truncate(time.Millisecond))
+	fmt.Printf("═══════════════════════════════════════════════════════════════════\n")
+
+	op.Complete("BLOB restore complete",
+		"large_objects", result.LargeObjectsRestored,
+		"bytes", result.BytesRestored,
+		"duration", result.Duration)
+
+	return nil
 }

@@ -5,6 +5,28 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.13.0] - 2026-02-10
+
+### Added - Disk Space Debug Instrumentation & CLI Fixes
+
+- **Comprehensive disk space debug logging** across 5 files with `[DISKSPACE]` and `[METADATA]` prefixes
+  - Full trace of `DiskSpaceChecker.Check()` and `determineMultiplier()` priority chain
+  - Buffer cost analysis: shows exact impact of the 1.2× safety multiplier
+  - Shortfall analysis with safe multiplier recommendations
+  - New `LoadClusterDebug()` with per-database size breakdown and TotalSize cross-check
+  - Entry/exit logging in `safety.go`, `preflight.go`, and `restore_preview.go`
+
+- **`--disk-space-multiplier` flag on single restore** (was cluster-only)
+- **`--native-engine` flag alias** for `--native` on all commands
+- **`DEBUG=1` / `--debug` now activates debug log level** (previously set cfg.Debug but log level stayed at INFO, hiding Debug() output)
+
+## [6.12.0] - 2026-02-10
+
+### Added - BLOB Pipeline Matrix + Nuclear Restore Engine
+
+- **BLOB Pipeline Matrix**: Native large object backup/restore with parallel streaming
+- **Nuclear Restore Engine**: Pure Go restore engine (streaming SQL parser, global index builder, transaction batcher)
+
 ## [6.1.0] - 2026-02-10
 
 ### Added - Production-Hardened TUI

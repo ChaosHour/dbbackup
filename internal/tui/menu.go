@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -14,6 +15,7 @@ import (
 
 	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
+	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
 )
 
@@ -59,6 +61,12 @@ type dbTypeOption struct {
 	value string
 }
 
+// connectionHealthMsg is sent when connection health check completes
+type connectionHealthMsg struct {
+	err       error
+	timestamp time.Time
+}
+
 // MenuModel represents the simple menu state
 type MenuModel struct {
 	choices      []string
@@ -69,6 +77,11 @@ type MenuModel struct {
 	message      string
 	dbTypes      []dbTypeOption
 	dbTypeCursor int
+
+	// Connection health
+	connectionStatus string    // "[OK] Connected" | "[FAIL] Disconnected" | "[WAIT] Checking..."
+	lastHealthCheck  time.Time
+	connectionError  error
 
 	// Background operations
 	ctx       context.Context
@@ -93,6 +106,7 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
 	}
 
 	model := &MenuModel{
+		connectionStatus: "[WAIT] Checking...",
 		choices: []string{
 			"Single Database Backup",
 			"Sample Database Backup (with ratio)",
@@ -141,24 +155,77 @@ var _ io.Closer = (*MenuModel)(nil)
 // autoSelectMsg is sent when auto-select should trigger
 type autoSelectMsg struct{}
 
+// checkConnectionHealth tests the database connection in the background
+func (m *MenuModel) checkConnectionHealth() tea.Cmd {
+	cfg := m.config
+	log := m.logger
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		dbClient, err := database.New(cfg, log)
+		if err != nil {
+			return connectionHealthMsg{err: err, timestamp: time.Now()}
+		}
+		defer dbClient.Close()
+
+		if err := dbClient.Connect(ctx); err != nil {
+			return connectionHealthMsg{err: err, timestamp: time.Now()}
+		}
+
+		return connectionHealthMsg{err: nil, timestamp: time.Now()}
+	}
+}
+
+// connectionRetryMsg triggers a connection health re-check after delay
+type connectionRetryMsg struct{}
+
+// autoRetryConnection schedules a reconnection attempt after 30 seconds
+func (m *MenuModel) autoRetryConnection() tea.Cmd {
+	return tea.Tick(30*time.Second, func(t time.Time) tea.Msg {
+		return connectionRetryMsg{}
+	})
+}
+
 // Init initializes the model
 func (m *MenuModel) Init() tea.Cmd {
 	// Auto-select menu option if specified
 	if m.config.TUIAutoSelect >= 0 && m.config.TUIAutoSelect < len(m.choices) {
 		m.logger.Info("TUI Auto-select enabled", "option", m.config.TUIAutoSelect, "label", m.choices[m.config.TUIAutoSelect])
 
-		// Return command to trigger auto-selection
+		// Return command to trigger auto-selection (skip health check in auto mode)
 		return func() tea.Msg {
 			return autoSelectMsg{}
 		}
 	}
-	return nil
+	// Start background connection health check
+	return m.checkConnectionHealth()
 }
 
 // Update handles messages
 func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	tuiDebugLog(m.config, m.logger, "menu", msg)
 	switch msg := msg.(type) {
+	case connectionHealthMsg:
+		m.lastHealthCheck = msg.timestamp
+		if msg.err != nil {
+			m.connectionStatus = "[FAIL] Disconnected"
+			m.connectionError = msg.err
+			m.logger.Warn("Menu connection health check failed", "error", msg.err)
+			// Auto-retry after 30 seconds
+			return m, m.autoRetryConnection()
+		} else {
+			m.connectionStatus = "[OK] Connected"
+			m.connectionError = nil
+		}
+		return m, nil
+
+	case connectionRetryMsg:
+		// Retry connection health check
+		m.connectionStatus = "[WAIT] Reconnecting..."
+		m.logger.Info("Auto-retrying connection health check")
+		return m, m.checkConnectionHealth()
+
 	case autoSelectMsg:
 		// Handle auto-selection
 		if m.config.TUIAutoSelect >= 0 && m.config.TUIAutoSelect < len(m.choices) {
@@ -349,6 +416,17 @@ func (m *MenuModel) View() string {
 	brandLine := fmt.Sprintf("dbbackup v%s %s %s • Enterprise Database Backup & Recovery", m.config.Version, dbIcon, m.config.DisplayDatabaseType())
 	s += "\n" + infoStyle.Render(brandLine) + "\n"
 
+	// Connection status bar
+	connStatusLine := fmt.Sprintf("%s@%s:%d | %s",
+		m.config.User, m.config.Host, m.config.Port, m.connectionStatus)
+	if m.connectionError != nil {
+		s += errorStyle.Render(connStatusLine) + "\n"
+	} else if m.connectionStatus == "[WAIT] Checking..." {
+		s += infoStyle.Render(connStatusLine) + "\n"
+	} else {
+		s += successStyle.Render(connStatusLine) + "\n"
+	}
+
 	// Header
 	header := titleStyle.Render("Interactive Menu")
 	s += fmt.Sprintf("%s\n\n", header)
@@ -367,11 +445,6 @@ func (m *MenuModel) View() string {
 		hint := infoStyle.Render("Switch with <-/-> or t | Cluster backup/restore requires PostgreSQL")
 		s += hint + "\n"
 	}
-
-	// Database info
-	dbInfo := infoStyle.Render(fmt.Sprintf("Database: %s@%s:%d (%s)",
-		m.config.User, m.config.Host, m.config.Port, m.config.DisplayDatabaseType()))
-	s += fmt.Sprintf("%s\n", dbInfo)
 
 	// System resource profile badge
 	if profileBadge := GetCompactProfileBadge(); profileBadge != "" {

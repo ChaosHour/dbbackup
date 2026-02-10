@@ -91,11 +91,13 @@ type RestoreExecutionModel struct {
 	metadataSource string // "accurate", "extrapolated", "unknown"
 
 	// Results
-	done       bool
-	cancelling bool // True when user has requested cancellation
-	err        error
-	result     string
-	elapsed    time.Duration
+	done         bool
+	cancelling   bool     // True when user has requested cancellation
+	abortConfirm bool     // True when showing abort confirmation prompt
+	cleanupFuncs []func() // Stack of cleanup functions to run on abort
+	err          error
+	result       string
+	elapsed      time.Duration
 }
 
 // NewRestoreExecution creates a new restore execution model
@@ -907,45 +909,81 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.InterruptMsg:
 		// Handle Ctrl+C signal (SIGINT) - Bubbletea v1.3+ sends this instead of KeyMsg for ctrl+c
-		if !m.done && !m.cancelling {
+		if m.done {
+			return m.parent, nil
+		}
+		if !m.abortConfirm && !m.cancelling {
+			// First Ctrl+C: show confirmation prompt
+			m.abortConfirm = true
+			return m, nil
+		}
+		// Second Ctrl+C: force abort
+		if !m.cancelling {
 			m.cancelling = true
-			m.status = "[STOP]  Cancelling restore... (please wait)"
-			m.phase = "Cancelling"
+			m.abortConfirm = false
+			m.status = "[STOP]  Aborting restore... cleaning up"
+			m.phase = "Aborting"
 			if m.cancel != nil {
 				m.cancel()
 			}
-			return m, nil
-		} else if m.done {
-			return m.parent, nil // Return to menu, not quit app
+			// Run cleanup functions
+			go m.runCleanup()
 		}
 		return m, nil
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "esc":
-			if !m.done && !m.cancelling {
-				// User requested cancellation - cancel the context
+		case "ctrl+c":
+			if m.done {
+				return m.parent, nil
+			}
+			if !m.abortConfirm && !m.cancelling {
+				m.abortConfirm = true
+				return m, nil
+			}
+			// Second press: force abort
+			if !m.cancelling {
 				m.cancelling = true
+				m.abortConfirm = false
+				m.status = "[STOP]  Aborting restore... cleaning up"
+				m.phase = "Aborting"
+				if m.cancel != nil {
+					m.cancel()
+				}
+				go m.runCleanup()
+			}
+			return m, nil
+		case "y", "Y":
+			if m.abortConfirm {
+				m.cancelling = true
+				m.abortConfirm = false
 				m.status = "[STOP]  Cancelling restore... (please wait)"
 				m.phase = "Cancelling"
 				if m.cancel != nil {
 					m.cancel()
 				}
+				go m.runCleanup()
+				return m, nil
+			}
+		case "n", "N", "esc":
+			if m.abortConfirm {
+				m.abortConfirm = false
+				return m, nil
+			}
+			if !m.done && !m.cancelling {
+				// ESC without abort confirmation — show prompt first
+				m.abortConfirm = true
 				return m, nil
 			} else if m.done {
 				return m.parent, nil
 			}
 		case "q":
-			if !m.done && !m.cancelling {
-				m.cancelling = true
-				m.status = "[STOP]  Cancelling restore... (please wait)"
-				m.phase = "Cancelling"
-				if m.cancel != nil {
-					m.cancel()
-				}
+			if m.done {
+				return m.parent, nil
+			}
+			if !m.cancelling {
+				m.abortConfirm = true
 				return m, nil
-			} else if m.done {
-				return m.parent, nil // Return to menu, not quit app
 			}
 		case "enter", " ":
 			if m.done {
@@ -955,6 +993,51 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// RegisterCleanup adds a cleanup function to be called on abort
+func (m *RestoreExecutionModel) RegisterCleanup(fn func()) {
+	m.cleanupFuncs = append(m.cleanupFuncs, fn)
+}
+
+// runCleanup executes all registered cleanup functions in reverse order
+// and cleans up orphaned processes
+func (m *RestoreExecutionModel) runCleanup() {
+	// Run cleanup functions in reverse order (LIFO)
+	for i := len(m.cleanupFuncs) - 1; i >= 0; i-- {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.logger.Warn("Cleanup function panic", "panic", r)
+				}
+			}()
+			m.cleanupFuncs[i]()
+		}()
+	}
+
+	// Clean up orphaned pg_restore / pg_dump processes
+	if err := cleanup.KillOrphanedProcesses(m.logger); err != nil {
+		m.logger.Warn("Failed to clean up orphaned processes", "error", err)
+	}
+
+	// Clean up temp directories matching restore patterns
+	cleanupRestoreTempDirs(m.logger)
+}
+
+// cleanupRestoreTempDirs removes leftover .restore_* temp directories
+func cleanupRestoreTempDirs(log logger.Logger) {
+	tmpDir := os.TempDir()
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), ".restore_") {
+			fullPath := filepath.Join(tmpDir, entry.Name())
+			log.Info("Cleaning up temp directory", "path", fullPath)
+			os.RemoveAll(fullPath)
+		}
+	}
 }
 
 func (m RestoreExecutionModel) View() string {
@@ -1068,7 +1151,13 @@ func (m RestoreExecutionModel) View() string {
 				// Render using the rich cluster progress view
 				s.WriteString(m.richProgressView.RenderUnified(m.unifiedProgress))
 				s.WriteString("\n")
-				s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C to cancel"))
+				if m.abortConfirm {
+					s.WriteString(StatusErrorStyle.Render("[WARN] Abort restore operation?") + "\n")
+					s.WriteString(infoStyle.Render("  Press Y to confirm, N/Esc to continue, Ctrl+C to force quit") + "\n")
+					s.WriteString(StatusWarningStyle.Render("  WARNING: This will kill running processes and remove temporary files.") + "\n")
+				} else {
+					s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C to cancel"))
+				}
 				return s.String()
 			}
 
@@ -1171,7 +1260,13 @@ func (m RestoreExecutionModel) View() string {
 		// Elapsed time
 		s.WriteString(fmt.Sprintf("Elapsed: %s\n", formatDuration(m.elapsed)))
 		s.WriteString("\n")
-		s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C to cancel"))
+		if m.abortConfirm {
+			s.WriteString(StatusErrorStyle.Render("[WARN] Abort restore operation?") + "\n")
+			s.WriteString(infoStyle.Render("  Press Y to confirm, N/Esc to continue, Ctrl+C to force quit") + "\n")
+			s.WriteString(StatusWarningStyle.Render("  WARNING: This will kill running processes and remove temporary files.") + "\n")
+		} else {
+			s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C to cancel"))
+		}
 	}
 
 	return s.String()

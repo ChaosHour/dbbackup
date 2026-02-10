@@ -13,6 +13,7 @@ import (
 	"github.com/mattn/go-isatty"
 
 	"dbbackup/internal/backup"
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
@@ -68,6 +69,10 @@ type BackupExecutionModel struct {
 
 	// EMA-based speed/ETA estimator for smooth, accurate predictions
 	etaEstimator *progress.EMAEstimator
+
+	// Abort confirmation
+	abortConfirm bool     // True when showing abort confirmation prompt
+	cleanupFuncs []func() // Stack of cleanup functions to run on abort
 
 	// Metadata quality tracking for tiered progress display
 	metadataSource   string                      // "accurate", "extrapolated", "unknown"
@@ -503,28 +508,68 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.InterruptMsg:
 		// Handle Ctrl+C signal (SIGINT) - Bubbletea v1.3+ sends this instead of KeyMsg for ctrl+c
-		if !m.done && !m.cancelling {
+		if m.done {
+			return m.parent, nil
+		}
+		if !m.abortConfirm && !m.cancelling {
+			m.abortConfirm = true
+			return m, nil
+		}
+		// Second Ctrl+C: force abort
+		if !m.cancelling {
 			m.cancelling = true
-			m.status = "[STOP]  Cancelling backup... (please wait)"
+			m.abortConfirm = false
+			m.status = "[STOP]  Aborting backup... cleaning up"
 			if m.cancel != nil {
 				m.cancel()
 			}
-			return m, nil
-		} else if m.done {
-			return m.parent, nil // Return to menu, not quit app
+			go m.runBackupCleanup()
 		}
 		return m, nil
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "esc":
-			if !m.done && !m.cancelling {
-				// User requested cancellation - cancel the context
+		case "ctrl+c":
+			if m.done {
+				return m.parent, nil
+			}
+			if !m.abortConfirm && !m.cancelling {
+				m.abortConfirm = true
+				return m, nil
+			}
+			if !m.cancelling {
 				m.cancelling = true
+				m.abortConfirm = false
+				m.status = "[STOP]  Aborting backup... cleaning up"
+				if m.cancel != nil {
+					m.cancel()
+				}
+				go m.runBackupCleanup()
+			}
+			return m, nil
+		case "y", "Y":
+			if m.abortConfirm {
+				m.cancelling = true
+				m.abortConfirm = false
 				m.status = "[STOP]  Cancelling backup... (please wait)"
 				if m.cancel != nil {
 					m.cancel()
 				}
+				go m.runBackupCleanup()
+				return m, nil
+			}
+		case "n", "N":
+			if m.abortConfirm {
+				m.abortConfirm = false
+				return m, nil
+			}
+		case "esc":
+			if m.abortConfirm {
+				m.abortConfirm = false
+				return m, nil
+			}
+			if !m.done && !m.cancelling {
+				m.abortConfirm = true
 				return m, nil
 			} else if m.done {
 				return m.parent, nil
@@ -727,6 +772,26 @@ func renderBackupDatabaseProgressBarWithTiming(done, total int, dbPhaseElapsed t
 	return s.String()
 }
 
+// runBackupCleanup executes all registered cleanup functions and kills orphaned processes
+func (m *BackupExecutionModel) runBackupCleanup() {
+	// Run cleanup functions in reverse order (LIFO)
+	for i := len(m.cleanupFuncs) - 1; i >= 0; i-- {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					m.logger.Warn("Backup cleanup function panic", "panic", r)
+				}
+			}()
+			m.cleanupFuncs[i]()
+		}()
+	}
+
+	// Clean up orphaned pg_dump processes
+	if err := cleanup.KillOrphanedProcesses(m.logger); err != nil {
+		m.logger.Warn("Failed to clean up orphaned processes", "error", err)
+	}
+}
+
 func (m BackupExecutionModel) View() string {
 	var s strings.Builder
 	s.Grow(512) // Pre-allocate estimated capacity for better performance
@@ -848,7 +913,12 @@ func (m BackupExecutionModel) View() string {
 			// Elapsed time
 			s.WriteString(fmt.Sprintf("Elapsed: %s\n", formatDuration(time.Since(m.startTime))))
 			s.WriteString("\n")
-			s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C or ESC to cancel"))
+			if m.abortConfirm {
+				s.WriteString(StatusErrorStyle.Render("[WARN] Abort backup operation?") + "\n")
+				s.WriteString(infoStyle.Render("  Press Y to confirm, N/Esc to continue, Ctrl+C to force quit") + "\n")
+			} else {
+				s.WriteString(infoStyle.Render("[KEYS]  Press Ctrl+C or ESC to cancel"))
+			}
 		}
 	} else {
 		// Show completion summary with detailed stats

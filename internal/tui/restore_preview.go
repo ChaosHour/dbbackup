@@ -418,16 +418,57 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			// Proceed to restore execution (enable lock debugging in Config)
-			if m.debugLocks {
-				m.config.DebugLocks = true
+			// For cluster restores with cleanup enabled, require type-to-confirm
+			if m.mode == "restore-cluster" && m.cleanClusterFirst && m.existingDBCount > 0 {
+				confirmTarget := "CONFIRM"
+				warning := NewDestructiveWarning(
+					m.config, m.logger, m,
+					"cluster-restore", confirmTarget, m.archive.Name,
+					func() (tea.Model, tea.Cmd) {
+						return m.launchPreflightAndRestore()
+					},
+				)
+				return warning, warning.Init()
 			}
-			exec := NewRestoreExecution(m.config, m.logger, m.parent, m.ctx, m.archive, m.targetDB, m.cleanFirst, m.createIfMissing, m.mode, m.cleanClusterFirst, m.existingDBs, m.saveDebugLog, m.workDir)
-			return exec, exec.Init()
+
+			// For single restores where target DB exists, require type-to-confirm
+			if m.mode == "restore-single" && m.cleanFirst {
+				// Check if any safety check flagged the target as existing
+				for _, check := range m.safetyChecks {
+					if check.Name == "Target database" && check.Status == "warning" &&
+						strings.Contains(check.Message, "exists") {
+						warning := NewDestructiveWarning(
+							m.config, m.logger, m,
+							"restore", m.targetDB, m.archive.Name,
+							func() (tea.Model, tea.Cmd) {
+								return m.launchPreflightAndRestore()
+							},
+						)
+						return warning, warning.Init()
+					}
+				}
+			}
+
+			// No destructive operation — go through preflight then restore
+			return m.launchPreflightAndRestore()
 		}
 	}
 
 	return m, nil
+}
+
+// launchPreflightAndRestore starts the preflight checklist which then proceeds to restore
+func (m RestorePreviewModel) launchPreflightAndRestore() (tea.Model, tea.Cmd) {
+	if m.debugLocks {
+		m.config.DebugLocks = true
+	}
+	checklist := NewPreRestoreChecklist(
+		m.config, m.logger, m.parent, m.ctx,
+		m.archive, m.targetDB, m.mode,
+		m.cleanFirst, m.createIfMissing, m.cleanClusterFirst,
+		m.existingDBs, m.saveDebugLog, m.workDir, m.debugLocks,
+	)
+	return checklist, checklist.Init()
 }
 
 func (m RestorePreviewModel) View() string {

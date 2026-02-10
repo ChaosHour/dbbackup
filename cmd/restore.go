@@ -347,6 +347,7 @@ func init() {
 	restoreSingleCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
 	restoreSingleCmd.Flags().BoolVar(&restoreAdaptive, "adaptive", false, "Enable adaptive job sizing based on dump file size and CPU cores")
 	restoreSingleCmd.Flags().BoolVar(&restoreSkipDiskCheck, "skip-disk-check", false, "Skip disk space checks (use when you know there's enough space)")
+	restoreSingleCmd.Flags().Float64Var(&restoreDiskSpaceMultiplier, "disk-space-multiplier", 0, "Override disk space multiplier (0 = auto-detect from metadata/format)")
 	restoreSingleCmd.Flags().BoolVar(&restoreQuiet, "quiet", false, "Suppress all output except errors")
 	restoreSingleCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel pg_restore jobs (0 = auto, like pg_restore -j)")
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")

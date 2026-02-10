@@ -199,6 +199,7 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 
 	// Native engine flags
 	rootCmd.PersistentFlags().BoolVar(&cfg.UseNativeEngine, "native", cfg.UseNativeEngine, "Use pure Go native engines (no external tools)")
+	rootCmd.PersistentFlags().BoolVar(&cfg.UseNativeEngine, "native-engine", cfg.UseNativeEngine, "Use pure Go native engines (alias for --native)")
 	rootCmd.PersistentFlags().BoolVar(&cfg.FallbackToTools, "fallback-tools", cfg.FallbackToTools, "Fallback to external tools if native engine fails")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NativeEngineDebug, "native-debug", cfg.NativeEngineDebug, "Enable detailed native engine debugging")
 

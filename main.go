@@ -41,8 +41,12 @@ func main() {
 		}
 	}
 
-	// Initialize logger
-	log := logger.New(cfg.LogLevel, cfg.LogFormat)
+	// Initialize logger — promote to debug level when Debug flag is set
+	logLevel := cfg.LogLevel
+	if cfg.Debug && logLevel != "debug" {
+		logLevel = "debug"
+	}
+	log := logger.New(logLevel, cfg.LogFormat)
 
 	// Initialize global metrics
 	metrics.InitGlobalMetrics(log)

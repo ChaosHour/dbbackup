@@ -46,6 +46,7 @@ var (
 	restoreVerbose             bool
 	restoreNoProgress          bool
 	restoreNoTUI               bool // Disable TUI for maximum performance (benchmark mode)
+	restoreAdaptive            bool // Enable adaptive per-database job sizing
 	restoreQuiet               bool // Suppress all output except errors
 	restoreWorkdir             string
 	restoreDiskSpaceMultiplier float64
@@ -343,6 +344,7 @@ func init() {
 	restoreSingleCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
+	restoreSingleCmd.Flags().BoolVar(&restoreAdaptive, "adaptive", false, "Enable adaptive job sizing based on dump file size and CPU cores")
 	restoreSingleCmd.Flags().BoolVar(&restoreQuiet, "quiet", false, "Suppress all output except errors")
 	restoreSingleCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel pg_restore jobs (0 = auto, like pg_restore -j)")
 	restoreSingleCmd.Flags().StringVar(&restoreEncryptionKeyFile, "encryption-key-file", "", "Path to encryption key file (required for encrypted backups)")
@@ -375,6 +377,7 @@ func init() {
 	restoreClusterCmd.Flags().StringSliceVar(&coldTables, "cold-tables", nil, "Cold table patterns restored last (e.g., *_log,*_archive)")
 	restoreClusterCmd.Flags().IntVar(&restoreJobs, "jobs", 0, "Number of parallel decompression jobs (0 = auto, overrides profile)")
 	restoreClusterCmd.Flags().IntVar(&restoreParallelDBs, "parallel-dbs", 0, "Number of databases to restore in parallel (0 = use profile, 1 = sequential, -1 = auto-detect, overrides profile)")
+	restoreClusterCmd.Flags().BoolVar(&restoreAdaptive, "adaptive", false, "Enable adaptive per-database job sizing based on dump file size and CPU cores")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
 	restoreClusterCmd.Flags().Float64Var(&restoreDiskSpaceMultiplier, "disk-space-multiplier", 0, "Override disk space multiplier (0 = auto-detect from metadata/format)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
@@ -579,6 +582,9 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	if cfg.Debug && restoreProfile != "balanced" {
 		log.Info("Using restore profile", "profile", restoreProfile)
 	}
+
+	// Enable adaptive job sizing if requested
+	cfg.AdaptiveJobs = restoreAdaptive
 
 	// Validate restore parameters
 	if err := validateRestoreParams(cfg, restoreTarget, restoreJobs); err != nil {
@@ -1043,6 +1049,9 @@ func runFullClusterRestore(archivePath string) error {
 	if cfg.Debug || restoreProfile != "balanced" {
 		log.Info("Using restore profile", "profile", restoreProfile, "parallel_dbs", cfg.ClusterParallelism, "jobs", cfg.Jobs)
 	}
+
+	// Enable adaptive job sizing if requested
+	cfg.AdaptiveJobs = restoreAdaptive
 
 	// Validate restore parameters
 	if err := validateRestoreParams(cfg, restoreTarget, restoreJobs); err != nil {

@@ -89,7 +89,8 @@ type Config struct {
 	ClusterTimeoutMinutes int
 
 	// Cluster parallelism
-	ClusterParallelism int // Number of concurrent databases during cluster operations (0 = sequential)
+	ClusterParallelism int  // Number of concurrent databases during cluster operations (0 = sequential)
+	AdaptiveJobs       bool // Enable adaptive per-database job sizing based on dump file size and CPU cores
 
 	// Working directory for large operations (extraction, diagnosis)
 	WorkDir             string  // Alternative temp directory for large operations (default: system temp)

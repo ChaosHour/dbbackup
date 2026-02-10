@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -499,6 +500,39 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 	return e.executeRestoreCommand(ctx, cmd)
 }
 
+// adaptiveJobCount returns an optimal number of parallel workers for a restore
+// based on the dump file size and available CPU cores. This prevents over-parallelizing
+// tiny databases (wasted goroutines/connections) and under-parallelizing huge ones.
+func (e *Engine) adaptiveJobCount(dbName string, dumpFileSize int64) int {
+	cpuCores := runtime.NumCPU()
+	var workers int
+	const mb50 int64 = 50 << 20
+	const mb500 int64 = 500 << 20
+	const gb1 int64 = 1 << 30
+	const gb10 int64 = 10 << 30
+	switch {
+	case dumpFileSize < mb50: // <50 MB — tiny DB, minimal parallelism
+		workers = minInt(2, cpuCores)
+	case dumpFileSize < mb500: // <500 MB — small DB
+		workers = minInt(4, cpuCores/2)
+	case dumpFileSize < gb1: // <1 GB — medium DB
+		workers = minInt(6, cpuCores*2/3)
+	case dumpFileSize < gb10: // <10 GB — large DB
+		workers = minInt(12, cpuCores*3/4)
+	default: // ≥10 GB — huge DB, go all-in
+		workers = minInt(32, cpuCores)
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	e.log.Info("Adaptive job sizing",
+		"database", dbName,
+		"dump_size_mb", dumpFileSize/(1<<20),
+		"cpu_cores", cpuCores,
+		"adaptive_workers", workers)
+	return workers
+}
+
 // restoreWithNativeEngine restores a SQL file using the pure Go native engine
 func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targetDB string, compressed bool) error {
 	// Create native engine config
@@ -519,6 +553,17 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 	parallelWorkers := e.cfg.Jobs
 	if parallelWorkers < 1 {
 		parallelWorkers = 4
+	}
+
+	// Adaptive mode: override worker count based on dump file size and CPU cores
+	if e.cfg.AdaptiveJobs {
+		var fileSize int64
+		if fi, err := os.Stat(archivePath); err == nil {
+			fileSize = fi.Size()
+		}
+		if fileSize > 0 {
+			parallelWorkers = e.adaptiveJobCount(targetDB, fileSize)
+		}
 	}
 
 	e.log.Info("Using PARALLEL native restore engine",
@@ -2153,6 +2198,18 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			dbName := filename
 			dbName = strings.TrimSuffix(dbName, ".dump")
 			dbName = strings.TrimSuffix(dbName, ".sql.gz")
+
+			// Log adaptive sizing info per database in cluster restore
+			if e.cfg.AdaptiveJobs {
+				if fi, err := os.Stat(dumpFile); err == nil {
+					mu.Lock()
+					e.log.Info("Adaptive cluster restore",
+						"database", dbName,
+						"dump_size_mb", fi.Size()/(1<<20),
+						"index", fmt.Sprintf("%d/%d", idx+1, totalDBs))
+					mu.Unlock()
+				}
+			}
 
 			dbProgress := 15 + int(float64(idx)/float64(totalDBs)*85.0)
 

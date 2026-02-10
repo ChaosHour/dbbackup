@@ -98,13 +98,13 @@ var (
 	}
 
 	// ProfileTurbo - TURBO MODE: Optimized for fastest possible restore
-	// Based on real-world testing: matches pg_restore -j8 performance
+	// Based on real-world testing: sequential DB restore avoids I/O thrashing
 	// Uses buffered I/O, parallel extraction, and aggressive pg_restore parallelism
 	ProfileTurbo = ResourceProfile{
 		Name:                "turbo",
-		Description:         "TURBO: Fastest restore mode. Matches native pg_restore -j8 speed. Use on dedicated DB servers.",
-		ClusterParallelism:  2,  // Restore 2 DBs concurrently (I/O balanced)
-		Jobs:                8,  // pg_restore -j8 (matches your pg_dump test)
+		Description:         "TURBO: Fastest restore mode. Sequential DB restore with high pg_restore parallelism. Use on dedicated DB servers.",
+		ClusterParallelism:  1,  // Sequential: one DB at a time (avoids I/O thrashing)
+		Jobs:                16, // High pg_restore parallelism per DB
 		DumpJobs:            8,  // Fast dumps too
 		MaintenanceWorkMem:  "2GB",
 		MaxLocksPerTxn:      4096, // High for large schemas
@@ -115,6 +115,24 @@ var (
 		ParallelExtract:     true, // Parallel tar extraction where possible
 	}
 
+	// ProfileMaxThroughput - Sequential restore with maximum pg_restore parallelism
+	// Matches native pg_restore -j<cores> performance for large single databases.
+	// Best for clusters with one or more very large databases (>50 GB).
+	ProfileMaxThroughput = ResourceProfile{
+		Name:                "max-throughput",
+		Description:         "Sequential DB restore with maximum pg_restore jobs. Best for clusters with large databases. Matches native pg_restore -j performance.",
+		ClusterParallelism:  1,     // One DB at a time (sequential)
+		Jobs:                32,    // Maximum pg_restore parallelism (auto-tuned via AutoTuneJobs)
+		DumpJobs:            16,    // Fast dumps
+		MaintenanceWorkMem:  "2GB",
+		MaxLocksPerTxn:      8192,  // High for large schemas
+		RecommendedForLarge: true,
+		MinMemoryGB:         16,
+		MinCores:            8,
+		BufferedIO:          true,  // Enable 32KB buffered writes
+		ParallelExtract:     true,  // Parallel tar extraction where possible
+	}
+
 	// AllProfiles contains all available profiles (VM resource-based)
 	AllProfiles = []ResourceProfile{
 		ProfileConservative,
@@ -122,8 +140,30 @@ var (
 		ProfilePerformance,
 		ProfileMaxPerformance,
 		ProfileTurbo,
+		ProfileMaxThroughput,
 	}
 )
+
+// AutoTuneJobs adjusts the Jobs value for the max-throughput profile based on
+// available CPU cores. Uses 75% of cores, capped between 8 and 32.
+func AutoTuneJobs(profile *ResourceProfile) {
+	if profile == nil {
+		return
+	}
+	if profile.Name == "max-throughput" && profile.Jobs == 32 {
+		cores := runtime.NumCPU()
+		tuned := cores * 3 / 4
+		profile.Jobs = max(8, min(32, tuned))
+	}
+}
+
+// min returns the smaller of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 // GetProfileByName returns a profile by its name
 func GetProfileByName(name string) *ResourceProfile {

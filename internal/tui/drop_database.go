@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"dbbackup/internal/config"
+	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
 )
 
@@ -170,12 +171,12 @@ func (v *DropDatabaseView) doDropDatabase(dbName string) error {
 		if err := validateDBIdentifier(dbName, 64); err != nil {
 			return fmt.Errorf("invalid database name: %w", err)
 		}
-		_, err = db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE %s", quoteMySQLIdent(dbName)))
+		_, err = db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE %s", database.QuoteMySQLIdentifier(dbName)))
 	default:
 		if err := validateDBIdentifier(dbName, 63); err != nil {
 			return fmt.Errorf("invalid database name: %w", err)
 		}
-		_, err = db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE %s", quotePGIdent(dbName)))
+		_, err = db.ExecContext(ctx, fmt.Sprintf("DROP DATABASE %s", database.QuotePGIdentifier(dbName)))
 	}
 
 	if err != nil {
@@ -387,11 +388,13 @@ func validateDBIdentifier(name string, maxLen int) error {
 }
 
 // quotePGIdent safely quotes a PostgreSQL identifier by doubling internal double-quotes.
+// Deprecated: Use database.QuotePGIdentifier instead.
 func quotePGIdent(name string) string {
-	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+	return database.QuotePGIdentifier(name)
 }
 
 // quoteMySQLIdent safely quotes a MySQL identifier by doubling internal backticks.
+// Deprecated: Use database.QuoteMySQLIdentifier instead.
 func quoteMySQLIdent(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	return database.QuoteMySQLIdentifier(name)
 }

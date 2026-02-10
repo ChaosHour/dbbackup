@@ -10,6 +10,7 @@ import (
 
 	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
+	"dbbackup/internal/database"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
@@ -410,7 +411,7 @@ func (s *Safety) checkPostgresDatabaseExists(ctx context.Context, dbName string)
 		"-p", fmt.Sprintf("%d", s.cfg.Port),
 		"-U", s.cfg.User,
 		"-d", "postgres",
-		"-tAc", fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname='%s'", dbName),
+		"-tAc", fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname='%s'", database.EscapePGLiteral(dbName)),
 	}
 
 	// Always add -h flag for explicit host connection (required for password auth)
@@ -440,7 +441,7 @@ func (s *Safety) checkMySQLDatabaseExists(ctx context.Context, dbName string) (b
 	args := []string{
 		"-P", fmt.Sprintf("%d", s.cfg.Port),
 		"-u", s.cfg.User,
-		"-e", fmt.Sprintf("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='%s'", dbName),
+		"-e", fmt.Sprintf("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME='%s'", database.EscapeMySQLLiteral(dbName)),
 	}
 
 	// Only add -h flag if host is not localhost (to use Unix socket)

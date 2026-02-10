@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/database"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 
@@ -324,7 +325,7 @@ func (e *Engine) executeRestore(ctx context.Context, config *DrillConfig, contai
 	case "postgresql", "postgres":
 		// Create database
 		_, err := e.docker.ExecCommand(ctx, containerID, []string{
-			"psql", "-U", "postgres", "-c", fmt.Sprintf("CREATE DATABASE %s", config.DatabaseName),
+			"psql", "-U", "postgres", "-c", fmt.Sprintf("CREATE DATABASE %s", database.QuotePGIdentifier(config.DatabaseName)),
 		})
 		if err != nil {
 			// Database might already exist
@@ -338,14 +339,14 @@ func (e *Engine) executeRestore(ctx context.Context, config *DrillConfig, contai
 			// (original owner/roles don't exist in isolated container)
 			cmd = []string{"pg_restore", "-U", "postgres", "-d", config.DatabaseName, "-v", "--no-owner", "--no-acl", backupPath}
 		} else {
-			cmd = []string{"sh", "-c", fmt.Sprintf("psql -U postgres -d %s < %s", config.DatabaseName, backupPath)}
+			cmd = []string{"sh", "-c", fmt.Sprintf("psql -U postgres -d %s < %s", shellQuote(config.DatabaseName), shellQuote(backupPath))}
 		}
 
 	case "mysql":
 		// Drop database if exists (backup contains CREATE DATABASE)
 		_, _ = e.docker.ExecCommand(ctx, containerID, []string{
 			"mysql", "-h", "127.0.0.1", "-u", "root", "--password=root", "-e",
-			fmt.Sprintf("DROP DATABASE IF EXISTS %s", config.DatabaseName),
+			fmt.Sprintf("DROP DATABASE IF EXISTS %s", database.QuoteMySQLIdentifier(config.DatabaseName)),
 		})
 		cmd = []string{"sh", "-c", fmt.Sprintf("mysql -h 127.0.0.1 -u root --password=root < %s", backupPath)}
 
@@ -353,7 +354,7 @@ func (e *Engine) executeRestore(ctx context.Context, config *DrillConfig, contai
 		// Drop database if exists (backup contains CREATE DATABASE)
 		_, _ = e.docker.ExecCommand(ctx, containerID, []string{
 			"mariadb", "-h", "127.0.0.1", "-u", "root", "--password=root", "-e",
-			fmt.Sprintf("DROP DATABASE IF EXISTS %s", config.DatabaseName),
+			fmt.Sprintf("DROP DATABASE IF EXISTS %s", database.QuoteMySQLIdentifier(config.DatabaseName)),
 		})
 		// Use mariadb client (mysql symlink may not exist in newer images)
 		cmd = []string{"sh", "-c", fmt.Sprintf("mariadb -h 127.0.0.1 -u root --password=root < %s", backupPath)}
@@ -563,4 +564,10 @@ func (e *Engine) Validate(ctx context.Context, config *DrillConfig, host string,
 	defer validator.Close()
 
 	return validator.RunValidationQueries(ctx, config.ValidationQueries), nil
+}
+
+// shellQuote wraps a value in single quotes for safe use in sh -c commands.
+// Internal single quotes are escaped as '\''.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }

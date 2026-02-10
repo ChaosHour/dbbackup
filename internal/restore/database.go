@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"dbbackup/internal/cleanup"
+	"dbbackup/internal/database"
 )
 
 // terminateConnections terminates all connections to a specific database
@@ -20,7 +21,7 @@ func (e *Engine) terminateConnections(ctx context.Context, dbName string) error 
 		FROM pg_stat_activity
 		WHERE datname = '%s'
 		AND pid <> pg_backend_pid()
-	`, dbName)
+	`, database.EscapePGLiteral(dbName))
 
 	args := []string{
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
@@ -69,7 +70,7 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
 		"-U", e.cfg.User,
 		"-d", "postgres",
-		"-c", fmt.Sprintf("REVOKE CONNECT ON DATABASE \"%s\" FROM PUBLIC", dbName),
+		"-c", fmt.Sprintf("REVOKE CONNECT ON DATABASE %s FROM PUBLIC", database.QuotePGIdentifier(dbName)),
 	}
 	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
 		revokeArgs = append([]string{"-h", e.cfg.Host}, revokeArgs...)
@@ -94,7 +95,7 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 		"-p", fmt.Sprintf("%d", e.cfg.Port),
 		"-U", e.cfg.User,
 		"-d", "postgres",
-		"-c", fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\" WITH (FORCE)", dbName),
+		"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE)", database.QuotePGIdentifier(dbName)),
 	}
 	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
 		forceArgs = append([]string{"-h", e.cfg.Host}, forceArgs...)
@@ -116,7 +117,7 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 			"-p", fmt.Sprintf("%d", e.cfg.Port),
 			"-U", e.cfg.User,
 			"-d", "postgres",
-			"-c", fmt.Sprintf("DROP DATABASE IF EXISTS \"%s\"", dbName),
+			"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %s", database.QuotePGIdentifier(dbName)),
 		}
 		if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
 			args = append([]string{"-h", e.cfg.Host}, args...)
@@ -153,7 +154,7 @@ func (e *Engine) ensureMySQLDatabaseExists(ctx context.Context, dbName string) e
 		"-h", e.cfg.Host,
 		"-P", fmt.Sprintf("%d", e.cfg.Port),
 		"-u", e.cfg.User,
-		"-e", fmt.Sprintf("CREATE DATABASE IF NOT EXISTS `%s`", dbName),
+		"-e", fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", database.QuoteMySQLIdentifier(dbName)),
 	}
 
 	cmd := cleanup.SafeCommand(ctx, "mysql", args...)
@@ -203,7 +204,7 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 	}
 
 	// Check if database exists
-	checkCmd := buildPsqlCmd(ctx, "postgres", fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", dbName))
+	checkCmd := buildPsqlCmd(ctx, "postgres", fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", database.EscapePGLiteral(dbName)))
 
 	output, err := checkCmd.CombinedOutput()
 	if err != nil {
@@ -235,8 +236,8 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 	// Build CREATE DATABASE command with encoding and locale
 	// Using ENCODING 'UTF8' explicitly ensures the dump can be restored
 	createSQL := fmt.Sprintf(
-		"CREATE DATABASE \"%s\" WITH TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE '%s' LC_CTYPE '%s'",
-		dbName, serverLocale, serverLocale,
+		"CREATE DATABASE %s WITH TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE '%s' LC_CTYPE '%s'",
+		database.QuotePGIdentifier(dbName), database.EscapePGLiteral(serverLocale), database.EscapePGLiteral(serverLocale),
 	)
 
 	createArgs := []string{
@@ -265,7 +266,7 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 			"-p", fmt.Sprintf("%d", e.cfg.Port),
 			"-U", e.cfg.User,
 			"-d", "postgres",
-			"-c", fmt.Sprintf("CREATE DATABASE \"%s\" WITH TEMPLATE template0", dbName),
+			"-c", fmt.Sprintf("CREATE DATABASE %s WITH TEMPLATE template0", database.QuotePGIdentifier(dbName)),
 		}
 		if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
 			simpleArgs = append([]string{"-h", e.cfg.Host}, simpleArgs...)

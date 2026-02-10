@@ -242,6 +242,7 @@ dbbackup interactive --db-type mysql --user root
 - **Pre-restore validation screen** catches issues early (7 automated checks)
 - **Safe abort** with Ctrl+C (no orphaned processes or temp files)
 - **Type-to-confirm warnings** for destructive operations (database overwrites)
+- **Adaptive Jobs toggle** in settings — auto-sizes parallel workers per database
 
 The TUI automatically:
 - Tests database connectivity on startup (5s timeout)
@@ -471,6 +472,9 @@ dbbackup restore single backup.dump --target myapp_db --create --confirm
 # Restore cluster
 dbbackup restore cluster cluster_backup.tar.gz --confirm
 
+# Restore with adaptive job sizing (auto-sizes workers per database)
+dbbackup restore cluster backup.tar.gz --adaptive --confirm
+
 # Restore with resource profile (for resource-constrained servers)
 dbbackup restore cluster backup.tar.gz --profile=conservative --confirm
 
@@ -538,6 +542,7 @@ dbbackup backup single mydb --dry-run
 | `--compression` | Compression level (0-9) | 6 |
 | `--jobs` | Parallel jobs | 8 |
 | `--profile` | Resource profile (conservative/balanced/aggressive) | balanced |
+| `--adaptive` | Adaptive per-DB job sizing (overlays profile) | false |
 | `--cloud` | Cloud storage URI | - |
 | `--encrypt` | Enable encryption | false |
 | `--dry-run, -n` | Run preflight checks only | false |

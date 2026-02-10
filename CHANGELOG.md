@@ -48,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 
+- **Adaptive per-database job sizing** (`--adaptive` flag / TUI toggle): Automatically sizes parallel workers per database based on dump file size and CPU cores. Overlays any resource profile. Prevents over-parallelizing tiny DBs and under-parallelizing huge ones.
+  - <50MB → min(2, cores), <500MB → min(4, cores/2), <1GB → min(6, cores×⅔), <10GB → min(12, cores×¾), ≥10GB → min(32, cores)
 - **Turbo profile retuned**: Sequential restore (ClusterParallelism=1) with high per-DB parallelism (Jobs=16) matches native pg_restore -j16 speed
 - **Max-throughput profile added**: Sequential restore with Jobs=32 (auto-tuned to 75% of CPU cores), optimized for clusters with large databases (>50GB)
 

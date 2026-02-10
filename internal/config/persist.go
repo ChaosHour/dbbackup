@@ -35,6 +35,10 @@ type LocalConfig struct {
 	ResourceProfile string
 	LargeDBMode     bool // Enable large database mode (reduces parallelism, increases locks)
 
+	// Restore optimization settings
+	AdaptiveJobs  bool // Enable adaptive per-database job sizing
+	SkipDiskCheck bool // Skip disk space checks
+
 	// Safety settings
 	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
 
@@ -183,6 +187,10 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.ResourceProfile = value
 			case "large_db_mode":
 				cfg.LargeDBMode = value == "true" || value == "1"
+			case "adaptive_jobs":
+				cfg.AdaptiveJobs = value == "true" || value == "1"
+			case "skip_disk_check":
+				cfg.SkipDiskCheck = value == "true" || value == "1"
 			}
 		case "security":
 			switch key {
@@ -258,6 +266,8 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 		sb.WriteString(fmt.Sprintf("resource_profile = %s\n", cfg.ResourceProfile))
 	}
 	sb.WriteString(fmt.Sprintf("large_db_mode = %t\n", cfg.LargeDBMode))
+	sb.WriteString(fmt.Sprintf("adaptive_jobs = %t\n", cfg.AdaptiveJobs))
+	sb.WriteString(fmt.Sprintf("skip_disk_check = %t\n", cfg.SkipDiskCheck))
 	sb.WriteString("\n")
 
 	// Security section - ALWAYS write all values
@@ -346,6 +356,12 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.LargeDBMode {
 		cfg.LargeDBMode = true
 	}
+	if local.AdaptiveJobs {
+		cfg.AdaptiveJobs = true
+	}
+	if local.SkipDiskCheck {
+		cfg.SkipDiskCheck = true
+	}
 	if local.RetentionDays != 0 {
 		cfg.RetentionDays = local.RetentionDays
 	}
@@ -382,6 +398,8 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		ClusterTimeout:      cfg.ClusterTimeoutMinutes,
 		ResourceProfile:     cfg.ResourceProfile,
 		LargeDBMode:         cfg.LargeDBMode,
+		AdaptiveJobs:        cfg.AdaptiveJobs,
+		SkipDiskCheck:       cfg.SkipDiskCheck,
 		SkipPreflightChecks: cfg.SkipPreflightChecks,
 		RetentionDays:       cfg.RetentionDays,
 		MinBackups:          cfg.MinBackups,

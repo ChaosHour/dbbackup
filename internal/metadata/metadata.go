@@ -144,6 +144,81 @@ func LoadCluster(targetFile string) (*ClusterMetadata, error) {
 	return &meta, nil
 }
 
+// LoadClusterDebug reads cluster metadata and logs detailed diagnostics.
+// Use this variant when debugging disk space check marginal cases.
+func LoadClusterDebug(targetFile string, debugLog func(msg string, keysAndValues ...interface{})) (*ClusterMetadata, error) {
+	metaPath := targetFile + ".meta.json"
+
+	if debugLog != nil {
+		debugLog("[METADATA] Loading cluster metadata",
+			"target_file", targetFile,
+			"meta_path", metaPath)
+	}
+
+	fileInfo, statErr := os.Stat(metaPath)
+	if debugLog != nil && statErr == nil {
+		debugLog("[METADATA] Metadata file stat",
+			"meta_file_size_bytes", fileInfo.Size(),
+			"meta_file_modified", fileInfo.ModTime().Format(time.RFC3339))
+	}
+
+	data, err := os.ReadFile(metaPath)
+	if err != nil {
+		if debugLog != nil {
+			debugLog("[METADATA] Failed to read cluster metadata file",
+				"meta_path", metaPath,
+				"error", err.Error())
+		}
+		return nil, fmt.Errorf("failed to read cluster metadata file: %w", err)
+	}
+
+	var meta ClusterMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		if debugLog != nil {
+			debugLog("[METADATA] Failed to parse cluster metadata JSON",
+				"meta_path", metaPath,
+				"data_length", len(data),
+				"error", err.Error())
+		}
+		return nil, fmt.Errorf("failed to parse cluster metadata: %w", err)
+	}
+
+	if debugLog != nil {
+		debugLog("[METADATA] Cluster metadata loaded successfully",
+			"cluster_name", meta.ClusterName,
+			"database_type", meta.DatabaseType,
+			"host", meta.Host,
+			"port", meta.Port,
+			"total_size_bytes", meta.TotalSize,
+			"total_size_human", FormatSize(meta.TotalSize),
+			"database_count", len(meta.Databases),
+			"backup_duration_sec", meta.Duration,
+			"version", meta.Version,
+			"timestamp", meta.Timestamp.Format(time.RFC3339))
+
+		// Log individual database details
+		var sumDBSizes int64
+		for i, db := range meta.Databases {
+			sumDBSizes += db.SizeBytes
+			debugLog("[METADATA] Database entry",
+				"index", i,
+				"database", db.Database,
+				"size_bytes", db.SizeBytes,
+				"size_human", FormatSize(db.SizeBytes),
+				"compression", db.Compression,
+				"encrypted", db.Encrypted,
+				"backup_type", db.BackupType)
+		}
+
+		debugLog("[METADATA] Size cross-check",
+			"total_size_from_header", meta.TotalSize,
+			"sum_of_database_sizes", sumDBSizes,
+			"difference", meta.TotalSize-sumDBSizes)
+	}
+
+	return &meta, nil
+}
+
 // ListBackups scans a directory for backup files and returns their metadata
 func ListBackups(dir string) ([]*BackupMetadata, error) {
 	pattern := filepath.Join(dir, "*.meta.json")

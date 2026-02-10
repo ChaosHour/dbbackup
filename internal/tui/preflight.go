@@ -218,10 +218,17 @@ func runArchiveIntegrityCheck(cfg *config.Config, log logger.Logger, archivePath
 }
 
 func runDiskSpaceCheck(cfg *config.Config, log logger.Logger, archivePath string) PreflightCheckStatus {
+	log.Debug("[DISKSPACE-PREFLIGHT] Running disk space preflight check",
+		"archive_path", archivePath,
+		"config_multiplier", cfg.DiskSpaceMultiplier,
+		"skip_disk_check", cfg.SkipDiskCheck)
 	safety := restore.NewSafety(cfg, log)
 	if err := safety.CheckDiskSpace(archivePath, 0); err != nil {
+		log.Warn("[DISKSPACE-PREFLIGHT] Disk space check failed",
+			"error", err.Error())
 		return PreflightCheckStatus{State: "warn", Message: err.Error()}
 	}
+	log.Debug("[DISKSPACE-PREFLIGHT] Disk space check passed")
 	return PreflightCheckStatus{State: "pass", Message: "Sufficient space available"}
 }
 

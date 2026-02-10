@@ -316,19 +316,62 @@ func (s *Safety) CheckDiskSpace(archivePath string, multiplier float64) error {
 	if checkDir == "" {
 		checkDir = s.cfg.BackupDir
 	}
+	if s.log != nil {
+		s.log.Debug("[DISKSPACE] CheckDiskSpace entry",
+			"archive_path", archivePath,
+			"caller_multiplier", multiplier,
+			"effective_work_dir", checkDir,
+			"config_disk_space_multiplier", s.cfg.DiskSpaceMultiplier,
+			"skip_disk_check", s.cfg.SkipDiskCheck,
+			"skip_preflight", s.cfg.SkipPreflightChecks)
+	}
 	return s.CheckDiskSpaceAt(archivePath, checkDir, multiplier)
 }
 
 // CheckDiskSpaceAt verifies sufficient disk space at a specific directory
 func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplier float64) error {
+	if s.log != nil {
+		s.log.Debug("[DISKSPACE] CheckDiskSpaceAt entry",
+			"archive_path", archivePath,
+			"check_dir", checkDir,
+			"caller_multiplier", multiplier)
+	}
+
 	// Get archive size
 	stat, err := os.Stat(archivePath)
 	if err != nil {
 		return fmt.Errorf("cannot stat archive: %w", err)
 	}
 
+	if s.log != nil {
+		s.log.Debug("[DISKSPACE] Archive stat",
+			"archive_path", archivePath,
+			"archive_size_bytes", stat.Size(),
+			"archive_size_human", FormatBytes(stat.Size()))
+	}
+
 	// Load cluster metadata for accurate compression ratio
-	clusterMeta, _ := metadata.LoadCluster(archivePath)
+	var clusterMeta *metadata.ClusterMetadata
+	var metaErr error
+	if s.log != nil {
+		clusterMeta, metaErr = metadata.LoadClusterDebug(archivePath, s.log.Debug)
+	} else {
+		clusterMeta, metaErr = metadata.LoadCluster(archivePath)
+	}
+	if s.log != nil {
+		if metaErr != nil {
+			s.log.Debug("[DISKSPACE] No cluster metadata found (will use format detection)",
+				"meta_path", archivePath+".meta.json",
+				"error", metaErr.Error())
+		} else {
+			s.log.Debug("[DISKSPACE] Cluster metadata loaded successfully",
+				"meta_path", archivePath+".meta.json",
+				"total_size_bytes", clusterMeta.TotalSize,
+				"total_size_human", FormatBytes(clusterMeta.TotalSize),
+				"database_count", len(clusterMeta.Databases),
+				"cluster_name", clusterMeta.ClusterName)
+		}
+	}
 
 	// Use DiskSpaceChecker for accurate, metadata-aware check
 	checker := &DiskSpaceChecker{

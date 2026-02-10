@@ -53,6 +53,34 @@ func (c *DiskSpaceChecker) Check() (*DiskSpaceResult, error) {
 		extractPath = os.TempDir()
 	}
 
+	if c.Log != nil {
+		c.Log.Debug("[DISKSPACE] === Disk Space Check BEGIN ===")
+		c.Log.Debug("[DISKSPACE] Input parameters",
+			"extract_path", extractPath,
+			"archive_path", c.ArchivePath,
+			"archive_size_bytes", c.ArchiveSize,
+			"archive_size_human", FormatBytes(c.ArchiveSize),
+			"has_metadata", c.Metadata != nil,
+			"multiplier_override", c.MultiplierOverride)
+		if c.Metadata != nil {
+			c.Log.Debug("[DISKSPACE] Metadata details",
+				"total_size_bytes", c.Metadata.TotalSize,
+				"total_size_human", FormatBytes(c.Metadata.TotalSize),
+				"cluster_name", c.Metadata.ClusterName,
+				"database_type", c.Metadata.DatabaseType,
+				"database_count", len(c.Metadata.Databases))
+			// Log per-database sizes for full transparency
+			for i, db := range c.Metadata.Databases {
+				c.Log.Debug("[DISKSPACE] Database in cluster",
+					"index", i,
+					"database", db.Database,
+					"size_bytes", db.SizeBytes,
+					"size_human", FormatBytes(db.SizeBytes),
+					"compression", db.Compression)
+			}
+		}
+	}
+
 	// Ensure path exists for stat
 	if err := os.MkdirAll(extractPath, 0755); err != nil {
 		return nil, fmt.Errorf("create extract path %s: %w", extractPath, err)
@@ -75,6 +103,25 @@ func (c *DiskSpaceChecker) Check() (*DiskSpaceResult, error) {
 	usedPct := 0.0
 	if totalBytes > 0 {
 		usedPct = float64(usedBytes) / float64(totalBytes) * 100
+	}
+
+	// Log raw syscall results for debugging marginal cases
+	if c.Log != nil {
+		reservedBytes := freeBytes - availableBytes
+		c.Log.Debug("[DISKSPACE] Filesystem raw stats",
+			"path", extractPath,
+			"filesystem", detectFilesystemType(int64(stat.Type)),
+			"block_size", stat.Bsize,
+			"total_blocks", stat.Blocks,
+			"free_blocks_total", stat.Bfree,
+			"free_blocks_unprivileged", stat.Bavail,
+			"reserved_blocks", stat.Bfree-stat.Bavail,
+			"total_bytes", totalBytes,
+			"free_bytes", freeBytes,
+			"available_bytes", availableBytes,
+			"reserved_bytes", reservedBytes,
+			"used_bytes", usedBytes,
+			"used_pct", fmt.Sprintf("%.2f%%", usedPct))
 	}
 
 	info := DiskSpaceInfo{
@@ -101,7 +148,7 @@ func (c *DiskSpaceChecker) Check() (*DiskSpaceResult, error) {
 		Warning:          availableBytes >= requiredBytes && availableBytes < requiredBytes*2,
 	}
 
-	// Log diagnostic info
+	// Log comprehensive diagnostic summary
 	if c.Log != nil {
 		c.Log.Info("Disk space check",
 			"path", extractPath,
@@ -113,6 +160,38 @@ func (c *DiskSpaceChecker) Check() (*DiskSpaceResult, error) {
 			"multiplier", fmt.Sprintf("%.1fx", multiplier),
 			"source", source,
 			"sufficient", result.Sufficient)
+
+		// Log the critical margin analysis for marginal cases
+		if result.Sufficient {
+			headroom := availableBytes - requiredBytes
+			c.Log.Debug("[DISKSPACE] Headroom analysis",
+				"headroom_bytes", headroom,
+				"headroom_human", FormatBytes(headroom),
+				"headroom_pct", fmt.Sprintf("%.1f%%", float64(headroom)/float64(requiredBytes)*100))
+		} else {
+			shortfall := requiredBytes - availableBytes
+			// Calculate what multiplier WOULD pass
+			safeMultiplier := float64(availableBytes) / float64(c.ArchiveSize)
+			c.Log.Warn("[DISKSPACE] INSUFFICIENT SPACE — Shortfall analysis",
+				"shortfall_bytes", shortfall,
+				"shortfall_human", FormatBytes(shortfall),
+				"shortfall_pct", fmt.Sprintf("%.1f%%", float64(shortfall)/float64(requiredBytes)*100),
+				"current_multiplier", fmt.Sprintf("%.2fx", multiplier),
+				"max_safe_multiplier", fmt.Sprintf("%.2fx", safeMultiplier),
+				"suggested_override", fmt.Sprintf("%.1f", safeMultiplier*0.95),
+				"archive_size", FormatBytes(c.ArchiveSize),
+				"available", FormatBytes(availableBytes),
+				"required", FormatBytes(requiredBytes))
+			if source == "metadata" {
+				c.Log.Warn("[DISKSPACE] The 1.2× safety buffer on metadata ratio caused this shortfall. "+
+					"If you are confident no extra temp space is needed, override with --disk-space-multiplier",
+					"raw_ratio", fmt.Sprintf("%.4f", float64(c.Metadata.TotalSize)/float64(c.ArchiveSize)),
+					"buffered_multiplier", fmt.Sprintf("%.4f", multiplier),
+					"override_suggestion", fmt.Sprintf("%.1f", safeMultiplier*0.95))
+			}
+		}
+
+		c.Log.Debug("[DISKSPACE] === Disk Space Check END ===")
 	}
 
 	return result, nil
@@ -120,8 +199,21 @@ func (c *DiskSpaceChecker) Check() (*DiskSpaceResult, error) {
 
 // determineMultiplier calculates space multiplier from metadata, format, or config
 func (c *DiskSpaceChecker) determineMultiplier() (float64, string) {
+	if c.Log != nil {
+		c.Log.Debug("[DISKSPACE] determineMultiplier() — evaluating priority chain",
+			"has_config_override", c.MultiplierOverride > 0,
+			"config_override_value", c.MultiplierOverride,
+			"has_metadata", c.Metadata != nil,
+			"archive_size", c.ArchiveSize)
+	}
+
 	// Priority 1: Config override
 	if c.MultiplierOverride > 0 {
+		if c.Log != nil {
+			c.Log.Info("[DISKSPACE] Using CONFIG OVERRIDE multiplier (Priority 1)",
+				"multiplier", fmt.Sprintf("%.2f", c.MultiplierOverride),
+				"source", "config/cli --disk-space-multiplier")
+		}
 		return c.MultiplierOverride, "config"
 	}
 
@@ -130,21 +222,50 @@ func (c *DiskSpaceChecker) determineMultiplier() (float64, string) {
 		ratio := float64(c.Metadata.TotalSize) / float64(c.ArchiveSize)
 		// Add 20% safety buffer for temp files during extraction
 		multiplier := ratio * 1.2
+		rawMultiplier := multiplier
+
 		// Clamp to reasonable range
+		clamped := ""
 		if multiplier < 1.1 {
 			multiplier = 1.1
+			clamped = "clamped-min"
 		}
 		if multiplier > 20.0 {
 			multiplier = 20.0
+			clamped = "clamped-max"
 		}
 		if c.Log != nil {
-			c.Log.Debug("Using compression ratio from metadata",
-				"compressed", c.ArchiveSize,
-				"uncompressed", c.Metadata.TotalSize,
-				"ratio", fmt.Sprintf("%.2f", ratio),
-				"multiplier", fmt.Sprintf("%.1f", multiplier))
+			c.Log.Info("[DISKSPACE] Using METADATA multiplier (Priority 2)",
+				"metadata_total_size", c.Metadata.TotalSize,
+				"metadata_total_size_human", FormatBytes(c.Metadata.TotalSize),
+				"archive_size", c.ArchiveSize,
+				"archive_size_human", FormatBytes(c.ArchiveSize),
+				"raw_ratio", fmt.Sprintf("%.4f", ratio),
+				"safety_buffer", "1.2x (20%% added for temp files during extraction)",
+				"raw_multiplier_before_clamp", fmt.Sprintf("%.4f", rawMultiplier),
+				"final_multiplier", fmt.Sprintf("%.4f", multiplier),
+				"clamped", clamped,
+				"required_estimate", FormatBytes(int64(float64(c.ArchiveSize)*multiplier)))
+			// Highlight the buffer's contribution explicitly
+			withoutBuffer := int64(float64(c.ArchiveSize) * ratio)
+			withBuffer := int64(float64(c.ArchiveSize) * multiplier)
+			bufferCost := withBuffer - withoutBuffer
+			c.Log.Debug("[DISKSPACE] Safety buffer cost analysis",
+				"required_without_buffer", FormatBytes(withoutBuffer),
+				"required_with_buffer", FormatBytes(withBuffer),
+				"buffer_cost", FormatBytes(bufferCost),
+				"buffer_cost_bytes", bufferCost)
 		}
 		return multiplier, "metadata"
+	}
+
+	if c.Log != nil {
+		if c.Metadata == nil {
+			c.Log.Debug("[DISKSPACE] No metadata available, falling back to format detection (Priority 3)")
+		} else {
+			c.Log.Debug("[DISKSPACE] Metadata unusable for ratio (TotalSize=%d, ArchiveSize=%d), falling back to format detection (Priority 3)",
+				c.Metadata.TotalSize, c.ArchiveSize)
+		}
 	}
 
 	// Priority 3: Format detection
@@ -166,9 +287,10 @@ func (c *DiskSpaceChecker) determineMultiplier() (float64, string) {
 	}
 
 	if c.Log != nil {
-		c.Log.Debug("Using format-based multiplier",
+		c.Log.Info("[DISKSPACE] Using FORMAT-BASED multiplier (Priority 3)",
 			"format", format,
-			"multiplier", fmt.Sprintf("%.1f", multiplier))
+			"multiplier", fmt.Sprintf("%.1f", multiplier),
+			"required_estimate", FormatBytes(int64(float64(c.ArchiveSize)*multiplier)))
 	}
 	return multiplier, "format-" + format
 }

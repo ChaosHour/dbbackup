@@ -238,13 +238,19 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 	diskSpaceCheck:
 		check = SafetyCheck{Name: "Disk space", Status: "checking", Critical: true}
 		// Multiplier 0 = auto-detect from metadata or format
+		log.Debug("[DISKSPACE-TUI] Running disk space check from restore preview",
+			"archive_path", archive.Path,
+			"caller_multiplier", 0)
 		if err := safety.CheckDiskSpace(archive.Path, 0); err != nil {
 			check.Status = "warning"
 			check.Message = err.Error()
+			log.Warn("[DISKSPACE-TUI] Disk space check returned warning",
+				"error", err.Error())
 			// Not critical - just warning
 		} else {
 			check.Status = "passed"
 			check.Message = "Sufficient space available"
+			log.Debug("[DISKSPACE-TUI] Disk space check passed")
 		}
 		checks = append(checks, check)
 

@@ -355,6 +355,9 @@ func New() *Config {
 		CloudPrefix:     getEnvString("CLOUD_PREFIX", ""),
 		CloudAutoUpload: getEnvBool("CLOUD_AUTO_UPLOAD", false),
 
+		// Adaptive job sizing (v6.14.0+: engine-aware V2)
+		AdaptiveJobs: getEnvBool("ADAPTIVE_JOBS", true),
+
 		// Native engine defaults (pure Go, no external tools required)
 		UseNativeEngine: getEnvBool("USE_NATIVE_ENGINE", true),
 		FallbackToTools: getEnvBool("FALLBACK_TO_TOOLS", true),

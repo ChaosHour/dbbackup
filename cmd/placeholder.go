@@ -100,6 +100,17 @@ TUI Automation Flags (for testing and CI/CD):
 			interactiveLog = logger.NewSilent()
 		}
 
+		log.Info("[TUI-INIT] Starting interactive mode",
+			"user", cfg.User,
+			"host", cfg.Host,
+			"port", cfg.Port,
+			"password_set", cfg.Password != "",
+			"profile", cfg.ResourceProfile,
+			"tui_debug", cfg.TUIDebug,
+			"verbose_tui", cfg.TUIVerbose,
+			"os_user", os.Getenv("USER"),
+		)
+
 		// Start the interactive TUI
 		return tui.RunInteractiveMenu(cfg, interactiveLog)
 	},

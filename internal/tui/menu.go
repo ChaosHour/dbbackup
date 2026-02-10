@@ -90,6 +90,16 @@ type MenuModel struct {
 }
 
 func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
+	log.Info("[TUI-MENU] Creating menu model",
+		"config_ptr", fmt.Sprintf("%p", cfg),
+		"user", cfg.User,
+		"host", cfg.Host,
+		"port", cfg.Port,
+		"database", cfg.Database,
+		"password_set", cfg.Password != "",
+		"os_user", os.Getenv("USER"),
+	)
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	dbTypes := []dbTypeOption{
@@ -160,19 +170,36 @@ func (m *MenuModel) checkConnectionHealth() tea.Cmd {
 	cfg := m.config
 	log := m.logger
 	return func() tea.Msg {
+		log.Info("[TUI-MENU] Health check starting",
+			"config_ptr", fmt.Sprintf("%p", cfg),
+			"user", cfg.User,
+			"host", cfg.Host,
+			"port", cfg.Port,
+			"password_set", cfg.Password != "",
+			"os_user", os.Getenv("USER"),
+		)
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		dbClient, err := database.New(cfg, log)
 		if err != nil {
+			log.Error("[TUI-MENU] database.New() failed", "error", err)
 			return connectionHealthMsg{err: err, timestamp: time.Now()}
 		}
 		defer dbClient.Close()
 
 		if err := dbClient.Connect(ctx); err != nil {
+			log.Error("[TUI-MENU] Connect() failed",
+				"error", err.Error(),
+				"user", cfg.User,
+				"host", cfg.Host,
+				"port", cfg.Port,
+			)
 			return connectionHealthMsg{err: err, timestamp: time.Now()}
 		}
 
+		log.Info("[TUI-MENU] Health check SUCCESS")
 		return connectionHealthMsg{err: nil, timestamp: time.Now()}
 	}
 }

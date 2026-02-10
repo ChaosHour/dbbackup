@@ -102,6 +102,21 @@ type RestoreExecutionModel struct {
 
 // NewRestoreExecution creates a new restore execution model
 func NewRestoreExecution(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, targetDB string, cleanFirst, createIfMissing bool, restoreType string, cleanClusterFirst bool, existingDBs []string, saveDebugLog bool, workDir string) RestoreExecutionModel {
+	log.Info("[TUI-EXEC] Creating restore execution",
+		"config_ptr", fmt.Sprintf("%p", cfg),
+		"user", cfg.User,
+		"host", cfg.Host,
+		"port", cfg.Port,
+		"password_set", cfg.Password != "",
+		"workdir", cfg.WorkDir,
+		"effective_workdir", cfg.GetEffectiveWorkDir(),
+		"restore_type", restoreType,
+		"adaptive", cfg.AdaptiveJobs,
+		"profile", cfg.ResourceProfile,
+		"native_engine", cfg.UseNativeEngine,
+		"os_user", os.Getenv("USER"),
+	)
+
 	// CRITICAL: Propagate the TUI-resolved workDir into cfg so the engine's
 	// GetEffectiveWorkDir() returns the correct path. Without this, the engine
 	// would resolve its own workDir independently and may hit tmpfs /tmp (16 GB)
@@ -458,6 +473,18 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 		// STEP 2: Create restore engine with silent progress (no stdout interference with TUI)
 		tuiLog("STEP 2: Creating restore engine (native=%v)", cfg.UseNativeEngine)
+		tuiLog("[TUI-EXEC] Config at engine creation: user=%s host=%s port=%d password_set=%v workdir=%s effective_workdir=%s adaptive=%v profile=%s",
+			cfg.User, cfg.Host, cfg.Port, cfg.Password != "", cfg.WorkDir, cfg.GetEffectiveWorkDir(), cfg.AdaptiveJobs, cfg.ResourceProfile)
+		log.Info("[TUI-EXEC] Creating restore engine",
+			"config_ptr", fmt.Sprintf("%p", cfg),
+			"user", cfg.User,
+			"host", cfg.Host,
+			"port", cfg.Port,
+			"password_set", cfg.Password != "",
+			"workdir", cfg.WorkDir,
+			"effective_workdir", cfg.GetEffectiveWorkDir(),
+			"native_engine", cfg.UseNativeEngine,
+		)
 		engine := restore.NewSilent(cfg, log, dbClient)
 
 		// Set up progress callback for detailed progress reporting

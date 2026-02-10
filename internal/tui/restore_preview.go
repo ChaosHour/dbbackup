@@ -58,6 +58,18 @@ type RestorePreviewModel struct {
 
 // NewRestorePreview creates a new restore preview
 func NewRestorePreview(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context, archive ArchiveInfo, mode string) RestorePreviewModel {
+	log.Info("[TUI-PREVIEW] Creating restore preview",
+		"config_ptr", fmt.Sprintf("%p", cfg),
+		"user", cfg.User,
+		"host", cfg.Host,
+		"port", cfg.Port,
+		"password_set", cfg.Password != "",
+		"workdir", cfg.WorkDir,
+		"effective_workdir", cfg.GetEffectiveWorkDir(),
+		"archive", archive.Path,
+		"mode", mode,
+	)
+
 	// Default target database name from archive
 	targetDB := archive.DatabaseName
 	if targetDB == "" {

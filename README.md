@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.0.0-green.svg)](https://git.uuxo.net/UUXO/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.1.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -58,6 +58,19 @@ chmod +x dbbackup-linux-amd64
 ```
 
 **That's it!** Backups are stored in `./backups/` by default. See [QUICK.md](QUICK.md) for more real-world examples.
+
+## 🛡️ Production-Hardened (NEW in v6.1.0)
+
+The interactive TUI now includes **bulletproof reliability features**:
+
+- ✅ **Connection health check** — Know immediately if your DB is reachable
+- ✅ **Pre-restore validation** — Catch issues BEFORE extraction (corrupted archives, disk space, privileges)
+- ✅ **Safe abort** — Ctrl+C properly cleans up processes and temp files
+- ✅ **Destructive warnings** — Type-to-confirm prevents accidental data loss
+
+**Try it:** `./dbbackup interactive` — safer, smarter, faster.
+
+See [docs/tui-features.md](docs/tui-features.md) for full details.
 
 ## Features
 
@@ -213,6 +226,8 @@ go build
 
 ### Interactive Mode
 
+**Recommended for first-time users and production safety.**
+
 ```bash
 # PostgreSQL with peer authentication
 sudo -u postgres dbbackup interactive
@@ -222,12 +237,26 @@ export MYSQL_PWD='secret'
 dbbackup interactive --db-type mysql --user root
 ```
 
+**What's new in v6.1.0:**
+- **Real-time connection status** in menu header ([OK] / [FAIL])
+- **Pre-restore validation screen** catches issues early (7 automated checks)
+- **Safe abort** with Ctrl+C (no orphaned processes or temp files)
+- **Type-to-confirm warnings** for destructive operations (database overwrites)
+
+The TUI automatically:
+- Tests database connectivity on startup (5s timeout)
+- Validates backup archives before restore
+- Checks disk space, privileges, and PostgreSQL lock capacity
+- Prevents common mistakes (overwriting production DBs)
+
+**For automation/CI:** Use `--auto-select`, `--auto-database`, `--auto-confirm` flags.
+
 **Main Menu:**
 ```
 Database Backup Tool - Interactive Menu
 
 Target Engine: PostgreSQL  |  MySQL  |  MariaDB
-Database: postgres@localhost:5432 (PostgreSQL)
+Database: postgres@localhost:5432 (PostgreSQL)  [OK] Connected
 
 > Single Database Backup
   Sample Database Backup (with ratio)
@@ -1177,6 +1206,27 @@ dbbackup is tested daily on dedicated infrastructure:
 - Every release is deployed via Ansible and validated across the fleet before tagging
 - Prometheus monitoring with RPO/failure alerts on all nodes
 - CI pipeline with race detection on every commit
+
+## Troubleshooting
+
+### TUI Connection Issues
+
+If the TUI shows `[FAIL] Disconnected`:
+
+1. **Check PostgreSQL is running:** `psql -U postgres -c "SELECT 1"`
+2. **Verify connection settings:** `./dbbackup status`
+3. **Test with CLI mode:** `./dbbackup backup single testdb` (bypasses TUI)
+
+Connection health checks timeout after 5 seconds.
+
+### Pre-Restore Failures
+
+The pre-restore validation screen will block restore if:
+- **Archive integrity fails** → Archive may be corrupted, try re-downloading
+- **Insufficient disk space** → Free up space or use `--work-dir`
+- **Missing privileges** → User needs CREATEDB: `ALTER USER youruser CREATEDB;`
+
+See [docs/testing/phase1-manual-tests.md](docs/testing/phase1-manual-tests.md) for detailed troubleshooting.
 
 ## Requirements
 

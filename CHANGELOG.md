@@ -5,6 +5,67 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.0] - 2026-02-10
+
+### Added - Production-Hardened TUI
+
+**Phase 1 Bulletproofing:** Four critical reliability features for the interactive TUI:
+
+- **Connection Health Indicator**: Real-time database connection status in menu header
+  - 5-second timeout detection
+  - Visual indicators: [OK] Connected | [FAIL] Disconnected | [WAIT] Checking
+  - Auto-retry every 30 seconds on connection failure
+  - Prevents wasting time on operations that will fail due to connectivity
+
+- **Pre-Restore Validation Screen**: Comprehensive preflight checks before restore begins
+  - 7 automated checks: archive exists, integrity (gzip test), disk space, required tools, target DB status, user privileges (CREATEDB/superuser), max_locks_per_transaction capacity
+  - Sequential execution with live progress (○ pending → ⟳ running → ✓ pass / ✗ fail / ⚠ warn)
+  - Catches issues BEFORE time-consuming extraction phase
+  - Smart disk space calculation using metadata-aware multipliers
+  - Validates PostgreSQL lock capacity to prevent mid-restore failures
+
+- **Two-Stage Abort with Full Cleanup**: Safe cancellation of long-running operations
+  - First Ctrl+C: Shows confirmation prompt "⚠ Abort operation? [Y/n]"
+  - Second Ctrl+C or Y: Executes full cleanup sequence
+  - Cleanup includes: context cancellation, killing child processes (pg_dump/pg_restore PIDs), removing temporary extraction directories, resetting boosted PostgreSQL settings
+  - LIFO cleanup stack ensures proper resource release order
+  - Prevents orphaned processes and disk space leaks
+
+- **Destructive Operation Warnings**: Type-to-confirm protection for data loss scenarios
+  - Triggered when restoring to existing database (will DROP existing data)
+  - Requires user to type exact database name to proceed
+  - Shows impact summary: existing DB will be dropped, archive source, estimated restore time
+  - ESC to cancel at any time
+  - Prevents accidental production data overwrites
+
+### Fixed
+
+- **TUI hanging indefinitely** on invalid database connection (now fails fast with 5s timeout)
+- **Restore discovering corrupted archives** AFTER extraction phase (now detected in preflight)
+- **Ctrl+C leaving temp files** and orphaned pg_restore processes (now full cleanup)
+- **Silent database overwrite** without user confirmation (now requires type-to-confirm)
+- **Confusing error messages** when restore fails mid-operation (now caught early with actionable guidance)
+
+### Performance
+
+- **Turbo profile retuned**: Sequential restore (ClusterParallelism=1) with high per-DB parallelism (Jobs=16) matches native pg_restore -j16 speed
+- **Max-throughput profile added**: Sequential restore with Jobs=32 (auto-tuned to 75% of CPU cores), optimized for clusters with large databases (>50GB)
+
+### Documentation
+
+- Added `docs/testing/phase1-manual-tests.md`: Comprehensive manual testing guide
+- Added `tests/tui_phase1_test.sh`: 13 automated tests for CI/CD integration (652 LOC)
+- Added `docs/github-issue-phase1-validation.md`: Test results report template
+- Added `docs/tui-features.md`: Complete TUI feature reference
+
+### Internal
+
+- New TUI screens: `internal/tui/preflight.go` (533 LOC), `internal/tui/destructive_warning.go` (141 LOC)
+- Enhanced abort handling in `backup_exec.go` (+88 LOC) and `restore_exec.go` (+143 LOC)
+- Connection health check in `menu.go` (+87 LOC)
+
+**Total Phase 1:** +998 LOC production code, +1239 LOC tests/docs
+
 ## [6.0.7] - 2026-02-09
 
 ### Improved

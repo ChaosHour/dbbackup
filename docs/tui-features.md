@@ -1,0 +1,261 @@
+# TUI Features Reference
+
+> Production-hardened interactive terminal UI for dbbackup v6.1.0+
+
+## Overview
+
+The `dbbackup interactive` command launches a full-screen terminal UI built with [Bubbletea](https://github.com/charmbracelet/bubbletea). Starting with v6.1.0, the TUI includes four bulletproofing features that prevent common production mistakes.
+
+## Connection Health Indicator
+
+**What:** Real-time database connection status displayed in the menu header.
+
+**Why:** Prevents users from spending time configuring a backup/restore operation only to discover the database is unreachable.
+
+### Behavior
+
+| Indicator | Meaning |
+|-----------|---------|
+| `[OK] Connected` | Database is reachable, queries succeed |
+| `[FAIL] Disconnected` | Connection failed (timeout, auth error, host down) |
+| `[WAIT] Checking...` | Health check in progress |
+
+- **Timeout:** 5 seconds per check
+- **Auto-retry:** Every 30 seconds after failure
+- **Check method:** `SELECT 1` query via the configured connection
+
+### CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `--host` | Database host (default: localhost) |
+| `--port` | Database port (default: 5432/3306) |
+| `--user` | Database user |
+| `--db-type` | Engine type: `postgres`, `mysql`, `mariadb` |
+
+### Troubleshooting
+
+If you see `[FAIL] Disconnected`:
+
+1. Verify the database is running: `psql -U postgres -c "SELECT 1"`
+2. Check connection parameters: `./dbbackup status`
+3. For Unix socket auth: use `--host /var/run/postgresql` instead of `--host localhost`
+4. Test CLI mode to bypass the TUI: `./dbbackup backup single testdb`
+
+---
+
+## Pre-Restore Validation Screen
+
+**What:** A sequential preflight check screen that runs before any restore operation begins.
+
+**Why:** Catches problems (corrupted archives, insufficient disk space, missing privileges) BEFORE the time-consuming extraction phase — not halfway through a 2-hour restore.
+
+### Checks Performed
+
+| # | Check | What It Does | Failure Impact |
+|---|-------|-------------|----------------|
+| 1 | Archive exists | Verifies the backup file/directory exists | Blocks restore |
+| 2 | Archive integrity | Runs `gzip -t` / format-specific validation | Blocks restore |
+| 3 | Disk space | Calculates required space using metadata-aware multiplier | Blocks restore |
+| 4 | Required tools | Checks for `pg_restore`/`mysql` (if using external engine) | Blocks restore |
+| 5 | Target DB status | Checks if target database already exists | Warning only |
+| 6 | User privileges | Verifies CREATEDB / superuser privileges | Blocks restore |
+| 7 | Lock capacity | Checks `max_locks_per_transaction` vs table count | Warning only |
+
+### Progress Display
+
+```
+Pre-Restore Validation
+
+✓ Archive exists                          /backups/prod_2026-02-10.sql.gz
+✓ Archive integrity verified              gzip OK (98.7 GB)
+✓ Disk space sufficient                   Need 148 GB, have 312 GB (2.1× ratio)
+✓ Required tools available                pg_restore 16.2
+⚠ Target database exists                  'production' will be DROPPED
+✓ User has required privileges            postgres (superuser)
+✓ Lock capacity adequate                  max_locks = 64, tables = 42
+
+6 passed, 1 warning, 0 failed
+
+[Enter] Continue  |  [Esc] Cancel
+```
+
+### Disk Space Calculation
+
+The multiplier is determined in priority order:
+
+1. **Metadata** — reads `.meta.json` sidecar for actual `total_size_bytes`, calculates exact ratio
+2. **Format detection** — identifies compression via magic bytes (`.tar.gz` → 3×, `.custom` → 2×, `.sql.gz` → 4×)
+3. **Config override** — `--disk-space-multiplier` CLI flag
+4. **Safe fallback** — 3× when nothing else is available
+
+---
+
+## Two-Stage Abort with Full Cleanup
+
+**What:** A safe cancellation mechanism for long-running backup and restore operations.
+
+**Why:** A raw `kill -9` leaves behind orphaned `pg_dump`/`pg_restore` processes, temporary extraction directories consuming disk space, and potentially boosted PostgreSQL settings (e.g., `maintenance_work_mem`) that never get reset.
+
+### Behavior
+
+```
+Stage 1 — First Ctrl+C:
+┌─────────────────────────────────────────┐
+│  ⚠ Abort operation?                     │
+│                                         │
+│  Backup in progress: production (34%)   │
+│                                         │
+│  [Y] Abort and clean up                 │
+│  [N] Continue operation                 │
+│  [Ctrl+C] Force abort                   │
+└─────────────────────────────────────────┘
+
+Stage 2 — Y or second Ctrl+C:
+  Cancelling context...
+  Terminating pg_dump (PID 12345)...
+  Removing /tmp/.dbbackup_extract_a1b2c3/...
+  Resetting maintenance_work_mem...
+  Cleanup complete.
+```
+
+### Cleanup Actions (LIFO order)
+
+1. Cancel Go context (stops in-progress queries)
+2. Kill child processes (`pg_dump`, `pg_restore`, `pg_basebackup` PIDs)
+3. Remove temporary extraction directories (`/tmp/.dbbackup_extract_*`, `/tmp/.restore_*`)
+4. Reset boosted PostgreSQL settings (if turbo/balanced mode changed them)
+5. Release advisory locks (if held)
+
+### Important Notes
+
+- The cleanup stack uses LIFO (Last-In-First-Out) order to ensure proper resource release
+- A third Ctrl+C will force-kill the process immediately (no cleanup)
+- `--auto-confirm` mode skips the confirmation prompt — first Ctrl+C triggers cleanup directly
+
+---
+
+## Destructive Operation Warnings
+
+**What:** A type-to-confirm prompt that appears when a restore operation would overwrite an existing database.
+
+**Why:** Prevents accidental production data loss. A simple "Are you sure? [Y/n]" is too easy to confirm by muscle memory. Typing the database name forces conscious acknowledgment.
+
+### Trigger Conditions
+
+The warning appears when ALL of these are true:
+1. Operation is a restore (single or cluster)
+2. Target database already exists
+3. `--auto-confirm` is NOT set
+
+### Display
+
+```
+┌─────────────────────────────────────────────────┐
+│  ⚠  DESTRUCTIVE OPERATION                       │
+│                                                  │
+│  Database 'production' already exists.           │
+│  Restoring will DROP the existing database       │
+│  and all its data.                               │
+│                                                  │
+│  Source: /backups/prod_2026-02-10.sql.gz         │
+│  Size:   98.7 GB (estimated restore: ~45 min)   │
+│                                                  │
+│  Type 'production' to confirm:                   │
+│  > produc█                                       │
+│                                                  │
+│  [Esc] Cancel                                    │
+└─────────────────────────────────────────────────┘
+```
+
+### Behavior
+
+- User must type the **exact** database name (case-sensitive)
+- Partial matches are not accepted
+- `Esc` cancels at any time and returns to the menu
+- `--auto-confirm` bypasses this prompt entirely (for CI/CD use)
+
+---
+
+## CLI Automation Flags
+
+For CI/CD pipelines and scripted use, these flags bypass interactive prompts:
+
+| Flag | Description |
+|------|-------------|
+| `--auto-select N` | Auto-select menu item N (1-based) |
+| `--auto-database DB` | Auto-select database by name |
+| `--auto-confirm` | Skip all confirmation prompts (including destructive warnings) |
+| `--no-save-config` | Don't persist configuration changes |
+| `--tui-debug` | Enable TUI debug logging |
+
+### Example: Automated Backup
+
+```bash
+# Backup 'production' DB without any prompts
+./dbbackup interactive \
+    --auto-select 1 \
+    --auto-database production \
+    --auto-confirm \
+    --no-save-config
+```
+
+### Example: Automated Restore
+
+```bash
+# Restore from archive, skip destructive warning
+./dbbackup interactive \
+    --auto-select 5 \
+    --auto-confirm \
+    --backup-dir /backups \
+    --no-save-config
+```
+
+---
+
+## Testing
+
+### Automated Tests
+
+```bash
+# Run the Phase 1 test suite (15 tests)
+DBBACKUP=./dbbackup ./tests/tui_phase1_test.sh
+```
+
+### Manual Testing Guide
+
+See [testing/phase1-manual-tests.md](testing/phase1-manual-tests.md) for step-by-step manual test procedures.
+
+### Test Categories
+
+| Category | Tests | Coverage |
+|----------|-------|----------|
+| Build & Unit | 2 | Compilation, 23 Go unit tests |
+| Connection Health | 3 | Valid, timeout, auto-retry |
+| Preflight Checks | 5 | Missing/corrupted archive, disk, privileges, locks |
+| Destructive Warnings | 1 | Existing database detection |
+| Abort & Cleanup | 3 | Backup abort, restore cleanup, auto-confirm bypass |
+
+---
+
+## Architecture
+
+### File Layout
+
+| File | LOC | Purpose |
+|------|-----|---------|
+| `internal/tui/preflight.go` | 533 | Pre-restore validation screen |
+| `internal/tui/destructive_warning.go` | 141 | Type-to-confirm prompt |
+| `internal/tui/menu.go` | +87 | Connection health indicator |
+| `cmd/backup_exec.go` | +88 | Abort handling for backups |
+| `cmd/restore_exec.go` | +143 | Abort handling for restores |
+
+### Dependencies
+
+- [Bubbletea](https://github.com/charmbracelet/bubbletea) — Terminal UI framework
+- [Lipgloss](https://github.com/charmbracelet/lipgloss) — Terminal styling
+- [pgx](https://github.com/jackc/pgx) — PostgreSQL driver (for health checks)
+
+---
+
+*Last updated: 2026-02-10 — v6.1.0 release*

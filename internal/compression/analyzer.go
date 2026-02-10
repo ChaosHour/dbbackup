@@ -19,11 +19,11 @@ import (
 
 // FileSignature represents a known file type signature (magic bytes)
 type FileSignature struct {
-	Name        string   // e.g., "JPEG", "PNG", "GZIP"
-	Extensions  []string // e.g., [".jpg", ".jpeg"]
-	MagicBytes  []byte   // First bytes to match
-	Offset      int      // Offset where magic bytes start
-	Compressible bool    // Whether this format benefits from additional compression
+	Name         string   // e.g., "JPEG", "PNG", "GZIP"
+	Extensions   []string // e.g., [".jpg", ".jpeg"]
+	MagicBytes   []byte   // First bytes to match
+	Offset       int      // Offset where magic bytes start
+	Compressible bool     // Whether this format benefits from additional compression
 }
 
 // Known file signatures for blob content detection
@@ -63,11 +63,11 @@ var KnownSignatures = []FileSignature{
 type CompressionAdvice int
 
 const (
-	AdviceCompress      CompressionAdvice = iota // Data compresses well
-	AdviceSkip                                   // Data won't benefit from compression
-	AdvicePartial                                // Mixed content, some compresses
-	AdviceLowLevel                               // Use low compression level for speed
-	AdviceUnknown                                // Not enough data to determine
+	AdviceCompress CompressionAdvice = iota // Data compresses well
+	AdviceSkip                              // Data won't benefit from compression
+	AdvicePartial                           // Mixed content, some compresses
+	AdviceLowLevel                          // Use low compression level for speed
+	AdviceUnknown                           // Not enough data to determine
 )
 
 func (a CompressionAdvice) String() string {
@@ -87,53 +87,53 @@ func (a CompressionAdvice) String() string {
 
 // BlobAnalysis represents the analysis of a blob column
 type BlobAnalysis struct {
-	Schema            string
-	Table             string
-	Column            string
-	DataType          string
-	SampleCount       int64   // Number of blobs sampled
-	TotalSize         int64   // Total size of sampled data
-	CompressedSize    int64   // Size after compression
-	CompressionRatio  float64 // Ratio (original/compressed)
-	DetectedFormats   map[string]int64 // Count of each detected format
-	CompressibleBytes int64   // Bytes that would benefit from compression
-	IncompressibleBytes int64 // Bytes already compressed
-	Advice            CompressionAdvice
-	ScanError         string
-	ScanDuration      time.Duration
+	Schema              string
+	Table               string
+	Column              string
+	DataType            string
+	SampleCount         int64            // Number of blobs sampled
+	TotalSize           int64            // Total size of sampled data
+	CompressedSize      int64            // Size after compression
+	CompressionRatio    float64          // Ratio (original/compressed)
+	DetectedFormats     map[string]int64 // Count of each detected format
+	CompressibleBytes   int64            // Bytes that would benefit from compression
+	IncompressibleBytes int64            // Bytes already compressed
+	Advice              CompressionAdvice
+	ScanError           string
+	ScanDuration        time.Duration
 }
 
 // DatabaseAnalysis represents overall database compression analysis
 type DatabaseAnalysis struct {
-	Database            string
-	DatabaseType        string
-	TotalBlobColumns    int
-	TotalBlobDataSize   int64
-	SampledDataSize     int64
-	PotentialSavings    int64         // Estimated bytes saved if compression used
-	OverallRatio        float64       // Overall compression ratio
-	Advice              CompressionAdvice
-	RecommendedLevel    int           // Recommended compression level (0-9)
-	Columns             []BlobAnalysis
-	ScanDuration        time.Duration
-	IncompressiblePct   float64       // Percentage of data that won't compress
-	LargestBlobTable    string        // Table with most blob data
-	LargestBlobSize     int64
-	
+	Database          string
+	DatabaseType      string
+	TotalBlobColumns  int
+	TotalBlobDataSize int64
+	SampledDataSize   int64
+	PotentialSavings  int64   // Estimated bytes saved if compression used
+	OverallRatio      float64 // Overall compression ratio
+	Advice            CompressionAdvice
+	RecommendedLevel  int // Recommended compression level (0-9)
+	Columns           []BlobAnalysis
+	ScanDuration      time.Duration
+	IncompressiblePct float64 // Percentage of data that won't compress
+	LargestBlobTable  string  // Table with most blob data
+	LargestBlobSize   int64
+
 	// Large Object (PostgreSQL) analysis
 	HasLargeObjects     bool
 	LargeObjectCount    int64
 	LargeObjectSize     int64
 	LargeObjectAnalysis *BlobAnalysis // Analysis of pg_largeobject data
-	
+
 	// Time estimates
-	EstimatedBackupTime    TimeEstimate // With recommended compression
-	EstimatedBackupTimeMax TimeEstimate // With max compression (level 9)
+	EstimatedBackupTime     TimeEstimate // With recommended compression
+	EstimatedBackupTimeMax  TimeEstimate // With max compression (level 9)
 	EstimatedBackupTimeNone TimeEstimate // Without compression
-	
+
 	// Filesystem compression detection
 	FilesystemCompression *FilesystemCompression // Detected filesystem compression (ZFS/Btrfs)
-	
+
 	// Cache info
 	CachedAt     time.Time // When this analysis was cached (zero if not cached)
 	CacheExpires time.Time // When cache expires
@@ -141,9 +141,9 @@ type DatabaseAnalysis struct {
 
 // TimeEstimate represents backup time estimation
 type TimeEstimate struct {
-	Duration     time.Duration
-	CPUSeconds   float64 // Estimated CPU seconds for compression
-	Description  string
+	Duration    time.Duration
+	CPUSeconds  float64 // Estimated CPU seconds for compression
+	Description string
 }
 
 // Analyzer performs compression analysis on database blobs
@@ -200,12 +200,12 @@ func (a *Analyzer) Analyze(ctx context.Context) (*DatabaseAnalysis, error) {
 	}
 
 	startTime := time.Now()
-	
+
 	analysis := &DatabaseAnalysis{
 		Database:     a.config.Database,
 		DatabaseType: a.config.DatabaseType,
 	}
-	
+
 	// Detect filesystem-level compression (ZFS/Btrfs)
 	if a.config.BackupDir != "" {
 		analysis.FilesystemCompression = DetectFilesystemCompression(a.config.BackupDir)
@@ -234,7 +234,7 @@ func (a *Analyzer) Analyze(ctx context.Context) (*DatabaseAnalysis, error) {
 	}
 
 	analysis.TotalBlobColumns = len(columns)
-	
+
 	// Scan PostgreSQL Large Objects if applicable
 	if a.config.IsPostgreSQL() {
 		a.scanLargeObjects(ctx, analysis)
@@ -258,7 +258,7 @@ func (a *Analyzer) Analyze(ctx context.Context) (*DatabaseAnalysis, error) {
 	for _, col := range columns {
 		colAnalysis := a.analyzeColumn(ctx, col)
 		analysis.Columns = append(analysis.Columns, colAnalysis)
-		
+
 		totalOriginal += colAnalysis.TotalSize
 		totalCompressed += colAnalysis.CompressedSize
 		incompressibleBytes += colAnalysis.IncompressibleBytes
@@ -274,7 +274,7 @@ func (a *Analyzer) Analyze(ctx context.Context) (*DatabaseAnalysis, error) {
 		totalOriginal += analysis.LargeObjectAnalysis.TotalSize
 		totalCompressed += analysis.LargeObjectAnalysis.CompressedSize
 		incompressibleBytes += analysis.LargeObjectAnalysis.IncompressibleBytes
-		
+
 		if analysis.LargeObjectSize > largestSize {
 			largestSize = analysis.LargeObjectSize
 			largestTable = "pg_largeobject (Large Objects)"
@@ -290,7 +290,7 @@ func (a *Analyzer) Analyze(ctx context.Context) (*DatabaseAnalysis, error) {
 	if totalOriginal > 0 {
 		analysis.OverallRatio = float64(totalOriginal) / float64(totalCompressed)
 		analysis.IncompressiblePct = float64(incompressibleBytes) / float64(totalOriginal) * 100
-		
+
 		// Estimate potential savings for full database
 		if analysis.TotalBlobDataSize > 0 && analysis.SampledDataSize > 0 {
 			scaleFactor := float64(analysis.TotalBlobDataSize) / float64(analysis.SampledDataSize)
@@ -302,10 +302,10 @@ func (a *Analyzer) Analyze(ctx context.Context) (*DatabaseAnalysis, error) {
 	// Determine overall advice
 	analysis.Advice, analysis.RecommendedLevel = a.determineAdvice(analysis)
 	analysis.ScanDuration = time.Since(startTime)
-	
+
 	// Calculate time estimates
 	a.calculateTimeEstimates(analysis)
-	
+
 	// Cache result
 	a.cacheResult(analysis)
 
@@ -392,7 +392,7 @@ func (a *Analyzer) analyzeColumn(ctx context.Context, col BlobColumnInfo) BlobAn
 	// Build sample query
 	var query string
 	var fullName, colName string
-	
+
 	if a.config.IsPostgreSQL() {
 		fullName = fmt.Sprintf(`"%s"."%s"`, col.Schema, col.Table)
 		colName = fmt.Sprintf(`"%s"`, col.Column)
@@ -473,7 +473,7 @@ func (a *Analyzer) detectFormat(data []byte) FileSignature {
 		if len(data) < sig.Offset+len(sig.MagicBytes) {
 			continue
 		}
-		
+
 		match := true
 		for i, b := range sig.MagicBytes {
 			if data[sig.Offset+i] != b {
@@ -504,7 +504,7 @@ func looksLikeText(data []byte) bool {
 	if len(data) < 10 {
 		return false
 	}
-	
+
 	sample := data
 	if len(sample) > 1024 {
 		sample = data[:1024]
@@ -516,7 +516,7 @@ func looksLikeText(data []byte) bool {
 			textChars++
 		}
 	}
-	
+
 	return float64(textChars)/float64(len(sample)) > 0.85
 }
 
@@ -525,7 +525,7 @@ func looksLikeRandomData(data []byte) bool {
 	if len(data) < 256 {
 		return false
 	}
-	
+
 	sample := data
 	if len(sample) > 4096 {
 		sample = data[:4096]
@@ -558,14 +558,14 @@ func (a *Analyzer) testCompression(data []byte) int64 {
 	if err != nil {
 		return int64(len(data))
 	}
-	
+
 	_, err = gz.Write(data)
 	if err != nil {
 		gz.Close()
 		return int64(len(data))
 	}
 	gz.Close()
-	
+
 	return int64(buf.Len())
 }
 
@@ -607,7 +607,7 @@ func (a *Analyzer) estimateTotalBlobSize(ctx context.Context) int64 {
 	// Actual size would require scanning all data
 	// For now, we rely on sampled data as full estimation is complex
 	// and would require scanning pg_stat_user_tables or similar
-	_ = ctx // Context available for future implementation
+	_ = ctx  // Context available for future implementation
 	return 0 // Rely on sampled data for now
 }
 
@@ -625,11 +625,11 @@ func (a *Analyzer) determineAdvice(analysis *DatabaseAnalysis) (CompressionAdvic
 			return AdviceSkip, 0
 		}
 	}
-	
+
 	// If filesystem compression is detected and enabled, recommend skipping
-	if analysis.FilesystemCompression != nil && 
-	   analysis.FilesystemCompression.CompressionEnabled && 
-	   analysis.FilesystemCompression.ShouldSkipAppCompress {
+	if analysis.FilesystemCompression != nil &&
+		analysis.FilesystemCompression.CompressionEnabled &&
+		analysis.FilesystemCompression.ShouldSkipAppCompress {
 		// Filesystem has transparent compression - recommend skipping app compression
 		return AdviceSkip, 0
 	}
@@ -717,21 +717,21 @@ func (analysis *DatabaseAnalysis) FormatReport() string {
 	sb.WriteString(fmt.Sprintf("  Data Sampled:            %s\n", formatBytes(analysis.SampledDataSize)))
 	sb.WriteString(fmt.Sprintf("  Incompressible Data:     %.1f%%\n", analysis.IncompressiblePct))
 	sb.WriteString(fmt.Sprintf("  Overall Compression:     %.2fx\n", analysis.OverallRatio))
-	
+
 	if analysis.LargestBlobTable != "" {
-		sb.WriteString(fmt.Sprintf("  Largest Blob Table:      %s (%s)\n", 
+		sb.WriteString(fmt.Sprintf("  Largest Blob Table:      %s (%s)\n",
 			analysis.LargestBlobTable, formatBytes(analysis.LargestBlobSize)))
 	}
 
 	sb.WriteString("\n═══ RECOMMENDATION ════════════════════════════════════════════════\n")
-	
+
 	// Special case: filesystem compression detected
-	if analysis.FilesystemCompression != nil && 
-	   analysis.FilesystemCompression.CompressionEnabled && 
-	   analysis.FilesystemCompression.ShouldSkipAppCompress {
+	if analysis.FilesystemCompression != nil &&
+		analysis.FilesystemCompression.CompressionEnabled &&
+		analysis.FilesystemCompression.ShouldSkipAppCompress {
 		sb.WriteString("  🗂️  FILESYSTEM COMPRESSION ACTIVE\n")
 		sb.WriteString("  \n")
-		sb.WriteString(fmt.Sprintf("  %s is handling compression transparently.\n", 
+		sb.WriteString(fmt.Sprintf("  %s is handling compression transparently.\n",
 			strings.ToUpper(analysis.FilesystemCompression.Filesystem)))
 		sb.WriteString("  Skip application-level compression for best performance:\n")
 		sb.WriteString("    • Set Compression Mode: NEVER in TUI settings\n")
@@ -773,7 +773,7 @@ func (analysis *DatabaseAnalysis) FormatReport() string {
 	// Detailed breakdown if there are columns
 	if len(analysis.Columns) > 0 {
 		sb.WriteString("\n═══ COLUMN DETAILS ════════════════════════════════════════════════\n")
-		
+
 		// Sort by size descending
 		sorted := make([]BlobAnalysis, len(analysis.Columns))
 		copy(sorted, analysis.Columns)
@@ -798,9 +798,9 @@ func (analysis *DatabaseAnalysis) FormatReport() string {
 			}
 
 			sb.WriteString(fmt.Sprintf("\n  %s %s.%s.%s\n", adviceIcon, col.Schema, col.Table, col.Column))
-			sb.WriteString(fmt.Sprintf("     Samples: %d | Size: %s | Ratio: %.2fx\n", 
+			sb.WriteString(fmt.Sprintf("     Samples: %d | Size: %s | Ratio: %.2fx\n",
 				col.SampleCount, formatBytes(col.TotalSize), col.CompressionRatio))
-			
+
 			if len(col.DetectedFormats) > 0 {
 				var formats []string
 				for name, count := range col.DetectedFormats {
@@ -813,13 +813,13 @@ func (analysis *DatabaseAnalysis) FormatReport() string {
 
 	// Add Large Objects section if applicable
 	sb.WriteString(analysis.FormatLargeObjects())
-	
+
 	// Add time estimates
 	sb.WriteString(analysis.FormatTimeSavings())
-	
+
 	// Cache info
 	if !analysis.CachedAt.IsZero() {
-		sb.WriteString(fmt.Sprintf("\n📦 Cached: %s (expires: %s)\n", 
+		sb.WriteString(fmt.Sprintf("\n📦 Cached: %s (expires: %s)\n",
 			analysis.CachedAt.Format("2006-01-02 15:04"),
 			analysis.CacheExpires.Format("2006-01-02 15:04")))
 	}
@@ -869,10 +869,10 @@ func (a *Analyzer) cacheResult(analysis *DatabaseAnalysis) {
 	if !a.useCache || a.cache == nil {
 		return
 	}
-	
+
 	analysis.CachedAt = time.Now()
 	analysis.CacheExpires = time.Now().Add(a.cache.ttl)
-	
+
 	if err := a.cache.Set(a.config.Host, a.config.Port, a.config.Database, analysis); err != nil {
 		if a.logger != nil {
 			a.logger.Warn("Failed to cache compression analysis", "error", err)
@@ -884,10 +884,10 @@ func (a *Analyzer) cacheResult(analysis *DatabaseAnalysis) {
 func (a *Analyzer) scanLargeObjects(ctx context.Context, analysis *DatabaseAnalysis) {
 	// Check if there are any large objects
 	countQuery := `SELECT COUNT(DISTINCT loid), COALESCE(SUM(octet_length(data)), 0) FROM pg_largeobject`
-	
+
 	var count int64
 	var totalSize int64
-	
+
 	row := a.db.QueryRowContext(ctx, countQuery)
 	if err := row.Scan(&count, &totalSize); err != nil {
 		// pg_largeobject may not be accessible
@@ -896,15 +896,15 @@ func (a *Analyzer) scanLargeObjects(ctx context.Context, analysis *DatabaseAnaly
 		}
 		return
 	}
-	
+
 	if count == 0 {
 		return
 	}
-	
+
 	analysis.HasLargeObjects = true
 	analysis.LargeObjectCount = count
 	analysis.LargeObjectSize = totalSize
-	
+
 	// Sample some large objects for compression analysis
 	loAnalysis := &BlobAnalysis{
 		Schema:          "pg_catalog",
@@ -913,7 +913,7 @@ func (a *Analyzer) scanLargeObjects(ctx context.Context, analysis *DatabaseAnaly
 		DataType:        "bytea",
 		DetectedFormats: make(map[string]int64),
 	}
-	
+
 	// Sample random chunks from large objects
 	sampleQuery := `
 		SELECT data FROM pg_largeobject 
@@ -924,10 +924,10 @@ func (a *Analyzer) scanLargeObjects(ctx context.Context, analysis *DatabaseAnaly
 		)
 		AND pageno = 0
 		LIMIT $1`
-	
+
 	sampleCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	
+
 	rows, err := a.db.QueryContext(sampleCtx, sampleQuery, a.maxSamples)
 	if err != nil {
 		loAnalysis.ScanError = err.Error()
@@ -935,7 +935,7 @@ func (a *Analyzer) scanLargeObjects(ctx context.Context, analysis *DatabaseAnaly
 		return
 	}
 	defer rows.Close()
-	
+
 	var totalSampled int64
 	for rows.Next() && totalSampled < int64(a.sampleSize) {
 		var data []byte
@@ -945,32 +945,32 @@ func (a *Analyzer) scanLargeObjects(ctx context.Context, analysis *DatabaseAnaly
 		if len(data) == 0 {
 			continue
 		}
-		
+
 		loAnalysis.SampleCount++
 		originalSize := int64(len(data))
 		loAnalysis.TotalSize += originalSize
 		totalSampled += originalSize
-		
+
 		// Detect format
 		format := a.detectFormat(data)
 		loAnalysis.DetectedFormats[format.Name]++
-		
+
 		// Test compression
 		compressedSize := a.testCompression(data)
 		loAnalysis.CompressedSize += compressedSize
-		
+
 		if format.Compressible {
 			loAnalysis.CompressibleBytes += originalSize
 		} else {
 			loAnalysis.IncompressibleBytes += originalSize
 		}
 	}
-	
+
 	// Calculate ratio
 	if loAnalysis.CompressedSize > 0 {
 		loAnalysis.CompressionRatio = float64(loAnalysis.TotalSize) / float64(loAnalysis.CompressedSize)
 	}
-	
+
 	loAnalysis.Advice = a.columnAdvice(loAnalysis)
 	analysis.LargeObjectAnalysis = loAnalysis
 }
@@ -984,7 +984,7 @@ func (a *Analyzer) calculateTimeEstimates(analysis *DatabaseAnalysis) {
 	// - Level 1: ~500 MB/s (fast compression like LZ4)
 	// - Level 6: ~100 MB/s (default gzip)
 	// - Level 9: ~20 MB/s (max compression)
-	
+
 	totalDataSize := analysis.TotalBlobDataSize
 	if totalDataSize == 0 {
 		totalDataSize = analysis.SampledDataSize
@@ -992,20 +992,20 @@ func (a *Analyzer) calculateTimeEstimates(analysis *DatabaseAnalysis) {
 	if totalDataSize == 0 {
 		return
 	}
-	
+
 	dataSizeMB := float64(totalDataSize) / (1024 * 1024)
 	incompressibleRatio := analysis.IncompressiblePct / 100.0
-	
+
 	// I/O time (base time for reading data)
 	ioTimeSec := dataSizeMB / 200.0
-	
+
 	// Calculate for no compression
 	analysis.EstimatedBackupTimeNone = TimeEstimate{
 		Duration:    time.Duration(ioTimeSec * float64(time.Second)),
 		CPUSeconds:  0,
 		Description: "I/O only, no CPU overhead",
 	}
-	
+
 	// Calculate for recommended level
 	recLevel := analysis.RecommendedLevel
 	recThroughput := compressionThroughput(recLevel, incompressibleRatio)
@@ -1015,7 +1015,7 @@ func (a *Analyzer) calculateTimeEstimates(analysis *DatabaseAnalysis) {
 		CPUSeconds:  recCompressTime,
 		Description: fmt.Sprintf("Level %d compression", recLevel),
 	}
-	
+
 	// Calculate for max compression
 	maxThroughput := compressionThroughput(9, incompressibleRatio)
 	maxCompressTime := dataSizeMB / maxThroughput
@@ -1036,21 +1036,21 @@ func compressionThroughput(level int, incompressibleRatio float64) float64 {
 		3: 250,
 		4: 180,
 		5: 140,
-		6: 100,   // Default
+		6: 100, // Default
 		7: 70,
 		8: 40,
-		9: 20,    // Maximum
+		9: 20, // Maximum
 	}
-	
+
 	base, ok := baseThroughput[level]
 	if !ok {
 		base = 100
 	}
-	
+
 	// Incompressible data is faster (gzip gives up quickly)
 	// Blend based on incompressible ratio
 	incompressibleThroughput := base * 3 // Incompressible data processes ~3x faster
-	
+
 	return base*(1-incompressibleRatio) + incompressibleThroughput*incompressibleRatio
 }
 
@@ -1059,34 +1059,34 @@ func (analysis *DatabaseAnalysis) FormatTimeSavings() string {
 	if analysis.EstimatedBackupTimeNone.Duration == 0 {
 		return ""
 	}
-	
+
 	var sb strings.Builder
 	sb.WriteString("\n═══ TIME ESTIMATES ════════════════════════════════════════════════\n")
-	
+
 	none := analysis.EstimatedBackupTimeNone.Duration
 	rec := analysis.EstimatedBackupTime.Duration
 	max := analysis.EstimatedBackupTimeMax.Duration
-	
-	sb.WriteString(fmt.Sprintf("  No compression:    %v (%s)\n", 
+
+	sb.WriteString(fmt.Sprintf("  No compression:    %v (%s)\n",
 		none.Round(time.Second), analysis.EstimatedBackupTimeNone.Description))
-	sb.WriteString(fmt.Sprintf("  Recommended:       %v (%s)\n", 
+	sb.WriteString(fmt.Sprintf("  Recommended:       %v (%s)\n",
 		rec.Round(time.Second), analysis.EstimatedBackupTime.Description))
-	sb.WriteString(fmt.Sprintf("  Max compression:   %v (%s)\n", 
+	sb.WriteString(fmt.Sprintf("  Max compression:   %v (%s)\n",
 		max.Round(time.Second), analysis.EstimatedBackupTimeMax.Description))
-	
+
 	// Show savings
 	if analysis.Advice == AdviceSkip && none < rec {
 		savings := rec - none
 		pct := float64(savings) / float64(rec) * 100
-		sb.WriteString(fmt.Sprintf("\n  💡 Skipping compression saves: %v (%.0f%% faster)\n", 
+		sb.WriteString(fmt.Sprintf("\n  💡 Skipping compression saves: %v (%.0f%% faster)\n",
 			savings.Round(time.Second), pct))
 	} else if rec < max {
 		savings := max - rec
 		pct := float64(savings) / float64(max) * 100
-		sb.WriteString(fmt.Sprintf("\n  💡 Recommended vs max saves: %v (%.0f%% faster)\n", 
+		sb.WriteString(fmt.Sprintf("\n  💡 Recommended vs max saves: %v (%.0f%% faster)\n",
 			savings.Round(time.Second), pct))
 	}
-	
+
 	return sb.String()
 }
 
@@ -1095,20 +1095,20 @@ func (analysis *DatabaseAnalysis) FormatLargeObjects() string {
 	if !analysis.HasLargeObjects {
 		return ""
 	}
-	
+
 	var sb strings.Builder
 	sb.WriteString("\n═══ LARGE OBJECTS (pg_largeobject) ════════════════════════════════\n")
 	sb.WriteString(fmt.Sprintf("  Count: %d objects\n", analysis.LargeObjectCount))
 	sb.WriteString(fmt.Sprintf("  Total Size: %s\n", formatBytes(analysis.LargeObjectSize)))
-	
+
 	if analysis.LargeObjectAnalysis != nil {
 		lo := analysis.LargeObjectAnalysis
 		if lo.ScanError != "" {
 			sb.WriteString(fmt.Sprintf("  ⚠️  Scan error: %s\n", lo.ScanError))
 		} else {
-			sb.WriteString(fmt.Sprintf("  Samples: %d | Compression Ratio: %.2fx\n", 
+			sb.WriteString(fmt.Sprintf("  Samples: %d | Compression Ratio: %.2fx\n",
 				lo.SampleCount, lo.CompressionRatio))
-			
+
 			if len(lo.DetectedFormats) > 0 {
 				var formats []string
 				for name, count := range lo.DetectedFormats {
@@ -1116,7 +1116,7 @@ func (analysis *DatabaseAnalysis) FormatLargeObjects() string {
 				}
 				sb.WriteString(fmt.Sprintf("  Detected: %s\n", strings.Join(formats, ", ")))
 			}
-			
+
 			adviceIcon := "✅"
 			switch lo.Advice {
 			case AdviceSkip:
@@ -1129,7 +1129,7 @@ func (analysis *DatabaseAnalysis) FormatLargeObjects() string {
 			sb.WriteString(fmt.Sprintf("  Advice: %s %s\n", adviceIcon, lo.Advice))
 		}
 	}
-	
+
 	return sb.String()
 }
 

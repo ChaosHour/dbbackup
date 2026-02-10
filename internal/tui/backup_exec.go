@@ -75,10 +75,10 @@ type BackupExecutionModel struct {
 	cleanupFuncs []func() // Stack of cleanup functions to run on abort
 
 	// Metadata quality tracking for tiered progress display
-	metadataSource   string                      // "accurate", "extrapolated", "unknown"
-	completedBackups []completedDBBackup          // Track completed DBs for extrapolation
-	bytesPerDB       map[string]int64             // db name → final backup size
-	extrapolatedTotal int64                       // Extrapolated total bytes from completed DBs
+	metadataSource    string              // "accurate", "extrapolated", "unknown"
+	completedBackups  []completedDBBackup // Track completed DBs for extrapolation
+	bytesPerDB        map[string]int64    // db name → final backup size
+	extrapolatedTotal int64               // Extrapolated total bytes from completed DBs
 }
 
 // completedDBBackup tracks a completed database backup for extrapolation
@@ -103,9 +103,9 @@ type sharedBackupProgressState struct {
 	bytesTotal      int64         // Size-weighted progress: total bytes
 
 	// Metadata quality tracking
-	metadataSource   string              // "accurate", "extrapolated", "unknown"
-	completedDBs     []completedDBBackup // Completed DBs for extrapolation
-	lastDbDone       int                 // Track when a new DB completes
+	metadataSource string              // "accurate", "extrapolated", "unknown"
+	completedDBs   []completedDBBackup // Completed DBs for extrapolation
+	lastDbDone     int                 // Track when a new DB completes
 }
 
 // Package-level shared progress state for backup operations
@@ -176,17 +176,17 @@ func NewBackupExecution(cfg *config.Config, log logger.Logger, parent tea.Model,
 	// Create a cancellable context derived from parent
 	childCtx, cancel := context.WithCancel(ctx)
 	return BackupExecutionModel{
-		config:       cfg,
-		logger:       log,
-		parent:       parent,
-		ctx:          childCtx,
-		cancel:       cancel,
-		backupType:   backupType,
-		databaseName: dbName,
-		ratio:        ratio,
-		status:       "Initializing...",
-		startTime:    time.Now(),
-		details:      []string{},
+		config:         cfg,
+		logger:         log,
+		parent:         parent,
+		ctx:            childCtx,
+		cancel:         cancel,
+		backupType:     backupType,
+		databaseName:   dbName,
+		ratio:          ratio,
+		status:         "Initializing...",
+		startTime:      time.Now(),
+		details:        []string{},
 		spinnerFrame:   0,
 		etaEstimator:   progress.NewDefaultEMAEstimator(),
 		metadataSource: "unknown",

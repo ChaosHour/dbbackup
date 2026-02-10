@@ -118,13 +118,13 @@ func runCompressionAnalyze(ctx context.Context) error {
 
 	fmt.Println("🔍 Compression Advisor")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Printf("Database: %s@%s:%d/%s (%s)\n\n", 
+	fmt.Printf("Database: %s@%s:%d/%s (%s)\n\n",
 		cfg.User, cfg.Host, cfg.Port, cfg.Database, cfg.DisplayDatabaseType())
 
 	// Create analyzer
 	analyzer := compression.NewAnalyzer(cfg, log)
 	defer analyzer.Close()
-	
+
 	// Disable cache if requested
 	if compressionNoCache {
 		analyzer.DisableCache()
@@ -158,7 +158,7 @@ func runCompressionAnalyze(ctx context.Context) error {
 
 	// Generate and display report
 	report := analysis.FormatReport()
-	
+
 	if compressionOutput != "" && compressionOutput != "-" {
 		// Write to file
 		if err := os.WriteFile(compressionOutput, []byte(report), 0644); err != nil {
@@ -166,7 +166,7 @@ func runCompressionAnalyze(ctx context.Context) error {
 		}
 		fmt.Printf("Report saved to: %s\n", compressionOutput)
 	}
-	
+
 	// Always print to stdout
 	fmt.Println(report)
 
@@ -175,12 +175,12 @@ func runCompressionAnalyze(ctx context.Context) error {
 		cfg.CompressionLevel = analysis.RecommendedLevel
 		cfg.AutoDetectCompression = true
 		cfg.CompressionMode = "auto"
-		
+
 		fmt.Println("\n✅ Applied settings:")
 		fmt.Printf("   compression-level = %d\n", analysis.RecommendedLevel)
 		fmt.Println("   auto-detect-compression = true")
 		fmt.Println("\nThese settings will be used for future backups.")
-		
+
 		// Note: Settings are applied to runtime config
 		// To persist, user should save config
 		fmt.Println("\nTip: Use 'dbbackup config save' to persist these settings.")
@@ -196,57 +196,57 @@ func runCompressionAnalyze(ctx context.Context) error {
 
 func runCompressionCacheList() error {
 	cache := compression.NewCache("")
-	
+
 	entries, err := cache.List()
 	if err != nil {
 		return fmt.Errorf("failed to list cache: %w", err)
 	}
-	
+
 	if len(entries) == 0 {
 		fmt.Println("No cached compression analyses found.")
 		return nil
 	}
-	
+
 	fmt.Println("📦 Cached Compression Analyses")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Printf("%-30s %-20s %-20s %s\n", "DATABASE", "ADVICE", "CACHED", "EXPIRES")
 	fmt.Println("─────────────────────────────────────────────────────────────────────────────")
-	
+
 	now := time.Now()
 	for _, entry := range entries {
 		dbName := fmt.Sprintf("%s:%d/%s", entry.Host, entry.Port, entry.Database)
 		if len(dbName) > 30 {
 			dbName = dbName[:27] + "..."
 		}
-		
+
 		advice := "N/A"
 		if entry.Analysis != nil {
 			advice = entry.Analysis.Advice.String()
 		}
-		
+
 		age := now.Sub(entry.CreatedAt).Round(time.Hour)
 		ageStr := fmt.Sprintf("%v ago", age)
-		
+
 		expiresIn := entry.ExpiresAt.Sub(now).Round(time.Hour)
 		expiresStr := fmt.Sprintf("in %v", expiresIn)
 		if expiresIn < 0 {
 			expiresStr = "EXPIRED"
 		}
-		
+
 		fmt.Printf("%-30s %-20s %-20s %s\n", dbName, advice, ageStr, expiresStr)
 	}
-	
+
 	fmt.Printf("\nTotal: %d cached entries\n", len(entries))
 	return nil
 }
 
 func runCompressionCacheClear() error {
 	cache := compression.NewCache("")
-	
+
 	if err := cache.InvalidateAll(); err != nil {
 		return fmt.Errorf("failed to clear cache: %w", err)
 	}
-	
+
 	fmt.Println("✅ Compression analysis cache cleared.")
 	return nil
 }
@@ -257,10 +257,10 @@ func AutoAnalyzeBeforeBackup(ctx context.Context, cfg *config.Config, log logger
 	if !cfg.ShouldAutoDetectCompression() {
 		return cfg.CompressionLevel
 	}
-	
+
 	analyzer := compression.NewAnalyzer(cfg, log)
 	defer analyzer.Close()
-	
+
 	// Use quick scan for auto-analyze to minimize delay
 	analysis, err := analyzer.QuickScan(ctx)
 	if err != nil {
@@ -269,7 +269,7 @@ func AutoAnalyzeBeforeBackup(ctx context.Context, cfg *config.Config, log logger
 		}
 		return cfg.CompressionLevel
 	}
-	
+
 	if log != nil {
 		log.Info("Auto-detected compression settings",
 			"advice", analysis.Advice.String(),
@@ -277,6 +277,6 @@ func AutoAnalyzeBeforeBackup(ctx context.Context, cfg *config.Config, log logger
 			"incompressible_pct", fmt.Sprintf("%.1f%%", analysis.IncompressiblePct),
 			"cached", !analysis.CachedAt.IsZero())
 	}
-	
+
 	return analysis.RecommendedLevel
 }

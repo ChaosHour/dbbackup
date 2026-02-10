@@ -117,9 +117,9 @@ type StorageTier struct {
 
 // CostAnalysis represents the cost breakdown
 type CostAnalysis struct {
-	TotalSizeGB    float64
-	Days           int
-	Region         string
+	TotalSizeGB     float64
+	Days            int
+	Region          string
 	Recommendations []TierRecommendation
 }
 
@@ -139,7 +139,7 @@ type TierRecommendation struct {
 
 func calculateCosts(totalBytes int64, days int, region string) *CostAnalysis {
 	sizeGB := float64(totalBytes) / (1024 * 1024 * 1024)
-	
+
 	analysis := &CostAnalysis{
 		TotalSizeGB: sizeGB,
 		Days:        days,
@@ -149,7 +149,7 @@ func calculateCosts(totalBytes int64, days int, region string) *CostAnalysis {
 	// Define storage tiers (pricing as of 2026, approximate)
 	tiers := []StorageTier{
 		// AWS S3
-		{Provider: "AWS S3", Tier: "Standard", Description: "Frequent access", 
+		{Provider: "AWS S3", Tier: "Standard", Description: "Frequent access",
 			StorageGB: 0.023, RetrievalGB: 0.0, Requests: 0.0004, MinDays: 0},
 		{Provider: "AWS S3", Tier: "Intelligent-Tiering", Description: "Auto-optimization",
 			StorageGB: 0.023, RetrievalGB: 0.0, Requests: 0.0004, MinDays: 0},
@@ -161,7 +161,7 @@ func calculateCosts(totalBytes int64, days int, region string) *CostAnalysis {
 			StorageGB: 0.0036, RetrievalGB: 0.02, Requests: 0.05, MinDays: 90},
 		{Provider: "AWS S3", Tier: "Deep Archive", Description: "Long-term archive",
 			StorageGB: 0.00099, RetrievalGB: 0.02, Requests: 0.05, MinDays: 180},
-		
+
 		// Google Cloud Storage
 		{Provider: "GCS", Tier: "Standard", Description: "Frequent access",
 			StorageGB: 0.020, RetrievalGB: 0.0, Requests: 0.0004, MinDays: 0},
@@ -171,7 +171,7 @@ func calculateCosts(totalBytes int64, days int, region string) *CostAnalysis {
 			StorageGB: 0.004, RetrievalGB: 0.02, Requests: 0.005, MinDays: 90},
 		{Provider: "GCS", Tier: "Archive", Description: "Annual access",
 			StorageGB: 0.0012, RetrievalGB: 0.05, Requests: 0.05, MinDays: 365},
-		
+
 		// Azure Blob Storage
 		{Provider: "Azure", Tier: "Hot", Description: "Frequent access",
 			StorageGB: 0.0184, RetrievalGB: 0.0, Requests: 0.0004, MinDays: 0},
@@ -179,11 +179,11 @@ func calculateCosts(totalBytes int64, days int, region string) *CostAnalysis {
 			StorageGB: 0.010, RetrievalGB: 0.01, Requests: 0.001, MinDays: 30},
 		{Provider: "Azure", Tier: "Archive", Description: "Long-term archive",
 			StorageGB: 0.00099, RetrievalGB: 0.02, Requests: 0.05, MinDays: 180},
-		
+
 		// Backblaze B2
 		{Provider: "Backblaze B2", Tier: "Standard", Description: "Affordable cloud",
 			StorageGB: 0.005, RetrievalGB: 0.01, Requests: 0.0004, MinDays: 0},
-		
+
 		// Wasabi
 		{Provider: "Wasabi", Tier: "Hot Cloud", Description: "No egress fees",
 			StorageGB: 0.0059, RetrievalGB: 0.0, Requests: 0.0, MinDays: 90},
@@ -273,7 +273,7 @@ func outputCostTable(analysis *CostAnalysis, stats *catalog.Stats) error {
 	fmt.Println()
 
 	fmt.Println("───────────────────────────────────────────────────────────────────────────")
-	fmt.Printf("%-20s %-20s %12s %12s %12s\n", 
+	fmt.Printf("%-20s %-20s %12s %12s %12s\n",
 		"PROVIDER", "TIER", "MONTHLY", "ANNUAL", "SAVINGS")
 	fmt.Println("───────────────────────────────────────────────────────────────────────────")
 
@@ -312,7 +312,7 @@ func outputCostTable(analysis *CostAnalysis, stats *catalog.Stats) error {
 	}
 
 	fmt.Printf("💰 CHEAPEST OPTION: %s %s\n", cheapest.Provider, cheapest.Tier)
-	fmt.Printf("   Annual Cost: $%.2f (save $%.2f/year vs S3 Standard)\n", 
+	fmt.Printf("   Annual Cost: $%.2f (save $%.2f/year vs S3 Standard)\n",
 		cheapest.TotalAnnual, cheapest.SavingsVsS3*12)
 	fmt.Printf("   Best For: %s\n", cheapest.BestFor)
 	fmt.Println()
@@ -362,11 +362,11 @@ func outputCostTable(analysis *CostAnalysis, stats *catalog.Stats) error {
 func outputCostJSON(analysis *CostAnalysis, stats *catalog.Stats) error {
 	output := map[string]interface{}{
 		"inventory": map[string]interface{}{
-			"total_backups":     stats.TotalBackups,
-			"total_size_gb":     analysis.TotalSizeGB,
-			"total_size_human":  stats.TotalSizeHuman,
-			"region":            analysis.Region,
-			"analysis_days":     analysis.Days,
+			"total_backups":    stats.TotalBackups,
+			"total_size_gb":    analysis.TotalSizeGB,
+			"total_size_human": stats.TotalSizeHuman,
+			"region":           analysis.Region,
+			"analysis_days":    analysis.Days,
 		},
 		"recommendations": analysis.Recommendations,
 	}

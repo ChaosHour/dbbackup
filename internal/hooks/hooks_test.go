@@ -19,11 +19,11 @@ type mockLogger struct {
 	errorMsgs []string
 }
 
-func (m *mockLogger) Debug(msg string, args ...interface{}) { m.debugMsgs = append(m.debugMsgs, msg) }
-func (m *mockLogger) Info(msg string, args ...interface{})  { m.infoMsgs = append(m.infoMsgs, msg) }
-func (m *mockLogger) Warn(msg string, args ...interface{})  { m.warnMsgs = append(m.warnMsgs, msg) }
-func (m *mockLogger) Error(msg string, args ...interface{}) { m.errorMsgs = append(m.errorMsgs, msg) }
-func (m *mockLogger) Time(msg string, args ...any)          {}
+func (m *mockLogger) Debug(msg string, args ...interface{})                  { m.debugMsgs = append(m.debugMsgs, msg) }
+func (m *mockLogger) Info(msg string, args ...interface{})                   { m.infoMsgs = append(m.infoMsgs, msg) }
+func (m *mockLogger) Warn(msg string, args ...interface{})                   { m.warnMsgs = append(m.warnMsgs, msg) }
+func (m *mockLogger) Error(msg string, args ...interface{})                  { m.errorMsgs = append(m.errorMsgs, msg) }
+func (m *mockLogger) Time(msg string, args ...any)                           {}
 func (m *mockLogger) WithFields(fields map[string]interface{}) logger.Logger { return m }
 func (m *mockLogger) WithField(key string, value interface{}) logger.Logger  { return m }
 func (m *mockLogger) StartOperation(name string) logger.OperationLogger {

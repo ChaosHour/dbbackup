@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	syncDryRun       bool
-	syncDelete       bool
-	syncNewerOnly    bool
+	syncDryRun         bool
+	syncDelete         bool
+	syncNewerOnly      bool
 	syncDatabaseFilter string
 )
 

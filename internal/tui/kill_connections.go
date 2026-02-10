@@ -17,13 +17,13 @@ const killConnectionsTimeout = 30 * time.Second
 
 // ConnectionInfo holds database connection information
 type ConnectionInfo struct {
-	PID       int
-	User      string
-	Database  string
-	State     string
-	Query     string
-	Duration  string
-	ClientIP  string
+	PID      int
+	User     string
+	Database string
+	State    string
+	Query    string
+	Duration string
+	ClientIP string
 }
 
 // KillConnectionsView displays and manages database connections
@@ -398,22 +398,22 @@ func (v *KillConnectionsView) View() string {
 
 	for i := v.offset; i < v.offset+displayCount; i++ {
 		c := v.connections[i]
-		
+
 		user := c.User
 		if len(user) > 10 {
 			user = user[:10] + ".."
 		}
-		
+
 		database := c.Database
 		if len(database) > 13 {
 			database = database[:13] + ".."
 		}
-		
+
 		state := c.State
 		if len(state) > 8 {
 			state = state[:8] + ".."
 		}
-		
+
 		query := strings.ReplaceAll(c.Query, "\n", " ")
 		if len(query) > 23 {
 			query = query[:23] + ".."

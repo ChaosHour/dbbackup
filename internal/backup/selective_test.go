@@ -10,14 +10,14 @@ import (
 // mockLogger implements logger.Logger for testing
 type mockLogger struct{}
 
-func (m *mockLogger) Debug(msg string, args ...interface{})                      {}
-func (m *mockLogger) Info(msg string, args ...interface{})                       {}
-func (m *mockLogger) Warn(msg string, args ...interface{})                       {}
-func (m *mockLogger) Error(msg string, args ...interface{})                      {}
-func (m *mockLogger) Time(msg string, args ...any)                               {}
-func (m *mockLogger) WithFields(fields map[string]interface{}) logger.Logger     { return m }
-func (m *mockLogger) WithField(key string, value interface{}) logger.Logger      { return m }
-func (m *mockLogger) StartOperation(name string) logger.OperationLogger          { return &mockOpLogger{} }
+func (m *mockLogger) Debug(msg string, args ...interface{})                  {}
+func (m *mockLogger) Info(msg string, args ...interface{})                   {}
+func (m *mockLogger) Warn(msg string, args ...interface{})                   {}
+func (m *mockLogger) Error(msg string, args ...interface{})                  {}
+func (m *mockLogger) Time(msg string, args ...any)                           {}
+func (m *mockLogger) WithFields(fields map[string]interface{}) logger.Logger { return m }
+func (m *mockLogger) WithField(key string, value interface{}) logger.Logger  { return m }
+func (m *mockLogger) StartOperation(name string) logger.OperationLogger      { return &mockOpLogger{} }
 
 type mockOpLogger struct{}
 
@@ -226,14 +226,14 @@ func TestMatchesFiltersRowCount(t *testing.T) {
 		rowCount int64
 		expected bool
 	}{
-		{0, 0, 1000, true},       // No filters
-		{100, 0, 1000, true},     // Min only, passes
-		{100, 0, 50, false},      // Min only, fails
-		{0, 5000, 1000, true},    // Max only, passes
-		{0, 5000, 10000, false},  // Max only, fails
-		{100, 5000, 1000, true},  // Both, passes
-		{100, 5000, 50, false},   // Both, fails min
-		{100, 5000, 10000, false},// Both, fails max
+		{0, 0, 1000, true},        // No filters
+		{100, 0, 1000, true},      // Min only, passes
+		{100, 0, 50, false},       // Min only, fails
+		{0, 5000, 1000, true},     // Max only, passes
+		{0, 5000, 10000, false},   // Max only, fails
+		{100, 5000, 1000, true},   // Both, passes
+		{100, 5000, 50, false},    // Both, fails min
+		{100, 5000, 10000, false}, // Both, fails max
 	}
 
 	for i, tc := range tests {
@@ -275,9 +275,9 @@ func TestMatchesFiltersCombined(t *testing.T) {
 		expected bool
 	}{
 		{"public", "users", 1000, true},
-		{"public", "logs", 1000, false},    // Excluded table
-		{"private", "users", 1000, false},  // Wrong schema
-		{"public", "users", 50, false},     // Too few rows
+		{"public", "logs", 1000, false},   // Excluded table
+		{"private", "users", 1000, false}, // Wrong schema
+		{"public", "users", 50, false},    // Too few rows
 	}
 
 	for _, tc := range tests {

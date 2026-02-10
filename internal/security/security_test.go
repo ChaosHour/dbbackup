@@ -28,7 +28,7 @@ func (m *mockLogger) StartOperation(name string) logger.OperationLogger {
 }
 func (m *mockLogger) WithFields(fields map[string]interface{}) logger.Logger { return m }
 func (m *mockLogger) WithField(key string, value interface{}) logger.Logger  { return m }
-func (m *mockLogger) Time(msg string, args ...any)                            {}
+func (m *mockLogger) Time(msg string, args ...any)                           {}
 
 // =============================================================================
 // Checksum Tests
@@ -134,11 +134,11 @@ func TestCleanPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-_, err := CleanPath(tt.input)
-if (err != nil) != tt.wantErr {
-t.Errorf("CleanPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
-}
-})
+			_, err := CleanPath(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CleanPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
 	}
 }
 
@@ -156,11 +156,11 @@ func TestValidateBackupPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-_, err := ValidateBackupPath(tt.input)
-if (err != nil) != tt.wantErr {
-t.Errorf("ValidateBackupPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
-}
-})
+			_, err := ValidateBackupPath(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateBackupPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
 	}
 }
 
@@ -181,11 +181,11 @@ func TestValidateArchivePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-_, err := ValidateArchivePath(tt.input)
-if (err != nil) != tt.wantErr {
-t.Errorf("ValidateArchivePath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
-}
-})
+			_, err := ValidateArchivePath(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateArchivePath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+		})
 	}
 }
 

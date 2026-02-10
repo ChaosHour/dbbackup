@@ -16,7 +16,7 @@ import (
 // DiskSpaceInfo contains detailed filesystem space information
 type DiskSpaceInfo struct {
 	Path           string
-	Filesystem     string  // e.g., "ext4", "tmpfs", "xfs", "btrfs"
+	Filesystem     string // e.g., "ext4", "tmpfs", "xfs", "btrfs"
 	TotalBytes     int64
 	AvailableBytes int64
 	UsedBytes      int64

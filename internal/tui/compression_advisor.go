@@ -203,7 +203,7 @@ func (v *CompressionAdvisorView) View() string {
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	s.WriteString(keyStyle.Render("─────────────────────────────────────────────────────────────────"))
 	s.WriteString("\n")
-	
+
 	keys := []string{"Esc: Back", "a/Enter: Apply", "d: Details", "f: Full scan", "r: Refresh"}
 	s.WriteString(keyStyle.Render(strings.Join(keys, " | ")))
 	s.WriteString("\n")
@@ -214,7 +214,7 @@ func (v *CompressionAdvisorView) View() string {
 // renderSummaryBox creates the analysis summary box
 func (v *CompressionAdvisorView) renderSummaryBox() string {
 	a := v.analysis
-	
+
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		Padding(0, 1).
@@ -223,16 +223,16 @@ func (v *CompressionAdvisorView) renderSummaryBox() string {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("📊 Analysis Summary (scan: %v)", a.ScanDuration.Round(time.Millisecond)))
 	lines = append(lines, "")
-	
+
 	// Filesystem compression info (if detected)
 	if a.FilesystemCompression != nil && a.FilesystemCompression.Detected {
 		fc := a.FilesystemCompression
 		fsIcon := "🗂️"
 		if fc.CompressionEnabled {
-			lines = append(lines, fmt.Sprintf("  %s Filesystem:        %s (%s compression)", 
+			lines = append(lines, fmt.Sprintf("  %s Filesystem:        %s (%s compression)",
 				fsIcon, strings.ToUpper(fc.Filesystem), strings.ToUpper(fc.CompressionType)))
 		} else {
-			lines = append(lines, fmt.Sprintf("  %s Filesystem:        %s (compression OFF)", 
+			lines = append(lines, fmt.Sprintf("  %s Filesystem:        %s (compression OFF)",
 				fsIcon, strings.ToUpper(fc.Filesystem)))
 		}
 		if fc.Filesystem == "zfs" && fc.RecordSize > 0 {
@@ -240,12 +240,12 @@ func (v *CompressionAdvisorView) renderSummaryBox() string {
 		}
 		lines = append(lines, "")
 	}
-	
+
 	lines = append(lines, fmt.Sprintf("  Blob Columns:        %d", a.TotalBlobColumns))
 	lines = append(lines, fmt.Sprintf("  Data Sampled:        %s", formatCompBytes(a.SampledDataSize)))
 	lines = append(lines, fmt.Sprintf("  Compression Ratio:   %.2fx", a.OverallRatio))
 	lines = append(lines, fmt.Sprintf("  Incompressible:      %.1f%%", a.IncompressiblePct))
-	
+
 	if a.LargestBlobTable != "" {
 		lines = append(lines, fmt.Sprintf("  Largest Table:       %s", a.LargestBlobTable))
 	}
@@ -261,19 +261,19 @@ func (v *CompressionAdvisorView) renderRecommendation() string {
 	currentLevel := v.config.CompressionLevel
 
 	// Check if filesystem compression is active and should be trusted
-	if a.FilesystemCompression != nil && 
-	   a.FilesystemCompression.CompressionEnabled && 
-	   a.FilesystemCompression.ShouldSkipAppCompress {
+	if a.FilesystemCompression != nil &&
+		a.FilesystemCompression.CompressionEnabled &&
+		a.FilesystemCompression.ShouldSkipAppCompress {
 		borderColor = "5" // Magenta
 		iconStr = "🗂️"
-		titleStr = fmt.Sprintf("FILESYSTEM COMPRESSION ACTIVE (%s)", 
+		titleStr = fmt.Sprintf("FILESYSTEM COMPRESSION ACTIVE (%s)",
 			strings.ToUpper(a.FilesystemCompression.CompressionType))
 		descStr = fmt.Sprintf("%s handles compression transparently.\n"+
 			"Recommendation: Skip app-level compression\n"+
 			"Set: Compression Mode → NEVER\n"+
-			"Or enable: Trust Filesystem Compression", 
+			"Or enable: Trust Filesystem Compression",
 			strings.ToUpper(a.FilesystemCompression.Filesystem))
-		
+
 		boxStyle := lipgloss.NewStyle().
 			Border(lipgloss.DoubleBorder()).
 			Padding(0, 1).

@@ -36,8 +36,8 @@ func TestProgressReaderWithCallback(t *testing.T) {
 	var reportedCurrent, reportedTotal int64
 
 	reader := &progressReader{
-		reader:      &mockReader{data: data},
-		totalSize:   int64(len(data)),
+		reader:    &mockReader{data: data},
+		totalSize: int64(len(data)),
 		callback: func(current, total int64, desc string) {
 			callbackCalled = true
 			reportedCurrent = current

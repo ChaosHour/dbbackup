@@ -286,9 +286,9 @@ func TestFormatLargeObjects(t *testing.T) {
 
 	// With large objects
 	analysis = &DatabaseAnalysis{
-		HasLargeObjects:    true,
-		LargeObjectCount:   100,
-		LargeObjectSize:    1024 * 1024 * 500, // 500MB
+		HasLargeObjects:  true,
+		LargeObjectCount: 100,
+		LargeObjectSize:  1024 * 1024 * 500, // 500MB
 		LargeObjectAnalysis: &BlobAnalysis{
 			SampleCount:      50,
 			CompressionRatio: 1.1,

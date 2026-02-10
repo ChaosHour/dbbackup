@@ -15,15 +15,17 @@ type mockProgressLogger struct {
 	logs []string
 }
 
-func (m *mockProgressLogger) Info(msg string, args ...any)                          { m.logs = append(m.logs, msg) }
-func (m *mockProgressLogger) Warn(msg string, args ...any)                          { m.logs = append(m.logs, msg) }
-func (m *mockProgressLogger) Error(msg string, args ...any)                         { m.logs = append(m.logs, msg) }
-func (m *mockProgressLogger) Debug(msg string, args ...any)                         { m.logs = append(m.logs, msg) }
-func (m *mockProgressLogger) Fatal(msg string, args ...any)                         {}
-func (m *mockProgressLogger) StartOperation(name string) logger.OperationLogger    { return &mockOperation{} }
-func (m *mockProgressLogger) WithFields(fields map[string]any) logger.Logger       { return m }
-func (m *mockProgressLogger) WithField(key string, value any) logger.Logger        { return m }
-func (m *mockProgressLogger) Time(msg string, args ...any)                          {}
+func (m *mockProgressLogger) Info(msg string, args ...any)  { m.logs = append(m.logs, msg) }
+func (m *mockProgressLogger) Warn(msg string, args ...any)  { m.logs = append(m.logs, msg) }
+func (m *mockProgressLogger) Error(msg string, args ...any) { m.logs = append(m.logs, msg) }
+func (m *mockProgressLogger) Debug(msg string, args ...any) { m.logs = append(m.logs, msg) }
+func (m *mockProgressLogger) Fatal(msg string, args ...any) {}
+func (m *mockProgressLogger) StartOperation(name string) logger.OperationLogger {
+	return &mockOperation{}
+}
+func (m *mockProgressLogger) WithFields(fields map[string]any) logger.Logger { return m }
+func (m *mockProgressLogger) WithField(key string, value any) logger.Logger  { return m }
+func (m *mockProgressLogger) Time(msg string, args ...any)                   {}
 
 type mockOperation struct{}
 

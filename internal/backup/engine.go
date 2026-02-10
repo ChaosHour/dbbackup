@@ -249,13 +249,13 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 
 	// Build backup command
 	cmdStep := tracker.AddStep("command", "Building backup command")
-	
+
 	// Determine format based on output setting
 	backupFormat := "custom"
 	if !e.cfg.ShouldOutputCompressed() || !e.cfg.IsPostgreSQL() {
 		backupFormat = "plain" // SQL text format
 	}
-	
+
 	options := database.BackupOptions{
 		Compression:  e.cfg.GetEffectiveCompressionLevel(),
 		Parallel:     e.cfg.DumpJobs,
@@ -480,7 +480,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	timestamp := time.Now().Format("20060102_150405")
 	var outputFile string
 	var plainOutput bool // Track if we're doing plain (uncompressed) output
-	
+
 	if e.cfg.ShouldOutputCompressed() {
 		clusterExt := e.cfg.GetClusterExtension()
 		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("cluster_%s%s", timestamp, clusterExt))
@@ -490,7 +490,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("cluster_%s", timestamp))
 		plainOutput = true
 	}
-	
+
 	tempDir := filepath.Join(e.cfg.BackupDir, fmt.Sprintf(".cluster_%s", timestamp))
 
 	operation.Update("Starting cluster backup")
@@ -834,7 +834,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		operation.Fail("Cluster backup not found")
 		return fmt.Errorf("cluster backup not created: %w", err)
 	}
-	
+
 	var size string
 	if plainOutput {
 		// For directory, calculate total size
@@ -849,7 +849,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	} else {
 		size = formatBytes(info.Size())
 	}
-	
+
 	outputType := "archive"
 	if plainOutput {
 		outputType = "directory"

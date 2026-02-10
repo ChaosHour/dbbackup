@@ -139,15 +139,15 @@ type Notifier interface {
 // Config holds configuration for all notification backends
 type Config struct {
 	// SMTP configuration
-	SMTPEnabled  bool
-	SMTPHost     string
-	SMTPPort     int
-	SMTPUser     string
-	SMTPPassword string
-	SMTPFrom     string
-	SMTPTo       []string
-	SMTPTLS      bool
-	SMTPStartTLS   bool
+	SMTPEnabled     bool
+	SMTPHost        string
+	SMTPPort        int
+	SMTPUser        string
+	SMTPPassword    string
+	SMTPFrom        string
+	SMTPTo          []string
+	SMTPTLS         bool
+	SMTPStartTLS    bool
 	SMTPInsecureTLS bool // Skip TLS certificate verification (auto-enabled for localhost)
 
 	// Webhook configuration

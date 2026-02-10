@@ -38,11 +38,11 @@ type MySQLParallelRestoreEngine struct {
 
 // MySQLParallelRestoreOptions configures parallel restore behavior
 type MySQLParallelRestoreOptions struct {
-	Workers         int
-	ContinueOnError bool
-	TempDir         string // Override temp directory (default: os.TempDir())
-	DisableKeys     bool   // DISABLE KEYS before LOAD DATA, ENABLE after
-	BatchSize       int    // Rows per TSV file (0 = all rows in one file)
+	Workers          int
+	ContinueOnError  bool
+	TempDir          string // Override temp directory (default: os.TempDir())
+	DisableKeys      bool   // DISABLE KEYS before LOAD DATA, ENABLE after
+	BatchSize        int    // Rows per TSV file (0 = all rows in one file)
 	ProgressCallback func(phase string, table string, rows int64)
 }
 
@@ -279,13 +279,13 @@ func (e *MySQLParallelRestoreEngine) parseDump(ctx context.Context, reader io.Re
 	scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024) // 64MB max line
 
 	var (
-		currentTable    string
-		tsvWriter       *bufio.Writer
-		tsvFile         *os.File
-		currentChunk    *tableDataChunk
-		inPostData      bool
-		stmtBuf         strings.Builder
-		delimiter        = ";"
+		currentTable string
+		tsvWriter    *bufio.Writer
+		tsvFile      *os.File
+		currentChunk *tableDataChunk
+		inPostData   bool
+		stmtBuf      strings.Builder
+		delimiter    = ";"
 	)
 
 	// Regex for parsing INSERT VALUES

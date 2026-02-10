@@ -32,18 +32,18 @@ type Config struct {
 	Insecure     bool
 
 	// Backup options
-	BackupDir             string
-	CompressionLevel      int
-	AutoDetectCompression bool   // Auto-detect optimal compression based on blob analysis
-	CompressionMode       string // "auto", "always", "never" - controls compression behavior
-	CompressionAlgorithm  string // "gzip" or "zstd" - compression algorithm for backups
-	BackupOutputFormat    string // "compressed" or "plain" - output format for backups
-	TrustFilesystemCompress bool  // Trust filesystem-level compression (ZFS/Btrfs), skip app compression
-	Jobs                  int
-	DumpJobs             int
-	MaxCores             int
-	AutoDetectCores      bool
-	CPUWorkloadType      string // "cpu-intensive", "io-intensive", "balanced"
+	BackupDir               string
+	CompressionLevel        int
+	AutoDetectCompression   bool   // Auto-detect optimal compression based on blob analysis
+	CompressionMode         string // "auto", "always", "never" - controls compression behavior
+	CompressionAlgorithm    string // "gzip" or "zstd" - compression algorithm for backups
+	BackupOutputFormat      string // "compressed" or "plain" - output format for backups
+	TrustFilesystemCompress bool   // Trust filesystem-level compression (ZFS/Btrfs), skip app compression
+	Jobs                    int
+	DumpJobs                int
+	MaxCores                int
+	AutoDetectCores         bool
+	CPUWorkloadType         string // "cpu-intensive", "io-intensive", "balanced"
 
 	// Resource profile for backup/restore operations
 	ResourceProfile string // "conservative", "balanced", "performance", "max-performance", "turbo"
@@ -57,10 +57,10 @@ type Config struct {
 	MemoryInfo  *cpu.MemoryInfo // System memory information
 
 	// Native engine options
-	UseNativeEngine   bool   // Use pure Go native engines instead of external tools (default: true)
-	FallbackToTools   bool   // Fallback to external tools if native engine fails
-	NativeEngineDebug bool   // Enable detailed native engine debugging
-	RestoreMode       string // Restore WAL mode: "safe", "balanced", "turbo" (default: "safe")
+	UseNativeEngine   bool     // Use pure Go native engines instead of external tools (default: true)
+	FallbackToTools   bool     // Fallback to external tools if native engine fails
+	NativeEngineDebug bool     // Enable detailed native engine debugging
+	RestoreMode       string   // Restore WAL mode: "safe", "balanced", "turbo" (default: "safe")
 	TieredRestore     bool     // Enable priority-based phased restore
 	CriticalTables    []string // Critical table patterns (restored first)
 	ImportantTables   []string // Important table patterns (restored second)
@@ -92,7 +92,7 @@ type Config struct {
 	ClusterParallelism int // Number of concurrent databases during cluster operations (0 = sequential)
 
 	// Working directory for large operations (extraction, diagnosis)
-	WorkDir            string  // Alternative temp directory for large operations (default: system temp)
+	WorkDir             string  // Alternative temp directory for large operations (default: system temp)
 	DiskSpaceMultiplier float64 // Override disk space multiplier for restore (0 = auto-detect from format/metadata)
 
 	// Swap file management (for large backups)
@@ -139,39 +139,39 @@ type Config struct {
 	GaleraHealthCheck    bool   // Verify node health before backup (default: true)
 
 	// pg_basebackup options (physical backup)
-	PhysicalBackup       bool   // Use pg_basebackup for physical backup
-	PhysicalFormat       string // "plain" or "tar" (default: tar)
-	PhysicalWALMethod    string // "stream", "fetch", "none" (default: stream)
-	PhysicalCheckpoint   string // "fast" or "spread" (default: fast)
-	PhysicalSlot         string // Replication slot name
-	PhysicalCreateSlot   bool   // Create replication slot if not exists
-	PhysicalManifest     string // Manifest checksum: "CRC32C", "SHA256", etc.
-	WriteRecoveryConf    bool   // Write recovery configuration for standby
+	PhysicalBackup     bool   // Use pg_basebackup for physical backup
+	PhysicalFormat     string // "plain" or "tar" (default: tar)
+	PhysicalWALMethod  string // "stream", "fetch", "none" (default: stream)
+	PhysicalCheckpoint string // "fast" or "spread" (default: fast)
+	PhysicalSlot       string // Replication slot name
+	PhysicalCreateSlot bool   // Create replication slot if not exists
+	PhysicalManifest   string // Manifest checksum: "CRC32C", "SHA256", etc.
+	WriteRecoveryConf  bool   // Write recovery configuration for standby
 
 	// Table-level backup options
-	IncludeTables   []string // Specific tables to include (schema.table)
-	ExcludeTables   []string // Tables to exclude
-	IncludeSchemas  []string // Include all tables in these schemas
-	ExcludeSchemas  []string // Exclude all tables in these schemas
-	TablePattern    string   // Regex pattern for table names
-	DataOnly        bool     // Backup data only, skip DDL
-	SchemaOnly      bool     // Backup DDL only, skip data
+	IncludeTables  []string // Specific tables to include (schema.table)
+	ExcludeTables  []string // Tables to exclude
+	IncludeSchemas []string // Include all tables in these schemas
+	ExcludeSchemas []string // Exclude all tables in these schemas
+	TablePattern   string   // Regex pattern for table names
+	DataOnly       bool     // Backup data only, skip DDL
+	SchemaOnly     bool     // Backup DDL only, skip data
 
 	// Pre/post hooks
-	HooksDir         string   // Directory containing hook scripts
-	PreBackupHook    string   // Command to run before backup
-	PostBackupHook   string   // Command to run after backup
-	PreDatabaseHook  string   // Command to run before each database
-	PostDatabaseHook string   // Command to run after each database
-	OnErrorHook      string   // Command to run on error
-	OnSuccessHook    string   // Command to run on success
-	HookTimeout      int      // Timeout for hooks in seconds (default: 300)
-	HookContinueOnError bool  // Continue backup if hook fails
+	HooksDir            string // Directory containing hook scripts
+	PreBackupHook       string // Command to run before backup
+	PostBackupHook      string // Command to run after backup
+	PreDatabaseHook     string // Command to run before each database
+	PostDatabaseHook    string // Command to run after each database
+	OnErrorHook         string // Command to run on error
+	OnSuccessHook       string // Command to run on success
+	HookTimeout         int    // Timeout for hooks in seconds (default: 300)
+	HookContinueOnError bool   // Continue backup if hook fails
 
 	// Bandwidth throttling
-	MaxBandwidth     string // Maximum bandwidth (e.g., "100M", "1G")
-	UploadBandwidth  string // Cloud upload bandwidth limit
-	BackupBandwidth  string // Database backup bandwidth limit
+	MaxBandwidth    string // Maximum bandwidth (e.g., "100M", "1G")
+	UploadBandwidth string // Cloud upload bandwidth limit
+	BackupBandwidth string // Database backup bandwidth limit
 
 	// TUI automation options (for testing)
 	TUIAutoSelect   int    // Auto-select menu option (-1 = disabled)
@@ -273,17 +273,17 @@ func New() *Config {
 		Insecure:     getEnvBool("INSECURE", false),
 
 		// Backup defaults - use recommended profile's settings for small VMs
-		BackupDir:          backupDir,
-		CompressionLevel:   getEnvInt("COMPRESS_LEVEL", 6),
+		BackupDir:            backupDir,
+		CompressionLevel:     getEnvInt("COMPRESS_LEVEL", 6),
 		CompressionAlgorithm: getEnvString("COMPRESSION_ALGORITHM", "gzip"),
-		BackupOutputFormat: getEnvString("BACKUP_OUTPUT_FORMAT", "compressed"),
-		Jobs:               getEnvInt("JOBS", recommendedProfile.Jobs),
-		DumpJobs:         getEnvInt("DUMP_JOBS", recommendedProfile.DumpJobs),
-		MaxCores:         getEnvInt("MAX_CORES", getDefaultMaxCores(cpuInfo)),
-		AutoDetectCores:  getEnvBool("AUTO_DETECT_CORES", true),
-		CPUWorkloadType:  getEnvString("CPU_WORKLOAD_TYPE", "balanced"),
-		ResourceProfile:  defaultProfile,
-		LargeDBMode:      getEnvBool("LARGE_DB_MODE", false),
+		BackupOutputFormat:   getEnvString("BACKUP_OUTPUT_FORMAT", "compressed"),
+		Jobs:                 getEnvInt("JOBS", recommendedProfile.Jobs),
+		DumpJobs:             getEnvInt("DUMP_JOBS", recommendedProfile.DumpJobs),
+		MaxCores:             getEnvInt("MAX_CORES", getDefaultMaxCores(cpuInfo)),
+		AutoDetectCores:      getEnvBool("AUTO_DETECT_CORES", true),
+		CPUWorkloadType:      getEnvString("CPU_WORKLOAD_TYPE", "balanced"),
+		ResourceProfile:      defaultProfile,
+		LargeDBMode:          getEnvBool("LARGE_DB_MODE", false),
 
 		// CPU and memory detection
 		CPUDetector: cpuDetector,

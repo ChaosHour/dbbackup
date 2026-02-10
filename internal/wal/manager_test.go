@@ -12,14 +12,14 @@ import (
 // mockLogger implements logger.Logger for testing
 type mockLogger struct{}
 
-func (m *mockLogger) Debug(msg string, args ...interface{})                      {}
-func (m *mockLogger) Info(msg string, args ...interface{})                       {}
-func (m *mockLogger) Warn(msg string, args ...interface{})                       {}
-func (m *mockLogger) Error(msg string, args ...interface{})                      {}
-func (m *mockLogger) Time(msg string, args ...any)                               {}
-func (m *mockLogger) WithFields(fields map[string]interface{}) logger.Logger     { return m }
-func (m *mockLogger) WithField(key string, value interface{}) logger.Logger      { return m }
-func (m *mockLogger) StartOperation(name string) logger.OperationLogger          { return &mockOpLogger{} }
+func (m *mockLogger) Debug(msg string, args ...interface{})                  {}
+func (m *mockLogger) Info(msg string, args ...interface{})                   {}
+func (m *mockLogger) Warn(msg string, args ...interface{})                   {}
+func (m *mockLogger) Error(msg string, args ...interface{})                  {}
+func (m *mockLogger) Time(msg string, args ...any)                           {}
+func (m *mockLogger) WithFields(fields map[string]interface{}) logger.Logger { return m }
+func (m *mockLogger) WithField(key string, value interface{}) logger.Logger  { return m }
+func (m *mockLogger) StartOperation(name string) logger.OperationLogger      { return &mockOpLogger{} }
 
 type mockOpLogger struct{}
 

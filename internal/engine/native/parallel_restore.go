@@ -328,8 +328,8 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 	poolConfig.MaxConnLifetime = 10 * time.Minute // Recycle stale conns faster
 	poolConfig.ConnConfig.ConnectTimeout = 30 * time.Second
 	poolConfig.ConnConfig.RuntimeParams = map[string]string{
-		"statement_timeout":                  "3600000", // 1h
-		"lock_timeout":                       "300000",  // 5 min
+		"statement_timeout":                   "3600000", // 1h
+		"lock_timeout":                        "300000",  // 5 min
 		"idle_in_transaction_session_timeout": "600000",  // 10 min
 	}
 
@@ -865,7 +865,9 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 // and streams rows directly from reader into PostgreSQL via COPY protocol.
 //
 // The reader is an io.PipeReader — data flows:
-//   gzip → scanner → pipe → pgx CopyFrom → PostgreSQL
+//
+//	gzip → scanner → pipe → pgx CopyFrom → PostgreSQL
+//
 // Zero intermediate buffering.
 func (e *ParallelRestoreEngine) streamCopy(ctx context.Context, tableName string, reader io.Reader) (int64, error) {
 	acquireCtx, acquireCancel := context.WithTimeout(ctx, 5*time.Minute)
@@ -1093,13 +1095,13 @@ type preScanEntry struct {
 
 // preScanResult contains the classification of all tables found in a dump.
 type preScanResult struct {
-	SchemaSQL      []string       // All schema/SET statements (in order)
-	CopyTables     []string       // All table names with COPY data (in order)
-	PostDataSQL    []string       // All post-data statements (in order)
-	TablePriority  map[string]TablePriority
-	CriticalTables []string
+	SchemaSQL       []string // All schema/SET statements (in order)
+	CopyTables      []string // All table names with COPY data (in order)
+	PostDataSQL     []string // All post-data statements (in order)
+	TablePriority   map[string]TablePriority
+	CriticalTables  []string
 	ImportantTables []string
-	ColdTables     []string
+	ColdTables      []string
 }
 
 // preScanDump reads through the dump file once, classifying tables by priority.
@@ -1205,9 +1207,10 @@ func (e *ParallelRestoreEngine) preScanDump(ctx context.Context, filePath string
 
 // restoreFileTiered implements priority-based phased restoration.
 // It pre-scans the dump to classify tables, then restores in 3 phases:
-//   Phase 1 (critical):  users, sessions, payments → app can come online
-//   Phase 2 (important): orders, products → core business functions
-//   Phase 3 (cold):      logs, analytics → background restoration
+//
+//	Phase 1 (critical):  users, sessions, payments → app can come online
+//	Phase 2 (important): orders, products → core business functions
+//	Phase 3 (cold):      logs, analytics → background restoration
 func (e *ParallelRestoreEngine) restoreFileTiered(ctx context.Context, filePath string, options *ParallelRestoreOptions) (*ParallelRestoreResult, error) {
 	startTime := time.Now()
 	result := &ParallelRestoreResult{

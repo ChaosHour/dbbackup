@@ -16,8 +16,8 @@ import (
 
 var (
 	diagnoseHeaderStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("63")).
-				Bold(true)
+		Foreground(lipgloss.Color("63")).
+		Bold(true)
 )
 
 // DiagnoseViewModel shows backup file diagnosis results

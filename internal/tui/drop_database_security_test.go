@@ -55,9 +55,9 @@ func TestValidateDBIdentifier(t *testing.T) {
 		{"too long pg", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 63, true}, // 64 chars
 		{"too long mysql", string(make([]byte, 65)), 64, true},
 		{"null byte", "my\x00db", 63, true},
-		{"with spaces", "my db", 63, false},       // spaces are valid in quoted identifiers
-		{"with special", "my-db!@#", 63, false},    // valid when quoted
-		{"unicode", "базаданных", 63, false},       // unicode is fine
+		{"with spaces", "my db", 63, false},     // spaces are valid in quoted identifiers
+		{"with special", "my-db!@#", 63, false}, // valid when quoted
+		{"unicode", "базаданных", 63, false},    // unicode is fine
 	}
 
 	for _, tt := range tests {

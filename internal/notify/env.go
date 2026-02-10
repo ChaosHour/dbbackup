@@ -11,25 +11,28 @@ import (
 // ConfigFromEnv loads notification configuration from environment variables.
 //
 // SMTP Configuration:
-//   NOTIFY_SMTP_HOST     - SMTP server hostname (enables SMTP when set)
-//   NOTIFY_SMTP_PORT     - SMTP server port (default: 587)
-//   NOTIFY_SMTP_USER     - SMTP username
-//   NOTIFY_SMTP_PASSWORD - SMTP password
-//   NOTIFY_SMTP_FROM     - Sender email address
-//   NOTIFY_SMTP_TO       - Comma-separated recipient list
-//   NOTIFY_SMTP_TLS      - Use TLS (default: false)
-//   NOTIFY_SMTP_STARTTLS - Use STARTTLS (default: true)
-//   NOTIFY_SMTP_INSECURE - Skip TLS certificate verification (default: auto for localhost)
+//
+//	NOTIFY_SMTP_HOST     - SMTP server hostname (enables SMTP when set)
+//	NOTIFY_SMTP_PORT     - SMTP server port (default: 587)
+//	NOTIFY_SMTP_USER     - SMTP username
+//	NOTIFY_SMTP_PASSWORD - SMTP password
+//	NOTIFY_SMTP_FROM     - Sender email address
+//	NOTIFY_SMTP_TO       - Comma-separated recipient list
+//	NOTIFY_SMTP_TLS      - Use TLS (default: false)
+//	NOTIFY_SMTP_STARTTLS - Use STARTTLS (default: true)
+//	NOTIFY_SMTP_INSECURE - Skip TLS certificate verification (default: auto for localhost)
 //
 // Webhook Configuration:
-//   NOTIFY_WEBHOOK_URL    - Webhook URL (enables webhook when set)
-//   NOTIFY_WEBHOOK_METHOD - HTTP method (default: POST)
-//   NOTIFY_WEBHOOK_SECRET - HMAC signing secret
+//
+//	NOTIFY_WEBHOOK_URL    - Webhook URL (enables webhook when set)
+//	NOTIFY_WEBHOOK_METHOD - HTTP method (default: POST)
+//	NOTIFY_WEBHOOK_SECRET - HMAC signing secret
 //
 // General Configuration:
-//   NOTIFY_ON_SUCCESS - Send on success (default: true)
-//   NOTIFY_ON_FAILURE - Send on failure (default: true)
-//   NOTIFY_MIN_SEVERITY - Minimum severity: info, warning, error, critical (default: info)
+//
+//	NOTIFY_ON_SUCCESS - Send on success (default: true)
+//	NOTIFY_ON_FAILURE - Send on failure (default: true)
+//	NOTIFY_MIN_SEVERITY - Minimum severity: info, warning, error, critical (default: info)
 func ConfigFromEnv() Config {
 	cfg := DefaultConfig()
 

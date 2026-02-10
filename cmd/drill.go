@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	drillDatabaseName string
+	drillDatabaseName   string
 	drillDatabaseType   string
 	drillImage          string
 	drillPort           int

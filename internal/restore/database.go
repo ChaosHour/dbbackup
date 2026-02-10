@@ -80,7 +80,7 @@ func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error 
 
 	// Terminate connections again after revoking connect privilege
 	e.terminateConnections(ctx, dbName)
-	
+
 	// Context-aware wait
 	select {
 	case <-ctx.Done():

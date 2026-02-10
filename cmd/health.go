@@ -33,19 +33,19 @@ const (
 
 // HealthReport contains the complete health check results
 type HealthReport struct {
-	Status         HealthStatus          `json:"status"`
-	Timestamp      time.Time             `json:"timestamp"`
-	Summary        string                `json:"summary"`
-	Checks         []HealthCheck         `json:"checks"`
-	Recommendations []string             `json:"recommendations,omitempty"`
+	Status          HealthStatus  `json:"status"`
+	Timestamp       time.Time     `json:"timestamp"`
+	Summary         string        `json:"summary"`
+	Checks          []HealthCheck `json:"checks"`
+	Recommendations []string      `json:"recommendations,omitempty"`
 }
 
 // HealthCheck represents a single health check
 type HealthCheck struct {
-	Name        string       `json:"name"`
-	Status      HealthStatus `json:"status"`
-	Message     string       `json:"message"`
-	Details     string       `json:"details,omitempty"`
+	Name    string       `json:"name"`
+	Status  HealthStatus `json:"status"`
+	Message string       `json:"message"`
+	Details string       `json:"details,omitempty"`
 }
 
 // healthCmd is the health check command
@@ -565,7 +565,7 @@ func checkDiskSpace() HealthCheck {
 
 	// Simple approach: check if we can write a test file
 	testPath := filepath.Join(cfg.BackupDir, ".space_check")
-	
+
 	// Create a 1MB test to ensure we have space
 	testData := make([]byte, 1024*1024)
 	if err := os.WriteFile(testPath, testData, 0644); err != nil {
@@ -601,7 +601,7 @@ func checkDiskSpace() HealthCheck {
 
 func outputHealthTable(report *HealthReport) {
 	fmt.Println()
-	
+
 	statusIcon := "✅"
 	statusColor := "\033[32m" // green
 	if report.Status == StatusWarning {
@@ -637,7 +637,7 @@ func outputHealthTable(report *HealthReport) {
 		}
 
 		fmt.Printf("%s[%s]\033[0m %-22s %s\n", color, icon, check.Name, check.Message)
-		
+
 		if healthVerbose && check.Details != "" {
 			fmt.Printf("      └─ %s\n", check.Details)
 		}

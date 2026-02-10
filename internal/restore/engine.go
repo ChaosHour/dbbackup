@@ -1543,12 +1543,12 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	}
 
 	format := DetectArchiveFormat(archivePath)
-	
+
 	// Also check if it's a plain cluster directory
 	if format == FormatUnknown {
 		format = DetectArchiveFormatWithPath(archivePath)
 	}
-	
+
 	if !format.CanBeClusterRestore() {
 		operation.Fail("Invalid cluster archive format")
 		return fmt.Errorf("not a valid cluster restore format: %s (detected format: %s). Supported: .tar.gz, plain directory, .sql, .sql.gz", archivePath, format)
@@ -1558,7 +1558,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	if format == FormatPostgreSQLSQL || format == FormatPostgreSQLSQLGz {
 		return e.restoreClusterFromSQL(ctx, archivePath, operation)
 	}
-	
+
 	// For plain directories, use directly without extraction
 	isPlainDirectory := format == FormatClusterDir
 

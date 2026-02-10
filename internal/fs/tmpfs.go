@@ -290,4 +290,3 @@ func GetMemoryStatus() (*MemoryStatus, error) {
 
 	return status, nil
 }
-

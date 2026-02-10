@@ -47,7 +47,7 @@ func TestParseStatementsContextCancellation(t *testing.T) {
 	var buf bytes.Buffer
 	buf.WriteString("-- Test dump\n")
 	buf.WriteString("SET statement_timeout = 0;\n")
-	
+
 	// Add 1,000,000 lines to simulate a large dump
 	for i := 0; i < 1000000; i++ {
 		buf.WriteString("SELECT ")
@@ -60,7 +60,7 @@ func TestParseStatementsContextCancellation(t *testing.T) {
 	defer cancel()
 
 	reader := strings.NewReader(buf.String())
-	
+
 	start := time.Now()
 	_, err := engine.parseStatementsWithContext(ctx, reader)
 	elapsed := time.Since(start)
@@ -88,7 +88,7 @@ func TestParseStatementsWithCopyDataCancellation(t *testing.T) {
 	var buf bytes.Buffer
 	buf.WriteString("CREATE TABLE test (id int, data text);\n")
 	buf.WriteString("COPY test (id, data) FROM stdin;\n")
-	
+
 	// Add 500,000 rows of COPY data
 	for i := 0; i < 500000; i++ {
 		buf.WriteString("1\tsome test data for row number padding to make larger\n")
@@ -101,7 +101,7 @@ func TestParseStatementsWithCopyDataCancellation(t *testing.T) {
 	defer cancel()
 
 	reader := strings.NewReader(buf.String())
-	
+
 	start := time.Now()
 	_, err := engine.parseStatementsWithContext(ctx, reader)
 	elapsed := time.Since(start)

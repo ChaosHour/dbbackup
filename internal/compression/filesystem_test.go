@@ -166,9 +166,9 @@ func TestFilesystemCompressionString(t *testing.T) {
 
 func TestGenerateRecommendations(t *testing.T) {
 	tests := []struct {
-		name                   string
-		fc                     *FilesystemCompression
-		expectSkipAppCompress  bool
+		name                  string
+		fc                    *FilesystemCompression
+		expectSkipAppCompress bool
 	}{
 		{
 			name: "zfs lz4 enabled",
@@ -200,9 +200,9 @@ func TestGenerateRecommendations(t *testing.T) {
 			expectSkipAppCompress: true,
 		},
 		{
-			name:                   "not detected",
-			fc:                     &FilesystemCompression{Detected: false},
-			expectSkipAppCompress:  false,
+			name:                  "not detected",
+			fc:                    &FilesystemCompression{Detected: false},
+			expectSkipAppCompress: false,
 		},
 	}
 

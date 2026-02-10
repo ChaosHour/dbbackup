@@ -51,8 +51,8 @@ func TestSystemDatabaseSkip(t *testing.T) {
 // TestLocalhostHostCheck verifies localhost detection for Unix socket auth
 func TestLocalhostHostCheck(t *testing.T) {
 	tests := []struct {
-		host        string
-		shouldAddH  bool
+		host       string
+		shouldAddH bool
 	}{
 		{"localhost", false},
 		{"127.0.0.1", false},
@@ -77,9 +77,9 @@ func TestLocalhostHostCheck(t *testing.T) {
 // TestDatabaseNameQuoting verifies database names would be properly quoted
 func TestDatabaseNameQuoting(t *testing.T) {
 	tests := []struct {
-		name     string
-		dbName   string
-		valid    bool
+		name   string
+		dbName string
+		valid  bool
 	}{
 		{"simple name", "mydb", true},
 		{"with underscore", "my_db", true},

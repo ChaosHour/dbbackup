@@ -10,13 +10,13 @@ import (
 
 // CacheEntry represents a cached compression analysis
 type CacheEntry struct {
-	Database      string            `json:"database"`
-	Host          string            `json:"host"`
-	Port          int               `json:"port"`
-	Analysis      *DatabaseAnalysis `json:"analysis"`
-	CreatedAt     time.Time         `json:"created_at"`
-	ExpiresAt     time.Time         `json:"expires_at"`
-	SchemaHash    string            `json:"schema_hash"` // Hash of table structure for invalidation
+	Database   string            `json:"database"`
+	Host       string            `json:"host"`
+	Port       int               `json:"port"`
+	Analysis   *DatabaseAnalysis `json:"analysis"`
+	CreatedAt  time.Time         `json:"created_at"`
+	ExpiresAt  time.Time         `json:"expires_at"`
+	SchemaHash string            `json:"schema_hash"` // Hash of table structure for invalidation
 }
 
 // Cache manages cached compression analysis results
@@ -38,7 +38,7 @@ func NewCache(cacheDir string) *Cache {
 		}
 		cacheDir = filepath.Join(userCache, "dbbackup", "compression")
 	}
-	
+
 	return &Cache{
 		cacheDir: cacheDir,
 		ttl:      DefaultCacheTTL,
@@ -63,29 +63,29 @@ func (c *Cache) cachePath(host string, port int, database string) string {
 // Get retrieves cached analysis if valid
 func (c *Cache) Get(host string, port int, database string) (*DatabaseAnalysis, bool) {
 	path := c.cachePath(host, port, database)
-	
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
-	
+
 	var entry CacheEntry
 	if err := json.Unmarshal(data, &entry); err != nil {
 		return nil, false
 	}
-	
+
 	// Check if expired
 	if time.Now().After(entry.ExpiresAt) {
 		// Clean up expired cache
 		os.Remove(path)
 		return nil, false
 	}
-	
+
 	// Verify it's for the right database
 	if entry.Database != database || entry.Host != host || entry.Port != port {
 		return nil, false
 	}
-	
+
 	return entry.Analysis, true
 }
 
@@ -95,26 +95,26 @@ func (c *Cache) Set(host string, port int, database string, analysis *DatabaseAn
 	if err := os.MkdirAll(c.cacheDir, 0755); err != nil {
 		return fmt.Errorf("failed to create cache directory: %w", err)
 	}
-	
+
 	entry := CacheEntry{
-		Database:   database,
-		Host:       host,
-		Port:       port,
-		Analysis:   analysis,
-		CreatedAt:  time.Now(),
-		ExpiresAt:  time.Now().Add(c.ttl),
+		Database:  database,
+		Host:      host,
+		Port:      port,
+		Analysis:  analysis,
+		CreatedAt: time.Now(),
+		ExpiresAt: time.Now().Add(c.ttl),
 	}
-	
+
 	data, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal cache entry: %w", err)
 	}
-	
+
 	path := c.cachePath(host, port, database)
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("failed to write cache file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -136,7 +136,7 @@ func (c *Cache) InvalidateAll() error {
 		}
 		return err
 	}
-	
+
 	for _, entry := range entries {
 		if filepath.Ext(entry.Name()) == ".json" {
 			os.Remove(filepath.Join(c.cacheDir, entry.Name()))
@@ -154,27 +154,27 @@ func (c *Cache) List() ([]CacheEntry, error) {
 		}
 		return nil, err
 	}
-	
+
 	var results []CacheEntry
 	for _, entry := range entries {
 		if filepath.Ext(entry.Name()) != ".json" {
 			continue
 		}
-		
+
 		path := filepath.Join(c.cacheDir, entry.Name())
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
-		
+
 		var cached CacheEntry
 		if err := json.Unmarshal(data, &cached); err != nil {
 			continue
 		}
-		
+
 		results = append(results, cached)
 	}
-	
+
 	return results, nil
 }
 
@@ -184,7 +184,7 @@ func (c *Cache) CleanExpired() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	
+
 	cleaned := 0
 	now := time.Now()
 	for _, entry := range entries {
@@ -194,24 +194,24 @@ func (c *Cache) CleanExpired() (int, error) {
 			}
 		}
 	}
-	
+
 	return cleaned, nil
 }
 
 // GetCacheInfo returns information about a cached entry
 func (c *Cache) GetCacheInfo(host string, port int, database string) (*CacheEntry, bool) {
 	path := c.cachePath(host, port, database)
-	
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
-	
+
 	var entry CacheEntry
 	if err := json.Unmarshal(data, &entry); err != nil {
 		return nil, false
 	}
-	
+
 	return &entry, true
 }
 

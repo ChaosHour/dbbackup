@@ -482,8 +482,8 @@ func (s *Safety) listPostgresUserDatabases(ctx context.Context) ([]string, error
 		"-p", fmt.Sprintf("%d", s.cfg.Port),
 		"-U", s.cfg.User,
 		"-d", "postgres",
-		"-tA",          // Tuples only, unaligned
-		"-X",           // Don't read .psqlrc (prevents interactive features)
+		"-tA",           // Tuples only, unaligned
+		"-X",            // Don't read .psqlrc (prevents interactive features)
 		"--no-password", // Never prompt for password (use PGPASSWORD env)
 		"-c", query,
 	}

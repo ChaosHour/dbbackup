@@ -357,13 +357,13 @@ func runLocksCheck(cfg *config.Config, log logger.Logger) PreflightCheckStatus {
 
 	if maxLocks < recommended {
 		return PreflightCheckStatus{
-			State: "warn",
+			State:   "warn",
 			Message: fmt.Sprintf("max_locks_per_transaction=%d (recommend >=%d for %s)", maxLocks, recommended, label),
 		}
 	}
 
 	return PreflightCheckStatus{
-		State: "pass",
+		State:   "pass",
 		Message: fmt.Sprintf("max_locks_per_transaction=%d (sufficient)", maxLocks),
 	}
 }

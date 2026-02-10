@@ -322,12 +322,12 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 	// Apply MySQL bulk load optimizations for faster restores
 	// These provide 2-4x speedup for large SQL restores
 	optimizations := []string{
-		"SET FOREIGN_KEY_CHECKS = 0",                // Skip FK validation during load (HUGE speedup)
-		"SET UNIQUE_CHECKS = 0",                     // Skip unique index checks during bulk insert
-		"SET AUTOCOMMIT = 0",                        // Batch commits instead of per-statement
-		"SET sql_log_bin = 0",                       // Disable binary logging during restore (if permitted)
-		"SET SESSION innodb_flush_log_at_trx_commit = 2", // Async log flush (2x+ speedup)
-		"SET SESSION sort_buffer_size = 268435456",  // 256MB sort buffer for index builds
+		"SET FOREIGN_KEY_CHECKS = 0",                      // Skip FK validation during load (HUGE speedup)
+		"SET UNIQUE_CHECKS = 0",                           // Skip unique index checks during bulk insert
+		"SET AUTOCOMMIT = 0",                              // Batch commits instead of per-statement
+		"SET sql_log_bin = 0",                             // Disable binary logging during restore (if permitted)
+		"SET SESSION innodb_flush_log_at_trx_commit = 2",  // Async log flush (2x+ speedup)
+		"SET SESSION sort_buffer_size = 268435456",        // 256MB sort buffer for index builds
 		"SET SESSION bulk_insert_buffer_size = 268435456", // 256MB bulk insert buffer
 	}
 	appliedCount := 0
@@ -360,9 +360,9 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 		rowsRestored     int64
 		inMultiLine      bool
 		delimiter        = ";"
-		currentTable     string        // Track current table for DISABLE KEYS
-		disabledTables   []string      // Tables with disabled keys (for deferred ENABLE)
-		tableInsertCount int64         // INSERT count for current table
+		currentTable     string   // Track current table for DISABLE KEYS
+		disabledTables   []string // Tables with disabled keys (for deferred ENABLE)
+		tableInsertCount int64    // INSERT count for current table
 	)
 
 	// Note: Foreign key checks already disabled in optimizations above

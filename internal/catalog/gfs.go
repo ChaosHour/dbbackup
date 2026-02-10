@@ -11,12 +11,12 @@ import (
 
 // GFSPolicy defines a Grandfather-Father-Son retention policy
 type GFSPolicy struct {
-	KeepDaily   int  // Number of daily backups to keep (newest N)
-	KeepWeekly  int  // Number of weekly backups to keep (first per ISO week)
-	KeepMonthly int  // Number of monthly backups to keep (first per month)
-	KeepYearly  int  // Number of yearly backups to keep (first per year)
-	DryRun      bool // Preview without deleting
-	DeleteFiles bool // Also delete backup files from disk
+	KeepDaily   int    // Number of daily backups to keep (newest N)
+	KeepWeekly  int    // Number of weekly backups to keep (first per ISO week)
+	KeepMonthly int    // Number of monthly backups to keep (first per month)
+	KeepYearly  int    // Number of yearly backups to keep (first per year)
+	DryRun      bool   // Preview without deleting
+	DeleteFiles bool   // Also delete backup files from disk
 	Database    string // Filter by specific database (empty = all)
 }
 
@@ -27,7 +27,7 @@ type GFSResult struct {
 	Removed      int            `json:"removed"`
 	SpaceFreed   int64          `json:"space_freed_bytes"`
 	Duration     float64        `json:"duration_seconds"`
-	KeptByTier   map[string]int `json:"kept_by_tier"`   // daily/weekly/monthly/yearly
+	KeptByTier   map[string]int `json:"kept_by_tier"` // daily/weekly/monthly/yearly
 	ToDelete     []GFSCandidate `json:"to_delete"`
 	ToKeep       []GFSCandidate `json:"to_keep"`
 	FilesDeleted int            `json:"files_deleted"`

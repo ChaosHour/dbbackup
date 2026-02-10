@@ -16,20 +16,20 @@ const dropDatabaseTimeout = 30 * time.Second
 
 // DropDatabaseView handles database drop with confirmation
 type DropDatabaseView struct {
-	config       *config.Config
-	logger       logger.Logger
-	parent       tea.Model
-	ctx          context.Context
-	database     string
-	dbType       string
-	databases    []string
-	cursor       int
-	offset       int
-	message      string
-	loading      bool
-	err          error
-	confirmStep  int    // 0=none, 1=first confirm, 2=type name
-	typedName    string
+	config      *config.Config
+	logger      logger.Logger
+	parent      tea.Model
+	ctx         context.Context
+	database    string
+	dbType      string
+	databases   []string
+	cursor      int
+	offset      int
+	message     string
+	loading     bool
+	err         error
+	confirmStep int // 0=none, 1=first confirm, 2=type name
+	typedName   string
 }
 
 // NewDropDatabaseView creates a new drop database view
@@ -335,7 +335,7 @@ func (v *DropDatabaseView) View() string {
 
 	for i := v.offset; i < v.offset+displayCount; i++ {
 		dbName := v.databases[i]
-		
+
 		if i == v.cursor {
 			s.WriteString(menuSelectedStyle.Render(fmt.Sprintf("> %s", dbName)))
 		} else {

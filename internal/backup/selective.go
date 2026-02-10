@@ -52,14 +52,14 @@ type TableBackupConfig struct {
 	MaxRows        int64    // Only tables with at most this many rows
 
 	// Backup options
-	DataOnly      bool   // Skip DDL, only data
-	SchemaOnly    bool   // Skip data, only DDL
-	DropBefore    bool   // Add DROP TABLE statements
-	IfNotExists   bool   // Use CREATE TABLE IF NOT EXISTS
-	Truncate      bool   // Add TRUNCATE before INSERT
+	DataOnly        bool // Skip DDL, only data
+	SchemaOnly      bool // Skip data, only DDL
+	DropBefore      bool // Add DROP TABLE statements
+	IfNotExists     bool // Use CREATE TABLE IF NOT EXISTS
+	Truncate        bool // Add TRUNCATE before INSERT
 	DisableTriggers bool // Disable triggers during restore
-	BatchSize     int    // Rows per COPY batch
-	Parallel      int    // Parallel workers
+	BatchSize       int  // Rows per COPY batch
+	Parallel        int  // Parallel workers
 
 	// Output
 	Compress      bool
@@ -93,21 +93,21 @@ type ColumnInfo struct {
 
 // ForeignKey describes a foreign key constraint
 type ForeignKey struct {
-	Name           string
-	Columns        []string
-	RefTable       string
-	RefColumns     []string
-	OnDelete       string
-	OnUpdate       string
+	Name       string
+	Columns    []string
+	RefTable   string
+	RefColumns []string
+	OnDelete   string
+	OnUpdate   string
 }
 
 // IndexInfo describes an index
 type IndexInfo struct {
-	Name     string
-	Columns  []string
-	IsUnique bool
+	Name      string
+	Columns   []string
+	IsUnique  bool
 	IsPrimary bool
-	Method   string // btree, hash, gin, gist, etc.
+	Method    string // btree, hash, gin, gist, etc.
 }
 
 // TriggerInfo describes a trigger
@@ -121,13 +121,13 @@ type TriggerInfo struct {
 
 // TableBackupResult contains backup operation results
 type TableBackupResult struct {
-	Table         string
-	Schema        string
-	RowsBackedUp  int64
-	BytesWritten  int64
-	Duration      time.Duration
-	DDLIncluded   bool
-	DataIncluded  bool
+	Table        string
+	Schema       string
+	RowsBackedUp int64
+	BytesWritten int64
+	Duration     time.Duration
+	DDLIncluded  bool
+	DataIncluded bool
 }
 
 // NewTableBackup creates a new table-level backup handler

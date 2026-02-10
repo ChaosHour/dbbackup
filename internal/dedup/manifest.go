@@ -29,11 +29,11 @@ type Manifest struct {
 	Chunks []ChunkRef `json:"chunks"`
 
 	// Stats about the backup
-	OriginalSize int64 `json:"original_size"`  // Size before deduplication
-	StoredSize   int64 `json:"stored_size"`    // Size after dedup (new chunks only)
-	ChunkCount   int   `json:"chunk_count"`    // Total chunks
-	NewChunks    int   `json:"new_chunks"`     // Chunks that weren't deduplicated
-	DedupRatio   float64 `json:"dedup_ratio"` // 1.0 = no dedup, 0.0 = 100% dedup
+	OriginalSize int64   `json:"original_size"` // Size before deduplication
+	StoredSize   int64   `json:"stored_size"`   // Size after dedup (new chunks only)
+	ChunkCount   int     `json:"chunk_count"`   // Total chunks
+	NewChunks    int     `json:"new_chunks"`    // Chunks that weren't deduplicated
+	DedupRatio   float64 `json:"dedup_ratio"`   // 1.0 = no dedup, 0.0 = 100% dedup
 
 	// Encryption and compression settings used
 	Encrypted    bool `json:"encrypted"`
@@ -41,15 +41,15 @@ type Manifest struct {
 	Decompressed bool `json:"decompressed,omitempty"` // Input was auto-decompressed before chunking
 
 	// Verification
-	SHA256     string    `json:"sha256"`              // Hash of reconstructed file
+	SHA256     string    `json:"sha256"` // Hash of reconstructed file
 	VerifiedAt time.Time `json:"verified_at,omitempty"`
 }
 
 // ChunkRef references a chunk in the manifest
 type ChunkRef struct {
-	Hash   string `json:"h"`           // SHA-256 hash (64 chars)
-	Offset int64  `json:"o"`           // Offset in original file
-	Length int    `json:"l"`           // Chunk length
+	Hash   string `json:"h"` // SHA-256 hash (64 chars)
+	Offset int64  `json:"o"` // Offset in original file
+	Length int    `json:"l"` // Chunk length
 }
 
 // ManifestStore manages backup manifests

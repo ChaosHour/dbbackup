@@ -238,7 +238,7 @@ func TestDetectArchiveFormatAll(t *testing.T) {
 		{"mysql_dump.sql.gz", FormatMySQLSQLGz, false}, // Has "mysql" in name = MySQL
 		{"randomfile.txt", FormatUnknown, false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.filename, func(t *testing.T) {
 			got := DetectArchiveFormat(tt.filename)

@@ -46,7 +46,7 @@ func TestExtrapolateBackupTotal(t *testing.T) {
 			},
 			dbTotal:       4,
 			currentEst:    80 * 1024 * 1024 * 1024,
-			expectGreater: 80 * 1024 * 1024 * 1024,  // 20GB avg × 4 × 1.1 = 88 GB
+			expectGreater: 80 * 1024 * 1024 * 1024, // 20GB avg × 4 × 1.1 = 88 GB
 			expectLess:    100 * 1024 * 1024 * 1024,
 		},
 		{

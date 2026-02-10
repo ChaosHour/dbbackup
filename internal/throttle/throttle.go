@@ -3,8 +3,9 @@
 // operations to avoid saturating network connections.
 //
 // Usage:
-//   reader := throttle.NewReader(originalReader, 10*1024*1024) // 10 MB/s
-//   writer := throttle.NewWriter(originalWriter, 50*1024*1024) // 50 MB/s
+//
+//	reader := throttle.NewReader(originalReader, 10*1024*1024) // 10 MB/s
+//	writer := throttle.NewWriter(originalWriter, 50*1024*1024) // 50 MB/s
 package throttle
 
 import (
@@ -18,10 +19,10 @@ import (
 
 // Limiter provides token bucket rate limiting
 type Limiter struct {
-	rate       int64         // Bytes per second
-	burst      int64         // Maximum burst size
-	tokens     int64         // Current available tokens
-	lastUpdate time.Time     // Last token update time
+	rate       int64     // Bytes per second
+	burst      int64     // Maximum burst size
+	tokens     int64     // Current available tokens
+	lastUpdate time.Time // Last token update time
 	mu         sync.Mutex
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -144,14 +145,14 @@ type Writer struct {
 
 // Stats tracks transfer statistics
 type Stats struct {
-	mu           sync.RWMutex
-	BytesTotal   int64
-	StartTime    time.Time
-	LastUpdate   time.Time
-	CurrentRate  float64 // Bytes per second
-	AverageRate  float64 // Overall average
-	PeakRate     float64 // Maximum observed rate
-	Throttled    int64   // Times throttling was applied
+	mu          sync.RWMutex
+	BytesTotal  int64
+	StartTime   time.Time
+	LastUpdate  time.Time
+	CurrentRate float64 // Bytes per second
+	AverageRate float64 // Overall average
+	PeakRate    float64 // Maximum observed rate
+	Throttled   int64   // Times throttling was applied
 }
 
 // NewReader creates a throttled reader
@@ -454,12 +455,12 @@ func (c *Copier) Close() {
 // AdaptiveLimiter adjusts rate based on network conditions
 type AdaptiveLimiter struct {
 	*Limiter
-	minRate     int64
-	maxRate     int64
-	targetRate  int64
-	errorCount  int
+	minRate      int64
+	maxRate      int64
+	targetRate   int64
+	errorCount   int
 	successCount int
-	mu          sync.Mutex
+	mu           sync.Mutex
 }
 
 // NewAdaptiveLimiter creates a limiter that adjusts based on success/failure

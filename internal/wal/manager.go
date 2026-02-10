@@ -2,10 +2,10 @@
 // This enables true Point-in-Time Recovery (PITR) for PostgreSQL databases.
 //
 // WAL archiving flow:
-//   1. PostgreSQL generates WAL files as transactions occur
-//   2. archive_command or pg_receivewal copies WAL to archive
-//   3. pg_basebackup creates base backup with LSN position
-//   4. On restore: base backup + WAL files = any point in time
+//  1. PostgreSQL generates WAL files as transactions occur
+//  2. archive_command or pg_receivewal copies WAL to archive
+//  3. pg_basebackup creates base backup with LSN position
+//  4. On restore: base backup + WAL files = any point in time
 //
 // Supported modes:
 //   - Archive mode: Uses archive_command to push WAL files
@@ -63,17 +63,17 @@ type Config struct {
 	CompressionLvl int    // Compression level 0-9
 
 	// Streaming settings
-	Slot          string // Replication slot name
-	CreateSlot    bool   // Create slot if not exists
-	SlotPlugin    string // Logical replication plugin (optional)
-	Synchronous   bool   // Synchronous replication mode
+	Slot           string        // Replication slot name
+	CreateSlot     bool          // Create slot if not exists
+	SlotPlugin     string        // Logical replication plugin (optional)
+	Synchronous    bool          // Synchronous replication mode
 	StatusInterval time.Duration // How often to report status
 
 	// Advanced
-	MaxWALSize     int64  // Max WAL archive size before cleanup
-	SegmentSize    int    // WAL segment size (default 16MB)
-	TimelineFollow bool   // Follow timeline switches
-	NoLoop         bool   // Don't loop, exit after disconnect
+	MaxWALSize     int64 // Max WAL archive size before cleanup
+	SegmentSize    int   // WAL segment size (default 16MB)
+	TimelineFollow bool  // Follow timeline switches
+	NoLoop         bool  // Don't loop, exit after disconnect
 }
 
 // Status represents current WAL archiving status

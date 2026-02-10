@@ -47,8 +47,8 @@ type DiskSpaceChecker struct {
 }
 
 var (
-	winKernel32             = syscall.NewLazyDLL("kernel32.dll")
-	winGetDiskFreeSpaceExW  = winKernel32.NewProc("GetDiskFreeSpaceExW")
+	winKernel32            = syscall.NewLazyDLL("kernel32.dll")
+	winGetDiskFreeSpaceExW = winKernel32.NewProc("GetDiskFreeSpaceExW")
 )
 
 // Check performs the disk space validation (Windows)

@@ -111,7 +111,7 @@ func TestTestCompression(t *testing.T) {
 	compressible := bytes.Repeat([]byte("AAAAAAAAAA"), 1000)
 	compressedSize := analyzer.testCompression(compressible)
 	ratio := float64(len(compressible)) / float64(compressedSize)
-	
+
 	if ratio < 5.0 {
 		t.Errorf("Expected high compression ratio for repeated data, got %.2f", ratio)
 	}
@@ -121,11 +121,11 @@ func TestTestCompression(t *testing.T) {
 	gz := gzip.NewWriter(&gzBuf)
 	gz.Write(compressible)
 	gz.Close()
-	
+
 	alreadyCompressed := gzBuf.Bytes()
 	compressedAgain := analyzer.testCompression(alreadyCompressed)
 	ratio2 := float64(len(alreadyCompressed)) / float64(compressedAgain)
-	
+
 	// Compressing already compressed data should have ratio close to 1
 	if ratio2 > 1.1 {
 		t.Errorf("Already compressed data should not compress further, ratio: %.2f", ratio2)

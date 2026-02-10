@@ -79,7 +79,7 @@ type MenuModel struct {
 	dbTypeCursor int
 
 	// Connection health
-	connectionStatus string    // "[OK] Connected" | "[FAIL] Disconnected" | "[WAIT] Checking..."
+	connectionStatus string // "[OK] Connected" | "[FAIL] Disconnected" | "[WAIT] Checking..."
 	lastHealthCheck  time.Time
 	connectionError  error
 

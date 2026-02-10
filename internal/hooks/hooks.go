@@ -30,63 +30,63 @@ type Manager struct {
 // Config contains hook configuration
 type Config struct {
 	// Pre-backup hooks
-	PreBackup     []Hook // Run before backup starts
-	PreDatabase   []Hook // Run before each database backup
-	PreTable      []Hook // Run before each table (for selective backup)
+	PreBackup   []Hook // Run before backup starts
+	PreDatabase []Hook // Run before each database backup
+	PreTable    []Hook // Run before each table (for selective backup)
 
 	// Post-backup hooks
-	PostBackup    []Hook // Run after backup completes
-	PostDatabase  []Hook // Run after each database backup
-	PostTable     []Hook // Run after each table
-	PostUpload    []Hook // Run after cloud upload
+	PostBackup   []Hook // Run after backup completes
+	PostDatabase []Hook // Run after each database backup
+	PostTable    []Hook // Run after each table
+	PostUpload   []Hook // Run after cloud upload
 
 	// Error hooks
-	OnError       []Hook // Run when backup fails
-	OnSuccess     []Hook // Run when backup succeeds
+	OnError   []Hook // Run when backup fails
+	OnSuccess []Hook // Run when backup succeeds
 
 	// Settings
-	ContinueOnError bool          // Continue backup if pre-hook fails
-	Timeout         time.Duration // Default timeout for hooks
-	WorkDir         string        // Working directory for hook execution
+	ContinueOnError bool              // Continue backup if pre-hook fails
+	Timeout         time.Duration     // Default timeout for hooks
+	WorkDir         string            // Working directory for hook execution
 	Environment     map[string]string // Additional environment variables
 }
 
 // Hook defines a single hook to execute
 type Hook struct {
-	Name        string            // Hook name for logging
-	Command     string            // Command to execute (can be path to script or inline command)
-	Args        []string          // Command arguments
-	Shell       bool              // Execute via shell (allows pipes, redirects)
-	Timeout     time.Duration     // Override default timeout
-	Environment map[string]string // Additional environment variables
-	ContinueOnError bool          // Override global setting
-	Condition   string            // Shell condition that must be true to run
+	Name            string            // Hook name for logging
+	Command         string            // Command to execute (can be path to script or inline command)
+	Args            []string          // Command arguments
+	Shell           bool              // Execute via shell (allows pipes, redirects)
+	Timeout         time.Duration     // Override default timeout
+	Environment     map[string]string // Additional environment variables
+	ContinueOnError bool              // Override global setting
+	Condition       string            // Shell condition that must be true to run
 }
 
 // HookContext provides context to hooks via environment variables
 type HookContext struct {
-	Operation    string    // "backup", "restore", "verify"
-	Phase        string    // "pre", "post", "error"
-	Database     string    // Current database name
-	Table        string    // Current table (for selective backup)
-	BackupPath   string    // Path to backup file
-	BackupSize   int64     // Backup size in bytes
-	StartTime    time.Time // When operation started
-	Duration     time.Duration // Operation duration (for post hooks)
-	Error        string    // Error message (for error hooks)
-	ExitCode     int       // Exit code (for post/error hooks)
-	CloudTarget  string    // Cloud storage URI
-	Success      bool      // Whether operation succeeded
+	Operation   string        // "backup", "restore", "verify"
+	Phase       string        // "pre", "post", "error"
+	Database    string        // Current database name
+	Table       string        // Current table (for selective backup)
+	BackupPath  string        // Path to backup file
+	BackupSize  int64         // Backup size in bytes
+	StartTime   time.Time     // When operation started
+	Duration    time.Duration // Operation duration (for post hooks)
+	Error       string        // Error message (for error hooks)
+	ExitCode    int           // Exit code (for post/error hooks)
+	CloudTarget string        // Cloud storage URI
+	Success     bool          // Whether operation succeeded
 }
 
 // HookResult contains the result of hook execution
 type HookResult struct {
-	Hook      string
-	Success   bool
-	Output    string
-	Error     string
-	Duration  time.Duration
-	ExitCode  int
+	Hook     string
+	Success  bool
+	Output   string
+	Error    string
+	Duration time.Duration
+	ExitCode int
 }
 
 // NewManager creates a new hook manager
@@ -316,13 +316,14 @@ func (m *Manager) expandVariables(s string, hctx *HookContext) string {
 
 // LoadHooksFromDir loads hooks from a directory structure
 // Expected structure:
-//   hooks/
-//     pre-backup/
-//       00-vacuum.sh
-//       10-notify.sh
-//     post-backup/
-//       00-verify.sh
-//       10-cleanup.sh
+//
+//	hooks/
+//	  pre-backup/
+//	    00-vacuum.sh
+//	    10-notify.sh
+//	  post-backup/
+//	    00-verify.sh
+//	    10-cleanup.sh
 func (m *Manager) LoadHooksFromDir(hooksDir string) error {
 	if _, err := os.Stat(hooksDir); os.IsNotExist(err) {
 		return nil // No hooks directory

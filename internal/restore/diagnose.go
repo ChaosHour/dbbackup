@@ -1010,14 +1010,14 @@ func (d *Diagnoser) tryFastPathWithMetadata(ctx context.Context, filePath string
 		}
 		return false
 	}
-	
+
 	if d.log != nil {
 		d.log.Debug("Fast path: timestamp check",
 			"archive_mtime", archiveStat.ModTime().Format("2006-01-02 15:04:05"),
 			"meta_mtime", metaStat.ModTime().Format("2006-01-02 15:04:05"),
 			"meta_newer", !metaStat.ModTime().Before(archiveStat.ModTime()))
 	}
-	
+
 	if metaStat.ModTime().Before(archiveStat.ModTime()) {
 		if d.log != nil {
 			d.log.Debug("Fast path: metadata older than archive, using full scan")

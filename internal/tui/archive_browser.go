@@ -106,11 +106,11 @@ func loadArchives(cfg *config.Config, log logger.Logger) tea.Cmd {
 		for _, file := range files {
 			name := file.Name()
 			fullPath := filepath.Join(backupDir, name)
-			
+
 			var format restore.ArchiveFormat
 			var info os.FileInfo
 			var size int64
-			
+
 			if file.IsDir() {
 				// Check if directory is a plain cluster backup
 				format = restore.DetectArchiveFormatWithPath(fullPath)

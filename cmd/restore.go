@@ -26,35 +26,35 @@ import (
 )
 
 var (
-	restoreConfirm       bool
-	restoreDryRun        bool
-	restoreForce         bool
-	restoreClean         bool
-	restoreCreate        bool
-	restoreJobs          int
-	restoreParallelDBs   int    // Number of parallel database restores
-	restoreProfile       string // Resource profile: conservative, balanced, aggressive, turbo, max-performance
-	restoreModeName      string // Restore WAL mode: safe, balanced, turbo
+	restoreConfirm     bool
+	restoreDryRun      bool
+	restoreForce       bool
+	restoreClean       bool
+	restoreCreate      bool
+	restoreJobs        int
+	restoreParallelDBs int    // Number of parallel database restores
+	restoreProfile     string // Resource profile: conservative, balanced, aggressive, turbo, max-performance
+	restoreModeName    string // Restore WAL mode: safe, balanced, turbo
 
 	// Tiered restore flags
-	tieredRestore    bool     // Enable priority-based phased restore
-	criticalTables   []string // Critical table patterns
-	importantTables  []string // Important table patterns
-	coldTables       []string // Cold table patterns
+	tieredRestore   bool     // Enable priority-based phased restore
+	criticalTables  []string // Critical table patterns
+	importantTables []string // Important table patterns
+	coldTables      []string // Cold table patterns
 
-	restoreTarget        string
-	restoreVerbose       bool
-	restoreNoProgress    bool
-	restoreNoTUI         bool // Disable TUI for maximum performance (benchmark mode)
-	restoreQuiet         bool // Suppress all output except errors
-	restoreWorkdir              string
-	restoreDiskSpaceMultiplier  float64
-	restoreCleanCluster         bool
-	restoreDiagnose      bool   // Run diagnosis before restore
-	restoreSaveDebugLog  string // Path to save debug log on failure
-	restoreDebugLocks    bool   // Enable detailed lock debugging
-	restoreOOMProtection bool   // Enable OOM protection for large restores
-	restoreLowMemory     bool   // Force low-memory mode for constrained systems
+	restoreTarget              string
+	restoreVerbose             bool
+	restoreNoProgress          bool
+	restoreNoTUI               bool // Disable TUI for maximum performance (benchmark mode)
+	restoreQuiet               bool // Suppress all output except errors
+	restoreWorkdir             string
+	restoreDiskSpaceMultiplier float64
+	restoreCleanCluster        bool
+	restoreDiagnose            bool   // Run diagnosis before restore
+	restoreSaveDebugLog        string // Path to save debug log on failure
+	restoreDebugLocks          bool   // Enable detailed lock debugging
+	restoreOOMProtection       bool   // Enable OOM protection for large restores
+	restoreLowMemory           bool   // Force low-memory mode for constrained systems
 
 	// Single database extraction from cluster flags
 	restoreDatabase  string // Single database to extract/restore from cluster

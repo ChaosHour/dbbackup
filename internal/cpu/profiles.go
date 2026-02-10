@@ -121,16 +121,16 @@ var (
 	ProfileMaxThroughput = ResourceProfile{
 		Name:                "max-throughput",
 		Description:         "Sequential DB restore with maximum pg_restore jobs. Best for clusters with large databases. Matches native pg_restore -j performance.",
-		ClusterParallelism:  1,     // One DB at a time (sequential)
-		Jobs:                32,    // Maximum pg_restore parallelism (auto-tuned via AutoTuneJobs)
-		DumpJobs:            16,    // Fast dumps
+		ClusterParallelism:  1,  // One DB at a time (sequential)
+		Jobs:                32, // Maximum pg_restore parallelism (auto-tuned via AutoTuneJobs)
+		DumpJobs:            16, // Fast dumps
 		MaintenanceWorkMem:  "2GB",
-		MaxLocksPerTxn:      8192,  // High for large schemas
+		MaxLocksPerTxn:      8192, // High for large schemas
 		RecommendedForLarge: true,
 		MinMemoryGB:         16,
 		MinCores:            8,
-		BufferedIO:          true,  // Enable 32KB buffered writes
-		ParallelExtract:     true,  // Parallel tar extraction where possible
+		BufferedIO:          true, // Enable 32KB buffered writes
+		ParallelExtract:     true, // Parallel tar extraction where possible
 	}
 
 	// AllProfiles contains all available profiles (VM resource-based)

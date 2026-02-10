@@ -134,23 +134,23 @@ func TestConfigSaveZeroValues(t *testing.T) {
 
 	// Config with 0/false values intentionally
 	original := &LocalConfig{
-		DBType:          "postgres",
-		Host:            "localhost",
-		Port:            5432,
-		User:            "postgres",
-		Database:        "test",
-		SSLMode:         "disable",
-		BackupDir:       "/backups",
-		Compression:     0, // Intentionally 0 = no compression
-		Jobs:            1,
-		DumpJobs:        1,
-		CPUWorkload:     "conservative",
-		MaxCores:        1,
-		ClusterTimeout:  0, // No timeout
-		LargeDBMode:     false,
-		RetentionDays:   0, // Keep forever
-		MinBackups:      0,
-		MaxRetries:      0,
+		DBType:         "postgres",
+		Host:           "localhost",
+		Port:           5432,
+		User:           "postgres",
+		Database:       "test",
+		SSLMode:        "disable",
+		BackupDir:      "/backups",
+		Compression:    0, // Intentionally 0 = no compression
+		Jobs:           1,
+		DumpJobs:       1,
+		CPUWorkload:    "conservative",
+		MaxCores:       1,
+		ClusterTimeout: 0, // No timeout
+		LargeDBMode:    false,
+		RetentionDays:  0, // Keep forever
+		MinBackups:     0,
+		MaxRetries:     0,
 	}
 
 	// Save

@@ -14,15 +14,15 @@ import (
 
 // CheckResult holds the results of a catalog check
 type CheckResult struct {
-	Directory       string   `json:"directory"`
-	TotalArchives   int      `json:"total_archives"`
-	WithMeta        int      `json:"with_meta"`
-	OrphanArchives  []string `json:"orphan_archives,omitempty"`  // Archives without .meta.json
-	StaleMeta       []string `json:"stale_meta,omitempty"`       // .meta.json without archive
-	InvalidMeta     []string `json:"invalid_meta,omitempty"`     // Malformed .meta.json
-	SizeMismatch    []string `json:"size_mismatch,omitempty"`    // .meta.json size != actual file size
-	HealthyBackups  int      `json:"healthy_backups"`
-	Issues          int      `json:"issues"`
+	Directory      string   `json:"directory"`
+	TotalArchives  int      `json:"total_archives"`
+	WithMeta       int      `json:"with_meta"`
+	OrphanArchives []string `json:"orphan_archives,omitempty"` // Archives without .meta.json
+	StaleMeta      []string `json:"stale_meta,omitempty"`      // .meta.json without archive
+	InvalidMeta    []string `json:"invalid_meta,omitempty"`    // Malformed .meta.json
+	SizeMismatch   []string `json:"size_mismatch,omitempty"`   // .meta.json size != actual file size
+	HealthyBackups int      `json:"healthy_backups"`
+	Issues         int      `json:"issues"`
 }
 
 var catalogCheckCmd = &cobra.Command{

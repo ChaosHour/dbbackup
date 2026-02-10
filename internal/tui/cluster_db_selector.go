@@ -71,7 +71,7 @@ func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config
 		if err == nil && len(clusterMeta.Databases) > 0 {
 			log.Info("Using .meta.json for instant database listing",
 				"databases", len(clusterMeta.Databases))
-			
+
 			var databases []restore.DatabaseInfo
 			for _, dbMeta := range clusterMeta.Databases {
 				if dbMeta.Database != "" {
@@ -94,7 +94,7 @@ func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config
 				os.Remove(metaPath)
 			}
 		}
-		
+
 		// Check for context cancellation before slow extraction
 		if ctx.Err() != nil {
 			return clusterDatabaseListMsg{databases: nil, err: ctx.Err(), extractedDir: ""}

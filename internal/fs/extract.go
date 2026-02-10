@@ -636,6 +636,7 @@ func parseTarSize(header []byte) int64 {
 	}
 	return size
 }
+
 // ExtractTarGzFast is a convenience wrapper that chooses the best extraction method
 // Uses parallel gzip if available, falls back to system tar if needed
 func ExtractTarGzFast(ctx context.Context, archivePath, destDir string, progressCb ProgressCallback) error {

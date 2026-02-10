@@ -75,8 +75,8 @@ type UnifiedClusterProgress struct {
 	CurrentDB        string
 	CurrentDBBytes   int64
 	CurrentDBTotal   int64
-	CurrentDBStarted time.Time            // When current database restore started
-	DatabaseSizes    map[string]int64     // Pre-calculated sizes for accurate weighting
+	CurrentDBStarted time.Time        // When current database restore started
+	DatabaseSizes    map[string]int64 // Pre-calculated sizes for accurate weighting
 
 	// Verification phase (Phase 3)
 	VerifyDone  int

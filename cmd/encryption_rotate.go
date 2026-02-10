@@ -196,7 +196,7 @@ func saveKeyToFile(path string, key string) error {
 func showReencryptCommands() {
 	// Use explicit string to avoid go vet warnings about % in shell parameter expansion
 	pctEnc := "${backup%.enc}"
-	
+
 	fmt.Println("   # Option A: Re-encrypt with openssl")
 	fmt.Println("   for backup in /path/to/backups/*.enc; do")
 	fmt.Println("     # Decrypt with old key")

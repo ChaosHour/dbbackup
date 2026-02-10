@@ -741,11 +741,11 @@ func (m *HealthViewModel) checkFilesystemCompression() TUIHealthCheck {
 
 	// Filesystem with compression support detected
 	fsName := strings.ToUpper(fc.Filesystem)
-	
+
 	if fc.CompressionEnabled {
 		check.Message = fmt.Sprintf("%s %s compression active", fsName, strings.ToUpper(fc.CompressionType))
 		check.Details = fmt.Sprintf("Dataset: %s", fc.Dataset)
-		
+
 		// Check if app compression is properly disabled
 		if m.config.TrustFilesystemCompress || m.config.CompressionMode == "never" {
 			check.Details += " | App compression: disabled (optimal)"
@@ -753,7 +753,7 @@ func (m *HealthViewModel) checkFilesystemCompression() TUIHealthCheck {
 			check.Status = HealthStatusWarning
 			check.Details += " | ⚠️ Consider disabling app compression"
 		}
-		
+
 		// ZFS-specific recommendations
 		if fc.Filesystem == "zfs" {
 			if fc.RecordSize > 64*1024 {

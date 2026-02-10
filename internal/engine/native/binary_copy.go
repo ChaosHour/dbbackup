@@ -17,8 +17,9 @@ import (
 // on both backup and restore sides.
 //
 // Wire format:
-//   Backup:  COPY table TO STDOUT WITH (FORMAT binary)
-//   Restore: COPY table FROM STDIN WITH (FORMAT binary)
+//
+//	Backup:  COPY table TO STDOUT WITH (FORMAT binary)
+//	Restore: COPY table FROM STDIN WITH (FORMAT binary)
 //
 // Limitations:
 //   - Binary format is PostgreSQL-version dependent (not portable across major versions)

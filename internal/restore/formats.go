@@ -16,18 +16,18 @@ import (
 type ArchiveFormat string
 
 const (
-	FormatPostgreSQLDump     ArchiveFormat = "PostgreSQL Dump (.dump)"
-	FormatPostgreSQLDumpGz   ArchiveFormat = "PostgreSQL Dump Compressed (.dump.gz)"
-	FormatPostgreSQLDumpZst  ArchiveFormat = "PostgreSQL Dump Compressed (.dump.zst)"
-	FormatPostgreSQLSQL      ArchiveFormat = "PostgreSQL SQL (.sql)"
-	FormatPostgreSQLSQLGz    ArchiveFormat = "PostgreSQL SQL Compressed (.sql.gz)"
-	FormatPostgreSQLSQLZst   ArchiveFormat = "PostgreSQL SQL Compressed (.sql.zst)"
-	FormatMySQLSQL           ArchiveFormat = "MySQL SQL (.sql)"
-	FormatMySQLSQLGz         ArchiveFormat = "MySQL SQL Compressed (.sql.gz)"
-	FormatMySQLSQLZst        ArchiveFormat = "MySQL SQL Compressed (.sql.zst)"
-	FormatClusterTarGz       ArchiveFormat = "Cluster Archive (.tar.gz)"
-	FormatClusterDir         ArchiveFormat = "Cluster Directory (plain)"
-	FormatUnknown            ArchiveFormat = "Unknown"
+	FormatPostgreSQLDump    ArchiveFormat = "PostgreSQL Dump (.dump)"
+	FormatPostgreSQLDumpGz  ArchiveFormat = "PostgreSQL Dump Compressed (.dump.gz)"
+	FormatPostgreSQLDumpZst ArchiveFormat = "PostgreSQL Dump Compressed (.dump.zst)"
+	FormatPostgreSQLSQL     ArchiveFormat = "PostgreSQL SQL (.sql)"
+	FormatPostgreSQLSQLGz   ArchiveFormat = "PostgreSQL SQL Compressed (.sql.gz)"
+	FormatPostgreSQLSQLZst  ArchiveFormat = "PostgreSQL SQL Compressed (.sql.zst)"
+	FormatMySQLSQL          ArchiveFormat = "MySQL SQL (.sql)"
+	FormatMySQLSQLGz        ArchiveFormat = "MySQL SQL Compressed (.sql.gz)"
+	FormatMySQLSQLZst       ArchiveFormat = "MySQL SQL Compressed (.sql.zst)"
+	FormatClusterTarGz      ArchiveFormat = "Cluster Archive (.tar.gz)"
+	FormatClusterDir        ArchiveFormat = "Cluster Directory (plain)"
+	FormatUnknown           ArchiveFormat = "Unknown"
 )
 
 // backupMetadata represents the structure of .meta.json files
@@ -158,7 +158,7 @@ func DetectArchiveFormatWithPath(path string) ArchiveFormat {
 		}
 		return FormatUnknown
 	}
-	
+
 	// Fall back to filename-based detection
 	return DetectArchiveFormat(path)
 }

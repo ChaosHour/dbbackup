@@ -16,15 +16,15 @@ import (
 
 // StatusViewModel shows database status
 type StatusViewModel struct {
-	config    *config.Config
-	logger    logger.Logger
-	parent    tea.Model
-	loading   bool
-	status    string
-	err       error
-	dbCount   int
-	dbVersion string
-	connected bool
+	config     *config.Config
+	logger     logger.Logger
+	parent     tea.Model
+	loading    bool
+	status     string
+	err        error
+	dbCount    int
+	dbVersion  string
+	connected  bool
 	galeraInfo *engine.GaleraClusterInfo
 }
 

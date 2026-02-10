@@ -166,7 +166,7 @@ func (v *MetadataGeneratorView) View() string {
 		s += infoStyle.Render("This may take a while for large archives.") + "\n"
 	} else if v.done {
 		if v.success {
-			s += successStyle.Render("✅ " + v.message) + "\n\n"
+			s += successStyle.Render("✅ "+v.message) + "\n\n"
 			if v.dbCount > 0 {
 				s += fmt.Sprintf("📊 Found %d database(s):\n", v.dbCount)
 				for i, db := range v.dbNames {
@@ -181,7 +181,7 @@ func (v *MetadataGeneratorView) View() string {
 			s += infoStyle.Render(fmt.Sprintf("Duration: %s", v.duration.Round(time.Millisecond))) + "\n\n"
 			s += infoStyle.Render("💡 Future restore starts will now be instant!") + "\n"
 		} else {
-			s += errorStyle.Render("❌ " + v.message) + "\n"
+			s += errorStyle.Render("❌ "+v.message) + "\n"
 		}
 		s += "\n" + infoStyle.Render("[KEYS] Press Enter or Esc to go back")
 	}

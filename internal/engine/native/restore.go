@@ -594,6 +594,11 @@ func extractMySQLTableName(stmt string) string {
 	return result
 }
 
+// Connect establishes a connection to MySQL using the underlying engine
+func (r *MySQLRestoreEngine) Connect(ctx context.Context) error {
+	return r.engine.Connect(ctx)
+}
+
 // Ping checks database connectivity
 func (r *MySQLRestoreEngine) Ping() error {
 	return r.engine.db.Ping()

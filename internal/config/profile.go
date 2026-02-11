@@ -99,7 +99,10 @@ func ApplyProfile(cfg *Config, profileName string, explicitJobs, explicitParalle
 	}
 
 	// Apply profile settings only if not explicitly overridden
-	if explicitJobs == 0 && profile.Jobs > 0 {
+	if explicitJobs > 0 {
+		// User explicitly set --jobs, use their value
+		cfg.Jobs = explicitJobs
+	} else if profile.Jobs > 0 {
 		cfg.Jobs = profile.Jobs
 	}
 

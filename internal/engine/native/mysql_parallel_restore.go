@@ -369,13 +369,50 @@ func (e *MySQLParallelRestoreEngine) parseDump(ctx context.Context, reader io.Re
 
 				// Parse VALUES and write as TSV rows
 				valuesStr := line[matches[1]:]
-				rows := parseInsertValues(valuesStr)
-				for _, row := range rows {
-					tsvLine := convertRowToTSV(row)
-					n, _ := tsvWriter.WriteString(tsvLine)
-					tsvWriter.WriteByte('\n')
-					currentChunk.RowCount++
-					currentChunk.ByteCount += int64(n + 1)
+
+				// Handle MariaDB-style multi-line INSERT:
+				//   INSERT INTO `table` VALUES
+				//   (1,'foo','bar'),
+				//   (2,'baz','qux');
+				// When VALUES data is on subsequent lines, parse each line individually.
+				if strings.TrimSpace(valuesStr) == "" {
+					// Read subsequent lines — each line is one or more value tuples
+					for scanner.Scan() {
+						vline := scanner.Text()
+						vtrimmed := strings.TrimSpace(vline)
+						if vtrimmed == "" || strings.HasPrefix(vtrimmed, "--") {
+							continue
+						}
+						// Check if this is the last line (ends with ;)
+						lastLine := strings.HasSuffix(vtrimmed, ";")
+						if lastLine {
+							vtrimmed = strings.TrimSuffix(vtrimmed, ";")
+						}
+						// Remove trailing comma if present
+						vtrimmed = strings.TrimSuffix(vtrimmed, ",")
+						if vtrimmed != "" {
+							rows := parseInsertValues(vtrimmed)
+							for _, row := range rows {
+								tsvLine := convertRowToTSV(row)
+								n, _ := tsvWriter.WriteString(tsvLine)
+								tsvWriter.WriteByte('\n')
+								currentChunk.RowCount++
+								currentChunk.ByteCount += int64(n + 1)
+							}
+						}
+						if lastLine {
+							break
+						}
+					}
+				} else {
+					rows := parseInsertValues(valuesStr)
+					for _, row := range rows {
+						tsvLine := convertRowToTSV(row)
+						n, _ := tsvWriter.WriteString(tsvLine)
+						tsvWriter.WriteByte('\n')
+						currentChunk.RowCount++
+						currentChunk.ByteCount += int64(n + 1)
+					}
 				}
 				continue
 			}

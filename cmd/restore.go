@@ -833,7 +833,9 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	// Check if native engine should be used for restore
 	// When --pipeline is set, skip the old EngineManager path and use the
 	// ParallelRestoreEngine with pipeline architecture via engine.RestoreSingle()
-	if cfg.UseNativeEngine && !cfg.UsePipeline {
+	// For MySQL/MariaDB, always use engine.RestoreSingle() which supports both
+	// single-threaded and parallel LOAD DATA INFILE restore paths.
+	if cfg.UseNativeEngine && !cfg.UsePipeline && !cfg.IsMySQL() {
 		log.Info("Using native engine for restore", "database", targetDB)
 		err = runNativeRestore(ctx, db, archivePath, targetDB, restoreClean, restoreCreate, startTime, user)
 

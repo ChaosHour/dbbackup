@@ -978,8 +978,8 @@ func (e *Engine) restoreWithMySQLNativeEngine(ctx context.Context, archivePath, 
 	}
 	defer restoreEngine.Close()
 
-	// Connect
-	if err := restoreEngine.Ping(); err != nil {
+	// Connect to MySQL
+	if err := restoreEngine.Connect(ctx); err != nil {
 		return fmt.Errorf("failed to connect to MySQL target database %s: %w", targetDB, err)
 	}
 

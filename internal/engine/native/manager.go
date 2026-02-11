@@ -389,6 +389,15 @@ type BackupResult struct {
 	EngineUsed      string
 	DatabaseVersion string
 	Warnings        []string
+
+	// BLOB optimization stats (v6.19.0+)
+	BLOBsDetected         int64   // Total BLOBs analyzed
+	BLOBsSkippedCompress  int64   // BLOBs where compression was skipped (pre-compressed)
+	BLOBBytesSkipped      int64   // Bytes saved by skipping compression
+	BLOBDedupCount        int64   // Duplicate BLOBs found
+	BLOBDedupBytesSaved   int64   // Bytes saved by deduplication
+	BLOBCompressionRatio  float64 // Effective compression ratio for BLOB data
+	SplitBackupUsed       bool    // Whether split backup mode was used
 }
 
 // RestoreResult contains restore operation results

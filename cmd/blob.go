@@ -104,6 +104,15 @@ var (
 	blobInputFile  string
 	blobWorkers    int
 	blobBundleSize int
+	// BLOB optimization flags (v6.19.0+)
+	blobDetectTypes    bool
+	blobSkipCompress   bool
+	blobCompressMode   string
+	blobSplitMode      bool
+	blobThreshold      int64
+	blobStreamCount    int
+	blobDeduplicate    bool
+	blobDedupExpected  int
 )
 
 func init() {
@@ -116,6 +125,16 @@ func init() {
 	blobBackupCmd.Flags().IntVar(&blobWorkers, "workers", 8, "Number of parallel workers")
 	blobBackupCmd.Flags().IntVar(&blobBundleSize, "bundle-size", 1024, "BLOBs per pack for bundling")
 	_ = blobBackupCmd.MarkFlagRequired("output")
+
+	// BLOB optimization flags
+	blobBackupCmd.Flags().BoolVar(&blobDetectTypes, "detect-types", true, "Detect BLOB content types (magic bytes + entropy)")
+	blobBackupCmd.Flags().BoolVar(&blobSkipCompress, "skip-compress-images", true, "Skip compressing pre-compressed formats (JPEG, PNG, MP4, etc.)")
+	blobBackupCmd.Flags().StringVar(&blobCompressMode, "compress-mode", "auto", "BLOB compression mode: auto, always, never")
+	blobBackupCmd.Flags().BoolVar(&blobSplitMode, "split", false, "Split backup: schema + data + BLOBs in separate files")
+	blobBackupCmd.Flags().Int64Var(&blobThreshold, "threshold", 1048576, "BLOB size threshold for split streams (bytes)")
+	blobBackupCmd.Flags().IntVar(&blobStreamCount, "streams", 4, "Number of parallel BLOB streams in split mode")
+	blobBackupCmd.Flags().BoolVar(&blobDeduplicate, "dedup", false, "Enable content-addressed BLOB deduplication")
+	blobBackupCmd.Flags().IntVar(&blobDedupExpected, "dedup-expected", 5000000, "Expected BLOB count for bloom filter sizing")
 
 	blobRestoreCmd.Flags().StringVarP(&blobInputFile, "input", "i", "", "Input blob archive file (required)")
 	blobRestoreCmd.Flags().IntVar(&blobWorkers, "workers", 8, "Number of parallel workers")

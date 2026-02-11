@@ -136,6 +136,9 @@ See [docs/tui-features.md](docs/tui-features.md) for full details.
 - **Engine-aware adaptive job sizing** -- 3-stage pipeline: BLOB adjustment, native engine boost, memory ceiling
 - **I/O scheduler governors** -- noop, bfq, mq-deadline, deadline (auto-selected per BLOB strategy)
 - **BLOB Pipeline Matrix** -- native large object backup/restore with parallel streaming
+- **BLOB Type Detection** -- 30+ magic byte signatures + Shannon entropy; skips compressing JPEG/PNG/MP4/ZIP
+- **Content-Addressed Dedup** -- bloom filter (2.74 MB for 2.4M BLOBs) + SHA-256 exact match
+- **Split Backup Mode** -- schema + data + BLOBs in separate files for parallel restore
 - **Nuclear Restore Engine** -- pure Go streaming SQL parser, global index builder, transaction batcher
 - **Streaming I/O** with 256KB batch pipeline (constant memory usage)
 - **UNLOGGED table optimization** during COPY phase (PostgreSQL balanced/turbo mode)
@@ -538,6 +541,7 @@ dbbackup backup single mydb --dry-run
 | `report` | Compliance report generation |
 | `rto` | RTO/RPO analysis |
 | `blob stats` | Analyze blob/bytea columns in database |
+| `blob backup` | Backup BLOBs with type detection, dedup, and split mode |
 | `install` | Install as systemd service |
 | `uninstall` | Remove systemd service |
 | `metrics export` | Export Prometheus metrics to textfile |
@@ -1228,6 +1232,9 @@ The following optimizations are applied automatically and degrade gracefully on 
 | WAL Compression | 10–20% less I/O | Compresses WAL during write-heavy restore phases |
 | Unix Socket Auto-detect | 10–30% lower latency | Prefers local socket over TCP for localhost connections |
 | BLOB-Aware Buffers | 20–40% faster BLOBs | Dynamically scales buffer size based on detected BLOB characteristics |
+| BLOB Type Detection | 20–50% less I/O | Skips compressing pre-compressed BLOBs (JPEG, PNG, GZIP, ZSTD, MP4) |
+| Content-Addressed Dedup | Up to 60% less storage | Bloom filter + SHA-256 eliminates duplicate BLOBs across tables |
+| Split Backup Mode | 2–5× faster BLOB restore | Schema/data/BLOBs in separate files for parallel phase restore |
 | Prepared Statement Cache | 5–10% faster init | Reuses server-side prepared statements for metadata queries |
 
 **Expected combined impact by workload:**

@@ -5,6 +5,49 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.19.0] - 2026-02-11
+
+### Added - BLOB Optimization Engine
+
+- **BLOB Type Detection** — 30+ magic byte signatures + Shannon entropy fallback
+  - Detects JPEG, PNG, GIF, WebP, PDF, ZIP, GZIP, BZIP2, ZSTD, XZ, LZ4, RAR, 7z, MP4, MP3, OGG, FLAC, MKV, JSON, XML, HTML, SVG, YAML, PEM, pg_dump, mysqldump, PGDMP
+  - Pre-compressed formats (images, video, archives) skip compression automatically
+  - Text/database formats get maximum compression (level 9)
+  - Configurable: `--compress-mode=auto|always|never`
+
+- **Content-Addressed Deduplication** with built-in bloom filter
+  - SHA-256 content hashing for exact duplicate detection
+  - Bloom filter pre-check: 2.74 MB memory for 2.4M BLOBs at 1% false positive rate
+  - Thread-safe concurrent access with atomic counters
+  - Enable via `--dedup` flag or `DEDUPLICATE=true`
+
+- **Split Backup Mode** — schema + data + BLOBs in separate files
+  - `schema.sql` + `data.sql` + `blob_stream_N.bin` + `manifest.json`
+  - Parallel BLOB stream writers with round-robin distribution
+  - Binary stream format: `[8-byte size header][data]` for zero-copy reads
+  - Enable via `--split` flag or `SPLIT_MODE=true`
+
+- **3-Phase Split Restore** — schema → data → parallel BLOB streams
+  - Resume from any stream on failure via manifest tracking
+  - Configurable worker count per phase
+  - Progress callbacks for monitoring integration
+
+- **BLOB Processor Integration** in native PostgreSQL engine
+  - Inline detection during COPY pipeline (zero extra passes)
+  - Per-BLOB compression decisions: skip, low, medium, high
+  - Runtime stats: type breakdown, compression skip ratio, dedup ratio
+  - Extended `BackupResult` with BLOB optimization metrics
+
+- **8 new CLI flags** for `blob backup` command:
+  - `--detect-types`, `--skip-compress-images`, `--compress-mode`
+  - `--split`, `--threshold`, `--streams`
+  - `--dedup`, `--dedup-expected`
+
+- **8 new config fields** with environment variable support:
+  - `DETECT_BLOB_TYPES`, `SKIP_COMPRESS_IMAGES`, `BLOB_COMPRESSION_MODE`
+  - `SPLIT_MODE`, `BLOB_THRESHOLD`, `BLOB_STREAM_COUNT`
+  - `DEDUPLICATE`, `DEDUP_EXPECTED_BLOBS`
+
 ## [6.18.0] - 2026-02-12
 
 ### Added - TUI Detailed Summary (Backup & Restore)

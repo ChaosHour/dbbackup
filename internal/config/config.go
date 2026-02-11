@@ -198,6 +198,16 @@ type Config struct {
 	SaveDetailedSummary bool   // Auto-save detailed stats to .stats.json
 	DetailedSummaryPath string // Custom path for detailed summary
 
+	// BLOB optimization options (v6.19.0+)
+	DetectBLOBTypes     bool   // Enable smart BLOB type detection via magic bytes + entropy (default: true)
+	SkipCompressImages  bool   // Skip compressing pre-compressed formats: JPEG, PNG, GIF, WebP, MP4 (default: true)
+	BLOBCompressionMode string // "auto" (detect+skip), "always" (compress everything), "never" (raw) (default: "auto")
+	SplitMode           bool   // Split backup: schema.sql + data.sql + blob_stream_N.bin (default: false)
+	BLOBThreshold       int64  // BLOBs > threshold bytes go to separate streams (default: 1MB)
+	BLOBStreamCount     int    // Number of parallel BLOB streams in split mode (default: 4)
+	Deduplicate         bool   // Content-addressed BLOB deduplication via bloom filter + SHA-256 (default: false)
+	DedupExpectedBLOBs  int    // Expected BLOB count for bloom filter sizing (default: 5000000)
+
 	// Cloud storage options (v2.0)
 	CloudEnabled    bool   // Enable cloud storage integration
 	CloudProvider   string // "s3", "minio", "b2", "azure", "gcs"
@@ -368,6 +378,16 @@ func New() *Config {
 		// TUI detailed summary options
 		SaveDetailedSummary: getEnvBool("SAVE_DETAILED_SUMMARY", false),
 		DetailedSummaryPath: getEnvString("DETAILED_SUMMARY_PATH", ""),
+
+		// BLOB optimization defaults (v6.19.0+)
+		DetectBLOBTypes:     getEnvBool("DETECT_BLOB_TYPES", true),
+		SkipCompressImages:  getEnvBool("SKIP_COMPRESS_IMAGES", true),
+		BLOBCompressionMode: getEnvString("BLOB_COMPRESSION_MODE", "auto"),
+		SplitMode:           getEnvBool("SPLIT_MODE", false),
+		BLOBThreshold:       int64(getEnvInt("BLOB_THRESHOLD", 1048576)),
+		BLOBStreamCount:     getEnvInt("BLOB_STREAM_COUNT", 4),
+		Deduplicate:         getEnvBool("DEDUPLICATE", false),
+		DedupExpectedBLOBs:  getEnvInt("DEDUP_EXPECTED_BLOBS", 5000000),
 
 		// I/O Governor for BLOB operations (v6.14.0+)
 		IOGovernor: getEnvString("IO_GOVERNOR", "auto"),

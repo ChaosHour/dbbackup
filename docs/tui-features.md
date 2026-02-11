@@ -299,6 +299,73 @@ See [testing/phase1-manual-tests.md](testing/phase1-manual-tests.md) for step-by
 
 ---
 
+## Detailed Completion Summary (v6.18.0)
+
+**What:** After backup or restore completes, press `D` to toggle a detailed DBA-focused statistics panel directly on the completion screen.
+
+### Displayed Statistics
+
+| Category | Metrics |
+|----------|---------|
+| Exact Metrics | Duration (seconds), size (bytes + human-readable), compression ratio |
+| Per-Database | Individual duration, size, throughput (MB/s), start/end times |
+| Resource Usage | CPU workers used vs available, memory usage %, parallel worker count |
+| Warnings | Low compression ratio detection, recommendations |
+
+### Key Bindings
+
+| Key | Action |
+|-----|--------|
+| `D` | Toggle detailed summary panel on/off |
+| `Enter` | Continue to next screen |
+
+### JSON Export
+
+Set `SAVE_DETAILED_SUMMARY=true` to auto-save a `.stats.json` file alongside each backup/restore:
+
+```bash
+export SAVE_DETAILED_SUMMARY=true
+export DETAILED_SUMMARY_PATH=/var/log/dbbackup/  # optional custom path
+```
+
+The JSON output includes all metrics with machine-readable field names, suitable for ingestion by Prometheus, Grafana, or custom monitoring scripts.
+
+### Design
+
+- **Non-breaking** — the default completion screen is unchanged; `D` is opt-in
+- Backup summary uses `BackupDetailedSummary` struct with JSON tags
+- Restore summary uses `RestoreDetailedSummary` struct with JSON tags
+- Resource stats reuse `ResourceUsageStats` (shared between backup/restore)
+
+---
+
+## Settings Pagination (v6.18.0)
+
+**What:** The settings screen (32 items) is split across 2 pages to fit standard 40-line terminals without scrolling.
+
+### Page Layout
+
+| Page | Title | Items |
+|------|-------|-------|
+| 1 | Core Configuration | First 16 settings (DB type, host, port, compression, jobs, etc.) |
+| 2 | Advanced & Cloud Settings | Remaining settings (cloud, encryption, retention, etc.) |
+
+### Key Bindings
+
+| Key | Action |
+|-----|--------|
+| `→` / `PgDn` | Next page |
+| `←` / `h` / `PgUp` | Previous page |
+| `↑` / `↓` | Navigate items (wraps across pages at boundaries) |
+
+### Display
+
+- Header shows "Page X of Y" indicator
+- Each page shows a category header ("Core Configuration" / "Advanced & Cloud Settings")
+- Footer dynamically shows available page navigation keys based on current page
+
+---
+
 ## Architecture
 
 ### File Layout
@@ -308,8 +375,9 @@ See [testing/phase1-manual-tests.md](testing/phase1-manual-tests.md) for step-by
 | `internal/tui/preflight.go` | 533 | Pre-restore validation screen |
 | `internal/tui/destructive_warning.go` | 141 | Type-to-confirm prompt |
 | `internal/tui/menu.go` | +87 | Connection health indicator |
-| `cmd/backup_exec.go` | +88 | Abort handling for backups |
-| `cmd/restore_exec.go` | +143 | Abort handling for restores |
+| `internal/tui/backup_exec.go` | +222 | Detailed summary, D-key toggle, JSON export |
+| `internal/tui/restore_exec.go` | +147 | Restore detailed summary and JSON export |
+| `internal/tui/settings.go` | +107 | 2-page pagination with page navigation |
 
 ### Dependencies
 
@@ -319,4 +387,4 @@ See [testing/phase1-manual-tests.md](testing/phase1-manual-tests.md) for step-by
 
 ---
 
-*Last updated: 2026-02-10 -- v6.15.0*
+*Last updated: 2026-02-12 -- v6.18.0*

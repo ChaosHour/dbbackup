@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,6 +33,50 @@ const (
 	backupPhaseCompressing = 3
 )
 
+// BackupDetailedSummary holds detailed statistics for the final summary
+type BackupDetailedSummary struct {
+	// Exact timing (for scripts/monitoring)
+	DurationSeconds float64 `json:"duration_seconds"` // Exact duration in seconds (e.g., 142.35)
+
+	// Exact sizes
+	TotalBytes       int64   `json:"total_bytes"`       // Raw byte count
+	CompressedBytes  int64   `json:"compressed_bytes"`  // After compression
+	CompressionRatio float64 `json:"compression_ratio"` // Original / Compressed
+
+	// Per-database stats (cluster backups)
+	DatabaseStats []DatabaseBackupStat `json:"database_stats,omitempty"`
+
+	// Resource usage
+	ResourceUsage ResourceUsageStats `json:"resource_usage"`
+
+	// Warnings and recommendations
+	Warnings        []string `json:"warnings,omitempty"`
+	Recommendations []string `json:"recommendations,omitempty"`
+}
+
+// DatabaseBackupStat tracks individual database performance
+type DatabaseBackupStat struct {
+	Name        string    `json:"name"`
+	DurationSec float64   `json:"duration_sec"`
+	SizeBytes   int64     `json:"size_bytes"`
+	TableCount  int       `json:"table_count,omitempty"`
+	RowCount    int64     `json:"row_count,omitempty"`
+	Throughput  float64   `json:"throughput_mbps"` // MB/s
+	StartTime   time.Time `json:"start_time"`
+	EndTime     time.Time `json:"end_time"`
+}
+
+// ResourceUsageStats tracks system resource consumption
+type ResourceUsageStats struct {
+	CPUCoresAvg    float64 `json:"cpu_cores_avg"`    // Average cores used
+	CPUCoresPeak   float64 `json:"cpu_cores_peak"`   // Peak cores
+	MemoryAvgMB    int64   `json:"memory_avg_mb"`    // Average memory usage in MB
+	MemoryPeakMB   int64   `json:"memory_peak_mb"`   // Peak memory usage
+	DiskWriteAvgMB float64 `json:"disk_write_avg_mb"` // Avg disk write MB/s
+	DiskWritePeak  float64 `json:"disk_write_peak"`  // Peak disk write MB/s
+	WorkersUsed    int     `json:"workers_used"`     // Number of parallel workers
+}
+
 // BackupExecutionModel handles backup execution with progress
 type BackupExecutionModel struct {
 	config       *config.Config
@@ -54,6 +99,10 @@ type BackupExecutionModel struct {
 	elapsed      time.Duration // Final elapsed time
 	details      []string
 	spinnerFrame int
+
+	// Detailed summary data (collected during backup, shown in details view)
+	detailedSummary *BackupDetailedSummary
+	showDetails     bool // True when user presses 'D' to see full stats
 
 	// Database count progress (for cluster backup)
 	dbTotal         int
@@ -84,7 +133,9 @@ type BackupExecutionModel struct {
 // completedDBBackup tracks a completed database backup for extrapolation
 type completedDBBackup struct {
 	Name      string
-	FinalSize int64 // Actual bytes transferred for this DB
+	FinalSize int64     // Actual bytes transferred for this DB
+	StartTime time.Time // When this DB backup started
+	EndTime   time.Time // When this DB backup completed
 }
 
 // sharedBackupProgressState holds progress state that can be safely accessed from callbacks
@@ -106,6 +157,7 @@ type sharedBackupProgressState struct {
 	metadataSource string              // "accurate", "extrapolated", "unknown"
 	completedDBs   []completedDBBackup // Completed DBs for extrapolation
 	lastDbDone     int                 // Track when a new DB completes
+	currentDBStart time.Time           // When the current DB backup started
 }
 
 // Package-level shared progress state for backup operations
@@ -215,9 +267,10 @@ type backupProgressMsg struct {
 }
 
 type backupCompleteMsg struct {
-	result  string
-	err     error
-	elapsed time.Duration
+	result          string
+	err             error
+	elapsed         time.Duration
+	detailedSummary *BackupDetailedSummary
 }
 
 func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
@@ -331,12 +384,30 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 
 			// Track completed DBs for extrapolation (upgrade unknown → extrapolated)
 			if done > progressState.lastDbDone && done > 0 {
+				now := time.Now()
+				// Calculate individual DB size from cumulative bytes
+				var prevCumulative int64
+				if len(progressState.completedDBs) > 0 {
+					prevCumulative = progressState.completedDBs[len(progressState.completedDBs)-1].FinalSize
+				}
+				dbSize := bytesDone - prevCumulative
+				if dbSize < 0 {
+					dbSize = 0
+				}
+				// Determine when this DB started
+				dbStart := progressState.currentDBStart
+				if dbStart.IsZero() {
+					dbStart = progressState.phase2StartTime
+				}
 				// A new database just completed — record it for extrapolation
 				progressState.completedDBs = append(progressState.completedDBs, completedDBBackup{
 					Name:      currentDB,
-					FinalSize: bytesDone, // bytesDone = cumulative completed bytes at this point
+					FinalSize: dbSize,
+					StartTime: dbStart,
+					EndTime:   now,
 				})
 				progressState.lastDbDone = done
+				progressState.currentDBStart = now // Next DB starts now
 
 				// Upgrade metadata source from "unknown" to "extrapolated" after first DB
 				if progressState.metadataSource == "unknown" && len(progressState.completedDBs) > 0 {
@@ -371,6 +442,9 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 
 		elapsed := time.Since(start).Round(time.Second)
 
+		// Build detailed summary for TUI details view
+		detailedSummary := buildBackupDetailedSummary(cfg, progressState, elapsed)
+
 		var result string
 		switch backupType {
 		case "single":
@@ -382,9 +456,10 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 		}
 
 		return backupCompleteMsg{
-			result:  result,
-			err:     nil,
-			elapsed: elapsed,
+			result:          result,
+			err:             nil,
+			elapsed:         elapsed,
+			detailedSummary: detailedSummary,
 		}
 	}
 }
@@ -495,10 +570,15 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.result = msg.result
 		m.elapsed = msg.elapsed
+		m.detailedSummary = msg.detailedSummary
 		if m.err == nil {
 			m.status = "[OK] Backup completed successfully!"
 		} else {
 			m.status = fmt.Sprintf("[FAIL] Backup failed: %v", m.err)
+		}
+		// Auto-save detailed summary if configured
+		if m.err == nil && m.config.SaveDetailedSummary && m.detailedSummary != nil {
+			go m.saveDetailedSummaryToFile()
 		}
 		// Auto-forward in debug/auto-confirm mode
 		if m.config.TUIAutoConfirm {
@@ -577,6 +657,12 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", "q":
 			if m.done {
 				return m.parent, nil
+			}
+		case "d", "D":
+			// Toggle detailed summary view when backup is complete
+			if m.done && m.detailedSummary != nil {
+				m.showDetails = !m.showDetails
+				return m, nil
 			}
 		}
 	}
@@ -994,7 +1080,24 @@ func (m BackupExecutionModel) View() string {
 		s.WriteString("\n")
 		s.WriteString(infoStyle.Render("  ───────────────────────────────────────────────────────────"))
 		s.WriteString("\n\n")
-		s.WriteString(infoStyle.Render("  [KEYS]  Press Enter to continue"))
+
+		// Show detailed summary if toggled on
+		if m.showDetails {
+			s.WriteString(m.renderDetailedSummary())
+			s.WriteString(infoStyle.Render("  ───────────────────────────────────────────────────────────"))
+			s.WriteString("\n\n")
+		}
+
+		// Key hints with details toggle
+		if m.detailedSummary != nil {
+			if m.showDetails {
+				s.WriteString(infoStyle.Render("  [KEYS]  Enter = Continue  |  D = Hide Details"))
+			} else {
+				s.WriteString(infoStyle.Render("  [KEYS]  Enter = Continue  |  D = Show Details"))
+			}
+		} else {
+			s.WriteString(infoStyle.Render("  [KEYS]  Press Enter to continue"))
+		}
 	}
 
 	return s.String()
@@ -1058,4 +1161,223 @@ func (m BackupExecutionModel) viewSimple() string {
 	}
 
 	return s.String()
+}
+
+// buildBackupDetailedSummary creates a detailed summary from backup state
+func buildBackupDetailedSummary(cfg *config.Config, state *sharedBackupProgressState, elapsed time.Duration) *BackupDetailedSummary {
+	summary := &BackupDetailedSummary{
+		DurationSeconds: elapsed.Seconds(),
+		Warnings:        make([]string, 0),
+		Recommendations: make([]string, 0),
+		DatabaseStats:   make([]DatabaseBackupStat, 0),
+	}
+
+	if state == nil {
+		return summary
+	}
+
+	state.mu.Lock()
+	bytesDone := state.bytesDone
+	bytesTotal := state.bytesTotal
+	completedDBs := make([]completedDBBackup, len(state.completedDBs))
+	copy(completedDBs, state.completedDBs)
+	state.mu.Unlock()
+
+	summary.TotalBytes = bytesDone
+	if bytesTotal > 0 && bytesDone > 0 {
+		summary.CompressionRatio = float64(bytesTotal) / float64(bytesDone)
+		summary.CompressedBytes = bytesDone
+	}
+
+	// Build per-database stats from completed backups
+	for _, db := range completedDBs {
+		dur := db.EndTime.Sub(db.StartTime)
+		var throughput float64
+		if dur.Seconds() > 0 {
+			throughput = float64(db.FinalSize) / dur.Seconds() / (1024 * 1024)
+		}
+		summary.DatabaseStats = append(summary.DatabaseStats, DatabaseBackupStat{
+			Name:        db.Name,
+			DurationSec: dur.Seconds(),
+			SizeBytes:   db.FinalSize,
+			Throughput:  throughput,
+			StartTime:   db.StartTime,
+			EndTime:     db.EndTime,
+		})
+	}
+
+	// Resource usage from config
+	summary.ResourceUsage.WorkersUsed = cfg.Jobs
+	if cfg.CPUInfo != nil {
+		summary.ResourceUsage.CPUCoresAvg = float64(cfg.Jobs)
+		summary.ResourceUsage.CPUCoresPeak = float64(cfg.CPUInfo.LogicalCores)
+	}
+	if cfg.MemoryInfo != nil {
+		summary.ResourceUsage.MemoryPeakMB = cfg.MemoryInfo.UsedBytes / (1024 * 1024)
+	}
+
+	// Warnings: check compression ratio
+	if summary.CompressionRatio > 0 && summary.CompressionRatio < 2.0 {
+		summary.Warnings = append(summary.Warnings,
+			fmt.Sprintf("Low compression ratio: %.1f:1 (check for pre-compressed BLOBs)", summary.CompressionRatio))
+		summary.Recommendations = append(summary.Recommendations,
+			"Consider using 'none' compression for pre-compressed data to save CPU")
+	}
+
+	return summary
+}
+
+// renderDetailedSummary renders full DBA-focused statistics
+func (m BackupExecutionModel) renderDetailedSummary() string {
+	if m.detailedSummary == nil {
+		return ""
+	}
+
+	var s strings.Builder
+	summary := m.detailedSummary
+
+	// ─── EXACT METRICS ───────────────────────────────────────────────────
+	s.WriteString(infoStyle.Render("  ─── Exact Metrics (for scripts/monitoring) ───────────────"))
+	s.WriteString("\n\n")
+
+	s.WriteString(fmt.Sprintf("    Duration:      %.2f seconds\n", summary.DurationSeconds))
+	s.WriteString(fmt.Sprintf("    Size (bytes):  %s\n", formatWithCommas(summary.TotalBytes)))
+	s.WriteString(fmt.Sprintf("    Size (human):  %s\n", FormatBytes(summary.TotalBytes)))
+
+	if summary.CompressedBytes > 0 {
+		s.WriteString(fmt.Sprintf("    Compressed:    %s bytes (ratio: %.1f:1)\n",
+			formatWithCommas(summary.CompressedBytes), summary.CompressionRatio))
+	}
+
+	if m.archivePath != "" {
+		s.WriteString(fmt.Sprintf("    Archive:       %s\n", m.archivePath))
+	}
+
+	// ─── PER-DATABASE STATS (Cluster) ────────────────────────────────────
+	if len(summary.DatabaseStats) > 0 {
+		s.WriteString("\n")
+		s.WriteString(infoStyle.Render("  ─── Per-Database Performance ─────────────────────────────"))
+		s.WriteString("\n\n")
+
+		for i, db := range summary.DatabaseStats {
+			s.WriteString(fmt.Sprintf("    [%d] %s\n", i+1, db.Name))
+			s.WriteString(fmt.Sprintf("        Duration:    %.2fs\n", db.DurationSec))
+			s.WriteString(fmt.Sprintf("        Size:        %s (%s bytes)\n",
+				FormatBytes(db.SizeBytes), formatWithCommas(db.SizeBytes)))
+
+			if db.TableCount > 0 {
+				s.WriteString(fmt.Sprintf("        Tables:      %d\n", db.TableCount))
+			}
+			if db.RowCount > 0 {
+				s.WriteString(fmt.Sprintf("        Rows:        %s\n", formatWithCommas(db.RowCount)))
+			}
+
+			s.WriteString(fmt.Sprintf("        Throughput:  %.1f MB/s\n", db.Throughput))
+			s.WriteString("\n")
+		}
+	}
+
+	// ─── RESOURCE USAGE ───────────────────────────────────────────────────
+	if summary.ResourceUsage.WorkersUsed > 0 {
+		s.WriteString(infoStyle.Render("  ─── Resource Usage ────────────────────────────────────────"))
+		s.WriteString("\n\n")
+
+		ru := summary.ResourceUsage
+
+		if ru.CPUCoresAvg > 0 && m.config.CPUInfo != nil {
+			cpuPct := (ru.CPUCoresAvg / float64(m.config.CPUInfo.LogicalCores)) * 100
+			s.WriteString(fmt.Sprintf("    CPU (workers): %d of %d cores (%.0f%%)\n",
+				int(ru.CPUCoresAvg), m.config.CPUInfo.LogicalCores, cpuPct))
+		}
+
+		if ru.MemoryPeakMB > 0 && m.config.MemoryInfo != nil {
+			totalMB := m.config.MemoryInfo.TotalBytes / (1024 * 1024)
+			memPct := (float64(ru.MemoryPeakMB) / float64(totalMB)) * 100
+			s.WriteString(fmt.Sprintf("    Memory Used:   %s MB / %s MB (%.0f%%)\n",
+				formatWithCommas(ru.MemoryPeakMB), formatWithCommas(totalMB), memPct))
+		}
+
+		if ru.DiskWriteAvgMB > 0 {
+			s.WriteString(fmt.Sprintf("    Disk Write:    %.1f MB/s avg", ru.DiskWriteAvgMB))
+			if ru.DiskWritePeak > 0 {
+				s.WriteString(fmt.Sprintf(", %.1f MB/s peak", ru.DiskWritePeak))
+			}
+			s.WriteString("\n")
+		}
+
+		s.WriteString(fmt.Sprintf("    Workers:       %d parallel\n", ru.WorkersUsed))
+		s.WriteString("\n")
+	}
+
+	// ─── WARNINGS & RECOMMENDATIONS ───────────────────────────────────────
+	if len(summary.Warnings) > 0 || len(summary.Recommendations) > 0 {
+		s.WriteString(StatusWarningStyle.Render("  ─── Warnings & Recommendations ────────────────────────────"))
+		s.WriteString("\n\n")
+
+		for _, warn := range summary.Warnings {
+			s.WriteString(fmt.Sprintf("    ⚠  %s\n", warn))
+		}
+
+		if len(summary.Recommendations) > 0 {
+			s.WriteString("\n")
+			for _, rec := range summary.Recommendations {
+				s.WriteString(fmt.Sprintf("       → %s\n", rec))
+			}
+		}
+		s.WriteString("\n")
+	}
+
+	return s.String()
+}
+
+// saveDetailedSummaryToFile exports detailed stats to JSON for scripts/monitoring
+func (m *BackupExecutionModel) saveDetailedSummaryToFile() {
+	if m.detailedSummary == nil {
+		return
+	}
+
+	var statsPath string
+	if m.config.DetailedSummaryPath != "" {
+		statsPath = m.config.DetailedSummaryPath
+	} else if m.archivePath != "" {
+		statsPath = strings.TrimSuffix(m.archivePath, filepath.Ext(m.archivePath)) + ".stats.json"
+	} else {
+		statsPath = filepath.Join(m.config.BackupDir, fmt.Sprintf("backup_%s.stats.json",
+			time.Now().Format("20060102_150405")))
+	}
+
+	data, err := json.MarshalIndent(m.detailedSummary, "", "  ")
+	if err != nil {
+		m.logger.Warn("Failed to marshal detailed summary", "error", err)
+		return
+	}
+
+	err = os.WriteFile(statsPath, data, 0644)
+	if err != nil {
+		m.logger.Warn("Failed to save detailed summary", "path", statsPath, "error", err)
+		return
+	}
+
+	m.logger.Info("Detailed summary saved", "path", statsPath)
+}
+
+// formatWithCommas formats an int64 with thousands separators
+func formatWithCommas(n int64) string {
+	s := fmt.Sprintf("%d", n)
+	if len(s) <= 3 {
+		return s
+	}
+
+	var result strings.Builder
+	remainder := len(s) % 3
+	if remainder > 0 {
+		result.WriteString(s[:remainder])
+	}
+	for i := remainder; i < len(s); i += 3 {
+		if result.Len() > 0 {
+			result.WriteRune(',')
+		}
+		result.WriteString(s[i : i+3])
+	}
+	return result.String()
 }

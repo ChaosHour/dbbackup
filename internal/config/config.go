@@ -194,6 +194,10 @@ type Config struct {
 	// Safety options
 	SkipPreflightChecks bool // Skip pre-restore safety checks (archive integrity, disk space, etc.)
 
+	// TUI detailed summary options
+	SaveDetailedSummary bool   // Auto-save detailed stats to .stats.json
+	DetailedSummaryPath string // Custom path for detailed summary
+
 	// Cloud storage options (v2.0)
 	CloudEnabled    bool   // Enable cloud storage integration
 	CloudProvider   string // "s3", "minio", "b2", "azure", "gcs"
@@ -360,6 +364,10 @@ func New() *Config {
 
 		// Adaptive job sizing (v6.14.0+: engine-aware V2)
 		AdaptiveJobs: getEnvBool("ADAPTIVE_JOBS", true),
+
+		// TUI detailed summary options
+		SaveDetailedSummary: getEnvBool("SAVE_DETAILED_SUMMARY", false),
+		DetailedSummaryPath: getEnvString("DETAILED_SUMMARY_PATH", ""),
 
 		// I/O Governor for BLOB operations (v6.14.0+)
 		IOGovernor: getEnvString("IO_GOVERNOR", "auto"),

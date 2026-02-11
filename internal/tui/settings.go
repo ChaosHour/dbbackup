@@ -35,6 +35,11 @@ type SettingsModel struct {
 	parent       tea.Model
 	dirBrowser   *DirectoryBrowser
 	browsingDir  bool
+
+	// Pagination state
+	currentPage  int // 0-indexed (0 = page 1, 1 = page 2)
+	itemsPerPage int // Number of settings per page
+	totalPages   int // Calculated from len(settings) / itemsPerPage
 }
 
 // SettingItem represents a configurable setting
@@ -651,11 +656,18 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 		},
 	}
 
+	// Initialize pagination
+	itemsPerPage := 16 // Show max 16 items per page (fits 40-line terminal)
+	totalPages := (len(settings) + itemsPerPage - 1) / itemsPerPage
+
 	return SettingsModel{
-		config:   cfg,
-		logger:   log,
-		settings: settings,
-		parent:   parent,
+		config:       cfg,
+		logger:       log,
+		settings:     settings,
+		parent:       parent,
+		currentPage:  0,
+		itemsPerPage: itemsPerPage,
+		totalPages:   totalPages,
 	}
 }
 
@@ -711,8 +723,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case " ":
 				// Select current directory
 				selectedPath := m.dirBrowser.Select()
-				if m.cursor < len(m.settings) {
-					setting := m.settings[m.cursor]
+				realIdx := m.getRealSettingIndex()
+				if realIdx < len(m.settings) {
+					setting := m.settings[realIdx]
 					if err := setting.Update(m.config, selectedPath); err != nil {
 						m.message = "[FAIL] Error: " + err.Error()
 					} else {
@@ -742,17 +755,27 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+			} else if m.currentPage > 0 {
+				// Cursor at top of page → go to previous page, bottom item
+				m.currentPage--
+				m.cursor = m.getPageItemCount(m.currentPage) - 1
 			}
 
 		case "down", "j":
-			if m.cursor < len(m.settings)-1 {
+			pageItemCount := m.getPageItemCount(m.currentPage)
+			if m.cursor < pageItemCount-1 {
 				m.cursor++
+			} else if m.currentPage < m.totalPages-1 {
+				// Cursor at bottom of page → go to next page, top item
+				m.currentPage++
+				m.cursor = 0
 			}
 
 		case "enter", " ":
 			// For selector types, cycle through options instead of typing
-			if m.cursor >= 0 && m.cursor < len(m.settings) {
-				currentSetting := m.settings[m.cursor]
+			realIdx := m.getRealSettingIndex()
+			if realIdx >= 0 && realIdx < len(m.settings) {
+				currentSetting := m.settings[realIdx]
 				if currentSetting.Type == "selector" {
 					if err := currentSetting.Update(m.config, ""); err != nil {
 						m.message = errorStyle.Render(fmt.Sprintf("[FAIL] %s", err.Error()))
@@ -766,8 +789,9 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "tab":
 			// Directory browser for path fields
-			if m.cursor >= 0 && m.cursor < len(m.settings) {
-				if m.settings[m.cursor].Type == "path" {
+			realIdx := m.getRealSettingIndex()
+			if realIdx >= 0 && realIdx < len(m.settings) {
+				if m.settings[realIdx].Type == "path" {
 					return m.openDirectoryBrowser()
 				} else {
 					m.message = "[FAIL] Tab key only works on directory path fields"
@@ -783,6 +807,22 @@ func (m SettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "s":
 			return m.saveSettings()
+
+		case "left", "h", "pgup":
+			// Page navigation: go to previous page
+			if m.currentPage > 0 {
+				m.currentPage--
+				m.cursor = 0
+			}
+			return m, nil
+
+		case "right", "pgdown":
+			// Page navigation: go to next page
+			if m.currentPage < m.totalPages-1 {
+				m.currentPage++
+				m.cursor = 0
+			}
+			return m, nil
 
 		case "l":
 			// Quick shortcut: Toggle Large DB Mode
@@ -881,11 +921,12 @@ func (m SettingsModel) handleEditingInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // startEditing begins editing a setting
 func (m SettingsModel) startEditing() (tea.Model, tea.Cmd) {
-	if m.cursor >= len(m.settings) {
+	realIdx := m.getRealSettingIndex()
+	if realIdx >= len(m.settings) {
 		return m, nil
 	}
 
-	setting := m.settings[m.cursor]
+	setting := m.settings[realIdx]
 	m.editing = true
 	m.editingField = setting.Key
 	if setting.Key == "password" {
@@ -998,6 +1039,36 @@ func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// getPageItemCount returns the number of items on the specified page
+func (m SettingsModel) getPageItemCount(page int) int {
+	startIdx := page * m.itemsPerPage
+	endIdx := startIdx + m.itemsPerPage
+
+	if endIdx > len(m.settings) {
+		endIdx = len(m.settings)
+	}
+
+	return endIdx - startIdx
+}
+
+// getCurrentPageSettings returns the settings slice for the current page
+func (m SettingsModel) getCurrentPageSettings() []SettingItem {
+	startIdx := m.currentPage * m.itemsPerPage
+	endIdx := startIdx + m.itemsPerPage
+
+	if endIdx > len(m.settings) {
+		endIdx = len(m.settings)
+	}
+
+	return m.settings[startIdx:endIdx]
+}
+
+// getRealSettingIndex returns the actual index in m.settings array
+// given the cursor position on the current page
+func (m SettingsModel) getRealSettingIndex() int {
+	return (m.currentPage * m.itemsPerPage) + m.cursor
+}
+
 // View renders the settings interface
 func (m SettingsModel) View() string {
 	if m.quitting {
@@ -1006,12 +1077,28 @@ func (m SettingsModel) View() string {
 
 	var b strings.Builder
 
-	// Header
-	header := titleStyle.Render("[CONFIG] Configuration Settings")
+	// Header with page indicator
+	headerText := "[CONFIG] Configuration Settings"
+	if m.totalPages > 1 {
+		headerText += fmt.Sprintf("              Page %d of %d", m.currentPage+1, m.totalPages)
+	}
+	header := titleStyle.Render(headerText)
 	b.WriteString(fmt.Sprintf("\n%s\n\n", header))
 
-	// Settings list
-	for i, setting := range m.settings {
+	// Category header per page
+	if m.totalPages > 1 {
+		if m.currentPage == 0 {
+			b.WriteString(detailStyle.Render("  Core Configuration"))
+			b.WriteString("\n\n")
+		} else {
+			b.WriteString(detailStyle.Render("  Advanced & Cloud Settings"))
+			b.WriteString("\n\n")
+		}
+	}
+
+	// Settings list (current page only)
+	pageSettings := m.getCurrentPageSettings()
+	for i, setting := range pageSettings {
 		cursor := " "
 		value := setting.Value(m.config)
 		displayValue := value
@@ -1138,11 +1225,30 @@ func (m SettingsModel) View() string {
 			footer = infoStyle.Render("\n[KEYS]  Up/Down navigate directories | Enter open | Space select | Tab/Esc back to settings")
 		} else {
 			// Show different help based on current selection
-			if m.cursor >= 0 && m.cursor < len(m.settings) && m.settings[m.cursor].Type == "path" {
-				footer = infoStyle.Render("\n[KEYS]  ↑↓ navigate | Enter edit | Tab dirs | 'l' toggle LargeDB | 'c' conservative | 'p' recommend | 's' save | 'q' menu")
-			} else {
-				footer = infoStyle.Render("\n[KEYS]  ↑↓ navigate | Enter edit | 'l' toggle LargeDB mode | 'c' conservative | 'p' recommend | 's' save | 'r' reset | 'q' menu")
+			realIdx := m.getRealSettingIndex()
+			var isPath bool
+			if realIdx >= 0 && realIdx < len(m.settings) {
+				isPath = m.settings[realIdx].Type == "path"
 			}
+
+			var keyHints string
+			if isPath {
+				keyHints = "\n[KEYS]  ↑↓ navigate | Enter edit | Tab dirs | 's' save | 'q' menu"
+			} else {
+				keyHints = "\n[KEYS]  ↑↓ navigate | Enter edit | 'l' LargeDB | 'c' conservative | 'p' recommend | 's' save | 'q' menu"
+			}
+
+			if m.totalPages > 1 {
+				if m.currentPage == 0 {
+					keyHints += "  |  →/PgDn = Next Page"
+				} else if m.currentPage == m.totalPages-1 {
+					keyHints += "  |  ←/PgUp = Prev Page"
+				} else {
+					keyHints += "  |  ←→ = Change Page"
+				}
+			}
+
+			footer = infoStyle.Render(keyHints)
 		}
 	}
 	b.WriteString(footer)
@@ -1151,11 +1257,12 @@ func (m SettingsModel) View() string {
 }
 
 func (m SettingsModel) openDirectoryBrowser() (tea.Model, tea.Cmd) {
-	if m.cursor >= len(m.settings) {
+	realIdx := m.getRealSettingIndex()
+	if realIdx >= len(m.settings) {
 		return m, nil
 	}
 
-	setting := m.settings[m.cursor]
+	setting := m.settings[realIdx]
 	currentValue := setting.Value(m.config)
 	if currentValue == "" {
 		currentValue = m.config.GetEffectiveWorkDir()

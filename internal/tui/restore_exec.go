@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,6 +28,34 @@ func isInteractiveTTY() bool {
 
 // Shared spinner frames for consistent animation across all TUI operations
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// RestoreDetailedSummary holds detailed statistics for the restore final summary
+type RestoreDetailedSummary struct {
+	// Exact timing
+	DurationSeconds float64 `json:"duration_seconds"`
+
+	// Exact sizes
+	ArchiveBytes int64 `json:"archive_bytes"`
+	RestoredBytes int64 `json:"restored_bytes"`
+
+	// Per-database stats (cluster restores)
+	DatabaseStats []DatabaseRestoreStat `json:"database_stats,omitempty"`
+
+	// Resource usage
+	ResourceUsage ResourceUsageStats `json:"resource_usage"`
+
+	// Warnings and recommendations
+	Warnings        []string `json:"warnings,omitempty"`
+	Recommendations []string `json:"recommendations,omitempty"`
+}
+
+// DatabaseRestoreStat tracks individual database restore performance
+type DatabaseRestoreStat struct {
+	Name        string  `json:"name"`
+	DurationSec float64 `json:"duration_sec"`
+	SizeBytes   int64   `json:"size_bytes"`
+	Throughput  float64 `json:"throughput_mbps"` // MB/s
+}
 
 // RestoreExecutionModel handles restore execution with progress
 type RestoreExecutionModel struct {
@@ -98,6 +127,10 @@ type RestoreExecutionModel struct {
 	err          error
 	result       string
 	elapsed      time.Duration
+
+	// Detailed summary data (collected during restore, shown in details view)
+	detailedSummary *RestoreDetailedSummary
+	showDetails     bool // True when user presses 'D' to see full stats
 }
 
 // NewRestoreExecution creates a new restore execution model
@@ -183,9 +216,10 @@ type restoreProgressMsg struct {
 }
 
 type restoreCompleteMsg struct {
-	result  string
-	err     error
-	elapsed time.Duration
+	result          string
+	err             error
+	elapsed         time.Duration
+	detailedSummary *RestoreDetailedSummary
 }
 
 // sharedProgressState holds progress state that can be safely accessed from callbacks
@@ -766,10 +800,14 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 		tuiLog("Restore completed successfully: %s", result)
 
+		// Build detailed summary
+		detailedSummary := buildRestoreDetailedSummary(cfg, archive, time.Since(start))
+
 		return restoreCompleteMsg{
-			result:  result,
-			err:     nil,
-			elapsed: time.Since(start),
+			result:          result,
+			err:             nil,
+			elapsed:         time.Since(start),
+			detailedSummary: detailedSummary,
 		}
 	}
 }
@@ -928,6 +966,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.result = msg.result
 		m.elapsed = msg.elapsed
+		m.detailedSummary = msg.detailedSummary
 
 		if m.err == nil {
 			m.status = "Restore completed successfully"
@@ -936,6 +975,10 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.status = "Failed"
 			m.phase = "Error"
+		}
+		// Auto-save detailed summary if configured
+		if m.err == nil && m.config.SaveDetailedSummary && m.detailedSummary != nil {
+			go m.saveRestoreDetailedSummaryToFile()
 		}
 		// Auto-forward in auto-confirm mode when done
 		if m.config.TUIAutoConfirm && m.done {
@@ -1024,6 +1067,12 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", " ":
 			if m.done {
 				return m.parent, nil
+			}
+		case "d", "D":
+			// Toggle detailed summary view when restore is complete
+			if m.done && m.detailedSummary != nil {
+				m.showDetails = !m.showDetails
+				return m, nil
 			}
 		}
 	}
@@ -1178,7 +1227,24 @@ func (m RestoreExecutionModel) View() string {
 		s.WriteString("\n")
 		s.WriteString(infoStyle.Render("  ───────────────────────────────────────────────────────────"))
 		s.WriteString("\n\n")
-		s.WriteString(infoStyle.Render("  [KEYS]  Press Enter to continue"))
+
+		// Show detailed summary if toggled on
+		if m.showDetails {
+			s.WriteString(m.renderRestoreDetailedSummary())
+			s.WriteString(infoStyle.Render("  ───────────────────────────────────────────────────────────"))
+			s.WriteString("\n\n")
+		}
+
+		// Key hints with details toggle
+		if m.detailedSummary != nil {
+			if m.showDetails {
+				s.WriteString(infoStyle.Render("  [KEYS]  Enter = Continue  |  D = Hide Details"))
+			} else {
+				s.WriteString(infoStyle.Render("  [KEYS]  Enter = Continue  |  D = Show Details"))
+			}
+		} else {
+			s.WriteString(infoStyle.Render("  [KEYS]  Press Enter to continue"))
+		}
 	} else {
 		// Show unified progress for cluster restore
 		if m.restoreType == "restore-cluster" {
@@ -1731,4 +1797,148 @@ func formatRestoreError(errStr string) string {
 	_ = patterns
 
 	return s.String()
+}
+
+// buildRestoreDetailedSummary creates a detailed summary from restore state
+func buildRestoreDetailedSummary(cfg *config.Config, archive ArchiveInfo, elapsed time.Duration) *RestoreDetailedSummary {
+	summary := &RestoreDetailedSummary{
+		DurationSeconds: elapsed.Seconds(),
+		ArchiveBytes:    archive.Size,
+		Warnings:        make([]string, 0),
+		Recommendations: make([]string, 0),
+		DatabaseStats:   make([]DatabaseRestoreStat, 0),
+	}
+
+	// Resource usage from config
+	summary.ResourceUsage.WorkersUsed = cfg.Jobs
+	if cfg.CPUInfo != nil {
+		summary.ResourceUsage.CPUCoresAvg = float64(cfg.Jobs)
+		summary.ResourceUsage.CPUCoresPeak = float64(cfg.CPUInfo.LogicalCores)
+	}
+	if cfg.MemoryInfo != nil {
+		summary.ResourceUsage.MemoryPeakMB = cfg.MemoryInfo.UsedBytes / (1024 * 1024)
+	}
+
+	return summary
+}
+
+// renderRestoreDetailedSummary renders full DBA-focused restore statistics
+func (m RestoreExecutionModel) renderRestoreDetailedSummary() string {
+	if m.detailedSummary == nil {
+		return ""
+	}
+
+	var s strings.Builder
+	summary := m.detailedSummary
+
+	// ─── EXACT METRICS ───────────────────────────────────────────────────
+	s.WriteString(infoStyle.Render("  ─── Exact Metrics (for scripts/monitoring) ───────────────"))
+	s.WriteString("\n\n")
+
+	s.WriteString(fmt.Sprintf("    Duration:      %.2f seconds\n", summary.DurationSeconds))
+	if summary.ArchiveBytes > 0 {
+		s.WriteString(fmt.Sprintf("    Archive:       %s bytes (%s)\n",
+			formatWithCommas(summary.ArchiveBytes), FormatBytes(summary.ArchiveBytes)))
+	}
+	if summary.RestoredBytes > 0 {
+		s.WriteString(fmt.Sprintf("    Restored:      %s bytes (%s)\n",
+			formatWithCommas(summary.RestoredBytes), FormatBytes(summary.RestoredBytes)))
+	}
+
+	if m.archive.Path != "" {
+		s.WriteString(fmt.Sprintf("    Archive Path:  %s\n", m.archive.Path))
+	}
+
+	// ─── PER-DATABASE STATS (Cluster) ────────────────────────────────────
+	if len(summary.DatabaseStats) > 0 {
+		s.WriteString("\n")
+		s.WriteString(infoStyle.Render("  ─── Per-Database Performance ─────────────────────────────"))
+		s.WriteString("\n\n")
+
+		for i, db := range summary.DatabaseStats {
+			s.WriteString(fmt.Sprintf("    [%d] %s\n", i+1, db.Name))
+			s.WriteString(fmt.Sprintf("        Duration:    %.2fs\n", db.DurationSec))
+			if db.SizeBytes > 0 {
+				s.WriteString(fmt.Sprintf("        Size:        %s (%s bytes)\n",
+					FormatBytes(db.SizeBytes), formatWithCommas(db.SizeBytes)))
+			}
+			s.WriteString(fmt.Sprintf("        Throughput:  %.1f MB/s\n", db.Throughput))
+			s.WriteString("\n")
+		}
+	}
+
+	// ─── RESOURCE USAGE ───────────────────────────────────────────────────
+	if summary.ResourceUsage.WorkersUsed > 0 {
+		s.WriteString(infoStyle.Render("  ─── Resource Usage ────────────────────────────────────────"))
+		s.WriteString("\n\n")
+
+		ru := summary.ResourceUsage
+
+		if ru.CPUCoresAvg > 0 && m.config.CPUInfo != nil {
+			cpuPct := (ru.CPUCoresAvg / float64(m.config.CPUInfo.LogicalCores)) * 100
+			s.WriteString(fmt.Sprintf("    CPU (workers): %d of %d cores (%.0f%%)\n",
+				int(ru.CPUCoresAvg), m.config.CPUInfo.LogicalCores, cpuPct))
+		}
+
+		if ru.MemoryPeakMB > 0 && m.config.MemoryInfo != nil {
+			totalMB := m.config.MemoryInfo.TotalBytes / (1024 * 1024)
+			memPct := (float64(ru.MemoryPeakMB) / float64(totalMB)) * 100
+			s.WriteString(fmt.Sprintf("    Memory Used:   %s MB / %s MB (%.0f%%)\n",
+				formatWithCommas(ru.MemoryPeakMB), formatWithCommas(totalMB), memPct))
+		}
+
+		s.WriteString(fmt.Sprintf("    Workers:       %d parallel\n", ru.WorkersUsed))
+		s.WriteString("\n")
+	}
+
+	// ─── WARNINGS & RECOMMENDATIONS ───────────────────────────────────────
+	if len(summary.Warnings) > 0 || len(summary.Recommendations) > 0 {
+		s.WriteString(StatusWarningStyle.Render("  ─── Warnings & Recommendations ────────────────────────────"))
+		s.WriteString("\n\n")
+
+		for _, warn := range summary.Warnings {
+			s.WriteString(fmt.Sprintf("    ⚠  %s\n", warn))
+		}
+
+		if len(summary.Recommendations) > 0 {
+			s.WriteString("\n")
+			for _, rec := range summary.Recommendations {
+				s.WriteString(fmt.Sprintf("       → %s\n", rec))
+			}
+		}
+		s.WriteString("\n")
+	}
+
+	return s.String()
+}
+
+// saveRestoreDetailedSummaryToFile exports detailed restore stats to JSON
+func (m *RestoreExecutionModel) saveRestoreDetailedSummaryToFile() {
+	if m.detailedSummary == nil {
+		return
+	}
+
+	var statsPath string
+	if m.config.DetailedSummaryPath != "" {
+		statsPath = m.config.DetailedSummaryPath
+	} else if m.archive.Path != "" {
+		statsPath = strings.TrimSuffix(m.archive.Path, filepath.Ext(m.archive.Path)) + ".restore-stats.json"
+	} else {
+		statsPath = filepath.Join(m.config.BackupDir, fmt.Sprintf("restore_%s.stats.json",
+			time.Now().Format("20060102_150405")))
+	}
+
+	data, err := json.MarshalIndent(m.detailedSummary, "", "  ")
+	if err != nil {
+		m.logger.Warn("Failed to marshal restore detailed summary", "error", err)
+		return
+	}
+
+	err = os.WriteFile(statsPath, data, 0644)
+	if err != nil {
+		m.logger.Warn("Failed to save restore detailed summary", "path", statsPath, "error", err)
+		return
+	}
+
+	m.logger.Info("Restore detailed summary saved", "path", statsPath)
 }

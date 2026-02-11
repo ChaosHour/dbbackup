@@ -5,6 +5,30 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.18.0] - 2026-02-12
+
+### Added - TUI Detailed Summary (Backup & Restore)
+
+- **Detailed DBA-focused stats on completion screen** — press `D` to toggle
+  - Exact duration (seconds), exact size (bytes + human), compression ratio
+  - Per-database performance breakdown: duration, size, throughput (MB/s)
+  - Resource usage: CPU workers, memory, disk I/O, parallel worker count
+  - Warnings & recommendations (e.g., low compression ratio detection)
+- **Auto-save to JSON** — set `SAVE_DETAILED_SUMMARY=true` to export `.stats.json`
+  - Custom export path via `DETAILED_SUMMARY_PATH` env var
+  - Compatible with monitoring pipelines (Prometheus, Grafana, scripts)
+- **Non-breaking design** — default completion screen unchanged; `D` key opt-in
+
+### Added - Settings Pagination
+
+- **2-page paginated settings screen** — fits 40-line terminals without scrolling
+  - Page 1: Core Configuration (16 items)
+  - Page 2: Advanced & Cloud Settings (remaining items)
+  - Navigate pages: `←`/`→`, `PgUp`/`PgDn`, or `h` for prev page
+  - Cursor wraps between pages on `↑`/`↓` at page boundaries
+  - Page indicator in header: "Page X of Y"
+  - Dynamic footer hints show available page navigation
+
 ## [6.17.1] - 2026-02-11
 
 ### Fixed - Verify Catalog Integration

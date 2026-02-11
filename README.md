@@ -252,6 +252,8 @@ dbbackup interactive --db-type mysql --user root
 - **Adaptive Jobs toggle** in settings -- auto-sizes parallel workers per database
 - **I/O Governor selector** -- cycle through auto/noop/bfq/mq-deadline/deadline
 - **Resource profile presets** -- conservative, balanced, performance, max-performance
+- **Detailed completion summary** -- press `D` after backup/restore for DBA-focused stats (exact bytes, per-DB throughput, resource usage, JSON export)
+- **Paginated settings** -- 2-page layout fits 40-line terminals; navigate with `←`/`→`
 
 The TUI automatically:
 - Tests database connectivity on startup (5s timeout)

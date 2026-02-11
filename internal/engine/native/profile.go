@@ -1,11 +1,13 @@
 package native
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,6 +78,13 @@ type SystemProfile struct {
 	AvgBLOBSize       uint64 // bytes — average size of BLOB columns (0 if unknown)
 	HasIndexes        bool
 	TableCount        int
+
+	// HugePages (Linux only)
+	HugePagesTotal     int    // total number of huge pages configured
+	HugePagesFree      int    // number of free huge pages
+	HugePageSize       uint64 // size of each huge page in bytes (e.g. 2097152 for 2 MB)
+	HugePagesAvailable bool   // true if HugePages_Total > 0
+	RecommendedSharedBuffers string // recommended shared_buffers leveraging HugePages
 
 	// Computed recommendations
 	RecommendedWorkers    int
@@ -148,7 +157,10 @@ func DetectSystemProfile(ctx context.Context, dsn string) (*SystemProfile, error
 		profile.DiskFreeSpace = diskProfile.FreeSpace
 	}
 
-	// 4. Database Detection (if DSN provided)
+	// 4. HugePages Detection (Linux only)
+	detectHugePages(profile)
+
+	// 5. Database Detection (if DSN provided)
 	if dsn != "" {
 		dbProfile, err := detectDatabaseProfile(ctx, dsn)
 		if err == nil {
@@ -165,10 +177,10 @@ func DetectSystemProfile(ctx context.Context, dsn string) (*SystemProfile, error
 		}
 	}
 
-	// 5. Categorize system
+	// 6. Categorize system
 	profile.Category = categorizeSystem(profile)
 
-	// 6. Compute recommendations
+	// 7. Compute recommendations
 	profile.computeRecommendations()
 
 	profile.DetectionDuration = time.Since(startTime)
@@ -354,6 +366,67 @@ func detectDiskProfile(ctx context.Context) (*DiskProfile, error) {
 	}
 
 	return profile, nil
+}
+
+// detectHugePages reads /proc/meminfo to detect HugePages configuration (Linux only).
+func detectHugePages(profile *SystemProfile) {
+	if runtime.GOOS != "linux" {
+		return
+	}
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return
+	}
+	parseHugePagesFromContent(profile, string(data))
+
+	if profile.HugePagesAvailable {
+		// Recommend shared_buffers = 75 % of total HugePages memory
+		totalHP := uint64(profile.HugePagesTotal) * profile.HugePageSize
+		recommended := totalHP * 3 / 4
+		profile.RecommendedSharedBuffers = formatBytesHuman(recommended)
+	}
+}
+
+// parseHugePagesFromContent parses HugePages fields from /proc/meminfo content.
+// Exported for unit-testing.
+func parseHugePagesFromContent(profile *SystemProfile, content string) {
+	scanner := bufio.NewScanner(strings.NewReader(content))
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		key := strings.TrimRight(fields[0], ":")
+		switch key {
+		case "HugePages_Total":
+			if v, err := strconv.Atoi(fields[1]); err == nil {
+				profile.HugePagesTotal = v
+			}
+		case "HugePages_Free":
+			if v, err := strconv.Atoi(fields[1]); err == nil {
+				profile.HugePagesFree = v
+			}
+		case "Hugepagesize":
+			if v, err := strconv.ParseUint(fields[1], 10, 64); err == nil {
+				// /proc/meminfo reports in kB
+				profile.HugePageSize = v * 1024
+			}
+		}
+	}
+	profile.HugePagesAvailable = profile.HugePagesTotal > 0
+}
+
+// formatBytesHuman returns a human-readable byte size (e.g. "6 GB", "512 MB").
+func formatBytesHuman(b uint64) string {
+	const (
+		_GB = 1024 * 1024 * 1024
+		_MB = 1024 * 1024
+	)
+	if b >= _GB {
+		return fmt.Sprintf("%d GB", b/_GB)
+	}
+	return fmt.Sprintf("%d MB", b/_MB)
 }
 
 // detectDatabaseProfile queries database for capabilities
@@ -636,6 +709,22 @@ func (p *SystemProfile) PrintProfile() string {
 	if p.DiskFreeSpace > 0 {
 		sb.WriteString(fmt.Sprintf("║   Free Space: %-43.2f GB ║\n",
 			float64(p.DiskFreeSpace)/(1024*1024*1024)))
+	}
+
+	if p.HugePagesAvailable {
+		sb.WriteString("╠══════════════════════════════════════════════════════════════╣\n")
+		sb.WriteString("║ 📐 HugePages                                                 ║\n")
+		sb.WriteString(fmt.Sprintf("║   Total Pages: %-46d ║\n", p.HugePagesTotal))
+		sb.WriteString(fmt.Sprintf("║   Free Pages: %-47d ║\n", p.HugePagesFree))
+		sb.WriteString(fmt.Sprintf("║   Page Size: %-44s   ║\n", formatBytesHuman(p.HugePageSize)))
+		totalMem := uint64(p.HugePagesTotal) * p.HugePageSize
+		sb.WriteString(fmt.Sprintf("║   Total Memory: %-41s   ║\n", formatBytesHuman(totalMem)))
+		if p.RecommendedSharedBuffers != "" {
+			sb.WriteString(fmt.Sprintf("║   Recommended shared_buffers: %-31s ║\n", p.RecommendedSharedBuffers))
+		}
+	} else if runtime.GOOS == "linux" {
+		sb.WriteString("╠══════════════════════════════════════════════════════════════╣\n")
+		sb.WriteString("║ 📐 HugePages: not configured                                 ║\n")
 	}
 
 	if p.DBVersion != "" {

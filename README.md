@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.16.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.17.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -1238,6 +1238,38 @@ The following optimizations are applied automatically and degrade gracefully on 
 | Mixed production workload | **+30–45%** |
 
 All optimizations are hardware-independent and adapt to VPS (2 vCPU) through bare metal (64+ cores).
+
+### HugePages Integration (v6.17+)
+
+On Linux systems with HugePages configured, dbbackup automatically detects and recommends optimal `shared_buffers` settings for PostgreSQL. HugePages reduce TLB misses and can provide a **30–50% improvement** in shared-buffer-heavy workloads.
+
+**What dbbackup does:**
+
+1. **Detects HugePages** — reads `/proc/meminfo` for `HugePages_Total`, `HugePages_Free`, and `Hugepagesize`
+2. **Recommends shared_buffers** — calculates 75% of total HugePages memory as the optimal `shared_buffers` value
+3. **Warns on Connect** — if HugePages are available but PostgreSQL's `huge_pages` setting is `off`, a warning is logged with the recommended configuration
+4. **Displays in TUI & CLI** — the system profile view shows HugePages status, page count, and recommended settings
+
+**Setting up HugePages (example for 8 GB):**
+
+```bash
+# Calculate pages needed (2 MB default page size)
+echo 4096 | sudo tee /proc/sys/vm/nr_hugepages
+
+# Make persistent
+echo "vm.nr_hugepages = 4096" | sudo tee -a /etc/sysctl.conf
+
+# Enable in PostgreSQL
+echo "huge_pages = on" >> /etc/postgresql/*/main/postgresql.conf
+sudo systemctl restart postgresql
+```
+
+**Verify with dbbackup:**
+
+```bash
+./dbbackup profile --dsn "postgres://user:pass@localhost/mydb"
+# Look for the 📐 HugePages section in the output
+```
 
 ## Testing
 

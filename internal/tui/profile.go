@@ -406,6 +406,18 @@ func (m *ProfileModel) renderSystemInfo() string {
 	leftCol.WriteString(fmt.Sprintf("     Total: %s\n", profileValueStyle.Render(fmt.Sprintf("%.1f GB", float64(p.TotalRAM)/(1024*1024*1024)))))
 	leftCol.WriteString(fmt.Sprintf("     Available: %s\n", profileValueStyle.Render(fmt.Sprintf("%.1f GB", float64(p.AvailableRAM)/(1024*1024*1024)))))
 
+	// HugePages info (Linux)
+	if p.HugePagesAvailable {
+		leftCol.WriteString(profileLabelStyle.Render("\n  📐 HugePages\n"))
+		leftCol.WriteString(fmt.Sprintf("     Total: %s\n", profileRecommendStyle.Render(fmt.Sprintf("%d pages", p.HugePagesTotal))))
+		leftCol.WriteString(fmt.Sprintf("     Free: %s\n", profileValueStyle.Render(fmt.Sprintf("%d pages", p.HugePagesFree))))
+		hpSizeMB := p.HugePageSize / (1024 * 1024)
+		leftCol.WriteString(fmt.Sprintf("     Page Size: %s\n", profileValueStyle.Render(fmt.Sprintf("%d MB", hpSizeMB))))
+		if p.RecommendedSharedBuffers != "" {
+			leftCol.WriteString(fmt.Sprintf("     Rec. shared_buffers: %s\n", profileRecommendStyle.Render(p.RecommendedSharedBuffers)))
+		}
+	}
+
 	// Right column: Disk & Database
 	rightCol.WriteString(profileLabelStyle.Render("  💿 Disk\n"))
 	diskType := p.DiskType

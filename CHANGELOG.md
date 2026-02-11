@@ -5,6 +5,30 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.17.0] - 2026-02-11
+
+### Added - HugePages Integration
+
+- **HugePages Detection** in system profiler
+  - Reads `/proc/meminfo` for `HugePages_Total`, `HugePages_Free`, `Hugepagesize`
+  - Five new fields on `SystemProfile` struct
+  - Calculates recommended `shared_buffers` at 75% of total HugePages memory
+
+- **PostgreSQL Connect Warning**
+  - Queries `SHOW huge_pages` on connection; warns when HugePages available but `huge_pages=off`
+  - Logs recommended configuration for 30-50% shared-buffer improvement
+
+- **TUI Profile Display**
+  - HugePages section shows total/free pages, page size, and recommended `shared_buffers`
+
+- **CLI Profile Output**
+  - `PrintProfile()` includes HugePages section in box-drawing format
+  - Shows "not configured" on Linux when HugePages disabled
+
+- **Unit Tests**
+  - 5 table-driven test cases for `/proc/meminfo` parsing (enabled, disabled, 1GB pages, empty, partial)
+  - `formatBytesHuman` and recommended shared_buffers calculation tests
+
 ## [6.16.0] - 2026-02-11
 
 ### Added - Universal Performance Optimizations

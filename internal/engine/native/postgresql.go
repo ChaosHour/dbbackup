@@ -144,6 +144,7 @@ func (e *PostgreSQLNativeEngine) Connect(ctx context.Context) error {
 			return fmt.Errorf("failed to create connection: %w", err)
 		}
 
+		e.warnHugePagesIfAvailable()
 		return nil
 	}
 
@@ -175,7 +176,39 @@ func (e *PostgreSQLNativeEngine) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to create connection: %w", err)
 	}
 
+	e.warnHugePagesIfAvailable()
 	return nil
+}
+
+// warnHugePagesIfAvailable logs a warning when the kernel has HugePages
+// configured but PostgreSQL's huge_pages setting is off.
+func (e *PostgreSQLNativeEngine) warnHugePagesIfAvailable() {
+	var profile SystemProfile
+	detectHugePages(&profile)
+	if !profile.HugePagesAvailable {
+		return
+	}
+
+	// Query PostgreSQL's huge_pages setting
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	var hugeSetting string
+	err := e.conn.QueryRow(ctx, "SHOW huge_pages").Scan(&hugeSetting)
+	if err != nil {
+		e.log.Debug("Could not check PostgreSQL huge_pages setting", "error", err)
+		return
+	}
+
+	hugeSetting = strings.TrimSpace(strings.ToLower(hugeSetting))
+	if hugeSetting == "off" {
+		totalMem := uint64(profile.HugePagesTotal) * profile.HugePageSize
+		e.log.Warn("HugePages available but PostgreSQL huge_pages=off",
+			"hugepages_total", profile.HugePagesTotal,
+			"hugepage_size", formatBytesHuman(profile.HugePageSize),
+			"total_hugepage_memory", formatBytesHuman(totalMem),
+			"hint", "Set huge_pages=on in postgresql.conf for 30-50% shared_buffers improvement")
+	}
 }
 
 // Backup performs native PostgreSQL backup

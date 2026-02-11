@@ -654,6 +654,171 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Type:        "bool",
 			Description: "Automatically upload backups to cloud after creation",
 		},
+		// ─── BLOB Optimization Settings (Page 3) ────────────────────────────
+		{
+			Key:         "detect_blob_types",
+			DisplayName: "BLOB Type Detection",
+			Value: func(c *config.Config) string {
+				if c.DetectBLOBTypes {
+					return "true"
+				}
+				return "false"
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.ParseBool(v)
+				if err != nil {
+					return fmt.Errorf("must be true or false")
+				}
+				c.DetectBLOBTypes = val
+				return nil
+			},
+			Type:        "bool",
+			Description: "Detect BLOB content via magic bytes + Shannon entropy (JPEG, PDF, GZIP...)",
+		},
+		{
+			Key:         "skip_compress_images",
+			DisplayName: "Skip Compress Images",
+			Value: func(c *config.Config) string {
+				if c.SkipCompressImages {
+					return "true"
+				}
+				return "false"
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.ParseBool(v)
+				if err != nil {
+					return fmt.Errorf("must be true or false")
+				}
+				c.SkipCompressImages = val
+				return nil
+			},
+			Type:        "bool",
+			Description: "Skip compressing pre-compressed formats (JPEG, PNG, MP4, ZIP, GZIP)",
+		},
+		{
+			Key:         "blob_compression_mode",
+			DisplayName: "BLOB Compression Mode",
+			Value: func(c *config.Config) string {
+				if c.BLOBCompressionMode == "" {
+					return "auto"
+				}
+				return c.BLOBCompressionMode
+			},
+			Update: func(c *config.Config, v string) error {
+				// Cycle: auto → always → never → auto
+				if v == "" {
+					switch c.BLOBCompressionMode {
+					case "auto", "":
+						c.BLOBCompressionMode = "always"
+					case "always":
+						c.BLOBCompressionMode = "never"
+					default:
+						c.BLOBCompressionMode = "auto"
+					}
+					return nil
+				}
+				switch v {
+				case "auto", "always", "never":
+					c.BLOBCompressionMode = v
+				default:
+					return fmt.Errorf("must be auto, always, or never")
+				}
+				return nil
+			},
+			Type:        "selector",
+			Description: "auto=detect+skip | always=compress all | never=store raw",
+		},
+		{
+			Key:         "split_mode",
+			DisplayName: "Split Backup Mode",
+			Value: func(c *config.Config) string {
+				if c.SplitMode {
+					return "true"
+				}
+				return "false"
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.ParseBool(v)
+				if err != nil {
+					return fmt.Errorf("must be true or false")
+				}
+				c.SplitMode = val
+				return nil
+			},
+			Type:        "bool",
+			Description: "Separate backup: schema.sql + data.sql + blob_stream_N.bin",
+		},
+		{
+			Key:         "blob_threshold",
+			DisplayName: "BLOB Threshold",
+			Value: func(c *config.Config) string {
+				return formatBLOBThreshold(c.BLOBThreshold)
+			},
+			Update: func(c *config.Config, v string) error {
+				parsed, err := parseBLOBThreshold(v)
+				if err != nil {
+					return err
+				}
+				c.BLOBThreshold = parsed
+				return nil
+			},
+			Type:        "string",
+			Description: "BLOBs larger than this go to split streams (e.g. 1MB, 512KB)",
+		},
+		{
+			Key:         "blob_stream_count",
+			DisplayName: "BLOB Stream Count",
+			Value: func(c *config.Config) string {
+				return strconv.Itoa(c.BLOBStreamCount)
+			},
+			Update: func(c *config.Config, v string) error {
+				n, err := strconv.Atoi(v)
+				if err != nil || n < 1 || n > 32 {
+					return fmt.Errorf("must be 1-32")
+				}
+				c.BLOBStreamCount = n
+				return nil
+			},
+			Type:        "int",
+			Description: "Number of parallel BLOB streams in split mode (1-32)",
+		},
+		{
+			Key:         "deduplicate",
+			DisplayName: "BLOB Deduplication",
+			Value: func(c *config.Config) string {
+				if c.Deduplicate {
+					return "true"
+				}
+				return "false"
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.ParseBool(v)
+				if err != nil {
+					return fmt.Errorf("must be true or false")
+				}
+				c.Deduplicate = val
+				return nil
+			},
+			Type:        "bool",
+			Description: "Content-addressed dedup via bloom filter + SHA-256",
+		},
+		{
+			Key:         "dedup_expected_blobs",
+			DisplayName: "Expected Unique BLOBs",
+			Value: func(c *config.Config) string {
+				return formatBLOBCount(c.DedupExpectedBLOBs)
+			},
+			Update: func(c *config.Config, v string) error {
+				n, err := parseBLOBCount(v)
+				if err != nil {
+					return err
+				}
+				c.DedupExpectedBLOBs = n
+				return nil
+			},
+			Type:        "string",
+			Description: "Expected unique BLOB count for bloom filter sizing (e.g. 5M, 100K)",
+		},
 	}
 
 	// Initialize pagination
@@ -1009,25 +1174,33 @@ func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 	// Persist config to disk unless disabled
 	if !m.config.NoSaveConfig {
 		localCfg := &config.LocalConfig{
-			DBType:          m.config.DatabaseType,
-			Host:            m.config.Host,
-			Port:            m.config.Port,
-			User:            m.config.User,
-			Database:        m.config.Database,
-			SSLMode:         m.config.SSLMode,
-			BackupDir:       m.config.BackupDir,
-			WorkDir:         m.config.WorkDir,
-			Compression:     m.config.CompressionLevel,
-			Jobs:            m.config.Jobs,
-			DumpJobs:        m.config.DumpJobs,
-			CPUWorkload:     m.config.CPUWorkloadType,
-			MaxCores:        m.config.MaxCores,
-			ClusterTimeout:  m.config.ClusterTimeoutMinutes,
-			ResourceProfile: m.config.ResourceProfile,
-			LargeDBMode:     m.config.LargeDBMode,
-			RetentionDays:   m.config.RetentionDays,
-			MinBackups:      m.config.MinBackups,
-			MaxRetries:      m.config.MaxRetries,
+			DBType:              m.config.DatabaseType,
+			Host:                m.config.Host,
+			Port:                m.config.Port,
+			User:                m.config.User,
+			Database:            m.config.Database,
+			SSLMode:             m.config.SSLMode,
+			BackupDir:           m.config.BackupDir,
+			WorkDir:             m.config.WorkDir,
+			Compression:         m.config.CompressionLevel,
+			Jobs:                m.config.Jobs,
+			DumpJobs:            m.config.DumpJobs,
+			CPUWorkload:         m.config.CPUWorkloadType,
+			MaxCores:            m.config.MaxCores,
+			ClusterTimeout:      m.config.ClusterTimeoutMinutes,
+			ResourceProfile:     m.config.ResourceProfile,
+			LargeDBMode:         m.config.LargeDBMode,
+			RetentionDays:       m.config.RetentionDays,
+			MinBackups:          m.config.MinBackups,
+			MaxRetries:          m.config.MaxRetries,
+			DetectBLOBTypes:     m.config.DetectBLOBTypes,
+			SkipCompressImages:  m.config.SkipCompressImages,
+			BLOBCompressionMode: m.config.BLOBCompressionMode,
+			SplitMode:           m.config.SplitMode,
+			BLOBThreshold:       m.config.BLOBThreshold,
+			BLOBStreamCount:     m.config.BLOBStreamCount,
+			Deduplicate:         m.config.Deduplicate,
+			DedupExpectedBLOBs:  m.config.DedupExpectedBLOBs,
 		}
 		if err := config.SaveLocalConfig(localCfg); err != nil {
 			m.message = errorStyle.Render(fmt.Sprintf("[FAIL] Failed to save config: %s", err.Error()))
@@ -1087,13 +1260,15 @@ func (m SettingsModel) View() string {
 
 	// Category header per page
 	if m.totalPages > 1 {
-		if m.currentPage == 0 {
+		switch m.currentPage {
+		case 0:
 			b.WriteString(detailStyle.Render("  Core Configuration"))
-			b.WriteString("\n\n")
-		} else {
+		case 1:
 			b.WriteString(detailStyle.Render("  Advanced & Cloud Settings"))
-			b.WriteString("\n\n")
+		default:
+			b.WriteString(detailStyle.Render("  BLOB Optimization"))
 		}
+		b.WriteString("\n\n")
 	}
 
 	// Settings list (current page only)
@@ -1280,6 +1455,97 @@ func (m SettingsModel) openDirectoryBrowser() (tea.Model, tea.Cmd) {
 	m.browsingDir = true
 
 	return m, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// BLOB Settings Helpers
+// ────────────────────────────────────────────────────────────────────────────
+
+// formatBLOBThreshold formats bytes as human-readable (1048576 → "1MB")
+func formatBLOBThreshold(b int64) string {
+	switch {
+	case b >= 1<<30:
+		return fmt.Sprintf("%dGB", b/(1<<30))
+	case b >= 1<<20:
+		return fmt.Sprintf("%dMB", b/(1<<20))
+	case b >= 1<<10:
+		return fmt.Sprintf("%dKB", b/(1<<10))
+	default:
+		return fmt.Sprintf("%dB", b)
+	}
+}
+
+// parseBLOBThreshold parses human-readable size ("1MB" → 1048576)
+func parseBLOBThreshold(s string) (int64, error) {
+	s = strings.TrimSpace(strings.ToUpper(s))
+	if s == "" {
+		return 0, fmt.Errorf("empty value")
+	}
+
+	multiplier := int64(1)
+	numStr := s
+	switch {
+	case strings.HasSuffix(s, "GB"):
+		multiplier = 1 << 30
+		numStr = strings.TrimSuffix(s, "GB")
+	case strings.HasSuffix(s, "MB"):
+		multiplier = 1 << 20
+		numStr = strings.TrimSuffix(s, "MB")
+	case strings.HasSuffix(s, "KB"):
+		multiplier = 1 << 10
+		numStr = strings.TrimSuffix(s, "KB")
+	case strings.HasSuffix(s, "B"):
+		numStr = strings.TrimSuffix(s, "B")
+	}
+
+	n, err := strconv.ParseInt(strings.TrimSpace(numStr), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size: %s (use e.g. 1MB, 512KB)", s)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("size must be positive")
+	}
+	return n * multiplier, nil
+}
+
+// formatBLOBCount formats a count with K/M suffix (5000000 → "5M")
+func formatBLOBCount(n int) string {
+	switch {
+	case n >= 1_000_000 && n%1_000_000 == 0:
+		return fmt.Sprintf("%dM", n/1_000_000)
+	case n >= 1_000 && n%1_000 == 0:
+		return fmt.Sprintf("%dK", n/1_000)
+	default:
+		return strconv.Itoa(n)
+	}
+}
+
+// parseBLOBCount parses a count with K/M suffix ("5M" → 5000000)
+func parseBLOBCount(s string) (int, error) {
+	s = strings.TrimSpace(strings.ToUpper(s))
+	if s == "" {
+		return 0, fmt.Errorf("empty value")
+	}
+
+	multiplier := 1
+	numStr := s
+	switch {
+	case strings.HasSuffix(s, "M"):
+		multiplier = 1_000_000
+		numStr = strings.TrimSuffix(s, "M")
+	case strings.HasSuffix(s, "K"):
+		multiplier = 1_000
+		numStr = strings.TrimSuffix(s, "K")
+	}
+
+	n, err := strconv.Atoi(strings.TrimSpace(numStr))
+	if err != nil {
+		return 0, fmt.Errorf("invalid count: %s (use e.g. 5M, 100K, 5000000)", s)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("count must be positive")
+	}
+	return n * multiplier, nil
 }
 
 // RunSettingsMenu starts the settings configuration interface

@@ -66,6 +66,16 @@ type LocalConfig struct {
 	RetentionDays int
 	MinBackups    int
 	MaxRetries    int
+
+	// BLOB optimization settings
+	DetectBLOBTypes     bool
+	SkipCompressImages  bool
+	BLOBCompressionMode string
+	SplitMode           bool
+	BLOBThreshold       int64
+	BLOBStreamCount     int
+	Deduplicate         bool
+	DedupExpectedBLOBs  int
 }
 
 // ConfigSearchPaths returns all paths where config files are searched, in order of priority
@@ -272,6 +282,31 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 			case "auto_upload":
 				cfg.CloudAutoUpload = value == "true" || value == "1"
 			}
+		case "blob":
+			switch key {
+			case "detect_types":
+				cfg.DetectBLOBTypes = value == "true" || value == "1"
+			case "skip_compress_images":
+				cfg.SkipCompressImages = value == "true" || value == "1"
+			case "compression_mode":
+				cfg.BLOBCompressionMode = value
+			case "split_mode":
+				cfg.SplitMode = value == "true" || value == "1"
+			case "threshold":
+				if t, err := strconv.ParseInt(value, 10, 64); err == nil {
+					cfg.BLOBThreshold = t
+				}
+			case "stream_count":
+				if sc, err := strconv.Atoi(value); err == nil {
+					cfg.BLOBStreamCount = sc
+				}
+			case "deduplicate":
+				cfg.Deduplicate = value == "true" || value == "1"
+			case "expected_blobs":
+				if eb, err := strconv.Atoi(value); err == nil {
+					cfg.DedupExpectedBLOBs = eb
+				}
+			}
 		}
 	}
 
@@ -384,6 +419,30 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 			sb.WriteString(fmt.Sprintf("secret_key = %s\n", cfg.CloudSecretKey))
 		}
 		sb.WriteString(fmt.Sprintf("auto_upload = %t\n", cfg.CloudAutoUpload))
+		sb.WriteString("\n")
+	}
+
+	// BLOB section - only write if any BLOB setting is non-default
+	if cfg.DetectBLOBTypes || cfg.SkipCompressImages || cfg.BLOBCompressionMode != "" ||
+		cfg.SplitMode || cfg.BLOBThreshold > 0 || cfg.BLOBStreamCount > 0 ||
+		cfg.Deduplicate || cfg.DedupExpectedBLOBs > 0 {
+		sb.WriteString("[blob]\n")
+		sb.WriteString(fmt.Sprintf("detect_types = %t\n", cfg.DetectBLOBTypes))
+		sb.WriteString(fmt.Sprintf("skip_compress_images = %t\n", cfg.SkipCompressImages))
+		if cfg.BLOBCompressionMode != "" {
+			sb.WriteString(fmt.Sprintf("compression_mode = %s\n", cfg.BLOBCompressionMode))
+		}
+		sb.WriteString(fmt.Sprintf("split_mode = %t\n", cfg.SplitMode))
+		if cfg.BLOBThreshold > 0 {
+			sb.WriteString(fmt.Sprintf("threshold = %d\n", cfg.BLOBThreshold))
+		}
+		if cfg.BLOBStreamCount > 0 {
+			sb.WriteString(fmt.Sprintf("stream_count = %d\n", cfg.BLOBStreamCount))
+		}
+		sb.WriteString(fmt.Sprintf("deduplicate = %t\n", cfg.Deduplicate))
+		if cfg.DedupExpectedBLOBs > 0 {
+			sb.WriteString(fmt.Sprintf("expected_blobs = %d\n", cfg.DedupExpectedBLOBs))
+		}
 		sb.WriteString("\n")
 	}
 
@@ -530,6 +589,32 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.CloudAutoUpload {
 		cfg.CloudAutoUpload = true
 	}
+
+	// BLOB optimization settings
+	if local.DetectBLOBTypes {
+		cfg.DetectBLOBTypes = true
+	}
+	if local.SkipCompressImages {
+		cfg.SkipCompressImages = true
+	}
+	if local.BLOBCompressionMode != "" {
+		cfg.BLOBCompressionMode = local.BLOBCompressionMode
+	}
+	if local.SplitMode {
+		cfg.SplitMode = true
+	}
+	if local.BLOBThreshold > 0 {
+		cfg.BLOBThreshold = local.BLOBThreshold
+	}
+	if local.BLOBStreamCount > 0 {
+		cfg.BLOBStreamCount = local.BLOBStreamCount
+	}
+	if local.Deduplicate {
+		cfg.Deduplicate = true
+	}
+	if local.DedupExpectedBLOBs > 0 {
+		cfg.DedupExpectedBLOBs = local.DedupExpectedBLOBs
+	}
 }
 
 // ConfigFromConfig creates a LocalConfig from a Config
@@ -573,5 +658,13 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		RetentionDays:           cfg.RetentionDays,
 		MinBackups:              cfg.MinBackups,
 		MaxRetries:              cfg.MaxRetries,
+		DetectBLOBTypes:         cfg.DetectBLOBTypes,
+		SkipCompressImages:      cfg.SkipCompressImages,
+		BLOBCompressionMode:     cfg.BLOBCompressionMode,
+		SplitMode:               cfg.SplitMode,
+		BLOBThreshold:           cfg.BLOBThreshold,
+		BLOBStreamCount:         cfg.BLOBStreamCount,
+		Deduplicate:             cfg.Deduplicate,
+		DedupExpectedBLOBs:      cfg.DedupExpectedBLOBs,
 	}
 }

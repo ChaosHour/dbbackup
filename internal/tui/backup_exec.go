@@ -31,6 +31,11 @@ const (
 	backupPhaseGlobals     = 1
 	backupPhaseDatabases   = 2
 	backupPhaseCompressing = 3
+
+	// Split backup phases (used when SplitMode is enabled)
+	backupPhaseSplitSchema = 10 // Dumping schema
+	backupPhaseSplitData   = 11 // Dumping data rows
+	backupPhaseSplitBLOBs  = 12 // Streaming BLOBs to separate files
 )
 
 // BackupDetailedSummary holds detailed statistics for the final summary
@@ -49,9 +54,27 @@ type BackupDetailedSummary struct {
 	// Resource usage
 	ResourceUsage ResourceUsageStats `json:"resource_usage"`
 
+	// BLOB optimization stats
+	BLOBStats *BLOBSummaryStats `json:"blob_stats,omitempty"`
+
 	// Warnings and recommendations
 	Warnings        []string `json:"warnings,omitempty"`
 	Recommendations []string `json:"recommendations,omitempty"`
+}
+
+// BLOBSummaryStats holds BLOB optimization metrics for the detailed summary
+type BLOBSummaryStats struct {
+	DetectionEnabled bool   `json:"detection_enabled"`
+	BLOBsDetected    int    `json:"blobs_detected"`
+	BLOBsTotalBytes  int64  `json:"blobs_total_bytes"`
+	SkippedCompress  int    `json:"skipped_compress"` // Pre-compressed BLOBs not re-compressed
+	SavedBytes       int64  `json:"saved_bytes"`      // Bytes saved by skipping compression
+	DedupEnabled     bool   `json:"dedup_enabled"`
+	DedupHits        int    `json:"dedup_hits"`       // Duplicate BLOBs found
+	DedupSavedBytes  int64  `json:"dedup_saved_bytes"`
+	SplitMode        bool   `json:"split_mode"`
+	StreamCount      int    `json:"stream_count,omitempty"`
+	CompressionMode  string `json:"compression_mode"`
 }
 
 // DatabaseBackupStat tracks individual database performance
@@ -947,6 +970,18 @@ func (m BackupExecutionModel) View() string {
 				// Phase 3: Compressing archive
 				overallProgress = 92
 				phaseLabel = "Phase 3/3: Compressing Archive"
+			} else if m.overallPhase == backupPhaseSplitSchema {
+				// Split mode Phase 1: Schema dump
+				overallProgress = 10
+				phaseLabel = "Split 1/3: Dumping Schema"
+			} else if m.overallPhase == backupPhaseSplitData {
+				// Split mode Phase 2: Data rows
+				overallProgress = 40
+				phaseLabel = "Split 2/3: Dumping Data Rows"
+			} else if m.overallPhase == backupPhaseSplitBLOBs {
+				// Split mode Phase 3: BLOB streams
+				overallProgress = 75
+				phaseLabel = "Split 3/3: Streaming BLOBs"
 			} else if elapsedSec < 5 {
 				// Initial setup
 				overallProgress = 2
@@ -1224,6 +1259,28 @@ func buildBackupDetailedSummary(cfg *config.Config, state *sharedBackupProgressS
 			"Consider using 'none' compression for pre-compressed data to save CPU")
 	}
 
+	// BLOB optimization stats
+	if cfg.DetectBLOBTypes || cfg.Deduplicate || cfg.SplitMode {
+		summary.BLOBStats = &BLOBSummaryStats{
+			DetectionEnabled: cfg.DetectBLOBTypes,
+			DedupEnabled:     cfg.Deduplicate,
+			SplitMode:        cfg.SplitMode,
+			CompressionMode:  cfg.BLOBCompressionMode,
+		}
+		if cfg.SplitMode {
+			summary.BLOBStats.StreamCount = cfg.BLOBStreamCount
+		}
+		// Recommendations for BLOB optimization
+		if !cfg.DetectBLOBTypes {
+			summary.Recommendations = append(summary.Recommendations,
+				"Enable BLOB type detection (--detect-blob-types) to identify pre-compressed data")
+		}
+		if !cfg.Deduplicate && summary.TotalBytes > 100*1024*1024 {
+			summary.Recommendations = append(summary.Recommendations,
+				"Enable BLOB deduplication (--deduplicate) for large backups to save space")
+		}
+	}
+
 	return summary
 }
 
@@ -1327,6 +1384,40 @@ func (m BackupExecutionModel) renderDetailedSummary() string {
 		s.WriteString("\n")
 	}
 
+	// ─── BLOB OPTIMIZATION ──────────────────────────────────────────────────
+	if summary.BLOBStats != nil {
+		s.WriteString(infoStyle.Render("  ─── BLOB Optimization ─────────────────────────────────────"))
+		s.WriteString("\n\n")
+
+		bs := summary.BLOBStats
+		s.WriteString(fmt.Sprintf("    Detection:     %s\n", formatEnabled(bs.DetectionEnabled)))
+		s.WriteString(fmt.Sprintf("    Compression:   %s\n", bs.CompressionMode))
+
+		if bs.BLOBsDetected > 0 {
+			s.WriteString(fmt.Sprintf("    BLOBs Found:   %s (%s)\n",
+				formatWithCommas(int64(bs.BLOBsDetected)), FormatBytes(bs.BLOBsTotalBytes)))
+		}
+
+		if bs.SkippedCompress > 0 {
+			s.WriteString(fmt.Sprintf("    Skip Compress: %s BLOBs (saved %s CPU work)\n",
+				formatWithCommas(int64(bs.SkippedCompress)), FormatBytes(bs.SavedBytes)))
+		}
+
+		if bs.DedupEnabled {
+			s.WriteString(fmt.Sprintf("    Dedup:         %s\n", formatEnabled(bs.DedupEnabled)))
+			if bs.DedupHits > 0 {
+				s.WriteString(fmt.Sprintf("    Dedup Hits:    %s duplicates (saved %s)\n",
+					formatWithCommas(int64(bs.DedupHits)), FormatBytes(bs.DedupSavedBytes)))
+			}
+		}
+
+		if bs.SplitMode {
+			s.WriteString(fmt.Sprintf("    Split Mode:    enabled (%d streams)\n", bs.StreamCount))
+		}
+
+		s.WriteString("\n")
+	}
+
 	return s.String()
 }
 
@@ -1380,4 +1471,12 @@ func formatWithCommas(n int64) string {
 		result.WriteString(s[i : i+3])
 	}
 	return result.String()
+}
+
+// formatEnabled returns "enabled" or "disabled" for bool display
+func formatEnabled(b bool) string {
+	if b {
+		return "enabled"
+	}
+	return "disabled"
 }

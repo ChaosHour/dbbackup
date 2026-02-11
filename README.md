@@ -1250,19 +1250,57 @@ On Linux systems with HugePages configured, dbbackup automatically detects and r
 3. **Warns on Connect** — if HugePages are available but PostgreSQL's `huge_pages` setting is `off`, a warning is logged with the recommended configuration
 4. **Displays in TUI & CLI** — the system profile view shows HugePages status, page count, and recommended settings
 
-**Setting up HugePages (example for 8 GB):**
+**Setting up HugePages (example for 1 GB shared_buffers):**
 
 ```bash
-# Calculate pages needed (2 MB default page size)
-echo 4096 | sudo tee /proc/sys/vm/nr_hugepages
+# 1. Calculate pages needed: shared_buffers / 2MB + overhead
+#    1 GB / 2 MB = 512 + ~88 overhead = 600
+sudo sysctl -w vm.nr_hugepages=600
 
-# Make persistent
-echo "vm.nr_hugepages = 4096" | sudo tee -a /etc/sysctl.conf
+# Make persistent in /etc/sysctl.d/99-postgresql.conf
+echo "vm.nr_hugepages = 600" >> /etc/sysctl.d/99-postgresql.conf
 
-# Enable in PostgreSQL
-echo "huge_pages = on" >> /etc/postgresql/*/main/postgresql.conf
+# 2. Allow the postgres group to use HugePages
+PG_GID=$(id -g postgres)
+echo "vm.hugetlb_shm_group = $PG_GID" >> /etc/sysctl.d/99-postgresql.conf
+sudo sysctl -w vm.hugetlb_shm_group=$PG_GID
+
+# 3. Set memlock limit for PostgreSQL (systemd overrides /etc/security/limits.conf)
+mkdir -p /etc/systemd/system/postgresql@17-main.service.d
+cat > /etc/systemd/system/postgresql@17-main.service.d/hugepages.conf << 'EOF'
+[Service]
+LimitMEMLOCK=infinity
+EOF
+sudo systemctl daemon-reload
+
+# 4. Disable Transparent HugePages (causes latency spikes with PostgreSQL)
+echo madvise > /sys/kernel/mm/transparent_hugepage/enabled
+# Make persistent:
+cat > /etc/tmpfiles.d/thp.conf << 'EOF'
+w /sys/kernel/mm/transparent_hugepage/enabled - - - - madvise
+w /sys/kernel/mm/transparent_hugepage/defrag - - - - defer+madvise
+EOF
+
+# 5. Enable in PostgreSQL and restart
+sed -i 's/^#huge_pages = try/huge_pages = on/' /etc/postgresql/*/main/postgresql.conf
 sudo systemctl restart postgresql
+
+# 6. Verify HugePages are in use
+grep HugePages /proc/meminfo
+# HugePages_Rsvd should be > 0 (pages reserved by PostgreSQL)
 ```
+
+> **Note:** If `nr_hugepages` allocates fewer pages than requested, drop caches first:
+> `sync && echo 3 > /proc/sys/vm/drop_caches && sysctl -w vm.nr_hugepages=600`
+
+**Scaling HugePages by shared_buffers size:**
+
+| `shared_buffers` | `nr_hugepages` | Reserved Memory |
+|-----------------|----------------|----------------|
+| 256 MB | 200 | 400 MB |
+| 1 GB | 600 | 1.2 GB |
+| 4 GB | 2200 | 4.4 GB |
+| 8 GB | 4200 | 8.4 GB |
 
 **Verify with dbbackup:**
 
@@ -1296,6 +1334,10 @@ kernel.shmmax = 26843545600             # 25 GB — must be >= shared_buffers
 kernel.shmall = 6553600                 # shmmax / PAGE_SIZE (4096)
 kernel.sem = 250 32000 100 128          # Semaphores for PostgreSQL
 
+# HugePages for PostgreSQL shared_buffers (see HugePages section above)
+# vm.nr_hugepages = 600                 # shared_buffers / 2MB + overhead
+# vm.hugetlb_shm_group = 104            # GID of postgres group
+
 # --- Network (backup to SMB / NFS / cloud) ---
 net.core.rmem_max = 16777216            # 16 MB receive buffer max
 net.core.wmem_max = 16777216            # 16 MB send buffer max
@@ -1304,6 +1346,15 @@ net.core.wmem_default = 1048576         # 1 MB send default
 net.ipv4.tcp_rmem = 4096 1048576 16777216
 net.ipv4.tcp_wmem = 4096 1048576 16777216
 net.ipv4.tcp_max_syn_backlog = 8192
+
+# Faster connection recycling (helps dbbackup parallel workers)
+net.ipv4.tcp_fin_timeout = 15           # Default 60 — release sockets faster
+net.ipv4.tcp_tw_reuse = 1               # Reuse TIME_WAIT for outgoing
+
+# Shorter keepalive for database connections
+net.ipv4.tcp_keepalive_time = 600       # Default 7200 — detect dead peers in 10m
+net.ipv4.tcp_keepalive_intvl = 30       # Probe interval
+net.ipv4.tcp_keepalive_probes = 5       # Give up after 5 failed probes
 
 # --- Filesystem ---
 fs.file-max = 2097152                   # 2M open file handles

@@ -82,6 +82,7 @@ type Config struct {
 	CriticalTables    []string // Critical table patterns (restored first)
 	ImportantTables   []string // Important table patterns (restored second)
 	ColdTables        []string // Cold table patterns (restored last)
+	UsePipeline       bool     // Use pipeline restore engine (decoupled scanner, higher throughput)
 
 	// Sample backup options
 	SampleStrategy string // "ratio", "percent", "count"

@@ -455,8 +455,8 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 					pw.Close()
 				}(job.chunks)
 
-				// CopyFrom reads from pipe
-				rows, copyErr := e.streamCopy(ctx, job.tableName, pr)
+				// CopyFrom reads from pipe (no FREEZE — schema created on separate connection)
+				rows, copyErr := e.streamCopyNoFreeze(ctx, job.tableName, pr)
 
 				dur := time.Since(copyStart)
 				atomic.AddInt64(&totalBytes, job.totalSize)
@@ -503,6 +503,7 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 	result.TablesRestored = atomic.LoadInt64(&tablesCompleted)
 	result.RowsRestored = atomic.LoadInt64(&totalRows)
 	result.DataDuration = time.Since(startTime)
+
 
 	copyErrMu.Lock()
 	result.Errors = append(result.Errors, copyErrors...)

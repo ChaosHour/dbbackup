@@ -447,11 +447,17 @@ func (e *Engine) checkDumpHasLargeObjects(ctx context.Context, archivePath strin
 func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB string, compressed bool) error {
 	// Pre-validate SQL dump to detect truncation BEFORE attempting restore
 	// This saves time by catching corrupted files early (vs 49min failures)
-	if err := e.quickValidateSQLDump(archivePath, compressed); err != nil {
-		e.log.Error("Pre-restore validation failed - dump file appears corrupted",
-			"file", archivePath,
-			"error", err)
-		return fmt.Errorf("dump validation failed: %w - the backup file may be truncated or corrupted", err)
+	// Skip validation for pipeline mode — pipeline does streaming error handling
+	// and the full decompression scan costs 7+ seconds on large dumps.
+	if !e.cfg.UsePipeline {
+		if err := e.quickValidateSQLDump(archivePath, compressed); err != nil {
+			e.log.Error("Pre-restore validation failed - dump file appears corrupted",
+				"file", archivePath,
+				"error", err)
+			return fmt.Errorf("dump validation failed: %w - the backup file may be truncated or corrupted", err)
+		}
+	} else {
+		e.log.Info("Pipeline mode: skipping pre-validation (streaming error handling)")
 	}
 
 	// USE NATIVE ENGINE if configured
@@ -813,7 +819,14 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 			"cold_patterns", classification.ColdPatterns)
 	}
 
-	result, err := parallelEngine.RestoreFile(ctx, archivePath, options)
+	var result *native.ParallelRestoreResult
+	if e.cfg.UsePipeline {
+		e.log.Info("Using PIPELINE restore engine (decoupled scanner → buffered channel → workers)")
+		pipelineCfg := native.DefaultPipelineConfig()
+		result, err = parallelEngine.RestoreFilePipeline(ctx, archivePath, options, pipelineCfg)
+	} else {
+		result, err = parallelEngine.RestoreFile(ctx, archivePath, options)
+	}
 	if err != nil {
 		return fmt.Errorf("parallel native restore failed: %w", err)
 	}

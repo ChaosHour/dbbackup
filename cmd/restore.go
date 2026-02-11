@@ -344,6 +344,7 @@ func init() {
 	restoreSingleCmd.Flags().StringSliceVar(&criticalTables, "critical-tables", nil, "Critical table patterns restored first (e.g., user*,session*,payment*)")
 	restoreSingleCmd.Flags().StringSliceVar(&importantTables, "important-tables", nil, "Important table patterns restored second (e.g., order*,product*)")
 	restoreSingleCmd.Flags().StringSliceVar(&coldTables, "cold-tables", nil, "Cold table patterns restored last (e.g., *_log,*_archive)")
+	restoreSingleCmd.Flags().Bool("pipeline", false, "Use pipeline restore engine (decoupled scanner, higher throughput)")
 	restoreSingleCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreSingleCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
@@ -387,6 +388,7 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreSkipDiskCheck, "skip-disk-check", false, "Skip disk space checks (use when you know there's enough space)")
 	restoreClusterCmd.Flags().StringVar(&restoreWorkdir, "workdir", "", "Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)")
 	restoreClusterCmd.Flags().Float64Var(&restoreDiskSpaceMultiplier, "disk-space-multiplier", 0, "Override disk space multiplier (0 = auto-detect from metadata/format)")
+	restoreClusterCmd.Flags().Bool("pipeline", false, "Use pipeline restore engine (decoupled scanner, higher throughput)")
 	restoreClusterCmd.Flags().BoolVar(&restoreVerbose, "verbose", false, "Show detailed restore progress")
 	restoreClusterCmd.Flags().BoolVar(&restoreNoProgress, "no-progress", false, "Disable progress indicators")
 	restoreClusterCmd.Flags().BoolVar(&restoreNoTUI, "no-tui", false, "Disable TUI for maximum performance (benchmark mode)")
@@ -442,6 +444,13 @@ func init() {
 				cfg.CriticalTables = criticalTables
 				cfg.ImportantTables = importantTables
 				cfg.ColdTables = coldTables
+			}
+			if c.Flags().Changed("pipeline") {
+				pipeline, _ := c.Flags().GetBool("pipeline")
+				cfg.UsePipeline = pipeline
+				if pipeline {
+					log.Info("Pipeline restore engine enabled (decoupled scanner)")
+				}
 			}
 			return nil
 		}
@@ -822,7 +831,9 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if native engine should be used for restore
-	if cfg.UseNativeEngine {
+	// When --pipeline is set, skip the old EngineManager path and use the
+	// ParallelRestoreEngine with pipeline architecture via engine.RestoreSingle()
+	if cfg.UseNativeEngine && !cfg.UsePipeline {
 		log.Info("Using native engine for restore", "database", targetDB)
 		err = runNativeRestore(ctx, db, archivePath, targetDB, restoreClean, restoreCreate, startTime, user)
 

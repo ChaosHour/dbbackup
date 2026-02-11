@@ -303,7 +303,8 @@ func NewParallelRestoreEngineWithContext(ctx context.Context, config *PostgreSQL
 	if sslMode == "" {
 		sslMode = "prefer"
 	}
-	connString := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+	// Quote values to prevent parsing issues (empty password was consuming dbname)
+	connString := fmt.Sprintf("host='%s' port=%d user='%s' password='%s' dbname='%s' sslmode='%s'",
 		config.Host, config.Port, config.User, config.Password, config.Database, sslMode)
 
 	poolConfig, err := pgxpool.ParseConfig(connString)
@@ -874,6 +875,17 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 //
 // Zero intermediate buffering.
 func (e *ParallelRestoreEngine) streamCopy(ctx context.Context, tableName string, reader io.Reader) (int64, error) {
+	return e.streamCopyWithOptions(ctx, tableName, reader, true)
+}
+
+// streamCopyNoFreeze is like streamCopy but without COPY FREEZE.
+// Used by the pipeline engine where CREATE TABLE and COPY run in separate transactions.
+func (e *ParallelRestoreEngine) streamCopyNoFreeze(ctx context.Context, tableName string, reader io.Reader) (int64, error) {
+	return e.streamCopyWithOptions(ctx, tableName, reader, false)
+}
+
+// streamCopyWithOptions is the core COPY implementation with configurable FREEZE.
+func (e *ParallelRestoreEngine) streamCopyWithOptions(ctx context.Context, tableName string, reader io.Reader, useFreeze bool) (int64, error) {
 	acquireCtx, acquireCancel := context.WithTimeout(ctx, 5*time.Minute)
 	conn, err := e.pool.Acquire(acquireCtx)
 	acquireCancel()
@@ -897,17 +909,26 @@ func (e *ParallelRestoreEngine) streamCopy(ctx context.Context, tableName string
 		_, _ = conn.Exec(ctx, opt)
 	}
 
-	// Use COPY WITH (FREEZE) to skip visibility checks.
+	// Use COPY WITH (FREEZE) to skip visibility checks when possible.
 	// FREEZE marks rows as committed immediately (no MVCC overhead).
 	// Safe for restore:
 	//   - Table is empty (just created)
 	//   - Same transaction
 	//   - No concurrent readers
 	// PostgreSQL 9.3+, 10-20% faster than plain COPY.
-	copySQL := fmt.Sprintf("COPY %s FROM STDIN WITH (FREEZE)", tableName)
-	e.log.Debug("Using COPY WITH (FREEZE) for fast visibility",
-		"table", tableName,
-		"optimization", "skip MVCC overhead")
+	// NOTE: FREEZE requires CREATE TABLE and COPY in the same transaction.
+	// Pipeline mode can't use FREEZE because schema and data run on separate connections.
+	var copySQL string
+	if useFreeze {
+		copySQL = fmt.Sprintf("COPY %s FROM STDIN WITH (FREEZE)", tableName)
+		e.log.Debug("Using COPY WITH (FREEZE) for fast visibility",
+			"table", tableName,
+			"optimization", "skip MVCC overhead")
+	} else {
+		copySQL = fmt.Sprintf("COPY %s FROM STDIN", tableName)
+		e.log.Debug("Using COPY (no FREEZE — pipeline mode)",
+			"table", tableName)
+	}
 
 	// 2-hour timeout per table: 100GB at 15MB/s ≈ 1.8h, with headroom
 	copyCtx, copyCancel := context.WithTimeout(ctx, 2*time.Hour)

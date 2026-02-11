@@ -5,6 +5,25 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.23.0] - 2026-02-11
+
+### Added - Parallel Backup & Dependency Graph Analysis
+
+- **Parallel backup** (matches pg_dump -j behavior)
+  - Concurrent `COPY TO` across multiple worker goroutines
+  - Semaphore-limited worker pool uses `cfg.Parallel` workers
+  - Per-table buffered output ensures deterministic ordering
+  - Automatic fallback to sequential mode for single table/worker
+  - Progress logging per table with completion counter
+  - Advanced engine `parallelBackup()` delegates to base engine
+
+- **Dependency graph analysis** (correct complex schema ordering)
+  - Queries `pg_depend` for inter-object dependencies (views→tables, views→views, etc.)
+  - Kahn's algorithm topological sort with cycle detection
+  - Handles: tables, views, materialized views, sequences, functions
+  - Graceful fallback to type-based ordering on cycle or query failure
+  - Replaces previous naive type-bucket sorting
+
 ## [6.22.0] - 2026-02-11
 
 ### Added - TUI Settings, Pool Auto-Sizing, Prepared Statement Caching

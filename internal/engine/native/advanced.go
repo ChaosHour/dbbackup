@@ -295,9 +295,10 @@ func (e *PostgreSQLAdvancedEngine) directoryFormatBackup(ctx context.Context, ou
 }
 
 func (e *PostgreSQLAdvancedEngine) parallelBackup(ctx context.Context, output io.Writer, options *AdvancedBackupOptions) (*BackupResult, error) {
-	// TODO: Implement parallel backup processing
-	// This would process multiple tables concurrently
-	return nil, fmt.Errorf("parallel backup not yet implemented")
+	// Parallel backup is now implemented in the base engine (backupPlainFormat).
+	// Delegate to the standard backup path which auto-parallelizes when cfg.Parallel > 1.
+	result := &BackupResult{Format: string(options.Format)}
+	return e.backupPlainFormat(ctx, output, result)
 }
 
 func (e *PostgreSQLAdvancedEngine) validatePostgreSQLOptions(options *PostgreSQLAdvancedOptions) error {

@@ -2,6 +2,7 @@ package native
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"dbbackup/internal/logger"
@@ -319,13 +321,87 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 		}
 	}
 
-	// Write data using COPY
+	// Write data using COPY — parallel when possible
 	if !e.cfg.SchemaOnly {
+		// Collect table_data objects
+		var dataObjects []DatabaseObject
 		for _, obj := range objects {
 			if obj.Type == "table_data" {
+				dataObjects = append(dataObjects, obj)
+			}
+		}
+
+		workers := e.cfg.Parallel
+		if workers < 1 {
+			workers = 1
+		}
+
+		if workers > 1 && len(dataObjects) > 1 {
+			// ═══════════════════════════════════════════════════════════════
+			// PARALLEL BACKUP: concurrent COPY TO with ordered output
+			// ═══════════════════════════════════════════════════════════════
+			e.log.Info("Starting parallel backup",
+				"tables", len(dataObjects), "workers", workers)
+
+			type tableResult struct {
+				index int
+				buf   *bytes.Buffer
+				bytes int64
+				err   error
+			}
+
+			results := make([]tableResult, len(dataObjects))
+			semaphore := make(chan struct{}, workers)
+			var wg sync.WaitGroup
+			var tablesCompleted int64
+
+			for i, obj := range dataObjects {
+				wg.Add(1)
+				go func(idx int, dobj DatabaseObject) {
+					defer wg.Done()
+					semaphore <- struct{}{} // acquire
+					defer func() { <-semaphore }() // release
+
+					buf := &bytes.Buffer{}
+
+					// Write per-table header
+					header := fmt.Sprintf("\n--\n-- Data for table %s.%s\n--\n\n",
+						e.quoteIdentifier(dobj.Schema), e.quoteIdentifier(dobj.Name))
+					buf.WriteString(header)
+
+					bytesWritten, err := e.copyTableData(ctx, buf, dobj.Schema, dobj.Name)
+					results[idx] = tableResult{index: idx, buf: buf, bytes: bytesWritten, err: err}
+
+					n := atomic.AddInt64(&tablesCompleted, 1)
+					e.log.Debug("Table backup complete",
+						"table", dobj.Schema+"."+dobj.Name,
+						"progress", fmt.Sprintf("%d/%d", n, len(dataObjects)))
+				}(i, obj)
+			}
+
+			wg.Wait()
+
+			// Write results in order to maintain deterministic output
+			for i, tr := range results {
+				if tr.err != nil {
+					e.log.Warn("Failed to copy table data",
+						"table", dataObjects[i].Name, "error", tr.err)
+					continue
+				}
+				if _, err := w.Write(tr.buf.Bytes()); err != nil {
+					return nil, err
+				}
+				result.BytesProcessed += tr.bytes
+				result.ObjectsProcessed++
+			}
+
+			e.log.Info("Parallel backup complete",
+				"tables", len(dataObjects), "bytes", result.BytesProcessed)
+		} else {
+			// Sequential fallback (single worker or single table)
+			for _, obj := range dataObjects {
 				e.log.Debug("Copying table data", "schema", obj.Schema, "table", obj.Name)
 
-				// Write table data header
 				header := fmt.Sprintf("\n--\n-- Data for table %s.%s\n--\n\n",
 					e.quoteIdentifier(obj.Schema), e.quoteIdentifier(obj.Name))
 				if _, err := w.Write([]byte(header)); err != nil {
@@ -335,7 +411,6 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 				bytesWritten, err := e.copyTableData(ctx, w, obj.Schema, obj.Name)
 				if err != nil {
 					e.log.Warn("Failed to copy table data", "table", obj.Name, "error", err)
-					// Continue with other tables
 					continue
 				}
 				result.BytesProcessed += bytesWritten
@@ -825,8 +900,18 @@ func (e *PostgreSQLNativeEngine) getOtherObjects(ctx context.Context, schema str
 }
 
 func (e *PostgreSQLNativeEngine) sortByDependencies(objects []DatabaseObject) []DatabaseObject {
-	// Simple dependency sorting - tables first, then views, then functions
-	// TODO: Implement proper dependency graph analysis
+	// Proper dependency graph analysis using pg_depend
+	// Falls back to simple type-based ordering if dependency query fails
+	depOrder, err := e.topologicalSort(objects)
+	if err != nil {
+		e.log.Debug("Dependency graph analysis failed, using type-based ordering", "error", err)
+		return e.sortByType(objects)
+	}
+	return depOrder
+}
+
+// sortByType provides simple type-based ordering (fallback)
+func (e *PostgreSQLNativeEngine) sortByType(objects []DatabaseObject) []DatabaseObject {
 	var tables, views, sequences, functions, others []DatabaseObject
 
 	for _, obj := range objects {
@@ -844,15 +929,147 @@ func (e *PostgreSQLNativeEngine) sortByDependencies(objects []DatabaseObject) []
 		}
 	}
 
-	// Return in dependency order: sequences, tables, views, functions, others
 	result := make([]DatabaseObject, 0, len(objects))
 	result = append(result, sequences...)
 	result = append(result, tables...)
 	result = append(result, views...)
 	result = append(result, functions...)
 	result = append(result, others...)
-
 	return result
+}
+
+// topologicalSort performs dependency graph analysis using pg_depend and
+// returns objects in correct creation order.
+func (e *PostgreSQLNativeEngine) topologicalSort(objects []DatabaseObject) ([]DatabaseObject, error) {
+	if e.conn == nil {
+		return nil, fmt.Errorf("no connection available")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Build lookup: schema.name → index
+	idxMap := make(map[string]int, len(objects))
+	for i, obj := range objects {
+		key := obj.Schema + "." + obj.Name + "." + obj.Type
+		idxMap[key] = i
+	}
+
+	// Query pg_depend for inter-object dependencies (views→tables, views→views, etc.)
+	query := `
+		SELECT DISTINCT
+			dn.nspname  AS dep_schema,
+			dc.relname  AS dep_name,
+			CASE dc.relkind
+				WHEN 'r' THEN 'table'
+				WHEN 'v' THEN 'view'
+				WHEN 'm' THEN 'view'
+				WHEN 'S' THEN 'sequence'
+				ELSE 'other'
+			END AS dep_type,
+			rn.nspname  AS ref_schema,
+			rc.relname  AS ref_name,
+			CASE rc.relkind
+				WHEN 'r' THEN 'table'
+				WHEN 'v' THEN 'view'
+				WHEN 'm' THEN 'view'
+				WHEN 'S' THEN 'sequence'
+				ELSE 'other'
+			END AS ref_type
+		FROM pg_depend d
+		JOIN pg_class dc ON d.classid = 'pg_class'::regclass AND d.objid = dc.oid
+		JOIN pg_namespace dn ON dc.relnamespace = dn.oid
+		JOIN pg_class rc ON d.refclassid = 'pg_class'::regclass AND d.refobjid = rc.oid
+		JOIN pg_namespace rn ON rc.relnamespace = rn.oid
+		WHERE d.deptype IN ('n', 'a')
+		  AND dn.nspname NOT IN ('pg_catalog', 'information_schema')
+		  AND rn.nspname NOT IN ('pg_catalog', 'information_schema')
+		  AND dc.oid <> rc.oid`
+
+	rows, err := e.conn.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("dependency query failed: %w", err)
+	}
+	defer rows.Close()
+
+	// Build adjacency list: depKey depends on refKey (refKey must come first)
+	// adj[A] = [B, C] means B and C must come before A
+	adj := make(map[int][]int)    // object index → list of dependency indices
+	inDegree := make(map[int]int) // incoming edge count
+
+	// Initialize all objects
+	for i := range objects {
+		inDegree[i] = 0
+	}
+
+	for rows.Next() {
+		var depSchema, depName, depType, refSchema, refName, refType string
+		if err := rows.Scan(&depSchema, &depName, &depType, &refSchema, &refName, &refType); err != nil {
+			continue
+		}
+
+		depKey := depSchema + "." + depName + "." + depType
+		refKey := refSchema + "." + refName + "." + refType
+
+		depIdx, depOK := idxMap[depKey]
+		refIdx, refOK := idxMap[refKey]
+
+		if depOK && refOK && depIdx != refIdx {
+			adj[depIdx] = append(adj[depIdx], refIdx)
+			inDegree[depIdx]++ // depIdx depends on refIdx → refIdx must come first
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Wait — actually adj[depIdx] should contain refIdx, meaning depIdx has an incoming
+	// edge from refIdx. For Kahn's algorithm we need: adj is "X → [dependents of X]"
+	// Let me restructure: forwardAdj[refIdx] = append(forwardAdj[refIdx], depIdx)
+	// means refIdx must come before depIdx.
+	forwardAdj := make(map[int][]int)
+	inDeg := make(map[int]int)
+	for i := range objects {
+		inDeg[i] = 0
+	}
+	for depIdx, refs := range adj {
+		for _, refIdx := range refs {
+			forwardAdj[refIdx] = append(forwardAdj[refIdx], depIdx)
+			inDeg[depIdx]++
+		}
+	}
+
+	// Kahn's algorithm for topological sort
+	var queue []int
+	for i := range objects {
+		if inDeg[i] == 0 {
+			queue = append(queue, i)
+		}
+	}
+
+	sorted := make([]DatabaseObject, 0, len(objects))
+	for len(queue) > 0 {
+		idx := queue[0]
+		queue = queue[1:]
+		sorted = append(sorted, objects[idx])
+
+		for _, depIdx := range forwardAdj[idx] {
+			inDeg[depIdx]--
+			if inDeg[depIdx] == 0 {
+				queue = append(queue, depIdx)
+			}
+		}
+	}
+
+	// Cycle detection: if sorted is shorter than objects, there's a cycle
+	if len(sorted) < len(objects) {
+		e.log.Warn("Dependency cycle detected, falling back to type-based ordering",
+			"sorted", len(sorted), "total", len(objects))
+		return nil, fmt.Errorf("dependency cycle detected")
+	}
+
+	e.log.Debug("Dependency graph resolved", "objects", len(sorted))
+	return sorted, nil
 }
 
 func (e *PostgreSQLNativeEngine) backupCustomFormat(ctx context.Context, w io.Writer, result *BackupResult) (*BackupResult, error) {

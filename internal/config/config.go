@@ -69,6 +69,7 @@ type Config struct {
 	// Resource limits
 	MaxMemoryMB        int // Maximum memory usage hint in MB (0 = auto from system)
 	TransactionBatchSize int // Rows per transaction batch in restore (0 = single transaction)
+	BufferSize         int // I/O buffer size in bytes (0 = 262144 = 256KB default)
 
 	// Native engine options
 	UseNativeEngine   bool     // Use pure Go native engines instead of external tools (default: true)
@@ -411,6 +412,7 @@ func New() *Config {
 		// Resource limit defaults
 		MaxMemoryMB:        getEnvInt("MAX_MEMORY_MB", 0),
 		TransactionBatchSize: getEnvInt("TRANSACTION_BATCH_SIZE", 0),
+		BufferSize:         getEnvInt("BUFFER_SIZE", 262144),
 
 		UseNativeEngine:  getEnvBool("USE_NATIVE_ENGINE", true),
 		FallbackToTools:  getEnvBool("FALLBACK_TO_TOOLS", true),

@@ -5,6 +5,32 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.24.0] - 2026-02-11
+
+### Added - Buffer Size TUI, Prepared Statements, Incremental Backup
+
+- **Buffer size TUI setting** (49 total settings across 4 pages)
+  - `buffer_size` selector: cycles 64KB → 128KB → 256KB → 512KB → 1MB
+  - New `BufferSize` config field with env var `BUFFER_SIZE` and INI persistence
+  - Default 256KB (optimal for most workloads)
+
+- **Prepared statement expansion** (12 total, was 8)
+  - `ps_get_table_size` — pg_total_relation_size for worker allocation
+  - `ps_get_index_defs` — index definitions for schema backup
+  - `ps_get_constraints` — constraint definitions (excludes primary keys)
+  - `ps_get_bytea_columns` — binary column detection for BLOB optimization
+
+- **WAL-based incremental backup integration** (`internal/engine/native/incremental.go`)
+  - `SupportsIncremental()` now returns true (was false)
+  - `SupportsPointInTime()` now returns true (was false)
+  - `IncrementalBackup()` — WAL-based incremental with metadata chain tracking
+  - `GetCurrentLSN()` — queries pg_current_wal_lsn
+  - `CheckWALPrerequisites()` — validates wal_level and max_wal_senders
+  - `CreateWALManager()` — wires native engine config to WAL manager
+  - `GenerateRecoveryConfig()` — produces recovery.conf for PITR
+  - `StartWALStreaming()` — launches pg_receivewal via WAL manager
+  - `ListWALFiles()` — enumerates archived WAL segments
+
 ## [6.23.0] - 2026-02-11
 
 ### Added - Parallel Backup & Dependency Graph Analysis

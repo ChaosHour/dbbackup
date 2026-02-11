@@ -850,6 +850,36 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Rows per transaction batch in restore (0 = single transaction)",
 		},
 		{
+			Key:         "buffer_size",
+			DisplayName: "I/O Buffer Size",
+			Value: func(c *config.Config) string {
+				size := c.BufferSize
+				if size == 0 {
+					size = 262144
+				}
+				if size >= 1048576 {
+					return fmt.Sprintf("%dMB", size/1048576)
+				}
+				return fmt.Sprintf("%dKB", size/1024)
+			},
+			Update: func(c *config.Config, v string) error {
+				// Cycle: 64KB → 128KB → 256KB → 512KB → 1MB → 64KB
+				sizes := []int{65536, 131072, 262144, 524288, 1048576}
+				currentIdx := 2 // default 256KB
+				for i, s := range sizes {
+					if c.BufferSize == s {
+						currentIdx = i
+						break
+					}
+				}
+				nextIdx := (currentIdx + 1) % len(sizes)
+				c.BufferSize = sizes[nextIdx]
+				return nil
+			},
+			Type:        "selector",
+			Description: "I/O buffer size. Larger = fewer syscalls but more memory. 256KB optimal for most workloads. Press Enter to cycle.",
+		},
+		{
 			Key:         "wal_archiving",
 			DisplayName: "WAL Archiving (PITR)",
 			Value: func(c *config.Config) string {

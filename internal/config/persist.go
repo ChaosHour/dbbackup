@@ -57,6 +57,7 @@ type LocalConfig struct {
 	ConnectionTimeout int    // Connection timeout seconds
 	MaxMemoryMB       int    // Max memory in MB
 	TransactionBatch  int    // Transaction batch size
+	BufferSize        int    // I/O buffer size bytes
 	CompressionAlgo   string // Compression algorithm: gzip, zstd
 
 	// Safety settings
@@ -273,6 +274,10 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				if v, err := strconv.Atoi(value); err == nil {
 					cfg.TransactionBatch = v
 				}
+			case "buffer_size":
+				if v, err := strconv.Atoi(value); err == nil {
+					cfg.BufferSize = v
+				}
 			case "compression_algorithm":
 				cfg.CompressionAlgo = value
 			case "skip_disk_check":
@@ -431,6 +436,9 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	}
 	if cfg.TransactionBatch != 0 {
 		sb.WriteString(fmt.Sprintf("transaction_batch_size = %d\n", cfg.TransactionBatch))
+	}
+	if cfg.BufferSize != 0 && cfg.BufferSize != 262144 {
+		sb.WriteString(fmt.Sprintf("buffer_size = %d\n", cfg.BufferSize))
 	}
 	if cfg.CompressionAlgo != "" {
 		sb.WriteString(fmt.Sprintf("compression_algorithm = %s\n", cfg.CompressionAlgo))
@@ -620,6 +628,9 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.TransactionBatch != 0 {
 		cfg.TransactionBatchSize = local.TransactionBatch
 	}
+	if local.BufferSize != 0 {
+		cfg.BufferSize = local.BufferSize
+	}
 	if local.CompressionAlgo != "" {
 		cfg.CompressionAlgorithm = local.CompressionAlgo
 	}
@@ -727,6 +738,7 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		ConnectionTimeout:      cfg.ConnectionTimeoutSeconds,
 		MaxMemoryMB:            cfg.MaxMemoryMB,
 		TransactionBatch:       cfg.TransactionBatchSize,
+		BufferSize:             cfg.BufferSize,
 		CompressionAlgo:        cfg.CompressionAlgorithm,
 		SkipDiskCheck:           cfg.SkipDiskCheck,
 		SkipPreflightChecks:     cfg.SkipPreflightChecks,

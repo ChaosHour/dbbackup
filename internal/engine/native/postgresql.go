@@ -681,6 +681,97 @@ func (e *PostgreSQLNativeEngine) getTableCreateSQL(ctx context.Context, schema, 
 	return createSQL, nil
 }
 
+// getTableSize returns the total relation size for a table using prepared statement caching.
+func (e *PostgreSQLNativeEngine) getTableSize(ctx context.Context, schema, table string) (int64, error) {
+	query := `SELECT pg_total_relation_size(($1 || '.' || $2)::regclass)`
+	row := e.queryRowPrepared(ctx, e.conn, "ps_get_table_size", query, schema, table)
+	var size int64
+	if err := row.Scan(&size); err != nil {
+		return 0, err
+	}
+	return size, nil
+}
+
+// getIndexDefinitions returns index definitions for a table using prepared statement caching.
+func (e *PostgreSQLNativeEngine) getIndexDefinitions(ctx context.Context, schema, table string) ([]string, error) {
+	query := `
+		SELECT indexdef
+		FROM pg_indexes
+		WHERE schemaname = $1 AND tablename = $2
+		ORDER BY indexname`
+
+	rows, err := e.queryPrepared(ctx, e.conn, "ps_get_index_defs", query, schema, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var defs []string
+	for rows.Next() {
+		var def string
+		if err := rows.Scan(&def); err != nil {
+			return nil, err
+		}
+		defs = append(defs, def+";")
+	}
+	return defs, rows.Err()
+}
+
+// getConstraintDefinitions returns constraint definitions for a table using prepared statement caching.
+func (e *PostgreSQLNativeEngine) getConstraintDefinitions(ctx context.Context, schema, table string) ([]string, error) {
+	query := `
+		SELECT conname, pg_get_constraintdef(c.oid)
+		FROM pg_constraint c
+		JOIN pg_namespace n ON c.connamespace = n.oid
+		WHERE n.nspname = $1
+		  AND c.conrelid = ($1 || '.' || $2)::regclass
+		  AND c.contype NOT IN ('p')
+		ORDER BY conname`
+
+	rows, err := e.queryPrepared(ctx, e.conn, "ps_get_constraints", query, schema, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var defs []string
+	for rows.Next() {
+		var name, def string
+		if err := rows.Scan(&name, &def); err != nil {
+			return nil, err
+		}
+		fqTable := fmt.Sprintf("%s.%s", e.quoteIdentifier(schema), e.quoteIdentifier(table))
+		defs = append(defs, fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s %s;", fqTable, e.quoteIdentifier(name), def))
+	}
+	return defs, rows.Err()
+}
+
+// getByteaColumns returns bytea-type columns for a table using prepared statement caching.
+// This is used by BLOB detection to identify binary data columns.
+func (e *PostgreSQLNativeEngine) getByteaColumns(ctx context.Context, schema, table string) ([]string, error) {
+	query := `
+		SELECT column_name
+		FROM information_schema.columns
+		WHERE table_schema = $1 AND table_name = $2 AND data_type = 'bytea'
+		ORDER BY ordinal_position`
+
+	rows, err := e.queryPrepared(ctx, e.conn, "ps_get_bytea_columns", query, schema, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			return nil, err
+		}
+		cols = append(cols, col)
+	}
+	return cols, rows.Err()
+}
+
 // formatDataType formats PostgreSQL data types properly
 // udtName is used for array types - PostgreSQL stores them with _ prefix (e.g., _int4 for integer[])
 func (e *PostgreSQLNativeEngine) formatDataType(dataType, udtName string, maxLen, precision, scale *int) string {
@@ -1269,16 +1360,6 @@ func (e *PostgreSQLNativeEngine) SupportedFormats() []string {
 // SupportsParallel returns true if parallel processing is supported
 func (e *PostgreSQLNativeEngine) SupportsParallel() bool {
 	return true
-}
-
-// SupportsIncremental returns true if incremental backups are supported
-func (e *PostgreSQLNativeEngine) SupportsIncremental() bool {
-	return false // TODO: Implement WAL-based incremental backups
-}
-
-// SupportsPointInTime returns true if point-in-time recovery is supported
-func (e *PostgreSQLNativeEngine) SupportsPointInTime() bool {
-	return false // TODO: Implement WAL integration
 }
 
 // SupportsStreaming returns true if streaming backups are supported

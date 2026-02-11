@@ -73,6 +73,7 @@ type SystemProfile struct {
 	EstimatedDBSize   uint64 // bytes
 	EstimatedRowCount int64
 	HasBLOBs          bool
+	AvgBLOBSize       uint64 // bytes — average size of BLOB columns (0 if unknown)
 	HasIndexes        bool
 	TableCount        int
 

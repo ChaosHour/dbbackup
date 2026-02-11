@@ -450,8 +450,10 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	}()
 	defer close(ctxDone)
 
-	// Wrap file with buffered reader for filesystem readahead (256KB)
-	bufReader := bufio.NewReaderSize(file, 256*1024)
+	// Wrap file with buffered reader for filesystem readahead (4MB).
+	// 4MB aligns with SSD page sizes and filesystem readahead windows.
+	// (Was 256KB — too small, caused excessive syscalls on fast storage.)
+	bufReader := bufio.NewReaderSize(file, 4*1024*1024)
 	var reader io.Reader = bufReader
 	if algo := comp.DetectAlgorithm(filePath); algo != comp.AlgorithmNone {
 		decomp, err := comp.NewDecompressorWithAlgorithm(bufReader, algo)
@@ -583,9 +585,11 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 			}(tableName, tableNum, pr)
 
 			// Stream COPY data rows: scanner → bufio → pipe → pgx
-			// Buffered writer batches small row writes into 256KB chunks,
-			// halving syscall overhead (was 2 writes per row, now batched).
-			bw := bufio.NewWriterSize(pw, 256*1024)
+			// Buffered writer batches small row writes into 4MB chunks.
+			// Larger buffer = fewer pipe writes = less blocking on io.Pipe.
+			// (Was 256KB — caused scanner to block every 256KB waiting for
+			// CopyFrom to drain, serializing large table restores.)
+			bw := bufio.NewWriterSize(pw, 4*1024*1024)
 			for scanner.Scan() {
 				lineCount++
 				dataLine := scanner.Text()
@@ -1067,6 +1071,11 @@ func isIndexStatement(sql string) bool {
 		strings.HasPrefix(upper, "CREATE UNIQUE INDEX")
 }
 
+// GetPool returns the connection pool for diagnostics and benchmarking.
+func (e *ParallelRestoreEngine) GetPool() *pgxpool.Pool {
+	return e.pool
+}
+
 // Close closes the connection pool
 func (e *ParallelRestoreEngine) Close() error {
 	if e.closeCh != nil {
@@ -1113,7 +1122,7 @@ func (e *ParallelRestoreEngine) preScanDump(ctx context.Context, filePath string
 	}
 	defer file.Close()
 
-	bufReader := bufio.NewReaderSize(file, 256*1024)
+	bufReader := bufio.NewReaderSize(file, 4*1024*1024) // 4MB read buffer
 	var reader io.Reader = bufReader
 	if algo := comp.DetectAlgorithm(filePath); algo != comp.AlgorithmNone {
 		decomp, err := comp.NewDecompressorWithAlgorithm(bufReader, algo)
@@ -1425,7 +1434,7 @@ func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath strin
 	}
 	defer cleanupFn()
 
-	bufReader := bufio.NewReaderSize(file, 256*1024)
+	bufReader := bufio.NewReaderSize(file, 4*1024*1024) // 4MB read buffer
 	var reader io.Reader = bufReader
 	if algo := comp.DetectAlgorithm(filePath); algo != comp.AlgorithmNone {
 		decomp, err := comp.NewDecompressorWithAlgorithm(bufReader, algo)
@@ -1527,8 +1536,8 @@ func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath strin
 				}
 			}(tableName, pr)
 
-			// Stream COPY data rows through pipe
-			bw := bufio.NewWriterSize(pw, 256*1024)
+			// Stream COPY data rows through pipe (4MB buffer)
+			bw := bufio.NewWriterSize(pw, 4*1024*1024)
 			inCopy = true
 			for scanner.Scan() {
 				dataLine := scanner.Text()

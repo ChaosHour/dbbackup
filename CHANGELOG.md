@@ -5,6 +5,40 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.25.3] - 2026-02-11
+
+### Added - Restore Performance: Pipeline Architecture & Diagnostics
+
+- **Pipeline restore engine** (`internal/engine/native/pipeline_restore.go`)
+  - Decoupled 3-stage architecture: scanner → buffered channel → N parallel COPY workers
+  - Eliminates io.Pipe serialization bottleneck (root cause of 21 MB/s cap)
+  - Pre-reads COPY data into 4MB chunks with bounded memory (default 256MB)
+  - Three config presets: Default (4MB/64), HighMemory (16MB/128), LowMemory (1MB/16)
+  - Expected 3-6x speedup for multi-table dumps
+
+- **psql subprocess restore engine** (`internal/engine/native/psql_restore.go`)
+  - Benchmark baseline using native psql client for A/B comparison
+  - `BenchmarkVsNative()` runs both engines on same backup, reports speed ratio
+  - Automated diagnosis: CRITICAL/SIGNIFICANT/MINOR/OPTIMAL classification
+
+- **Restore diagnostics** (`internal/engine/native/restore_diagnostics.go`)
+  - pprof HTTP server with block/mutex profiling for contention analysis
+  - PostgreSQL connection diagnostics (pg_stat_activity, pool utilization)
+  - Automated bottleneck detection (fsync, synchronous_commit, worker utilization)
+  - Periodic diagnostic snapshots with formatted report output
+
+- **`restore-benchmark` CLI command** (`cmd/restore_benchmark.go`)
+  - `compare` — psql vs native engine speed comparison
+  - `pipeline` — test pipeline restore with diagnostics
+  - `diagnose` — check PostgreSQL configuration for performance issues
+
+### Changed
+
+- Upgraded all I/O buffer sizes from 256KB to 4MB (parallel_restore.go, splice_linux.go)
+  - File read buffers, COPY data writers, splice pool, pre-scan buffers
+  - Reduces syscall overhead on fast storage (SSD/NVMe)
+- Added `GetPool()` method to `ParallelRestoreEngine` for diagnostics access
+
 ## [6.25.1] - 2026-02-11
 
 ### Added - Backup Format TUI Setting

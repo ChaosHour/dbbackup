@@ -126,10 +126,10 @@ func (sp *SplicePipe) SpliceFrom(srcFd int, length int64) (int64, error) {
 }
 
 // spliceCopyPool is a shared buffer pool for fallback io.Copy operations.
-// 256KB buffers match our bufio.Writer size for consistent throughput.
+// 4MB buffers match our pipeline buffer size for consistent throughput.
 var spliceCopyPool = sync.Pool{
 	New: func() interface{} {
-		buf := make([]byte, 256*1024)
+		buf := make([]byte, 4*1024*1024)
 		return &buf
 	},
 }

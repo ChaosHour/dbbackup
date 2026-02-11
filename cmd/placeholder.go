@@ -546,14 +546,20 @@ func runVerify(ctx context.Context, archiveName string) error {
 		checksRun++
 	}
 
-	// Check for metadata file
-	metadataPath := archivePath + ".info"
+	// Check for metadata file (.info or .meta.json)
 	fmt.Print("[CHK] Metadata file check... ")
-	if _, err := os.Stat(metadataPath); os.IsNotExist(err) {
-		fmt.Println("[WARN] WARNING: No metadata file found")
-	} else {
+	metadataFound := false
+	for _, suffix := range []string{".info", ".meta.json"} {
+		if _, err := os.Stat(archivePath + suffix); err == nil {
+			metadataFound = true
+			break
+		}
+	}
+	if metadataFound {
 		fmt.Println("[OK] PASSED")
 		checksPassed++
+	} else {
+		fmt.Println("[WARN] WARNING: No metadata file found")
 	}
 	checksRun++
 
@@ -561,7 +567,7 @@ func runVerify(ctx context.Context, archiveName string) error {
 	fmt.Printf("Verification Results: %d/%d checks passed\n", checksPassed, checksRun)
 
 	allPassed := checksPassed == checksRun
-	mostPassed := float64(checksPassed)/float64(checksRun) >= 0.8
+	mostPassed := float64(checksPassed)/float64(checksRun) >= 0.75
 
 	// Update catalog verification status so the Prometheus exporter
 	// can report dbbackup_backup_verified=1

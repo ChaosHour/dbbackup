@@ -68,13 +68,14 @@ func (r *Registry) IsDuplicate(data []byte) (bool, string) {
 	hash := HashBLOB(data)
 	atomic.AddInt64(&r.totalCount, 1)
 
+	r.mu.RLock()
 	// Fast path: Bloom filter says "definitely not seen"
 	if !r.bloom.Test(hash) {
+		r.mu.RUnlock()
 		return false, hash
 	}
 
 	// Bloom filter says "maybe seen" — check exact set
-	r.mu.RLock()
 	exists := r.exactSeen[hash]
 	r.mu.RUnlock()
 
@@ -90,9 +91,8 @@ func (r *Registry) IsDuplicate(data []byte) (bool, string) {
 
 // Record marks a BLOB hash as seen. Call after successfully backing up a BLOB.
 func (r *Registry) Record(hash string) {
-	r.bloom.Add(hash)
-
 	r.mu.Lock()
+	r.bloom.Add(hash)
 	r.exactSeen[hash] = true
 	r.mu.Unlock()
 }
@@ -105,21 +105,21 @@ func (r *Registry) CheckAndRecord(data []byte) (shouldBackup bool, hash string) 
 	hash = HashBLOB(data)
 	atomic.AddInt64(&r.totalCount, 1)
 
+	r.mu.Lock()
+
 	// Fast path: definitely not seen
 	if !r.bloom.Test(hash) {
 		r.bloom.Add(hash)
-		r.mu.Lock()
 		r.exactSeen[hash] = true
 		r.mu.Unlock()
 		return true, hash
 	}
 
 	// Maybe seen — exact check
-	r.mu.RLock()
 	exists := r.exactSeen[hash]
-	r.mu.RUnlock()
 
 	if exists {
+		r.mu.Unlock()
 		// Confirmed duplicate
 		atomic.AddInt64(&r.dupeCount, 1)
 		atomic.AddInt64(&r.savedBytes, int64(len(data)))
@@ -128,7 +128,6 @@ func (r *Registry) CheckAndRecord(data []byte) (shouldBackup bool, hash string) 
 
 	// False positive — this is actually new
 	r.bloom.Add(hash)
-	r.mu.Lock()
 	r.exactSeen[hash] = true
 	r.mu.Unlock()
 

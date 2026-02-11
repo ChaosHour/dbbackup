@@ -62,6 +62,20 @@ func (e *PostgreSQLNativeEngine) queryPrepared(ctx context.Context, conn *pgx.Co
 	return conn.Query(ctx, name, args...)
 }
 
+// queryRowPrepared executes a single-row query using prepared statement caching.
+// Same auto-prepare logic as queryPrepared but returns pgx.Row for Scan().
+func (e *PostgreSQLNativeEngine) queryRowPrepared(ctx context.Context, conn *pgx.Conn, name, sql string, args ...interface{}) pgx.Row {
+	if _, loaded := e.preparedStmts.Load(name); !loaded {
+		if _, err := conn.Prepare(ctx, name, sql); err != nil {
+			e.log.Debug("Prepared statement creation failed, falling back to unprepared",
+				"name", name, "error", err)
+			return conn.QueryRow(ctx, sql, args...)
+		}
+		e.preparedStmts.Store(name, true)
+	}
+	return conn.QueryRow(ctx, name, args...)
+}
+
 type PostgreSQLNativeConfig struct {
 	// Connection
 	Host     string
@@ -163,8 +177,26 @@ func (e *PostgreSQLNativeEngine) Connect(ctx context.Context) error {
 	if parallel < 4 {
 		parallel = 4 // Minimum for good performance
 	}
-	poolConfig.MaxConns = int32(parallel + 2) // +2 for metadata queries
+	requestedConns := int32(parallel + 2) // +2 for metadata queries
+
+	// Auto-size pool: query max_connections and cap to 80% of available
+	if maxConns := e.queryMaxConnections(ctx, connStr); maxConns > 0 {
+		safeLimit := int32(float64(maxConns) * 0.8)
+		if safeLimit < 4 {
+			safeLimit = 4
+		}
+		if requestedConns > safeLimit {
+			e.log.Warn("Capping pool size to stay within max_connections",
+				"requested", requestedConns, "capped", safeLimit, "max_connections", maxConns)
+			requestedConns = safeLimit
+		}
+	}
+
+	poolConfig.MaxConns = requestedConns
 	poolConfig.MinConns = int32(parallel)     // Keep connections warm
+	if poolConfig.MinConns > poolConfig.MaxConns {
+		poolConfig.MinConns = poolConfig.MaxConns - 1
+	}
 	poolConfig.MaxConnLifetime = 1 * time.Hour
 	poolConfig.MaxConnIdleTime = 5 * time.Minute
 	poolConfig.HealthCheckPeriod = 1 * time.Minute
@@ -182,6 +214,27 @@ func (e *PostgreSQLNativeEngine) Connect(ctx context.Context) error {
 
 	e.warnHugePagesIfAvailable()
 	return nil
+}
+
+// queryMaxConnections opens a temporary connection to query PostgreSQL's
+// max_connections setting. Returns 0 if the query fails (caller should
+// fall back to default sizing).
+func (e *PostgreSQLNativeEngine) queryMaxConnections(ctx context.Context, connStr string) int {
+	ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	conn, err := pgx.Connect(ctx2, connStr)
+	if err != nil {
+		return 0
+	}
+	defer conn.Close(ctx2)
+
+	var maxConns int
+	err = conn.QueryRow(ctx2, "SELECT current_setting('max_connections')::int").Scan(&maxConns)
+	if err != nil {
+		return 0
+	}
+	return maxConns
 }
 
 // warnHugePagesIfAvailable logs a warning when the kernel has HugePages
@@ -945,7 +998,7 @@ func (e *PostgreSQLNativeEngine) getSequenceCreateSQL(ctx context.Context, schem
 	var start, min, max, increment int64
 	var cycle string
 
-	row := e.conn.QueryRow(ctx, query, schema, sequence)
+	row := e.queryRowPrepared(ctx, e.conn, "ps_get_sequence_details", query, schema, sequence)
 	if err := row.Scan(&start, &min, &max, &increment, &cycle); err != nil {
 		return "", err
 	}
@@ -973,7 +1026,7 @@ func (e *PostgreSQLNativeEngine) getFunctionCreateSQL(ctx context.Context, schem
 		LIMIT 1`
 
 	var funcDef string
-	row := e.conn.QueryRow(ctx, query, schema, function)
+	row := e.queryRowPrepared(ctx, e.conn, "ps_get_function_def", query, schema, function)
 	if err := row.Scan(&funcDef); err != nil {
 		return "", err
 	}

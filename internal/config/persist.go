@@ -51,6 +51,14 @@ type LocalConfig struct {
 	IOGovernor       string // I/O governor: auto, noop, deadline, mq-deadline, bfq
 	RestoreFsyncMode string // Restore fsync: on, auto, off
 
+	// Timeout & resource settings
+	StatementTimeout  int    // statement_timeout seconds
+	LockTimeout       int    // lock_timeout seconds
+	ConnectionTimeout int    // Connection timeout seconds
+	MaxMemoryMB       int    // Max memory in MB
+	TransactionBatch  int    // Transaction batch size
+	CompressionAlgo   string // Compression algorithm: gzip, zstd
+
 	// Safety settings
 	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
 
@@ -243,8 +251,30 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.AdaptiveJobs = value == "true" || value == "1"
 				case "io_governor":
 				cfg.IOGovernor = value
-			case "restore_fsync_mode":
+				case "restore_fsync_mode":
 				cfg.RestoreFsyncMode = value
+			case "statement_timeout":
+				if v, err := strconv.Atoi(value); err == nil {
+					cfg.StatementTimeout = v
+				}
+			case "lock_timeout":
+				if v, err := strconv.Atoi(value); err == nil {
+					cfg.LockTimeout = v
+				}
+			case "connection_timeout":
+				if v, err := strconv.Atoi(value); err == nil {
+					cfg.ConnectionTimeout = v
+				}
+			case "max_memory_mb":
+				if v, err := strconv.Atoi(value); err == nil {
+					cfg.MaxMemoryMB = v
+				}
+			case "transaction_batch_size":
+				if v, err := strconv.Atoi(value); err == nil {
+					cfg.TransactionBatch = v
+				}
+			case "compression_algorithm":
+				cfg.CompressionAlgo = value
 			case "skip_disk_check":
 				cfg.SkipDiskCheck = value == "true" || value == "1"
 			}
@@ -386,6 +416,24 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	}
 	if cfg.RestoreFsyncMode != "" {
 		sb.WriteString(fmt.Sprintf("restore_fsync_mode = %s\n", cfg.RestoreFsyncMode))
+	}
+	if cfg.StatementTimeout != 0 {
+		sb.WriteString(fmt.Sprintf("statement_timeout = %d\n", cfg.StatementTimeout))
+	}
+	if cfg.LockTimeout != 0 {
+		sb.WriteString(fmt.Sprintf("lock_timeout = %d\n", cfg.LockTimeout))
+	}
+	if cfg.ConnectionTimeout != 0 {
+		sb.WriteString(fmt.Sprintf("connection_timeout = %d\n", cfg.ConnectionTimeout))
+	}
+	if cfg.MaxMemoryMB != 0 {
+		sb.WriteString(fmt.Sprintf("max_memory_mb = %d\n", cfg.MaxMemoryMB))
+	}
+	if cfg.TransactionBatch != 0 {
+		sb.WriteString(fmt.Sprintf("transaction_batch_size = %d\n", cfg.TransactionBatch))
+	}
+	if cfg.CompressionAlgo != "" {
+		sb.WriteString(fmt.Sprintf("compression_algorithm = %s\n", cfg.CompressionAlgo))
 	}
 	sb.WriteString(fmt.Sprintf("skip_disk_check = %t\n", cfg.SkipDiskCheck))
 	sb.WriteString("\n")
@@ -557,6 +605,24 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.RestoreFsyncMode != "" {
 		cfg.RestoreFsyncMode = local.RestoreFsyncMode
 	}
+	if local.StatementTimeout != 0 {
+		cfg.StatementTimeoutSeconds = local.StatementTimeout
+	}
+	if local.LockTimeout != 0 {
+		cfg.LockTimeoutSeconds = local.LockTimeout
+	}
+	if local.ConnectionTimeout != 0 {
+		cfg.ConnectionTimeoutSeconds = local.ConnectionTimeout
+	}
+	if local.MaxMemoryMB != 0 {
+		cfg.MaxMemoryMB = local.MaxMemoryMB
+	}
+	if local.TransactionBatch != 0 {
+		cfg.TransactionBatchSize = local.TransactionBatch
+	}
+	if local.CompressionAlgo != "" {
+		cfg.CompressionAlgorithm = local.CompressionAlgo
+	}
 	if local.SkipDiskCheck {
 		cfg.SkipDiskCheck = true
 	}
@@ -656,6 +722,12 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		AdaptiveJobs:            cfg.AdaptiveJobs,
 		IOGovernor:              cfg.IOGovernor,
 		RestoreFsyncMode:       cfg.RestoreFsyncMode,
+		StatementTimeout:       cfg.StatementTimeoutSeconds,
+		LockTimeout:            cfg.LockTimeoutSeconds,
+		ConnectionTimeout:      cfg.ConnectionTimeoutSeconds,
+		MaxMemoryMB:            cfg.MaxMemoryMB,
+		TransactionBatch:       cfg.TransactionBatchSize,
+		CompressionAlgo:        cfg.CompressionAlgorithm,
 		SkipDiskCheck:           cfg.SkipDiskCheck,
 		SkipPreflightChecks:     cfg.SkipPreflightChecks,
 		CloudEnabled:            cfg.CloudEnabled,

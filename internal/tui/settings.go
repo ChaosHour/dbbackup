@@ -697,6 +697,174 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Type:        "bool",
 			Description: "Automatically upload backups to cloud after creation",
 		},
+		// ─── Timeout, Resource & Algorithm Settings ─────────────────────────
+		{
+			Key:         "compression_algorithm",
+			DisplayName: "Compression Algorithm",
+			Value: func(c *config.Config) string {
+				algo := c.CompressionAlgorithm
+				if algo == "" {
+					algo = "gzip"
+				}
+				switch algo {
+				case "gzip":
+					return "gzip (compatible)"
+				case "zstd":
+					return "zstd (faster, smaller)"
+				default:
+					return algo
+				}
+			},
+			Update: func(c *config.Config, v string) error {
+				algos := []string{"gzip", "zstd"}
+				currentIdx := 0
+				for i, a := range algos {
+					if c.CompressionAlgorithm == a {
+						currentIdx = i
+						break
+					}
+				}
+				nextIdx := (currentIdx + 1) % len(algos)
+				c.CompressionAlgorithm = algos[nextIdx]
+				return nil
+			},
+			Type:        "selector",
+			Description: "Compression algorithm: gzip (widely compatible) or zstd (faster, better ratio). Press Enter to cycle.",
+		},
+		{
+			Key:         "statement_timeout",
+			DisplayName: "Statement Timeout",
+			Value: func(c *config.Config) string {
+				if c.StatementTimeoutSeconds == 0 {
+					return "0 (disabled)"
+				}
+				return fmt.Sprintf("%ds", c.StatementTimeoutSeconds)
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.Atoi(v)
+				if err != nil {
+					return fmt.Errorf("must be a number (seconds)")
+				}
+				if val < 0 {
+					return fmt.Errorf("timeout cannot be negative")
+				}
+				c.StatementTimeoutSeconds = val
+				return nil
+			},
+			Type:        "int",
+			Description: "PostgreSQL statement_timeout in seconds (0 = disabled)",
+		},
+		{
+			Key:         "lock_timeout",
+			DisplayName: "Lock Timeout",
+			Value: func(c *config.Config) string {
+				if c.LockTimeoutSeconds == 0 {
+					return "0 (disabled)"
+				}
+				return fmt.Sprintf("%ds", c.LockTimeoutSeconds)
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.Atoi(v)
+				if err != nil {
+					return fmt.Errorf("must be a number (seconds)")
+				}
+				if val < 0 {
+					return fmt.Errorf("timeout cannot be negative")
+				}
+				c.LockTimeoutSeconds = val
+				return nil
+			},
+			Type:        "int",
+			Description: "PostgreSQL lock_timeout in seconds (0 = disabled)",
+		},
+		{
+			Key:         "connection_timeout",
+			DisplayName: "Connection Timeout",
+			Value: func(c *config.Config) string {
+				if c.ConnectionTimeoutSeconds == 0 {
+					return "30s (default)"
+				}
+				return fmt.Sprintf("%ds", c.ConnectionTimeoutSeconds)
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.Atoi(v)
+				if err != nil {
+					return fmt.Errorf("must be a number (seconds)")
+				}
+				if val < 1 {
+					return fmt.Errorf("connection timeout must be at least 1s")
+				}
+				c.ConnectionTimeoutSeconds = val
+				return nil
+			},
+			Type:        "int",
+			Description: "Connection establishment timeout in seconds",
+		},
+		{
+			Key:         "max_memory_mb",
+			DisplayName: "Max Memory (MB)",
+			Value: func(c *config.Config) string {
+				if c.MaxMemoryMB == 0 {
+					return "0 (auto)"
+				}
+				if c.MaxMemoryMB >= 1024 {
+					return fmt.Sprintf("%dMB (%.1fGB)", c.MaxMemoryMB, float64(c.MaxMemoryMB)/1024)
+				}
+				return fmt.Sprintf("%dMB", c.MaxMemoryMB)
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.Atoi(v)
+				if err != nil {
+					return fmt.Errorf("must be a number (MB)")
+				}
+				if val < 0 {
+					return fmt.Errorf("memory limit cannot be negative")
+				}
+				c.MaxMemoryMB = val
+				return nil
+			},
+			Type:        "int",
+			Description: "Maximum memory usage hint in MB (0 = auto-detect from system)",
+		},
+		{
+			Key:         "transaction_batch_size",
+			DisplayName: "Transaction Batch",
+			Value: func(c *config.Config) string {
+				if c.TransactionBatchSize == 0 {
+					return "0 (single txn)"
+				}
+				return fmt.Sprintf("%d rows", c.TransactionBatchSize)
+			},
+			Update: func(c *config.Config, v string) error {
+				val, err := strconv.Atoi(v)
+				if err != nil {
+					return fmt.Errorf("must be a number")
+				}
+				if val < 0 {
+					return fmt.Errorf("batch size cannot be negative")
+				}
+				c.TransactionBatchSize = val
+				return nil
+			},
+			Type:        "int",
+			Description: "Rows per transaction batch in restore (0 = single transaction)",
+		},
+		{
+			Key:         "wal_archiving",
+			DisplayName: "WAL Archiving (PITR)",
+			Value: func(c *config.Config) string {
+				if c.PITREnabled {
+					return "enabled"
+				}
+				return "disabled"
+			},
+			Update: func(c *config.Config, v string) error {
+				c.PITREnabled = !c.PITREnabled
+				return nil
+			},
+			Type:        "bool",
+			Description: "Enable WAL archiving for Point-in-Time Recovery (PITR)",
+		},
 		// ─── BLOB Optimization Settings (Page 3) ────────────────────────────
 		{
 			Key:         "detect_blob_types",

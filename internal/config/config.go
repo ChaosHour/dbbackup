@@ -61,6 +61,15 @@ type Config struct {
 	// I/O Governor for BLOB operations
 	IOGovernor string // "auto", "noop", "deadline", "mq-deadline", "bfq"
 
+	// Connection & query timeouts
+	StatementTimeoutSeconds  int // PostgreSQL statement_timeout in seconds (0 = disabled)
+	LockTimeoutSeconds       int // PostgreSQL lock_timeout in seconds (0 = disabled)
+	ConnectionTimeoutSeconds int // Connection establishment timeout in seconds (default: 30)
+
+	// Resource limits
+	MaxMemoryMB        int // Maximum memory usage hint in MB (0 = auto from system)
+	TransactionBatchSize int // Rows per transaction batch in restore (0 = single transaction)
+
 	// Native engine options
 	UseNativeEngine   bool     // Use pure Go native engines instead of external tools (default: true)
 	FallbackToTools   bool     // Fallback to external tools if native engine fails
@@ -394,6 +403,15 @@ func New() *Config {
 		IOGovernor: getEnvString("IO_GOVERNOR", "auto"),
 
 		// Native engine defaults (pure Go, no external tools required)
+		// Timeout defaults
+		StatementTimeoutSeconds:  getEnvInt("STATEMENT_TIMEOUT", 0),
+		LockTimeoutSeconds:       getEnvInt("LOCK_TIMEOUT", 0),
+		ConnectionTimeoutSeconds: getEnvInt("CONNECTION_TIMEOUT", 30),
+
+		// Resource limit defaults
+		MaxMemoryMB:        getEnvInt("MAX_MEMORY_MB", 0),
+		TransactionBatchSize: getEnvInt("TRANSACTION_BATCH_SIZE", 0),
+
 		UseNativeEngine:  getEnvBool("USE_NATIVE_ENGINE", true),
 		FallbackToTools:  getEnvBool("FALLBACK_TO_TOOLS", true),
 		RestoreFsyncMode: getEnvString("RESTORE_FSYNC_MODE", "on"),

@@ -5,6 +5,34 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.22.0] - 2026-02-11
+
+### Added - TUI Settings, Pool Auto-Sizing, Prepared Statement Caching
+
+- **7 new TUI settings** (48 total across 3 pages)
+  - `compression_algorithm` — gzip/zstd selector with descriptions
+  - `statement_timeout` — PostgreSQL statement_timeout in seconds
+  - `lock_timeout` — PostgreSQL lock_timeout in seconds
+  - `connection_timeout` — Connection establishment timeout
+  - `max_memory_mb` — Memory usage hint with auto-detect support
+  - `transaction_batch_size` — Rows per transaction batch in restore
+  - `wal_archiving` — PITR toggle (enables WAL archiving)
+
+- **5 new Config fields** with env var support and INI persistence
+  - `StatementTimeoutSeconds`, `LockTimeoutSeconds`, `ConnectionTimeoutSeconds`
+  - `MaxMemoryMB`, `TransactionBatchSize`
+  - Full read/write/merge cycle in `.dbbackup.conf` [performance] section
+
+- **Connection pool auto-sizing**
+  - Queries `max_connections` on connect via temporary connection
+  - Caps pool size to 80% of max_connections to prevent exhaustion
+  - Graceful fallback to default sizing if query fails
+
+- **Prepared statement expansion** (8 total, was 6)
+  - New `queryRowPrepared()` helper for single-row cached queries
+  - `ps_get_sequence_details` — sequence metadata extraction
+  - `ps_get_function_def` — function definition retrieval
+
 ## [6.21.0] - 2026-02-11
 
 ### Added - Restore fsync Mode & Diagnostics

@@ -69,9 +69,10 @@ func TestConfigSaveLoad(t *testing.T) {
 		CloudSecretKey:  "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
 		CloudAutoUpload: true,
 
-		// I/O & Restore optimization (TUI: io_governor, restore_fsync_mode)
+		// I/O & Restore optimization (TUI: io_governor, restore_fsync_mode, restore_mode)
 		IOGovernor:       "bfq",
 		RestoreFsyncMode: "off",
+		RestoreMode:      "turbo",
 
 		// Timeout & resource settings (TUI: statement_timeout, lock_timeout, connection_timeout,
 		//   max_memory_mb, transaction_batch_size, buffer_size, compression_algorithm, backup_format)
@@ -176,6 +177,7 @@ func TestConfigSaveLoad(t *testing.T) {
 		// I/O & Restore optimization
 		{"IOGovernor", loaded.IOGovernor, original.IOGovernor},
 		{"RestoreFsyncMode", loaded.RestoreFsyncMode, original.RestoreFsyncMode},
+		{"RestoreMode", loaded.RestoreMode, original.RestoreMode},
 		// Timeout & resource settings
 		{"StatementTimeout", loaded.StatementTimeout, original.StatementTimeout},
 		{"LockTimeout", loaded.LockTimeout, original.LockTimeout},
@@ -266,6 +268,7 @@ func TestConfigFullRoundTrip(t *testing.T) {
 		CloudAutoUpload:         true,
 		IOGovernor:              "mq-deadline",
 		RestoreFsyncMode:        "auto",
+		RestoreMode:             "balanced",
 		StatementTimeoutSeconds:  120,
 		LockTimeoutSeconds:       30,
 		ConnectionTimeoutSeconds: 60,
@@ -350,6 +353,7 @@ func TestConfigFullRoundTrip(t *testing.T) {
 		{"CloudAutoUpload", dst.CloudAutoUpload, src.CloudAutoUpload},
 		{"IOGovernor", dst.IOGovernor, src.IOGovernor},
 		{"RestoreFsyncMode", dst.RestoreFsyncMode, src.RestoreFsyncMode},
+		{"RestoreMode", dst.RestoreMode, src.RestoreMode},
 		{"StatementTimeout", dst.StatementTimeoutSeconds, src.StatementTimeoutSeconds},
 		{"LockTimeout", dst.LockTimeoutSeconds, src.LockTimeoutSeconds},
 		{"ConnectionTimeout", dst.ConnectionTimeoutSeconds, src.ConnectionTimeoutSeconds},

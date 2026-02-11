@@ -622,7 +622,8 @@ func (o *ConstraintOptimizer) executePhase(ctx context.Context, phaseName string
 	return result
 }
 
-// executeConstraint executes a single constraint DDL statement
+// executeConstraint executes a single constraint DDL statement.
+// "already exists" errors are treated as non-fatal (idempotent restore).
 func (o *ConstraintOptimizer) executeConstraint(ctx context.Context, job ConstraintJob) error {
 	conn, err := o.pool.Acquire(ctx)
 	if err != nil {
@@ -635,6 +636,18 @@ func (o *ConstraintOptimizer) executeConstraint(ctx context.Context, job Constra
 
 	_, err = conn.Exec(ctx, job.Definition)
 	if err != nil {
+		errMsg := strings.ToLower(err.Error())
+		// Treat "already exists" as success — enables idempotent restores
+		// and prevents cosmetic errors when constraints/indexes were already
+		// created during schema phase.
+		if strings.Contains(errMsg, "already exists") ||
+			strings.Contains(errMsg, "duplicate key") {
+			o.log.Debug("Constraint already exists (skipped)",
+				"table", job.Table,
+				"constraint", job.ConstraintName,
+				"type", job.Type)
+			return nil
+		}
 		return fmt.Errorf("execute constraint %s on %s: %w", job.ConstraintName, job.Table, err)
 	}
 

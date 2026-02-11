@@ -142,6 +142,9 @@ func init() {
 }
 
 func runBlobStats(cmd *cobra.Command, args []string) error {
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -398,6 +401,9 @@ func truncateBlobStr(s string, max int) string {
 }
 
 func runBlobBackup(cmd *cobra.Command, args []string) error {
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
 
@@ -470,6 +476,9 @@ func runBlobBackup(cmd *cobra.Command, args []string) error {
 }
 
 func runBlobRestore(cmd *cobra.Command, args []string) error {
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 	defer cancel()
 

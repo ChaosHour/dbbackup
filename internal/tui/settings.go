@@ -198,6 +198,49 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "⚠ off=5-10x faster but DB CORRUPT ON CRASH! auto=off only when restore-mode=turbo",
 		},
 		{
+			Key:         "restore_mode",
+			DisplayName: "Restore Mode",
+			Value: func(c *config.Config) string {
+				mode := c.RestoreMode
+				if mode == "" {
+					mode = "safe"
+				}
+				switch mode {
+				case "safe":
+					return "safe (full WAL logging)"
+				case "balanced":
+					return "balanced (UNLOGGED COPY)"
+				case "turbo":
+					return "turbo (UNLOGGED all, dev/test)"
+				default:
+					return mode
+				}
+			},
+			Update: func(c *config.Config, v string) error {
+				// Cycle: safe → balanced → turbo → safe
+				if v == "" {
+					switch c.RestoreMode {
+					case "safe", "":
+						c.RestoreMode = "balanced"
+					case "balanced":
+						c.RestoreMode = "turbo"
+					default:
+						c.RestoreMode = "safe"
+					}
+					return nil
+				}
+				switch v {
+				case "safe", "balanced", "turbo":
+					c.RestoreMode = v
+				default:
+					return fmt.Errorf("must be safe, balanced, or turbo")
+				}
+				return nil
+			},
+			Type:        "selector",
+			Description: "WAL logging strategy: safe (full WAL), balanced (UNLOGGED COPY, LOGGED indexes), turbo (UNLOGGED all, dev/test only)",
+		},
+		{
 			Key:         "adaptive_jobs",
 			DisplayName: "Adaptive Jobs",
 			Value: func(c *config.Config) string {
@@ -398,6 +441,76 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			},
 			Type:        "selector",
 			Description: "ALWAYS=use level, AUTO=analyze blobs & decide, NEVER=skip compression. Press Enter to cycle.",
+		},
+		{
+			Key:         "compression_algorithm",
+			DisplayName: "Compression Algorithm",
+			Value: func(c *config.Config) string {
+				algo := c.CompressionAlgorithm
+				if algo == "" {
+					algo = "gzip"
+				}
+				switch algo {
+				case "gzip":
+					return "gzip (compatible)"
+				case "zstd":
+					return "zstd (faster, smaller)"
+				default:
+					return algo
+				}
+			},
+			Update: func(c *config.Config, v string) error {
+				algos := []string{"gzip", "zstd"}
+				currentIdx := 0
+				for i, a := range algos {
+					if c.CompressionAlgorithm == a {
+						currentIdx = i
+						break
+					}
+				}
+				nextIdx := (currentIdx + 1) % len(algos)
+				c.CompressionAlgorithm = algos[nextIdx]
+				return nil
+			},
+			Type:        "selector",
+			Description: "Compression algorithm: gzip (widely compatible) or zstd (faster, better ratio). Press Enter to cycle.",
+		},
+		{
+			Key:         "backup_format",
+			DisplayName: "Backup Format",
+			Value: func(c *config.Config) string {
+				fmt := c.BackupFormat
+				if fmt == "" {
+					fmt = "sql"
+				}
+				switch fmt {
+				case "sql":
+					return "sql (plain SQL)"
+				case "custom":
+					return "custom (binary, 2-3x faster restore)"
+				case "directory":
+					return "directory (per-table files)"
+				case "tar":
+					return "tar (archive)"
+				default:
+					return fmt
+				}
+			},
+			Update: func(c *config.Config, v string) error {
+				formats := []string{"sql", "custom", "directory", "tar"}
+				currentIdx := 0
+				for i, f := range formats {
+					if c.BackupFormat == f {
+						currentIdx = i
+						break
+					}
+				}
+				nextIdx := (currentIdx + 1) % len(formats)
+				c.BackupFormat = formats[nextIdx]
+				return nil
+			},
+			Type:        "selector",
+			Description: "Backup format: sql (compatible), custom (fast restore via TOC), directory, tar. Press Enter to cycle.",
 		},
 		{
 			Key:         "backup_output_format",
@@ -699,76 +812,6 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 		},
 		// ─── Timeout, Resource & Algorithm Settings ─────────────────────────
 		{
-			Key:         "compression_algorithm",
-			DisplayName: "Compression Algorithm",
-			Value: func(c *config.Config) string {
-				algo := c.CompressionAlgorithm
-				if algo == "" {
-					algo = "gzip"
-				}
-				switch algo {
-				case "gzip":
-					return "gzip (compatible)"
-				case "zstd":
-					return "zstd (faster, smaller)"
-				default:
-					return algo
-				}
-			},
-			Update: func(c *config.Config, v string) error {
-				algos := []string{"gzip", "zstd"}
-				currentIdx := 0
-				for i, a := range algos {
-					if c.CompressionAlgorithm == a {
-						currentIdx = i
-						break
-					}
-				}
-				nextIdx := (currentIdx + 1) % len(algos)
-				c.CompressionAlgorithm = algos[nextIdx]
-				return nil
-			},
-			Type:        "selector",
-			Description: "Compression algorithm: gzip (widely compatible) or zstd (faster, better ratio). Press Enter to cycle.",
-		},
-		{
-			Key:         "backup_format",
-			DisplayName: "Backup Format",
-			Value: func(c *config.Config) string {
-				fmt := c.BackupFormat
-				if fmt == "" {
-					fmt = "sql"
-				}
-				switch fmt {
-				case "sql":
-					return "sql (plain SQL)"
-				case "custom":
-					return "custom (binary, 2-3x faster restore)"
-				case "directory":
-					return "directory (per-table files)"
-				case "tar":
-					return "tar (archive)"
-				default:
-					return fmt
-				}
-			},
-			Update: func(c *config.Config, v string) error {
-				formats := []string{"sql", "custom", "directory", "tar"}
-				currentIdx := 0
-				for i, f := range formats {
-					if c.BackupFormat == f {
-						currentIdx = i
-						break
-					}
-				}
-				nextIdx := (currentIdx + 1) % len(formats)
-				c.BackupFormat = formats[nextIdx]
-				return nil
-			},
-			Type:        "selector",
-			Description: "Backup format: sql (compatible), custom (fast restore via TOC), directory, tar. Press Enter to cycle.",
-		},
-		{
 			Key:         "statement_timeout",
 			DisplayName: "Statement Timeout",
 			Value: func(c *config.Config) string {
@@ -900,9 +943,9 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				return fmt.Sprintf("%dKB", size/1024)
 			},
 			Update: func(c *config.Config, v string) error {
-				// Cycle: 64KB → 128KB → 256KB → 512KB → 1MB → 64KB
-				sizes := []int{65536, 131072, 262144, 524288, 1048576}
-				currentIdx := 2 // default 256KB
+				// Cycle: 64KB → 256KB → 1MB → 2MB → 4MB → 8MB → 64KB
+				sizes := []int{65536, 262144, 1048576, 2097152, 4194304, 8388608}
+				currentIdx := 1 // default 256KB
 				for i, s := range sizes {
 					if c.BufferSize == s {
 						currentIdx = i
@@ -914,7 +957,7 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				return nil
 			},
 			Type:        "selector",
-			Description: "I/O buffer size. Larger = fewer syscalls but more memory. 256KB optimal for most workloads. Press Enter to cycle.",
+			Description: "I/O buffer size. 4MB optimal for large restores, 256KB for small DBs. Press Enter to cycle.",
 		},
 		{
 			Key:         "wal_archiving",

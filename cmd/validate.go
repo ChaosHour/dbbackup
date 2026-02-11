@@ -80,6 +80,9 @@ func init() {
 }
 
 func runValidate(cmd *cobra.Command, args []string) error {
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
+
 	result := &ValidationResult{
 		Valid:    true,
 		Issues:   []ValidationIssue{},

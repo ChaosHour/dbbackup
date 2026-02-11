@@ -475,6 +475,12 @@ func (c *Config) Validate() error {
 		return &ConfigError{Field: "compression", Value: string(rune(c.CompressionLevel)), Message: "must be between 0-9"}
 	}
 
+	// Cap compression at level 6 to prevent pipe errors (MariaDB) and
+	// diminishing returns with excessive CPU usage at levels 7-9.
+	if c.CompressionLevel > 6 {
+		c.CompressionLevel = 6
+	}
+
 	if c.CompressionAlgorithm != "" && c.CompressionAlgorithm != "gzip" && c.CompressionAlgorithm != "zstd" {
 		return &ConfigError{Field: "compression-algorithm", Value: c.CompressionAlgorithm, Message: "must be 'gzip' or 'zstd'"}
 	}
@@ -843,12 +849,17 @@ func (c *Config) GetClusterExtension() string {
 }
 
 // GetEffectiveCompressionLevel returns the compression level to use
-// If auto-detect has set a level, use that; otherwise use configured level
+// If auto-detect has set a level, use that; otherwise use configured level.
+// Capped at 6 to prevent pipe errors and excessive CPU usage.
 func (c *Config) GetEffectiveCompressionLevel() int {
 	if c.ShouldSkipCompression() {
 		return 0
 	}
-	return c.CompressionLevel
+	level := c.CompressionLevel
+	if level > 6 {
+		level = 6
+	}
+	return level
 }
 
 func getDefaultBackupDir() string {

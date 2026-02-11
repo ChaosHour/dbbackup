@@ -449,6 +449,13 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 	// This saves time by catching corrupted files early (vs 49min failures)
 	// Skip validation for pipeline mode — pipeline does streaming error handling
 	// and the full decompression scan costs 7+ seconds on large dumps.
+	// Default to pipeline engine for SQL format restores — higher throughput
+	// via decoupled scanner → buffered channel → worker architecture.
+	if !e.cfg.UsePipeline {
+		e.cfg.UsePipeline = true
+		e.log.Info("Pipeline engine enabled by default for SQL format restore")
+	}
+
 	if !e.cfg.UsePipeline {
 		if err := e.quickValidateSQLDump(archivePath, compressed); err != nil {
 			e.log.Error("Pre-restore validation failed - dump file appears corrupted",

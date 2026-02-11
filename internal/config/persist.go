@@ -50,6 +50,7 @@ type LocalConfig struct {
 	SkipDiskCheck bool   // Skip disk space checks
 	IOGovernor       string // I/O governor: auto, noop, deadline, mq-deadline, bfq
 	RestoreFsyncMode string // Restore fsync: on, auto, off
+	RestoreMode      string // Restore WAL mode: safe, balanced, turbo
 
 	// Timeout & resource settings
 	StatementTimeout  int    // statement_timeout seconds
@@ -259,6 +260,8 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.IOGovernor = value
 				case "restore_fsync_mode":
 				cfg.RestoreFsyncMode = value
+				case "restore_mode":
+				cfg.RestoreMode = value
 			case "statement_timeout":
 				if v, err := strconv.Atoi(value); err == nil {
 					cfg.StatementTimeout = v
@@ -432,6 +435,9 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	}
 	if cfg.RestoreFsyncMode != "" {
 		sb.WriteString(fmt.Sprintf("restore_fsync_mode = %s\n", cfg.RestoreFsyncMode))
+	}
+	if cfg.RestoreMode != "" && cfg.RestoreMode != "safe" {
+		sb.WriteString(fmt.Sprintf("restore_mode = %s\n", cfg.RestoreMode))
 	}
 	if cfg.StatementTimeout != 0 {
 		sb.WriteString(fmt.Sprintf("statement_timeout = %d\n", cfg.StatementTimeout))
@@ -633,6 +639,9 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.RestoreFsyncMode != "" {
 		cfg.RestoreFsyncMode = local.RestoreFsyncMode
 	}
+	if local.RestoreMode != "" {
+		cfg.RestoreMode = local.RestoreMode
+	}
 	if local.StatementTimeout != 0 {
 		cfg.StatementTimeoutSeconds = local.StatementTimeout
 	}
@@ -762,6 +771,7 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		AdaptiveJobs:            cfg.AdaptiveJobs,
 		IOGovernor:              cfg.IOGovernor,
 		RestoreFsyncMode:       cfg.RestoreFsyncMode,
+		RestoreMode:            cfg.RestoreMode,
 		StatementTimeout:       cfg.StatementTimeoutSeconds,
 		LockTimeout:            cfg.LockTimeoutSeconds,
 		ConnectionTimeout:      cfg.ConnectionTimeoutSeconds,

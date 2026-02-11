@@ -125,6 +125,9 @@ func init() {
 }
 
 func runDiagnose(cmd *cobra.Command, args []string) error {
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
+
 	hostname, _ := os.Hostname()
 	report := &DiagnoseReport{
 		Status:    DiagnoseOK,

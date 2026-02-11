@@ -97,6 +97,9 @@ func init() {
 }
 
 func runHealthCheck(cmd *cobra.Command, args []string) error {
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
+
 	report := &HealthReport{
 		Status:    StatusHealthy,
 		Timestamp: time.Now(),

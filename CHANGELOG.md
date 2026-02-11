@@ -5,6 +5,25 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.25.5] - 2026-02-11
+
+### Fixed — P1-P4 Stability Fixes
+
+- **P1: Disable native PG custom/directory/tar format** — These formats cause `conn busy` errors under concurrent queries. Native engine now falls back to plain SQL format with a warning log. Use `pg_dump` directly if custom format is needed.
+- **P2: Cap compression at level 6** — Compression levels 7-9 caused pipe errors on MariaDB and offered diminishing returns with excessive CPU. `Validate()` and `GetEffectiveCompressionLevel()` now clamp to max 6.
+- **P3: Idempotent constraint/index restore** — "already exists" errors during `CREATE INDEX` and `ALTER TABLE ADD CONSTRAINT` are now treated as non-fatal success. Applies to both `ParallelRestoreEngine` and `ConstraintOptimizer` code paths.
+- **P4: Pipeline engine default for SQL restores** — Pipeline architecture (decoupled scanner → channel → workers) is now auto-enabled for all SQL format restores instead of requiring `--pipeline` flag.
+
+### Fixed — BUG #6: UpdateFromEnvironment() Missing
+
+- Added `cfg.UpdateFromEnvironment()` to 6 commands missing it: `blob stats`, `blob backup`, `blob restore`, `diagnose`, `health`, `migrate cluster`, `migrate single`, `restore single`, `restore cluster`, `restore pitr`, `validate`.
+
+### Added — TUI Improvements
+
+- **`restore_mode`** setting wired into TUI (safe/balanced/turbo cycle) with config persistence
+- **`compression_algorithm`** and **`backup_format`** moved to page 2 (Backup & Compression) for better discoverability
+- **`buffer_size`** options expanded: 64KB → 256KB → 1MB → 2MB → 4MB → 8MB
+
 ## [6.25.3] - 2026-02-11
 
 ### Added - Restore Performance: Pipeline Architecture & Diagnostics

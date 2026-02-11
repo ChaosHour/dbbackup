@@ -593,6 +593,9 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	archivePath := args[0]
 
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
+
 	// Apply resource profile
 	if err := config.ApplyProfile(cfg, restoreProfile, restoreJobs, 0); err != nil {
 		log.Warn("Invalid profile, using balanced", "error", err)
@@ -881,6 +884,9 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 // runRestoreCluster restores a full cluster
 func runRestoreCluster(cmd *cobra.Command, args []string) error {
 	archivePath := args[0]
+
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
 
 	// Convert to absolute path
 	if !filepath.IsAbs(archivePath) {
@@ -1568,6 +1574,9 @@ func truncate(s string, max int) string {
 // runRestorePITR performs Point-in-Time Recovery
 func runRestorePITR(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
+
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
 
 	// Parse recovery target
 	target, err := pitr.ParseRecoveryTarget(

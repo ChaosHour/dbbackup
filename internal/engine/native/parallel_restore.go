@@ -966,6 +966,9 @@ func (e *ParallelRestoreEngine) executeStatement(ctx context.Context, sql string
 	if err != nil && ctx.Err() != nil {
 		return ctx.Err()
 	}
+	if err != nil && isAlreadyExistsError(err) {
+		return nil // idempotent: constraint/object already exists
+	}
 	return err
 }
 
@@ -1036,6 +1039,9 @@ func (e *ParallelRestoreEngine) executeIndexStatement(ctx context.Context, sql s
 	if err != nil && ctx.Err() != nil {
 		return ctx.Err()
 	}
+	if err != nil && isAlreadyExistsError(err) {
+		return nil // idempotent: index/constraint already exists
+	}
 	return err
 }
 
@@ -1090,6 +1096,17 @@ func isIndexStatement(sql string) bool {
 	upper := strings.ToUpper(strings.TrimSpace(sql))
 	return strings.HasPrefix(upper, "CREATE INDEX") ||
 		strings.HasPrefix(upper, "CREATE UNIQUE INDEX")
+}
+
+// isAlreadyExistsError returns true if the error indicates a constraint, index,
+// or relation already exists. These are non-fatal during idempotent restores.
+func isAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "already exists") ||
+		strings.Contains(msg, "duplicate key value violates unique constraint")
 }
 
 // GetPool returns the connection pool for diagnostics and benchmarking.

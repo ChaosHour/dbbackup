@@ -272,25 +272,33 @@ func (e *PostgreSQLNativeEngine) warnHugePagesIfAvailable() {
 
 // Backup performs native PostgreSQL backup
 func (e *PostgreSQLNativeEngine) Backup(ctx context.Context, outputWriter io.Writer) (*BackupResult, error) {
+	format := e.cfg.Format
+
+	// SAFETY: Native custom/directory/tar formats are broken (conn busy errors
+	// under concurrent queries). Force fallback to plain SQL format which is
+	// fully tested and reliable. Use pg_dump directly if custom format is needed.
+	switch format {
+	case "custom", "directory", "tar":
+		e.log.Warn("Native engine does not support format, falling back to SQL",
+			"requested_format", format,
+			"actual_format", "sql",
+			"hint", "Use pg_dump directly for custom/directory/tar format")
+		format = "sql"
+	}
+
 	result := &BackupResult{
-		Format: e.cfg.Format,
+		Format: format,
 	}
 
 	e.log.Info("Starting native PostgreSQL backup",
 		"database", e.cfg.Database,
-		"format", e.cfg.Format)
+		"format", format)
 
-	switch e.cfg.Format {
+	switch format {
 	case "sql", "plain":
 		return e.backupPlainFormat(ctx, outputWriter, result)
-	case "custom":
-		return e.backupCustomFormat(ctx, outputWriter, result)
-	case "directory":
-		return e.backupDirectoryFormat(ctx, outputWriter, result)
-	case "tar":
-		return e.backupTarFormat(ctx, outputWriter, result)
 	default:
-		return nil, fmt.Errorf("unsupported format: %s", e.cfg.Format)
+		return nil, fmt.Errorf("unsupported format: %s", format)
 	}
 }
 

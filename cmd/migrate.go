@@ -190,6 +190,9 @@ func init() {
 }
 
 func runMigrateCluster(cmd *cobra.Command, args []string) error {
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
+
 	// Validate target host
 	if migrateTargetHost == "" {
 		return fmt.Errorf("--target-host is required")
@@ -324,6 +327,9 @@ func runMigrateCluster(cmd *cobra.Command, args []string) error {
 
 func runMigrateSingle(cmd *cobra.Command, args []string) error {
 	dbName := args[0]
+
+	// Load credentials from environment variables (PGPASSWORD, MYSQL_PWD)
+	cfg.UpdateFromEnvironment()
 
 	// Validate target host
 	if migrateTargetHost == "" {

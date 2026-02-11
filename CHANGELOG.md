@@ -5,6 +5,14 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.25.6] - 2026-02-11
+
+### Fixed — TUI Crash: Leaked Goroutines
+
+- **backup_manager tick loop never stopped** — `managerTickCmd()` was unconditionally re-scheduled even after exiting back to the parent menu, creating unbounded event pressure on bubbletea. Added `done` flag to stop ticking on exit.
+- **pgxpool infinite lifetimes** — Pool was configured with `MaxConnLifetime=0` and `MaxConnIdleTime=0` combined with 5s health checks, meaning any leaked pool ran a health-check goroutine forever. Changed to 30m conn lifetime, 5m idle timeout, 30s health check.
+- **Double-close prevention** — `PostgreSQL.Close()` now uses `sync.Once` to safely handle multiple close calls without panics.
+
 ## [6.25.5] - 2026-02-11
 
 ### Fixed — P1-P4 Stability Fixes

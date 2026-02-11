@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"dbbackup/internal/auth"
@@ -20,7 +21,8 @@ import (
 // PostgreSQL implements Database interface for PostgreSQL
 type PostgreSQL struct {
 	baseDatabase
-	pool *pgxpool.Pool // Native pgx connection pool for better performance
+	pool      *pgxpool.Pool // Native pgx connection pool for better performance
+	closeOnce sync.Once     // Prevents double-close of pool
 }
 
 // NewPostgreSQL creates a new PostgreSQL database instance
@@ -120,11 +122,11 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 			maxConns = 5 // minimum pool size
 		}
 	}
-	config.MaxConns = maxConns                 // Max concurrent connections based on --jobs
-	config.MinConns = 2                        // Keep minimum connections ready
-	config.MaxConnLifetime = 0                 // No limit on connection lifetime
-	config.MaxConnIdleTime = 0                 // No idle timeout
-	config.HealthCheckPeriod = 5 * time.Second // Faster health check for quicker shutdown on Ctrl+C
+	config.MaxConns = maxConns                      // Max concurrent connections based on --jobs
+	config.MinConns = 2                             // Keep minimum connections ready
+	config.MaxConnLifetime = 30 * time.Minute       // Recycle connections every 30 minutes
+	config.MaxConnIdleTime = 5 * time.Minute        // Close idle connections after 5 minutes
+	config.HealthCheckPeriod = 30 * time.Second     // Health check every 30 seconds
 
 	// Optimize for large query results (BLOB data)
 	config.ConnConfig.RuntimeParams["work_mem"] = "64MB"
@@ -165,26 +167,22 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 	p.pool = pool
 	p.db = db
 
-	// NOTE: We intentionally do NOT start a goroutine to close the pool on context cancellation.
-	// The pool is closed via defer dbClient.Close() in the caller, which is the correct pattern.
-	// Starting a goroutine here causes goroutine leaks and potential double-close issues when:
-	// 1. The caller's defer runs first (normal case)
-	// 2. Then context is cancelled and the goroutine tries to close an already-closed pool
-	// This was causing deadlocks in the TUI when tea.Batch was waiting for commands to complete.
-
 	p.log.Info("Connected to PostgreSQL successfully", "driver", "pgx", "max_conns", config.MaxConns)
 	return nil
 }
 
-// Close closes both the pgx pool and stdlib connection
+// Close closes both the pgx pool and stdlib connection.
+// Safe to call multiple times thanks to sync.Once.
 func (p *PostgreSQL) Close() error {
 	var err error
-	if p.pool != nil {
-		p.pool.Close()
-	}
-	if p.db != nil {
-		err = p.db.Close()
-	}
+	p.closeOnce.Do(func() {
+		if p.pool != nil {
+			p.pool.Close()
+		}
+		if p.db != nil {
+			err = p.db.Close()
+		}
+	})
 	return err
 }
 

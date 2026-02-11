@@ -38,6 +38,7 @@ type BackupManagerModel struct {
 	opState      OperationState
 	opTarget     string // Name of archive being operated on
 	spinnerFrame int
+	done         bool // Set when exiting back to parent; stops the tick loop
 }
 
 // NewBackupManager creates a new backup manager
@@ -78,9 +79,14 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	tuiDebugLog(m.config, m.logger, "backup_manager", msg)
 	switch msg := msg.(type) {
 	case tea.InterruptMsg:
+		m.done = true
 		return m.parent, nil
 
 	case managerTickMsg:
+		if m.done {
+			// Stop ticking once we're exiting
+			return m, nil
+		}
 		// Update spinner frame
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
 		return m, managerTickCmd()
@@ -142,6 +148,7 @@ func (m BackupManagerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.message = "Operation cancelled"
 				return m, nil
 			}
+			m.done = true
 			return m.parent, nil
 		}
 

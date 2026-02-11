@@ -5,6 +5,30 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.20.0] - 2026-02-11
+
+### Added - TUI Integration for BLOB Optimization
+
+- **Settings Page 3: BLOB Optimization** — 8 new settings on dedicated page
+  - Detect BLOB Types, Skip Compress Images, Compression Mode (selector: auto/always/never)
+  - Split Mode, BLOB Threshold (human-readable: 1MB/512KB), Stream Count (1-32)
+  - Deduplicate, Expected BLOBs (human-readable: 5M/100K)
+  - Helper functions: `formatBLOBThreshold`, `parseBLOBThreshold`, `formatBLOBCount`, `parseBLOBCount`
+
+- **Completion Summary BLOB Stats (D key)** — detailed BLOB optimization metrics
+  - `BLOBSummaryStats` struct: detection status, compression skips, dedup hits/savings
+  - Split mode info with stream count in `renderDetailedSummary()`
+  - Recommendations for unoptimized backups (enable detection, dedup for large backups)
+
+- **Config Persistence** — `[blob]` section in `.dbbackup.conf`
+  - 8 BLOB fields in `LocalConfig`: detect_types, skip_compress_images, compression_mode,
+    split_mode, threshold, stream_count, deduplicate, expected_blobs
+  - Full save/load/apply cycle through `SaveLocalConfigToPath`, `LoadLocalConfigFromPath`, `ApplyLocalConfig`
+
+- **Progress Display** — split backup phase rendering
+  - Phase constants: `backupPhaseSplitSchema`, `backupPhaseSplitData`, `backupPhaseSplitBLOBs`
+  - Phase-aware labels: "Split 1/3: Dumping Schema", "Split 2/3: Dumping Data Rows", "Split 3/3: Streaming BLOBs"
+
 ## [6.19.0] - 2026-02-11
 
 ### Added - BLOB Optimization Engine

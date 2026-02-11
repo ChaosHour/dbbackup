@@ -69,10 +69,41 @@ func TestConfigSaveLoad(t *testing.T) {
 		CloudSecretKey:  "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
 		CloudAutoUpload: true,
 
+		// I/O & Restore optimization (TUI: io_governor, restore_fsync_mode)
+		IOGovernor:       "bfq",
+		RestoreFsyncMode: "off",
+
+		// Timeout & resource settings (TUI: statement_timeout, lock_timeout, connection_timeout,
+		//   max_memory_mb, transaction_batch_size, buffer_size, compression_algorithm, backup_format)
+		StatementTimeout:  300,
+		LockTimeout:       60,
+		ConnectionTimeout: 45,
+		MaxMemoryMB:       4096,
+		TransactionBatch:  5000,
+		BufferSize:        524288,
+		CompressionAlgo:   "zstd",
+		BackupFormat:      "custom",
+
+		// WAL / PITR settings (TUI: wal_archiving)
+		PITREnabled:   true,
+		WALArchiveDir: "/mnt/wal_archive",
+
 		// Security settings
 		RetentionDays: 14,
 		MinBackups:    3,
 		MaxRetries:    5,
+
+		// BLOB optimization settings (TUI: detect_blob_types, skip_compress_images,
+		//   blob_compression_mode, split_mode, blob_threshold, blob_stream_count,
+		//   deduplicate, dedup_expected_blobs)
+		DetectBLOBTypes:     true,
+		SkipCompressImages:  true,
+		BLOBCompressionMode: "zstd",
+		SplitMode:           true,
+		BLOBThreshold:       10485760,
+		BLOBStreamCount:     8,
+		Deduplicate:         true,
+		DedupExpectedBLOBs:  50000,
 	}
 
 	// Save to specific path
@@ -142,10 +173,34 @@ func TestConfigSaveLoad(t *testing.T) {
 		{"CloudAccessKey", loaded.CloudAccessKey, original.CloudAccessKey},
 		{"CloudSecretKey", loaded.CloudSecretKey, original.CloudSecretKey},
 		{"CloudAutoUpload", loaded.CloudAutoUpload, original.CloudAutoUpload},
+		// I/O & Restore optimization
+		{"IOGovernor", loaded.IOGovernor, original.IOGovernor},
+		{"RestoreFsyncMode", loaded.RestoreFsyncMode, original.RestoreFsyncMode},
+		// Timeout & resource settings
+		{"StatementTimeout", loaded.StatementTimeout, original.StatementTimeout},
+		{"LockTimeout", loaded.LockTimeout, original.LockTimeout},
+		{"ConnectionTimeout", loaded.ConnectionTimeout, original.ConnectionTimeout},
+		{"MaxMemoryMB", loaded.MaxMemoryMB, original.MaxMemoryMB},
+		{"TransactionBatch", loaded.TransactionBatch, original.TransactionBatch},
+		{"BufferSize", loaded.BufferSize, original.BufferSize},
+		{"CompressionAlgo", loaded.CompressionAlgo, original.CompressionAlgo},
+		{"BackupFormat", loaded.BackupFormat, original.BackupFormat},
+		// WAL / PITR
+		{"PITREnabled", loaded.PITREnabled, original.PITREnabled},
+		{"WALArchiveDir", loaded.WALArchiveDir, original.WALArchiveDir},
 		// Security
 		{"RetentionDays", loaded.RetentionDays, original.RetentionDays},
 		{"MinBackups", loaded.MinBackups, original.MinBackups},
 		{"MaxRetries", loaded.MaxRetries, original.MaxRetries},
+		// BLOB optimization
+		{"DetectBLOBTypes", loaded.DetectBLOBTypes, original.DetectBLOBTypes},
+		{"SkipCompressImages", loaded.SkipCompressImages, original.SkipCompressImages},
+		{"BLOBCompressionMode", loaded.BLOBCompressionMode, original.BLOBCompressionMode},
+		{"SplitMode", loaded.SplitMode, original.SplitMode},
+		{"BLOBThreshold", loaded.BLOBThreshold, original.BLOBThreshold},
+		{"BLOBStreamCount", loaded.BLOBStreamCount, original.BLOBStreamCount},
+		{"Deduplicate", loaded.Deduplicate, original.Deduplicate},
+		{"DedupExpectedBLOBs", loaded.DedupExpectedBLOBs, original.DedupExpectedBLOBs},
 	}
 
 	failed := 0
@@ -209,9 +264,29 @@ func TestConfigFullRoundTrip(t *testing.T) {
 		CloudAccessKey:          "myaccount",
 		CloudSecretKey:          "mysecretkey123",
 		CloudAutoUpload:         true,
+		IOGovernor:              "mq-deadline",
+		RestoreFsyncMode:        "auto",
+		StatementTimeoutSeconds:  120,
+		LockTimeoutSeconds:       30,
+		ConnectionTimeoutSeconds: 60,
+		MaxMemoryMB:             2048,
+		TransactionBatchSize:    10000,
+		BufferSize:              1048576,
+		CompressionAlgorithm:    "zstd",
+		BackupFormat:            "directory",
+		PITREnabled:             true,
+		WALArchiveDir:           "/data/wal",
 		RetentionDays:           30,
 		MinBackups:              5,
 		MaxRetries:              3,
+		DetectBLOBTypes:         true,
+		SkipCompressImages:      true,
+		BLOBCompressionMode:     "lz4",
+		SplitMode:               true,
+		BLOBThreshold:           5242880,
+		BLOBStreamCount:         4,
+		Deduplicate:             true,
+		DedupExpectedBLOBs:      100000,
 	}
 
 	// Step 2: Convert to LocalConfig
@@ -273,9 +348,29 @@ func TestConfigFullRoundTrip(t *testing.T) {
 		{"CloudAccessKey", dst.CloudAccessKey, src.CloudAccessKey},
 		{"CloudSecretKey", dst.CloudSecretKey, src.CloudSecretKey},
 		{"CloudAutoUpload", dst.CloudAutoUpload, src.CloudAutoUpload},
+		{"IOGovernor", dst.IOGovernor, src.IOGovernor},
+		{"RestoreFsyncMode", dst.RestoreFsyncMode, src.RestoreFsyncMode},
+		{"StatementTimeout", dst.StatementTimeoutSeconds, src.StatementTimeoutSeconds},
+		{"LockTimeout", dst.LockTimeoutSeconds, src.LockTimeoutSeconds},
+		{"ConnectionTimeout", dst.ConnectionTimeoutSeconds, src.ConnectionTimeoutSeconds},
+		{"MaxMemoryMB", dst.MaxMemoryMB, src.MaxMemoryMB},
+		{"TransactionBatchSize", dst.TransactionBatchSize, src.TransactionBatchSize},
+		{"BufferSize", dst.BufferSize, src.BufferSize},
+		{"CompressionAlgorithm", dst.CompressionAlgorithm, src.CompressionAlgorithm},
+		{"BackupFormat", dst.BackupFormat, src.BackupFormat},
+		{"PITREnabled", dst.PITREnabled, src.PITREnabled},
+		{"WALArchiveDir", dst.WALArchiveDir, src.WALArchiveDir},
 		{"RetentionDays", dst.RetentionDays, src.RetentionDays},
 		{"MinBackups", dst.MinBackups, src.MinBackups},
 		{"MaxRetries", dst.MaxRetries, src.MaxRetries},
+		{"DetectBLOBTypes", dst.DetectBLOBTypes, src.DetectBLOBTypes},
+		{"SkipCompressImages", dst.SkipCompressImages, src.SkipCompressImages},
+		{"BLOBCompressionMode", dst.BLOBCompressionMode, src.BLOBCompressionMode},
+		{"SplitMode", dst.SplitMode, src.SplitMode},
+		{"BLOBThreshold", dst.BLOBThreshold, src.BLOBThreshold},
+		{"BLOBStreamCount", dst.BLOBStreamCount, src.BLOBStreamCount},
+		{"Deduplicate", dst.Deduplicate, src.Deduplicate},
+		{"DedupExpectedBLOBs", dst.DedupExpectedBLOBs, src.DedupExpectedBLOBs},
 	}
 
 	failed := 0

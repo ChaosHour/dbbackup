@@ -61,6 +61,10 @@ type LocalConfig struct {
 	CompressionAlgo   string // Compression algorithm: gzip, zstd
 	BackupFormat      string // Backup format: sql, custom, directory, tar
 
+	// WAL / PITR settings
+	PITREnabled   bool   // Enable WAL archiving for Point-in-Time Recovery
+	WALArchiveDir string // Directory to store WAL archives
+
 	// Safety settings
 	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
 
@@ -283,6 +287,10 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.CompressionAlgo = value
 			case "backup_format":
 				cfg.BackupFormat = value
+			case "wal_archiving":
+				cfg.PITREnabled = value == "true" || value == "1"
+			case "wal_archive_dir":
+				cfg.WALArchiveDir = value
 			case "skip_disk_check":
 				cfg.SkipDiskCheck = value == "true" || value == "1"
 			}
@@ -448,6 +456,12 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	}
 	if cfg.BackupFormat != "" && cfg.BackupFormat != "sql" {
 		sb.WriteString(fmt.Sprintf("backup_format = %s\n", cfg.BackupFormat))
+	}
+	if cfg.PITREnabled {
+		sb.WriteString(fmt.Sprintf("wal_archiving = %t\n", cfg.PITREnabled))
+	}
+	if cfg.WALArchiveDir != "" {
+		sb.WriteString(fmt.Sprintf("wal_archive_dir = %s\n", cfg.WALArchiveDir))
 	}
 	sb.WriteString(fmt.Sprintf("skip_disk_check = %t\n", cfg.SkipDiskCheck))
 	sb.WriteString("\n")
@@ -643,6 +657,12 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.BackupFormat != "" {
 		cfg.BackupFormat = local.BackupFormat
 	}
+	if local.PITREnabled {
+		cfg.PITREnabled = true
+	}
+	if local.WALArchiveDir != "" {
+		cfg.WALArchiveDir = local.WALArchiveDir
+	}
 	if local.SkipDiskCheck {
 		cfg.SkipDiskCheck = true
 	}
@@ -750,6 +770,8 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		BufferSize:             cfg.BufferSize,
 		CompressionAlgo:        cfg.CompressionAlgorithm,
 		BackupFormat:           cfg.BackupFormat,
+		PITREnabled:            cfg.PITREnabled,
+		WALArchiveDir:          cfg.WALArchiveDir,
 		SkipDiskCheck:           cfg.SkipDiskCheck,
 		SkipPreflightChecks:     cfg.SkipPreflightChecks,
 		CloudEnabled:            cfg.CloudEnabled,

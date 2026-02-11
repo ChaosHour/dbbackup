@@ -123,6 +123,42 @@ zcat backup.sql.gz | tail -20
 
 ---
 
+## Monitoring / Alert Issues
+
+### DBBackupNotVerified Alert Firing
+
+**Symptoms:** Prometheus alert `DBBackupNotVerified` fires, `dbbackup_backup_verified` metric shows 0.
+
+**Diagnosis:**
+
+```bash
+# Check if verify has been run recently
+dbbackup catalog list --limit 5
+# Look for verified_at and verify_valid columns
+
+# Check the Prometheus metric directly
+curl -s localhost:9399/metrics | grep dbbackup_backup_verified
+```
+
+**Common causes:**
+1. **Backup scripts don't include a verify step** — add `dbbackup verify <backup-file>` after each backup
+2. **Verify runs as wrong user** — the catalog is per-user (`~/.dbbackup/catalog.db`); ensure verify runs as the same user whose catalog the exporter reads
+3. **File glob pattern mismatch** — native engine backups produce `*_native.sql.gz`, not `*.dump`; adjust verify patterns accordingly
+4. **Version < 6.17.1** — prior versions had a bug where `verify` did not update the catalog (fixed in v6.17.1)
+
+**Solution:**
+
+```bash
+# Run verify on the latest backup (updates catalog automatically)
+dbbackup verify /path/to/latest_backup.sql.gz --allow-root
+
+# Confirm the metric updated
+curl -s localhost:9399/metrics | grep dbbackup_backup_verified
+# Should show: dbbackup_backup_verified{server="...",database="..."} 1
+```
+
+---
+
 ## Backup Issues
 
 ### Backup Takes Too Long

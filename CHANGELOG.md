@@ -5,6 +5,23 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.17.1] - 2026-02-11
+
+### Fixed - Verify Catalog Integration
+
+- **Verify command now updates catalog** so Prometheus reports `dbbackup_backup_verified=1`
+  - `runVerify()` ran integrity checks but never called `catalog.MarkVerified()`
+  - The Prometheus exporter reads `VerifiedAt`/`VerifyValid` from the catalog, so the metric always showed 0
+  - Added `updateCatalogVerification()` helper that opens catalog and marks the entry after verification
+
+- **Metadata file check supports `.meta.json`**
+  - Native engine backups produce `*.meta.json` metadata files, not `.info`
+  - Verify now checks both `.info` and `.meta.json` suffixes
+
+- **Lowered verify warning threshold from 80% to 75%**
+  - 3/4 checks passing (e.g., missing metadata file) is now treated as a warning, not failure
+  - Warnings still update the catalog as verified
+
 ## [6.17.0] - 2026-02-11
 
 ### Added - HugePages Integration

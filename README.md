@@ -520,7 +520,7 @@ dbbackup backup single mydb --dry-run
 | `restore cluster` | Restore full cluster |
 | `restore pitr` | Point-in-Time Recovery |
 | `restore diagnose` | Diagnose backup file integrity |
-| `verify-backup` | Verify backup integrity |
+| `verify-backup` | Verify backup integrity (updates catalog for Prometheus metrics) |
 | `verify-locks` | Check PostgreSQL lock settings and get restore guidance |
 | `cleanup` | Remove old backups |
 | `status` | Check connection status |

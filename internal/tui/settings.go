@@ -732,6 +732,43 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Compression algorithm: gzip (widely compatible) or zstd (faster, better ratio). Press Enter to cycle.",
 		},
 		{
+			Key:         "backup_format",
+			DisplayName: "Backup Format",
+			Value: func(c *config.Config) string {
+				fmt := c.BackupFormat
+				if fmt == "" {
+					fmt = "sql"
+				}
+				switch fmt {
+				case "sql":
+					return "sql (plain SQL)"
+				case "custom":
+					return "custom (binary, 2-3x faster restore)"
+				case "directory":
+					return "directory (per-table files)"
+				case "tar":
+					return "tar (archive)"
+				default:
+					return fmt
+				}
+			},
+			Update: func(c *config.Config, v string) error {
+				formats := []string{"sql", "custom", "directory", "tar"}
+				currentIdx := 0
+				for i, f := range formats {
+					if c.BackupFormat == f {
+						currentIdx = i
+						break
+					}
+				}
+				nextIdx := (currentIdx + 1) % len(formats)
+				c.BackupFormat = formats[nextIdx]
+				return nil
+			},
+			Type:        "selector",
+			Description: "Backup format: sql (compatible), custom (fast restore via TOC), directory, tar. Press Enter to cycle.",
+		},
+		{
 			Key:         "statement_timeout",
 			DisplayName: "Statement Timeout",
 			Value: func(c *config.Config) string {

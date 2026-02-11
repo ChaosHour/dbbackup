@@ -69,7 +69,8 @@ type Config struct {
 	// Resource limits
 	MaxMemoryMB        int // Maximum memory usage hint in MB (0 = auto from system)
 	TransactionBatchSize int // Rows per transaction batch in restore (0 = single transaction)
-	BufferSize         int // I/O buffer size in bytes (0 = 262144 = 256KB default)
+	BufferSize         int    // I/O buffer size in bytes (0 = 262144 = 256KB default)
+	BackupFormat       string // Native engine backup format: sql, custom, directory, tar (default: sql)
 
 	// Native engine options
 	UseNativeEngine   bool     // Use pure Go native engines instead of external tools (default: true)

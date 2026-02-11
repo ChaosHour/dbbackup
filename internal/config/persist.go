@@ -59,6 +59,7 @@ type LocalConfig struct {
 	TransactionBatch  int    // Transaction batch size
 	BufferSize        int    // I/O buffer size bytes
 	CompressionAlgo   string // Compression algorithm: gzip, zstd
+	BackupFormat      string // Backup format: sql, custom, directory, tar
 
 	// Safety settings
 	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
@@ -280,6 +281,8 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				}
 			case "compression_algorithm":
 				cfg.CompressionAlgo = value
+			case "backup_format":
+				cfg.BackupFormat = value
 			case "skip_disk_check":
 				cfg.SkipDiskCheck = value == "true" || value == "1"
 			}
@@ -442,6 +445,9 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	}
 	if cfg.CompressionAlgo != "" {
 		sb.WriteString(fmt.Sprintf("compression_algorithm = %s\n", cfg.CompressionAlgo))
+	}
+	if cfg.BackupFormat != "" && cfg.BackupFormat != "sql" {
+		sb.WriteString(fmt.Sprintf("backup_format = %s\n", cfg.BackupFormat))
 	}
 	sb.WriteString(fmt.Sprintf("skip_disk_check = %t\n", cfg.SkipDiskCheck))
 	sb.WriteString("\n")
@@ -634,6 +640,9 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.CompressionAlgo != "" {
 		cfg.CompressionAlgorithm = local.CompressionAlgo
 	}
+	if local.BackupFormat != "" {
+		cfg.BackupFormat = local.BackupFormat
+	}
 	if local.SkipDiskCheck {
 		cfg.SkipDiskCheck = true
 	}
@@ -740,6 +749,7 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		TransactionBatch:       cfg.TransactionBatchSize,
 		BufferSize:             cfg.BufferSize,
 		CompressionAlgo:        cfg.CompressionAlgorithm,
+		BackupFormat:           cfg.BackupFormat,
 		SkipDiskCheck:           cfg.SkipDiskCheck,
 		SkipPreflightChecks:     cfg.SkipPreflightChecks,
 		CloudEnabled:            cfg.CloudEnabled,

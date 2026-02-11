@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.25.1] - 2026-02-11
+
+### Added - Backup Format TUI Setting
+
+- **`backup_format` TUI setting** (50 total settings across 4 pages)
+  - Selector cycling: sql → custom → directory → tar
+  - Descriptive labels (e.g. "custom (binary, 2-3x faster restore)")
+  - New `BackupFormat` config field with INI persistence (`backup_format`)
+  - Skips write when default (sql)
+
 ## [6.25.0] - 2026-02-11
 
 ### Added - PostgreSQL Custom Format Support

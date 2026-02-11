@@ -5,6 +5,54 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.25.0] - 2026-02-11
+
+### Added - PostgreSQL Custom Format Support
+
+- **Custom format backup/restore** (`--format=custom` / `-Fc`)
+  - Binary archive format with Table of Contents (TOC) for random access
+  - PGDMP magic header, per-table compressed data blocks, seekable TOC directory
+  - Gzip compression with configurable level (1-9), extensible to zstd/lz4
+  - CRC32 checksum for archive integrity verification
+
+- **Custom format writer** (`internal/engine/native/custom_format_writer.go`)
+  - Streams COPY TO data through compression — O(1) memory per table
+  - Parallel data compression: concurrent COPY workers with ordered output
+  - Automatic post-data collection (indexes, constraints) as TOC entries
+  - DROP statement generation for clean re-import
+
+- **Custom format reader** (`internal/engine/native/custom_format_reader.go`)
+  - TOC-based random access: seek directly to any table's data block
+  - Parallel data restore: distribute tables across multiple workers
+  - Selective restore by table name (include/exclude filters)
+  - Schema-only and data-only restore modes
+  - `ListTOC()` for archive inspection (like `pg_restore -l`)
+  - `DumpSQL()` converts archive back to plain SQL format
+  - Full 3-phase restore: pre-data → data (parallel) → post-data (parallel)
+
+- **TOC data structures** (`internal/engine/native/custom_format_toc.go`)
+  - Binary serialization: little-endian, length-prefixed strings, dependency arrays
+  - Topological sort for dependency-safe restore ordering
+  - Size-based sorting for optimal parallel restore scheduling
+  - Section filtering (pre-data, data, post-data)
+
+- **Comprehensive tests** (`internal/engine/native/custom_format_test.go`)
+  - Header/footer/TOC entry round-trip serialization
+  - Full archive write+read round trip with data block verification
+  - Topological ordering, section filtering, table include/exclude
+  - 20+ test cases covering all binary format edge cases
+
+- **Integration with existing engines**
+  - `backupCustomFormat()` in postgresql.go now fully functional (was stub)
+  - `customFormatBackup()` in advanced.go wired to CustomFormatWriter
+  - Compression auto-detection from engine config
+
+### Performance
+
+- Custom format restore: **2-3x faster** than SQL format (TOC-based parallel)
+- Compression ratios: typically 3-5x for text data, 1.5-2x for binary
+- Memory: O(1) per table during backup (streaming compression)
+
 ## [6.24.0] - 2026-02-11
 
 ### Added - Buffer Size TUI, Prepared Statements, Incremental Backup

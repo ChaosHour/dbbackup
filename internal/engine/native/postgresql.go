@@ -1164,7 +1164,31 @@ func (e *PostgreSQLNativeEngine) topologicalSort(objects []DatabaseObject) ([]Da
 }
 
 func (e *PostgreSQLNativeEngine) backupCustomFormat(ctx context.Context, w io.Writer, result *BackupResult) (*BackupResult, error) {
-	return nil, fmt.Errorf("custom format not implemented yet")
+	compression := CompressGzip
+	compLevel := 6
+	if e.cfg.Compression == 0 && e.cfg.CompressionAlgorithm == "none" {
+		compression = CompressNone
+		compLevel = 0
+	} else if e.cfg.Compression > 0 {
+		compLevel = e.cfg.Compression
+	}
+
+	switch e.cfg.CompressionAlgorithm {
+	case "zstd":
+		compression = CompressZstd
+	case "lz4":
+		compression = CompressLZ4
+	case "none":
+		compression = CompressNone
+	}
+
+	writer := NewCustomFormatWriter(e, e.log, &CustomFormatWriterOptions{
+		Compression:     compression,
+		CompLevel:       compLevel,
+		ParallelWorkers: e.cfg.Parallel,
+	})
+
+	return writer.Write(ctx, w)
 }
 
 func (e *PostgreSQLNativeEngine) backupDirectoryFormat(ctx context.Context, w io.Writer, result *BackupResult) (*BackupResult, error) {

@@ -283,9 +283,42 @@ func (e *PostgreSQLAdvancedEngine) sqlFormatBackup(ctx context.Context, output i
 }
 
 func (e *PostgreSQLAdvancedEngine) customFormatBackup(ctx context.Context, output io.Writer, options *AdvancedBackupOptions) (*BackupResult, error) {
-	// TODO: Implement PostgreSQL custom format
-	// This would require implementing the PostgreSQL custom format specification
-	return nil, fmt.Errorf("custom format not yet implemented")
+	compression := CompressGzip
+	compLevel := 6
+
+	switch options.Compression {
+	case CompressionNone:
+		compression = CompressNone
+		compLevel = 0
+	case CompressionZstd:
+		compression = CompressZstd
+	case CompressionLZ4:
+		compression = CompressLZ4
+	default:
+		compression = CompressGzip
+	}
+
+	if options.CompressionLevel > 0 {
+		compLevel = options.CompressionLevel
+	}
+
+	// Custom format options
+	if options.PostgreSQL != nil && options.PostgreSQL.CustomFormat != nil {
+		if options.PostgreSQL.CustomFormat.DisableCompression {
+			compression = CompressNone
+			compLevel = 0
+		} else if options.PostgreSQL.CustomFormat.CompressionLevel > 0 {
+			compLevel = options.PostgreSQL.CustomFormat.CompressionLevel
+		}
+	}
+
+	writer := NewCustomFormatWriter(e.PostgreSQLNativeEngine, e.log, &CustomFormatWriterOptions{
+		Compression:     compression,
+		CompLevel:       compLevel,
+		ParallelWorkers: options.ParallelJobs,
+	})
+
+	return writer.Write(ctx, output)
 }
 
 func (e *PostgreSQLAdvancedEngine) directoryFormatBackup(ctx context.Context, output io.Writer, options *AdvancedBackupOptions) (*BackupResult, error) {

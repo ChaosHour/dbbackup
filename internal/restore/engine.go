@@ -648,12 +648,14 @@ func (e *Engine) logGovernorStats(ctx context.Context, gov IOGovernor) {
 func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targetDB string, compressed bool) error {
 	// Create native engine config
 	nativeCfg := &native.PostgreSQLNativeConfig{
-		Host:     e.cfg.Host,
-		Port:     e.cfg.Port,
-		User:     e.cfg.User,
-		Password: e.cfg.Password,
-		Database: targetDB, // Connect to target database
-		SSLMode:  e.cfg.SSLMode,
+		Host:             e.cfg.Host,
+		Port:             e.cfg.Port,
+		User:             e.cfg.User,
+		Password:         e.cfg.Password,
+		Database:         targetDB, // Connect to target database
+		SSLMode:          e.cfg.SSLMode,
+		RestoreFsyncMode: e.cfg.RestoreFsyncMode,
+		RestoreMode:      e.cfg.RestoreMode,
 	}
 
 	// Use PARALLEL restore engine for SQL format - this matches pg_restore -j performance!
@@ -855,12 +857,14 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 // restoreWithSequentialNativeEngine is the fallback sequential restore
 func (e *Engine) restoreWithSequentialNativeEngine(ctx context.Context, archivePath, targetDB string, compressed bool) error {
 	nativeCfg := &native.PostgreSQLNativeConfig{
-		Host:     e.cfg.Host,
-		Port:     e.cfg.Port,
-		User:     e.cfg.User,
-		Password: e.cfg.Password,
-		Database: targetDB,
-		SSLMode:  e.cfg.SSLMode,
+		Host:             e.cfg.Host,
+		Port:             e.cfg.Port,
+		User:             e.cfg.User,
+		Password:         e.cfg.Password,
+		Database:         targetDB,
+		SSLMode:          e.cfg.SSLMode,
+		RestoreFsyncMode: e.cfg.RestoreFsyncMode,
+		RestoreMode:      e.cfg.RestoreMode,
 	}
 
 	// Create restore engine
@@ -1410,20 +1414,24 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 	// Build restore command based on database type
 	var cmd *exec.Cmd
 	if dbType == "postgresql" {
+		// Determine if fsync/wal_level optimizations should be applied
+		applyFsyncOpt := ShouldDisableFsync(e.cfg.RestoreFsyncMode, e.cfg.RestoreMode)
+
 		// Add performance tuning via psql preamble commands
 		// These are executed before the SQL dump to speed up bulk loading
-		preamble := `
-SET synchronous_commit = 'off';
-SET work_mem = '256MB';
-SET maintenance_work_mem = '1GB';
-SET max_parallel_workers_per_gather = 4;
-SET max_parallel_maintenance_workers = 4;
-SET wal_level = 'minimal';
-SET fsync = off;
-SET full_page_writes = off;
-SET checkpoint_timeout = '1h';
-SET max_wal_size = '10GB';
-`
+		preamble := "SET synchronous_commit = 'off';\n" +
+			"SET work_mem = '256MB';\n" +
+			"SET maintenance_work_mem = '1GB';\n" +
+			"SET max_parallel_workers_per_gather = 4;\n" +
+			"SET max_parallel_maintenance_workers = 4;\n"
+		if applyFsyncOpt {
+			preamble += "SET wal_level = 'minimal';\n" +
+				"SET fsync = off;\n" +
+				"SET full_page_writes = off;\n" +
+				"SET checkpoint_timeout = '1h';\n" +
+				"SET max_wal_size = '10GB';\n"
+		}
+
 		// Note: Some settings require superuser - we try them but continue if they fail
 		// The -c flags run before the main script
 		args := []string{
@@ -1434,10 +1442,22 @@ SET max_wal_size = '10GB';
 			"-c", "SET work_mem = '256MB'",
 			"-c", "SET maintenance_work_mem = '1GB'",
 		}
+		if applyFsyncOpt {
+			args = append(args,
+				"-c", "SET fsync = off",
+				"-c", "SET full_page_writes = off",
+			)
+			e.log.Warn("fsync=off enabled for restore — NOT crash-safe!",
+				"fsync_mode", e.cfg.RestoreFsyncMode,
+				"restore_mode", e.cfg.RestoreMode)
+		}
 		if e.cfg.Host != "localhost" && e.cfg.Host != "" {
 			args = append([]string{"-h", e.cfg.Host}, args...)
 		}
-		e.log.Info("Applying PostgreSQL performance tuning for SQL restore", "preamble_settings", 3)
+		e.log.Info("Applying PostgreSQL performance tuning for SQL restore",
+			"preamble_settings", len(args)/2,
+			"fsync_disabled", applyFsyncOpt,
+			"fsync_mode", e.cfg.RestoreFsyncMode)
 		_ = preamble // Documented for reference
 		cmd = cleanup.SafeCommand(ctx, "psql", args...)
 		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))

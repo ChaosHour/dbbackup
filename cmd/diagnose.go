@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"dbbackup/internal/catalog"
 	"dbbackup/internal/database"
+	"dbbackup/internal/restore"
 
 	"github.com/spf13/cobra"
 )
@@ -152,6 +154,7 @@ func runDiagnose(cmd *cobra.Command, args []string) error {
 		{"disk-space", func(ctx context.Context, autoFix bool) DiagnoseResult { return diagnoseDiskSpace() }},
 		{"postgresql", func(ctx context.Context, autoFix bool) DiagnoseResult { return diagnosePostgresql(ctx) }},
 		{"mysql", func(ctx context.Context, autoFix bool) DiagnoseResult { return diagnoseMysql(ctx) }},
+		{"restore-settings", func(ctx context.Context, autoFix bool) DiagnoseResult { return diagnoseRestoreSettings(ctx) }},
 		{"catalog", func(ctx context.Context, autoFix bool) DiagnoseResult { return diagnoseCatalog(ctx, autoFix) }},
 		{"cloud", func(ctx context.Context, autoFix bool) DiagnoseResult { return diagnoseCloud(ctx) }},
 		{"cron", func(ctx context.Context, autoFix bool) DiagnoseResult { return diagnoseCron() }},
@@ -172,7 +175,7 @@ func runDiagnose(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !found {
-			return fmt.Errorf("unknown check: %s\nAvailable: config, tools, permissions, disk-space, postgresql, mysql, catalog, cloud, cron", diagnoseCheck)
+			return fmt.Errorf("unknown check: %s\nAvailable: config, tools, permissions, disk-space, postgresql, mysql, restore-settings, catalog, cloud, cron", diagnoseCheck)
 		}
 	} else {
 		// Run all checks
@@ -892,6 +895,113 @@ func outputDiagnoseTable(report *DiagnoseReport) {
 	}
 	fmt.Println("───────────────────────────────────────────────────────────────")
 	fmt.Println()
+}
+
+func diagnoseRestoreSettings(ctx context.Context) DiagnoseResult {
+	result := DiagnoseResult{
+		Name:   "Restore Settings",
+		Status: DiagnoseOK,
+	}
+
+	// Skip if not PostgreSQL
+	if cfg != nil && cfg.DatabaseType != "" && cfg.DatabaseType != "postgres" {
+		result.Status = DiagnoseSkipped
+		result.Message = "Skipped (not PostgreSQL)"
+		return result
+	}
+
+	db, err := database.New(cfg, log)
+	if err != nil {
+		result.Status = DiagnoseWarning
+		result.Message = "Cannot connect to check restore settings"
+		result.Details = err.Error()
+		return result
+	}
+	defer db.Close()
+
+	if err := db.Connect(ctx); err != nil {
+		result.Status = DiagnoseWarning
+		result.Message = "Connection failed — cannot check restore settings"
+		result.Details = err.Error()
+		return result
+	}
+
+	// Get underlying *sql.DB for diagnostics queries
+	type connProvider interface {
+		GetConn() *sql.DB
+	}
+	cp, ok := db.(connProvider)
+	if !ok {
+		result.Status = DiagnoseSkipped
+		result.Message = "Database driver does not expose *sql.DB connection"
+		return result
+	}
+	sqlDB := cp.GetConn()
+	if sqlDB == nil {
+		result.Status = DiagnoseWarning
+		result.Message = "Database connection is nil"
+		return result
+	}
+
+	fsyncMode := "on"
+	restoreMode := "safe"
+	if cfg != nil {
+		if cfg.RestoreFsyncMode != "" {
+			fsyncMode = cfg.RestoreFsyncMode
+		}
+		if cfg.RestoreMode != "" {
+			restoreMode = cfg.RestoreMode
+		}
+	}
+
+	diag, err := restore.RunRestoreDiagnostics(ctx, sqlDB, fsyncMode, restoreMode, log)
+	if err != nil {
+		result.Status = DiagnoseWarning
+		result.Message = "Diagnostics check failed"
+		result.Details = err.Error()
+		return result
+	}
+
+	// Build summary
+	var details []string
+	if diag.IsSuperuser {
+		details = append(details, "superuser=yes")
+	} else {
+		details = append(details, "superuser=no")
+	}
+	details = append(details, fmt.Sprintf("fsync_mode=%s", diag.FsyncMode))
+	details = append(details, fmt.Sprintf("fsync_effective=%s", diag.FsyncEffective))
+	details = append(details, fmt.Sprintf("optimizations=%d/%d", diag.OptimizationsActive, diag.OptimizationsAvail))
+
+	result.Details = strings.Join(details, ", ")
+
+	// Determine status from findings
+	warningCount := 0
+	for _, f := range diag.Findings {
+		switch f.Level {
+		case restore.DiagLevelCritical:
+			result.Status = DiagnoseCritical
+		case restore.DiagLevelWarning:
+			warningCount++
+		}
+	}
+
+	if result.Status == DiagnoseCritical {
+		result.Message = "Critical restore settings detected"
+	} else if warningCount > 0 {
+		result.Status = DiagnoseWarning
+		result.Message = fmt.Sprintf("%d/%d optimizations active (%d need attention)",
+			diag.OptimizationsActive, diag.OptimizationsAvail, warningCount)
+		result.Fixes = []string{
+			"Use --restore-fsync-mode=off for fastest restore (TEST ONLY)",
+			"Connect as superuser for full optimization control",
+		}
+	} else {
+		result.Message = fmt.Sprintf("%d/%d optimizations available (fsync_effective=%s)",
+			diag.OptimizationsActive, diag.OptimizationsAvail, diag.FsyncEffective)
+	}
+
+	return result
 }
 
 func outputDiagnoseJSON(report *DiagnoseReport) error {

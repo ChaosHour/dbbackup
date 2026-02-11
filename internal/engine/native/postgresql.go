@@ -71,6 +71,10 @@ type PostgreSQLNativeConfig struct {
 	Database string
 	SSLMode  string
 
+	// Restore performance options
+	RestoreFsyncMode string // "on", "auto", "off"
+	RestoreMode      string // "safe", "balanced", "turbo"
+
 	// Backup options
 	Format               string // sql, custom, directory, tar
 	Compression          int    // 0-9

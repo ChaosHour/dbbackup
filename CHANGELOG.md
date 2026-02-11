@@ -5,6 +5,41 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.21.0] - 2026-02-11
+
+### Added - Restore fsync Mode & Diagnostics
+
+- **Config-driven fsync control** (`RestoreFsyncMode`)
+  - 3 modes: `on` (safe, default), `auto` (off when restore-mode=turbo), `off` (fast, TEST ONLY)
+  - Config field, environment variable `RESTORE_FSYNC_MODE`, `.dbbackup.conf` persistence
+  - CLI flag: `--restore-fsync-mode=on|auto|off` on `restore single` and `restore cluster`
+
+- **Restore Diagnostics Engine** (`internal/restore/restore_diagnostics.go`)
+  - `RunRestoreDiagnostics()` — checks 8 PostgreSQL settings for restore optimization
+  - Superuser detection, effective fsync calculation, per-setting recommendations
+  - `ShouldDisableFsync()` — central logic for config-driven fsync decisions
+  - `FormatDiagnostics()` — human-readable diagnostic table output
+
+- **Diagnose command: restore-settings check** (`cmd/diagnose.go`)
+  - New check: `dbbackup diagnose --check restore-settings`
+  - Reports superuser status, fsync mode, optimization availability
+  - Actionable fixes and recommendations
+
+- **TUI Settings: Restore fsync Mode** (`internal/tui/settings.go`)
+  - Cycle selector: `on → auto → off → on`
+  - Warning display: `⚠ off=5-10x faster but DB CORRUPT ON CRASH!`
+
+- **SQL Diagnostic Script** (`scripts/check_restore_settings.sql`)
+  - Standalone: `psql -f scripts/check_restore_settings.sql`
+  - Checks privileges, critical settings, memory, parallelism, recommendations
+
+### Changed
+
+- **Native restore engine** — fsync/wal_level/full_page_writes only applied when
+  `RestoreFsyncMode != "on"` (previously always applied unconditionally)
+- **psql restore engine** — conditional `-c "SET fsync = off"` based on config
+- **PostgreSQLNativeConfig** — added `RestoreFsyncMode` and `RestoreMode` fields
+
 ## [6.20.0] - 2026-02-11
 
 ### Added - TUI Integration for BLOB Optimization

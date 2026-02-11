@@ -48,7 +48,8 @@ type LocalConfig struct {
 	// Restore optimization settings
 	AdaptiveJobs  bool   // Enable adaptive per-database job sizing
 	SkipDiskCheck bool   // Skip disk space checks
-	IOGovernor    string // I/O governor: auto, noop, deadline, mq-deadline, bfq
+	IOGovernor       string // I/O governor: auto, noop, deadline, mq-deadline, bfq
+	RestoreFsyncMode string // Restore fsync: on, auto, off
 
 	// Safety settings
 	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
@@ -240,8 +241,10 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.LargeDBMode = value == "true" || value == "1"
 			case "adaptive_jobs":
 				cfg.AdaptiveJobs = value == "true" || value == "1"
-			case "io_governor":
+				case "io_governor":
 				cfg.IOGovernor = value
+			case "restore_fsync_mode":
+				cfg.RestoreFsyncMode = value
 			case "skip_disk_check":
 				cfg.SkipDiskCheck = value == "true" || value == "1"
 			}
@@ -380,6 +383,9 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	sb.WriteString(fmt.Sprintf("adaptive_jobs = %t\n", cfg.AdaptiveJobs))
 	if cfg.IOGovernor != "" {
 		sb.WriteString(fmt.Sprintf("io_governor = %s\n", cfg.IOGovernor))
+	}
+	if cfg.RestoreFsyncMode != "" {
+		sb.WriteString(fmt.Sprintf("restore_fsync_mode = %s\n", cfg.RestoreFsyncMode))
 	}
 	sb.WriteString(fmt.Sprintf("skip_disk_check = %t\n", cfg.SkipDiskCheck))
 	sb.WriteString("\n")
@@ -548,6 +554,9 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.IOGovernor != "" {
 		cfg.IOGovernor = local.IOGovernor
 	}
+	if local.RestoreFsyncMode != "" {
+		cfg.RestoreFsyncMode = local.RestoreFsyncMode
+	}
 	if local.SkipDiskCheck {
 		cfg.SkipDiskCheck = true
 	}
@@ -646,6 +655,7 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		LargeDBMode:             cfg.LargeDBMode,
 		AdaptiveJobs:            cfg.AdaptiveJobs,
 		IOGovernor:              cfg.IOGovernor,
+		RestoreFsyncMode:       cfg.RestoreFsyncMode,
 		SkipDiskCheck:           cfg.SkipDiskCheck,
 		SkipPreflightChecks:     cfg.SkipPreflightChecks,
 		CloudEnabled:            cfg.CloudEnabled,

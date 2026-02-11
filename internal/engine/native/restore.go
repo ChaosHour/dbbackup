@@ -113,6 +113,9 @@ func (r *PostgreSQLRestoreEngine) Restore(ctx context.Context, source io.Reader,
 	}
 	defer conn.Release()
 
+	// Determine if fsync/wal_level should be disabled based on config
+	applyFsyncOpt := shouldDisableFsyncNative(r.engine.cfg.RestoreFsyncMode, r.engine.cfg.RestoreMode)
+
 	// Apply aggressive performance optimizations for bulk loading
 	// These provide 2-5x speedup for large SQL restores
 	optimizations := []string{
@@ -125,15 +128,22 @@ func (r *PostgreSQLRestoreEngine) Restore(ctx context.Context, source io.Reader,
 		// Parallel query for index creation
 		"SET max_parallel_workers_per_gather = 4",
 		"SET max_parallel_maintenance_workers = 4",
+	}
 
-		// Reduce I/O overhead
-		"SET wal_level = 'minimal'",
-		"SET fsync = off",
-		"SET full_page_writes = off",
-
-		// Checkpoint tuning (reduce checkpoint frequency during bulk load)
-		"SET checkpoint_timeout = '1h'",
-		"SET max_wal_size = '10GB'",
+	// Only add fsync/WAL optimizations when explicitly enabled
+	if applyFsyncOpt {
+		optimizations = append(optimizations,
+			// Reduce I/O overhead (DANGEROUS - not crash-safe!)
+			"SET wal_level = 'minimal'",
+			"SET fsync = off",
+			"SET full_page_writes = off",
+			// Checkpoint tuning (reduce checkpoint frequency during bulk load)
+			"SET checkpoint_timeout = '1h'",
+			"SET max_wal_size = '10GB'",
+		)
+		r.engine.log.Warn("fsync=off enabled for native restore \u2014 NOT crash-safe!",
+			"fsync_mode", r.engine.cfg.RestoreFsyncMode,
+			"restore_mode", r.engine.cfg.RestoreMode)
 	}
 	appliedCount := 0
 	for _, sql := range optimizations {
@@ -143,14 +153,20 @@ func (r *PostgreSQLRestoreEngine) Restore(ctx context.Context, source io.Reader,
 			appliedCount++
 		}
 	}
-	r.engine.log.Info("Applied PostgreSQL bulk load optimizations", "applied", appliedCount, "total", len(optimizations))
+	r.engine.log.Info("Applied PostgreSQL bulk load optimizations",
+		"applied", appliedCount,
+		"total", len(optimizations),
+		"fsync_disabled", applyFsyncOpt,
+		"fsync_mode", r.engine.cfg.RestoreFsyncMode)
 
 	// Restore settings at end
 	defer func() {
 		conn.Exec(ctx, "SET synchronous_commit = 'on'")
 		conn.Exec(ctx, "SET session_replication_role = 'origin'")
-		conn.Exec(ctx, "SET fsync = on")
-		conn.Exec(ctx, "SET full_page_writes = on")
+		if applyFsyncOpt {
+			conn.Exec(ctx, "SET fsync = on")
+			conn.Exec(ctx, "SET full_page_writes = on")
+		}
 	}()
 
 	// Parse and execute SQL statements from the backup
@@ -586,4 +602,17 @@ func (r *MySQLRestoreEngine) Ping() error {
 // Close closes database connections
 func (r *MySQLRestoreEngine) Close() error {
 	return r.engine.Close()
+}
+
+// shouldDisableFsyncNative checks if fsync should be disabled based on config settings.
+// This mirrors restore.ShouldDisableFsync but avoids circular imports.
+func shouldDisableFsyncNative(fsyncMode, restoreMode string) bool {
+	switch strings.ToLower(fsyncMode) {
+	case "off":
+		return true
+	case "auto":
+		return strings.ToLower(restoreMode) == "turbo"
+	default:
+		return false
+	}
 }

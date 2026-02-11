@@ -66,6 +66,7 @@ type Config struct {
 	FallbackToTools   bool     // Fallback to external tools if native engine fails
 	NativeEngineDebug bool     // Enable detailed native engine debugging
 	RestoreMode       string   // Restore WAL mode: "safe", "balanced", "turbo" (default: "safe")
+	RestoreFsyncMode  string   // Restore fsync mode: "on" (safe), "auto" (match RestoreMode), "off" (fast, TEST ONLY)
 	TieredRestore     bool     // Enable priority-based phased restore
 	CriticalTables    []string // Critical table patterns (restored first)
 	ImportantTables   []string // Important table patterns (restored second)
@@ -393,8 +394,9 @@ func New() *Config {
 		IOGovernor: getEnvString("IO_GOVERNOR", "auto"),
 
 		// Native engine defaults (pure Go, no external tools required)
-		UseNativeEngine: getEnvBool("USE_NATIVE_ENGINE", true),
-		FallbackToTools: getEnvBool("FALLBACK_TO_TOOLS", true),
+		UseNativeEngine:  getEnvBool("USE_NATIVE_ENGINE", true),
+		FallbackToTools:  getEnvBool("FALLBACK_TO_TOOLS", true),
+		RestoreFsyncMode: getEnvString("RESTORE_FSYNC_MODE", "on"),
 	}
 
 	// Ensure canonical defaults are enforced

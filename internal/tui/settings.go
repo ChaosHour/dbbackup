@@ -155,6 +155,49 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Description: "Resource profile. 'turbo' = fastest (matches pg_restore -j8). Press Enter to cycle.",
 		},
 		{
+			Key:         "restore_fsync_mode",
+			DisplayName: "Restore fsync Mode",
+			Value: func(c *config.Config) string {
+				mode := c.RestoreFsyncMode
+				if mode == "" {
+					mode = "on"
+				}
+				switch mode {
+				case "on":
+					return "on (safe, default)"
+				case "auto":
+					return "auto (off when turbo)"
+				case "off":
+					return "off (FAST, TEST ONLY!)"
+				default:
+					return mode
+				}
+			},
+			Update: func(c *config.Config, v string) error {
+				// Cycle: on → auto → off → on
+				if v == "" {
+					switch c.RestoreFsyncMode {
+					case "on", "":
+						c.RestoreFsyncMode = "auto"
+					case "auto":
+						c.RestoreFsyncMode = "off"
+					default:
+						c.RestoreFsyncMode = "on"
+					}
+					return nil
+				}
+				switch v {
+				case "on", "auto", "off":
+					c.RestoreFsyncMode = v
+				default:
+					return fmt.Errorf("must be on, auto, or off")
+				}
+				return nil
+			},
+			Type:        "selector",
+			Description: "⚠ off=5-10x faster but DB CORRUPT ON CRASH! auto=off only when restore-mode=turbo",
+		},
+		{
 			Key:         "adaptive_jobs",
 			DisplayName: "Adaptive Jobs",
 			Value: func(c *config.Config) string {

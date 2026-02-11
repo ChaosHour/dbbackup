@@ -35,6 +35,7 @@ var (
 	restoreParallelDBs int    // Number of parallel database restores
 	restoreProfile     string // Resource profile: conservative, balanced, aggressive, turbo, max-performance
 	restoreModeName    string // Restore WAL mode: safe, balanced, turbo
+	restoreFsyncMode   string // Restore fsync mode: on, auto, off
 
 	// Tiered restore flags
 	tieredRestore   bool     // Enable priority-based phased restore
@@ -338,6 +339,7 @@ func init() {
 	restoreSingleCmd.Flags().StringVar(&restoreTarget, "target", "", "Target database name (defaults to original)")
 	restoreSingleCmd.Flags().StringVar(&restoreProfile, "profile", "balanced", "Resource profile: conservative, balanced, turbo (--jobs=8), max-performance")
 	restoreSingleCmd.Flags().StringVar(&restoreModeName, "restore-mode", "safe", "WAL logging strategy: safe (full WAL), balanced (UNLOGGED COPY, LOGGED indexes), turbo (UNLOGGED all, dev/test only)")
+	restoreSingleCmd.Flags().StringVar(&restoreFsyncMode, "restore-fsync-mode", "on", "Fsync mode: on (safe, default), auto (off when restore-mode=turbo), off (fast, TEST ONLY!)")
 	restoreSingleCmd.Flags().BoolVar(&tieredRestore, "tiered-restore", false, "Enable priority-based phased restore (critical → important → cold) for RTO optimization")
 	restoreSingleCmd.Flags().StringSliceVar(&criticalTables, "critical-tables", nil, "Critical table patterns restored first (e.g., user*,session*,payment*)")
 	restoreSingleCmd.Flags().StringSliceVar(&importantTables, "important-tables", nil, "Important table patterns restored second (e.g., order*,product*)")
@@ -374,6 +376,7 @@ func init() {
 	restoreClusterCmd.Flags().BoolVar(&restoreCleanCluster, "clean-cluster", false, "Drop all existing user databases before restore (disaster recovery)")
 	restoreClusterCmd.Flags().StringVar(&restoreProfile, "profile", "conservative", "Resource profile: conservative, balanced, turbo (--jobs=8), max-performance")
 	restoreClusterCmd.Flags().StringVar(&restoreModeName, "restore-mode", "safe", "WAL logging strategy: safe (full WAL), balanced (UNLOGGED COPY, LOGGED indexes), turbo (UNLOGGED all, dev/test only)")
+	restoreClusterCmd.Flags().StringVar(&restoreFsyncMode, "restore-fsync-mode", "on", "Fsync mode: on (safe, default), auto (off when restore-mode=turbo), off (fast, TEST ONLY!)")
 	restoreClusterCmd.Flags().BoolVar(&tieredRestore, "tiered-restore", false, "Enable priority-based phased restore (critical → important → cold) for RTO optimization")
 	restoreClusterCmd.Flags().StringSliceVar(&criticalTables, "critical-tables", nil, "Critical table patterns restored first (e.g., user*,session*,payment*)")
 	restoreClusterCmd.Flags().StringSliceVar(&importantTables, "important-tables", nil, "Important table patterns restored second (e.g., order*,product*)")
@@ -428,6 +431,10 @@ func init() {
 			// Pass restore mode to config
 			if c.Flags().Changed("restore-mode") {
 				cfg.RestoreMode = restoreModeName
+			}
+			// Pass restore fsync mode to config
+			if c.Flags().Changed("restore-fsync-mode") {
+				cfg.RestoreFsyncMode = restoreFsyncMode
 			}
 			// Pass tiered restore settings to config
 			if tieredRestore {

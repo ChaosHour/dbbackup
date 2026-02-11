@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dbbackup/internal/auth"
+	"dbbackup/internal/catalog"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/tui"
 
@@ -559,15 +560,57 @@ func runVerify(ctx context.Context, archiveName string) error {
 	fmt.Println()
 	fmt.Printf("Verification Results: %d/%d checks passed\n", checksPassed, checksRun)
 
-	if checksPassed == checksRun {
+	allPassed := checksPassed == checksRun
+	mostPassed := float64(checksPassed)/float64(checksRun) >= 0.8
+
+	// Update catalog verification status so the Prometheus exporter
+	// can report dbbackup_backup_verified=1
+	if allPassed || mostPassed {
+		updateCatalogVerification(ctx, archivePath, allPassed)
+	}
+
+	if allPassed {
 		fmt.Println("[SUCCESS] Archive verification completed successfully!")
 		return nil
-	} else if float64(checksPassed)/float64(checksRun) >= 0.8 {
+	} else if mostPassed {
 		fmt.Println("[WARN] Archive verification completed with warnings.")
 		return nil
 	} else {
 		fmt.Println("[FAIL] Archive verification failed. Archive may be corrupted.")
 		return fmt.Errorf("verification failed: %d/%d checks passed", checksPassed, checksRun)
+	}
+}
+
+// updateCatalogVerification marks a backup as verified in the catalog so that
+// the Prometheus exporter reports dbbackup_backup_verified=1.
+func updateCatalogVerification(ctx context.Context, archivePath string, valid bool) {
+	catalogDB := filepath.Join(os.Getenv("HOME"), ".dbbackup", "catalog.db")
+	if catalogDBPath != "" {
+		catalogDB = catalogDBPath
+	}
+
+	cat, err := catalog.NewSQLiteCatalog(catalogDB)
+	if err != nil {
+		// Catalog not available — silently skip
+		return
+	}
+	defer cat.Close()
+
+	baseName := filepath.Base(archivePath)
+
+	// Find the catalog entry matching this backup file
+	entries, err := cat.List(ctx, "", 500)
+	if err != nil {
+		return
+	}
+
+	for _, e := range entries {
+		if e.BackupPath == baseName || filepath.Base(e.BackupPath) == baseName {
+			if err := cat.MarkVerified(ctx, e.ID, valid); err == nil {
+				fmt.Printf("[CATALOG] Marked %s as verified in catalog\n", baseName)
+			}
+			return
+		}
 	}
 }
 

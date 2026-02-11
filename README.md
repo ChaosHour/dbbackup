@@ -1271,6 +1271,61 @@ sudo systemctl restart postgresql
 # Look for the 📐 HugePages section in the output
 ```
 
+### Linux Kernel Tuning (sysctl)
+
+For database servers running dbbackup, tuning `sysctl` can significantly improve backup and restore throughput. Below is a production-tested example for a **32 GB / 16-core** PostgreSQL server:
+
+```bash
+# /etc/sysctl.d/99-postgresql.conf
+# PostgreSQL / Database Server Tuning — 32 GB RAM, 16 cores
+
+# --- Memory / VM ---
+vm.swappiness = 1                       # Minimize swap usage (or 0 if no swap)
+vm.overcommit_memory = 2                # PostgreSQL recommended: don't overcommit
+vm.overcommit_ratio = 80                # Allow up to 80% RAM commitment
+vm.vfs_cache_pressure = 50              # Keep dentries/inodes cached longer
+
+# Dirty page tuning — smooth out large write bursts during backup/restore
+vm.dirty_background_ratio = 5           # Start flushing at 5% dirty pages
+vm.dirty_ratio = 40                     # Block writers at 40% dirty pages
+vm.dirty_expire_centisecs = 3000        # Expire dirty pages after 30s
+vm.dirty_writeback_centisecs = 500      # Flush daemon wakes every 5s
+
+# --- Shared Memory (PostgreSQL) ---
+kernel.shmmax = 26843545600             # 25 GB — must be >= shared_buffers
+kernel.shmall = 6553600                 # shmmax / PAGE_SIZE (4096)
+kernel.sem = 250 32000 100 128          # Semaphores for PostgreSQL
+
+# --- Network (backup to SMB / NFS / cloud) ---
+net.core.rmem_max = 16777216            # 16 MB receive buffer max
+net.core.wmem_max = 16777216            # 16 MB send buffer max
+net.core.rmem_default = 1048576         # 1 MB receive default
+net.core.wmem_default = 1048576         # 1 MB send default
+net.ipv4.tcp_rmem = 4096 1048576 16777216
+net.ipv4.tcp_wmem = 4096 1048576 16777216
+net.ipv4.tcp_max_syn_backlog = 8192
+
+# --- Filesystem ---
+fs.file-max = 2097152                   # 2M open file handles
+```
+
+Apply with:
+
+```bash
+sudo sysctl --system
+```
+
+**Scaling guidelines:**
+
+| RAM | `shmmax` | `overcommit_ratio` | `dirty_ratio` |
+|-----|----------|--------------------|---------------|
+| 8 GB | 6 GB | 80 | 30 |
+| 16 GB | 12 GB | 80 | 35 |
+| 32 GB | 25 GB | 80 | 40 |
+| 64 GB+ | 50 GB | 80 | 40 |
+
+> **Tip:** Pair these settings with HugePages (above) for maximum performance. On a 32 GB server with `shared_buffers=8GB`, set `vm.nr_hugepages=4200` (8 GB / 2 MB + ~100 overhead).
+
 ## Testing
 
 dbbackup is tested daily on dedicated infrastructure:

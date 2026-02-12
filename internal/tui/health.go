@@ -585,7 +585,8 @@ func (m *HealthViewModel) View() string {
 	}
 
 	if m.err != nil {
-		s.WriteString(errorStyle.Render(fmt.Sprintf("[FAIL] Error: %v\n\n", m.err)))
+		s.WriteString(errorStyle.Render(fmt.Sprintf("[FAIL] Error: %v", m.err)))
+		s.WriteString("\n\n")
 	}
 
 	// Overall status
@@ -599,7 +600,8 @@ func (m *HealthViewModel) View() string {
 		statusIcon = "[X]"
 		statusColor = errorStyle
 	}
-	s.WriteString(statusColor.Render(fmt.Sprintf("%s Overall: %s\n\n", statusIcon, strings.ToUpper(string(m.overallStatus)))))
+	s.WriteString(statusColor.Render(fmt.Sprintf("%s Overall: %s", statusIcon, strings.ToUpper(string(m.overallStatus)))))
+	s.WriteString("\n\n")
 
 	// Individual checks
 	s.WriteString("[CHECKS]\n")
@@ -614,9 +616,11 @@ func (m *HealthViewModel) View() string {
 			icon = "[X]"
 			style = errorStyle
 		}
-		s.WriteString(style.Render(fmt.Sprintf("  %s %-22s %s\n", icon, check.Name+":", check.Message)))
+		s.WriteString(style.Render(fmt.Sprintf("  %s %-22s %s", icon, check.Name+":", check.Message)))
+		s.WriteString("\n")
 		if check.Details != "" {
-			s.WriteString(infoStyle.Render(fmt.Sprintf("      %s\n", check.Details)))
+			s.WriteString(infoStyle.Render(fmt.Sprintf("      %s", check.Details)))
+			s.WriteString("\n")
 		}
 	}
 
@@ -624,7 +628,8 @@ func (m *HealthViewModel) View() string {
 	if len(m.recommendations) > 0 {
 		s.WriteString("\n[RECOMMENDATIONS]\n")
 		for _, rec := range m.recommendations {
-			s.WriteString(StatusWarningStyle.Render(fmt.Sprintf("  → %s\n", rec)))
+			s.WriteString(StatusWarningStyle.Render(fmt.Sprintf("  → %s", rec)))
+			s.WriteString("\n")
 		}
 	}
 

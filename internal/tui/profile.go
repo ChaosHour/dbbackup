@@ -396,19 +396,24 @@ func (m *ProfileModel) renderSystemInfo() string {
 	rightCol := strings.Builder{}
 
 	// Left column: CPU & Memory
-	leftCol.WriteString(profileLabelStyle.Render("  🖥️  CPU\n"))
+	leftCol.WriteString(profileLabelStyle.Render("  🖥️  CPU"))
+	leftCol.WriteString("\n")
 	leftCol.WriteString(fmt.Sprintf("     Cores: %s\n", profileValueStyle.Render(fmt.Sprintf("%d", p.CPUCores))))
 	if p.CPUSpeed > 0 {
 		leftCol.WriteString(fmt.Sprintf("     Speed: %s\n", profileValueStyle.Render(fmt.Sprintf("%.1f GHz", p.CPUSpeed))))
 	}
 
-	leftCol.WriteString(profileLabelStyle.Render("\n  💾 Memory\n"))
+	leftCol.WriteString("\n")
+	leftCol.WriteString(profileLabelStyle.Render("  💾 Memory"))
+	leftCol.WriteString("\n")
 	leftCol.WriteString(fmt.Sprintf("     Total: %s\n", profileValueStyle.Render(fmt.Sprintf("%.1f GB", float64(p.TotalRAM)/(1024*1024*1024)))))
 	leftCol.WriteString(fmt.Sprintf("     Available: %s\n", profileValueStyle.Render(fmt.Sprintf("%.1f GB", float64(p.AvailableRAM)/(1024*1024*1024)))))
 
 	// HugePages info (Linux)
 	if p.HugePagesAvailable {
-		leftCol.WriteString(profileLabelStyle.Render("\n  📐 HugePages\n"))
+		leftCol.WriteString("\n")
+		leftCol.WriteString(profileLabelStyle.Render("  📐 HugePages"))
+		leftCol.WriteString("\n")
 		leftCol.WriteString(fmt.Sprintf("     Total: %s\n", profileRecommendStyle.Render(fmt.Sprintf("%d pages", p.HugePagesTotal))))
 		leftCol.WriteString(fmt.Sprintf("     Free: %s\n", profileValueStyle.Render(fmt.Sprintf("%d pages", p.HugePagesFree))))
 		hpSizeMB := p.HugePageSize / (1024 * 1024)
@@ -419,7 +424,8 @@ func (m *ProfileModel) renderSystemInfo() string {
 	}
 
 	// Right column: Disk & Database
-	rightCol.WriteString(profileLabelStyle.Render("  💿 Disk\n"))
+	rightCol.WriteString(profileLabelStyle.Render("  💿 Disk"))
+	rightCol.WriteString("\n")
 	diskType := p.DiskType
 	if diskType == "SSD" {
 		diskType = profileRecommendStyle.Render("SSD ⚡")
@@ -435,7 +441,9 @@ func (m *ProfileModel) renderSystemInfo() string {
 	}
 
 	if p.DBVersion != "" {
-		rightCol.WriteString(profileLabelStyle.Render("\n  🐘 PostgreSQL\n"))
+		rightCol.WriteString("\n")
+		rightCol.WriteString(profileLabelStyle.Render("  🐘 PostgreSQL"))
+		rightCol.WriteString("\n")
 		rightCol.WriteString(fmt.Sprintf("     Max Conns: %s\n", profileValueStyle.Render(fmt.Sprintf("%d", p.DBMaxConnections))))
 		if p.EstimatedDBSize > 0 {
 			rightCol.WriteString(fmt.Sprintf("     DB Size: %s\n", profileValueStyle.Render(fmt.Sprintf("%.1f GB", float64(p.EstimatedDBSize)/(1024*1024*1024)))))
@@ -471,7 +479,8 @@ func (m *ProfileModel) renderRecommendations() string {
 	var sb strings.Builder
 	p := m.profile
 
-	sb.WriteString(profileLabelStyle.Render("  ⚡ Recommended Settings\n"))
+	sb.WriteString(profileLabelStyle.Render("  ⚡ Recommended Settings"))
+	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("     Workers: %s", profileRecommendStyle.Render(fmt.Sprintf("%d", p.RecommendedWorkers))))
 	sb.WriteString(fmt.Sprintf("  Pool: %s", profileRecommendStyle.Render(fmt.Sprintf("%d", p.RecommendedPoolSize))))
 	sb.WriteString(fmt.Sprintf("  Buffer: %s", profileRecommendStyle.Render(fmt.Sprintf("%d KB", p.RecommendedBufferSize/1024))))
@@ -484,7 +493,9 @@ func (m *ProfileModel) renderRecommendations() string {
 func (m *ProfileModel) renderSettingsEditor() string {
 	var sb strings.Builder
 
-	sb.WriteString(profileLabelStyle.Render("\n  ⚙️  Configuration\n\n"))
+	sb.WriteString("\n")
+	sb.WriteString(profileLabelStyle.Render("  ⚙️  Configuration"))
+	sb.WriteString("\n\n")
 
 	// Auto mode toggle
 	autoLabel := "[ ] Auto Mode (use recommended)"

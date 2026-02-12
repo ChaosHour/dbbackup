@@ -517,8 +517,14 @@ func (p *PostgreSQL) BuildRestoreCommand(database, inputFile string, options Res
 	// "already exists" errors. PostgreSQL continues on ignorable errors by default
 	// and reports error count at the end, which is correct behavior for restores.
 
-	// Skip data restore if table creation fails (prevents duplicate data errors)
-	cmd = append(cmd, "--no-data-for-failed-tables")
+	// --no-data-for-failed-tables: Only safe when --clean is used.
+	// With --clean: DROP IF EXISTS + CREATE → tables won't fail → flag is a safety net.
+	// Without --clean: Tables already exist → CREATE fails → this flag SILENTLY SKIPS
+	// all COPY data for those tables, causing an apparently-successful but empty restore.
+	// This was the root cause of the "812 MB/s" false-success bug.
+	if options.Clean {
+		cmd = append(cmd, "--no-data-for-failed-tables")
+	}
 
 	// Add verbose flag ONLY if requested (WARNING: can cause OOM on large cluster restores)
 	if options.Verbose {

@@ -287,7 +287,7 @@ func runSafetyChecks(cfg *config.Config, log logger.Logger, archive ArchiveInfo,
 				check.Message = fmt.Sprintf("Cannot check: %v", err)
 			} else if exists {
 				check.Status = "warning"
-				check.Message = fmt.Sprintf("Database '%s' exists - will be overwritten if clean-first enabled", targetDB)
+				check.Message = fmt.Sprintf("Database '%s' exists with tables — auto-overwrite enabled for safe restore", targetDB)
 			} else {
 				check.Status = "passed"
 				check.Message = fmt.Sprintf("Database '%s' does not exist - will be created", targetDB)
@@ -361,10 +361,14 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q", "esc":
 			return m.parent, nil
 
-		case "t":
-			// Toggle clean-first
+		case "t", "f":
+			// Toggle force overwrite (clean-first)
 			m.cleanFirst = !m.cleanFirst
-			m.message = fmt.Sprintf("Clean-first: %v", m.cleanFirst)
+			if m.cleanFirst {
+				m.message = CheckWarningStyle.Render("[WARN] Force Overwrite: ON — existing tables will be dropped and recreated")
+			} else {
+				m.message = infoStyle.Render("Force Overwrite: OFF — existing data may prevent restore")
+			}
 
 		case "c":
 			if m.mode == "restore-cluster" {
@@ -584,11 +588,21 @@ func (m RestorePreviewModel) View() string {
 			}
 		}
 
-		cleanIcon := "[N]"
+		cleanIcon := "[-]"
+		cleanStyle := infoStyle
 		if m.cleanFirst {
 			cleanIcon = "[Y]"
+			cleanStyle = CheckWarningStyle
 		}
-		s.WriteString(fmt.Sprintf("  Clean First: %s %v\n", cleanIcon, m.cleanFirst))
+		s.WriteString(cleanStyle.Render(fmt.Sprintf("  %s Force Overwrite: %v (press 'f' to toggle)", cleanIcon, m.cleanFirst)))
+		s.WriteString("\n")
+		if m.cleanFirst {
+			s.WriteString(infoStyle.Render("    Drops and recreates existing tables for a clean restore"))
+			s.WriteString("\n")
+		} else {
+			s.WriteString(infoStyle.Render("    Existing tables will be auto-overwritten if found"))
+			s.WriteString("\n")
+		}
 
 		createIcon := "[N]"
 		if m.createIfMissing {
@@ -713,9 +727,9 @@ func (m RestorePreviewModel) View() string {
 
 	// Warnings
 	if m.cleanFirst {
-		s.WriteString(CheckWarningStyle.Render("[WARN] Warning: Clean-first enabled"))
+		s.WriteString(CheckWarningStyle.Render("[WARN] Force Overwrite enabled"))
 		s.WriteString("\n")
-		s.WriteString(infoStyle.Render("   All existing data in target database will be dropped!"))
+		s.WriteString(infoStyle.Render("   Existing objects in target database will be dropped and recreated"))
 		s.WriteString("\n\n")
 	}
 	if m.cleanClusterFirst {
@@ -814,7 +828,7 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(successStyle.Render("[OK] Ready to restore"))
 		s.WriteString("\n")
 		if m.mode == "restore-single" {
-			s.WriteString(infoStyle.Render("t: Clean-first | c: Create | w: WorkDir | d: Debug | l: LockDebug | Enter: Proceed | Esc: Cancel"))
+			s.WriteString(infoStyle.Render("f: Overwrite | c: Create | w: WorkDir | d: Debug | l: LockDebug | Enter: Proceed | Esc: Cancel"))
 		} else if m.mode == "restore-cluster" {
 			if m.existingDBCount > 0 {
 				s.WriteString(infoStyle.Render("c: Cleanup | w: WorkDir | d: Debug | l: LockDebug | Enter: Proceed | Esc: Cancel"))

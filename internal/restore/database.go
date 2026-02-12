@@ -322,3 +322,36 @@ func (e *Engine) ensurePostgresDatabaseExists(ctx context.Context, dbName string
 	e.log.Info("Successfully created database from template0", "name", dbName)
 	return nil
 }
+
+// targetDBHasTables checks if a target database already has user tables.
+// Used to auto-detect when --clean should be enabled for pg_restore to avoid
+// the silent data-skip bug (where --no-data-for-failed-tables skips all COPY data
+// because CREATE TABLE fails with "already exists").
+func (e *Engine) targetDBHasTables(ctx context.Context, dbName string) (bool, error) {
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	query := `SELECT COUNT(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')`
+
+	args := []string{
+		"-p", fmt.Sprintf("%d", e.cfg.Port),
+		"-U", e.cfg.User,
+		"-d", dbName,
+		"-tAc", query,
+	}
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		args = append([]string{"-h", e.cfg.Host}, args...)
+	}
+
+	cmd := cleanup.SafeCommand(checkCtx, "psql", args...)
+	cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// DB doesn't exist or can't connect — not an error, just means no tables
+		return false, fmt.Errorf("cannot check target database: %w", err)
+	}
+
+	count := strings.TrimSpace(string(output))
+	return count != "0" && count != "", nil
+}

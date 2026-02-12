@@ -244,9 +244,24 @@ func (e *Engine) restorePostgreSQLDump(ctx context.Context, archivePath, targetD
 	if parallelJobs <= 0 {
 		parallelJobs = 1 // Default fallback
 	}
+
+	// Auto-enable clean mode when target database already has tables.
+	// Without --clean, pg_restore's CREATE TABLE hits "already exists" errors and
+	// --no-data-for-failed-tables silently skips ALL COPY data — causing a
+	// false-success restore with 0 rows loaded.
+	if !cleanFirst {
+		hasData, checkErr := e.targetDBHasTables(ctx, targetDB)
+		if checkErr == nil && hasData {
+			e.log.Warn("Target database has existing tables — auto-enabling --clean --if-exists to force overwrite",
+				"database", targetDB)
+			cleanFirst = true
+		}
+	}
+
 	opts := database.RestoreOptions{
 		Parallel:          parallelJobs,
 		Clean:             cleanFirst,
+		IfExists:          cleanFirst, // Always pair --clean with --if-exists
 		NoOwner:           true,
 		NoPrivileges:      true,
 		SingleTransaction: false, // CRITICAL: Disabled to prevent lock exhaustion with large objects

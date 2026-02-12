@@ -601,6 +601,27 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = msg.result
 		m.elapsed = msg.elapsed
 		m.detailedSummary = msg.detailedSummary
+
+		// Final poll of progress state — the backup may complete faster than
+		// the 100ms tick interval, leaving m.dbTotal at 0 in the summary.
+		func() {
+			defer func() { recover() }()
+			dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, _, dbAvgPerDB, _, bytesDone, bytesTotal, metaSrc := getCurrentBackupProgress()
+			if hasUpdate || dbTotal > 0 {
+				m.dbTotal = dbTotal
+				m.dbDone = dbDone
+				m.dbName = dbName
+				m.overallPhase = overallPhase
+				m.phaseDesc = phaseDesc
+				m.dbAvgPerDB = dbAvgPerDB
+				m.bytesDone = bytesDone
+				m.bytesTotal = bytesTotal
+				if metaSrc != "" {
+					m.metadataSource = metaSrc
+				}
+			}
+		}()
+
 		if m.err == nil {
 			m.status = "[OK] Backup completed successfully!"
 		} else {

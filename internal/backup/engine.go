@@ -723,21 +723,46 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 								return
 							}
 						} else {
-							// Native backup succeeded!
-							// Update completed bytes for size-weighted ETA
-							atomic.AddInt64(&completedBytes, thisDbSize)
-							if info, statErr := os.Stat(sqlFile); statErr == nil {
+							// Validate output — native engine may "succeed" but produce
+							// an empty/trivial dump due to conn busy errors (all tables skipped).
+							// If output < 1KB but database > 100KB, treat as failure.
+							outInfo, statErr := os.Stat(sqlFile)
+							outputSize := int64(0)
+							if statErr == nil {
+								outputSize = outInfo.Size()
+							}
+							if outputSize < 1024 && thisDbSize > 100*1024 {
+								os.Remove(sqlFile)
+								if e.cfg.FallbackToTools {
+									mu.Lock()
+									e.log.Warn("Native backup produced empty output (conn busy?), falling back to pg_dump",
+										"database", name, "output_bytes", outputSize, "db_size", thisDbSize)
+									e.printf("       [WARN] Native backup empty (%s for %s DB), using pg_dump fallback\n",
+										formatBytes(outputSize), formatBytes(thisDbSize))
+									mu.Unlock()
+									// Fall through to pg_dump below
+								} else {
+									e.log.Error("Native backup produced empty output", "database", name,
+										"output_bytes", outputSize, "db_size", thisDbSize)
+									atomic.AddInt32(&failCount, 1)
+									return
+								}
+							} else {
+								// Native backup succeeded with valid output
+								atomic.AddInt64(&completedBytes, thisDbSize)
 								mu.Lock()
-								e.printf("   [OK] Completed %s (%s) [native]\n", name, formatBytes(info.Size()))
+								e.printf("   [OK] Completed %s (%s) [native]\n", name, formatBytes(outputSize))
 								mu.Unlock()
 								e.log.Info("Native backup completed",
 									"database", name,
-									"size", info.Size(),
+									"size", outputSize,
 									"duration", result.Duration,
 									"engine", result.EngineUsed)
+								atomic.AddInt32(&successCount, 1)
+								doneAfter := int(atomic.AddInt32(&dbCompleted, 1))
+								e.reportDatabaseProgress(doneAfter, len(databases), name, atomic.LoadInt64(&completedBytes), totalBytes)
+								return // Skip pg_dump path
 							}
-							atomic.AddInt32(&successCount, 1)
-							return // Skip pg_dump path
 						}
 					}
 				}

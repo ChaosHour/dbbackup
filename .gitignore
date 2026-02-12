@@ -15,6 +15,7 @@ logs/
 /dbbackup-*
 !dbbackup.png
 bin/
+bins/
 
 # Ignore local configuration (may contain IPs/credentials)
 .dbbackup.conf

@@ -5,6 +5,13 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.25.9] - 2026-02-12
+
+### Fixed — Native Engine Empty Backup Detection
+
+- **Native engine "succeeds" with empty output** — When the native engine encounters connection busy errors, all tables are silently skipped and the backup completes with a trivial ~287-byte dump file. Added output size validation: if the dump is under 1KB for a database larger than 100KB, the result is treated as a failure and falls through to pg_dump automatically.
+- **TUI summary missing database count** — If the backup completed between 100ms tick intervals, the `backupCompleteMsg` handler never polled the final progress state, leaving `dbTotal` at 0 and the completion summary showing no database info. Added a final progress poll on completion.
+
 ## [6.25.8] - 2026-02-12
 
 ### Fixed — Cluster Backup Progress Display

@@ -1527,10 +1527,14 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 	} else {
 		// MySQL - use MYSQL_PWD env var to avoid password in process list
 		args := []string{"-u", e.cfg.User}
-		if e.cfg.Host != "localhost" && e.cfg.Host != "" {
+		// Connection parameters — socket takes priority, then localhost vs remote
+		if e.cfg.Socket != "" {
+			args = append(args, "-S", e.cfg.Socket)
+		} else if e.cfg.Host != "localhost" && e.cfg.Host != "" {
 			args = append(args, "-h", e.cfg.Host)
+			args = append(args, "-P", fmt.Sprintf("%d", e.cfg.Port))
 		}
-		args = append(args, "-P", fmt.Sprintf("%d", e.cfg.Port), targetDB)
+		args = append(args, targetDB)
 		cmd = cleanup.SafeCommand(ctx, "mysql", args...)
 		// Pass password via environment variable to avoid process list exposure
 		cmd.Env = os.Environ()
@@ -2965,10 +2969,13 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 func (e *Engine) restoreMySQLGlobals(ctx context.Context, globalsFile string) error {
 	args := []string{"-u", e.cfg.User}
 
-	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+	// Connection parameters — socket takes priority, then localhost vs remote
+	if e.cfg.Socket != "" {
+		args = append(args, "-S", e.cfg.Socket)
+	} else if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
 		args = append(args, "-h", e.cfg.Host)
+		args = append(args, "-P", fmt.Sprintf("%d", e.cfg.Port))
 	}
-	args = append(args, "-P", fmt.Sprintf("%d", e.cfg.Port))
 	args = append(args, "mysql") // target the mysql system database
 
 	cmd := cleanup.SafeCommand(ctx, "mysql", args...)

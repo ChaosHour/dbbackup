@@ -354,7 +354,8 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 		if err := dbClient.Connect(ctx); err != nil {
 			return backupCompleteMsg{
 				result: "",
-				err:    fmt.Errorf("database connection failed: %w", err),
+				err:    fmt.Errorf("database connection failed: %w\n\nTarget engine: %s (user=%s, host=%s, port=%d)\nCheck Settings if this is the wrong engine type",
+					err, cfg.DisplayDatabaseType(), cfg.User, cfg.Host, cfg.Port),
 			}
 		}
 

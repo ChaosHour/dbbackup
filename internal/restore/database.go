@@ -63,12 +63,14 @@ func (e *Engine) dropMySQLDatabaseIfExists(ctx context.Context, dbName string) e
 	safeDB := strings.ReplaceAll(dbName, "`", "``")
 	args := []string{
 		"-u", e.cfg.User,
-		"-P", fmt.Sprintf("%d", e.cfg.Port),
 		"-e", fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", safeDB),
 	}
 
-	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
-		args = append([]string{"-h", e.cfg.Host}, args...)
+	// Connection parameters — socket takes priority, then localhost vs remote
+	if e.cfg.Socket != "" {
+		args = append(args, "-S", e.cfg.Socket)
+	} else if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		args = append([]string{"-h", e.cfg.Host, "-P", fmt.Sprintf("%d", e.cfg.Port)}, args...)
 	}
 
 	cmd := cleanup.SafeCommand(ctx, "mysql", args...)
@@ -204,10 +206,15 @@ func (e *Engine) ensureDatabaseExists(ctx context.Context, dbName string) error 
 func (e *Engine) ensureMySQLDatabaseExists(ctx context.Context, dbName string) error {
 	// Build mysql command - use environment variable for password (security: avoid process list exposure)
 	args := []string{
-		"-h", e.cfg.Host,
-		"-P", fmt.Sprintf("%d", e.cfg.Port),
 		"-u", e.cfg.User,
 		"-e", fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", database.QuoteMySQLIdentifier(dbName)),
+	}
+
+	// Connection parameters — socket takes priority, then localhost vs remote
+	if e.cfg.Socket != "" {
+		args = append(args, "-S", e.cfg.Socket)
+	} else if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		args = append(args, "-h", e.cfg.Host, "-P", fmt.Sprintf("%d", e.cfg.Port))
 	}
 
 	cmd := cleanup.SafeCommand(ctx, "mysql", args...)

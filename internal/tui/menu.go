@@ -345,18 +345,24 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.dbTypeCursor > 0 {
 				m.dbTypeCursor--
 				m.applyDatabaseSelection()
+				m.connectionStatus = "[WAIT] Checking..."
+				return m, m.checkConnectionHealth()
 			}
 
 		case "right", "l":
 			if m.dbTypeCursor < len(m.dbTypes)-1 {
 				m.dbTypeCursor++
 				m.applyDatabaseSelection()
+				m.connectionStatus = "[WAIT] Checking..."
+				return m, m.checkConnectionHealth()
 			}
 
 		case "t":
 			if len(m.dbTypes) > 0 {
 				m.dbTypeCursor = (m.dbTypeCursor + 1) % len(m.dbTypes)
 				m.applyDatabaseSelection()
+				m.connectionStatus = "[WAIT] Checking..."
+				return m, m.checkConnectionHealth()
 			}
 
 		case "up", "k":
@@ -470,7 +476,7 @@ func (m *MenuModel) View() string {
 		}
 		selector := fmt.Sprintf("Target Engine: %s", strings.Join(options, menuStyle.Render("  |  ")))
 		s += dbSelectorLabelStyle.Render(selector) + "\n"
-		hint := infoStyle.Render("Switch with <-/-> or t | Cluster backup/restore requires PostgreSQL")
+		hint := infoStyle.Render("Switch with <-/-> or t")
 		s += hint + "\n"
 	}
 
@@ -691,7 +697,8 @@ func (m *MenuModel) applyDatabaseSelection() {
 		m.config.Port = m.config.GetDefaultPort()
 	}
 
-	m.message = successStyle.Render(fmt.Sprintf("[SWITCH] Target database set to %s", m.config.DisplayDatabaseType()))
+	m.message = successStyle.Render(fmt.Sprintf("[SWITCH] Target database set to %s (%s@%s:%d)",
+		m.config.DisplayDatabaseType(), m.config.User, m.config.Host, m.config.Port))
 	if m.logger != nil {
 		m.logger.Info("updated target database type", "type", m.config.DatabaseType, "port", m.config.Port)
 	}

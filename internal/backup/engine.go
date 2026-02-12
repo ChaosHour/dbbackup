@@ -2289,6 +2289,7 @@ func (e *Engine) backupSingleNativeMySQL(ctx context.Context, databaseName, outp
 		User:              e.cfg.User,
 		Password:          e.cfg.Password,
 		Database:          databaseName,
+		Socket:            e.cfg.Socket,
 		SSLMode:           e.cfg.SSLMode,
 		Format:            "sql",
 		Compression:       e.cfg.GetEffectiveCompressionLevel(),

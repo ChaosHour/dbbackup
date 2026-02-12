@@ -294,6 +294,8 @@ type backupCompleteMsg struct {
 	err             error
 	elapsed         time.Duration
 	detailedSummary *BackupDetailedSummary
+	archivePath     string // Path to created backup file
+	archiveSize     int64  // Size of created backup file
 }
 
 func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config, log logger.Logger, backupType, dbName string, ratio int) tea.Cmd {
@@ -491,6 +493,8 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 			err:             nil,
 			elapsed:         elapsed,
 			detailedSummary: detailedSummary,
+			archivePath:     engine.LastBackupFile,
+			archiveSize:     engine.LastBackupSize,
 		}
 	}
 }
@@ -602,6 +606,8 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = msg.result
 		m.elapsed = msg.elapsed
 		m.detailedSummary = msg.detailedSummary
+		m.archivePath = msg.archivePath
+		m.archiveSize = msg.archiveSize
 
 		// Final poll of progress state — the backup may complete faster than
 		// the 100ms tick interval, leaving m.dbTotal at 0 in the summary.
@@ -1100,6 +1106,9 @@ func (m BackupExecutionModel) View() string {
 			if m.archiveSize > 0 {
 				s.WriteString(fmt.Sprintf("    Archive Size:  %s\n", FormatBytes(m.archiveSize)))
 			}
+
+			// Engine type
+			s.WriteString(fmt.Sprintf("    Engine:        %s\n", m.config.DisplayDatabaseType()))
 
 			// Backup type specific info
 			switch m.backupType {

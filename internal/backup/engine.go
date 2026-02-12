@@ -55,6 +55,10 @@ type Engine struct {
 	// Live progress tracking
 	liveBytesDone  int64 // Atomic: tracks live bytes during operations (dump file size)
 	liveBytesTotal int64 // Atomic: total expected bytes for size-weighted progress
+
+	// Last backup result (populated by BackupSingle/BackupCluster for TUI summary)
+	LastBackupFile string // Path to the created backup file
+	LastBackupSize int64  // Size of the created backup file in bytes
 }
 
 // New creates a new backup engine
@@ -397,6 +401,12 @@ postBackup:
 			e.log.Warn("Cloud upload failed", "error", err)
 			// Don't fail the backup if cloud upload fails
 		}
+	}
+
+	// Store last backup result for TUI summary
+	e.LastBackupFile = outputFile
+	if info, err := os.Stat(outputFile); err == nil {
+		e.LastBackupSize = info.Size()
 	}
 
 	// Complete operation
@@ -1051,6 +1061,12 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			e.printf("   [OK] Cluster backup verified successfully\n")
 			e.log.Info("Cluster backup verification successful", "archive", outputFile)
 		}
+	}
+
+	// Store last backup result for TUI summary
+	e.LastBackupFile = outputFile
+	if fi, err := os.Stat(outputFile); err == nil {
+		e.LastBackupSize = fi.Size()
 	}
 
 	return nil

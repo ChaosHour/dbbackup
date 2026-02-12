@@ -131,6 +131,9 @@ type RestoreExecutionModel struct {
 	// Detailed summary data (collected during restore, shown in details view)
 	detailedSummary *RestoreDetailedSummary
 	showDetails     bool // True when user presses 'D' to see full stats
+
+	// Post-restore verification result (table/row counts)
+	verification *RestoreVerification
 }
 
 // NewRestoreExecution creates a new restore execution model
@@ -220,6 +223,7 @@ type restoreCompleteMsg struct {
 	err             error
 	elapsed         time.Duration
 	detailedSummary *RestoreDetailedSummary
+	verification    *RestoreVerification
 }
 
 // sharedProgressState holds progress state that can be safely accessed from callbacks
@@ -800,6 +804,19 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 
 		tuiLog("Restore completed successfully: %s", result)
 
+		// Quick post-restore verification: count tables & rows
+		verifyDB := targetDB
+		if restoreType == "restore-cluster" {
+			verifyDB = "" // skip for cluster (multiple DBs)
+		}
+		var verification *RestoreVerification
+		if verifyDB != "" && ctx.Err() == nil {
+			tuiLog("Running post-restore verification on %s", verifyDB)
+			verification = quickPostRestoreCheck(ctx, cfg, log, verifyDB)
+			tuiLog("Verification: passed=%v tables=%d rows=%d duration=%s",
+				verification.Passed, verification.Tables, verification.TotalRows, verification.Duration)
+		}
+
 		// Build detailed summary
 		detailedSummary := buildRestoreDetailedSummary(cfg, archive, time.Since(start))
 
@@ -808,6 +825,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			err:             nil,
 			elapsed:         time.Since(start),
 			detailedSummary: detailedSummary,
+			verification:    verification,
 		}
 	}
 }
@@ -967,6 +985,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result = msg.result
 		m.elapsed = msg.elapsed
 		m.detailedSummary = msg.detailedSummary
+		m.verification = msg.verification
 
 		if m.err == nil {
 			m.status = "Restore completed successfully"
@@ -1205,6 +1224,14 @@ func (m RestoreExecutionModel) View() string {
 				s.WriteString(fmt.Sprintf("    Target DB:     %s\n", m.targetDB))
 			}
 
+			s.WriteString("\n")
+		}
+
+		// Verification section — show table/row counts from actual database
+		if m.verification != nil && m.verification.Checked {
+			s.WriteString(infoStyle.Render("  ─── Verification ──────────────────────────────────────────"))
+			s.WriteString("\n\n")
+			s.WriteString(renderVerification(m.verification))
 			s.WriteString("\n")
 		}
 

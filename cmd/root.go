@@ -152,7 +152,7 @@ For help with specific commands, use: dbbackup [command] --help`,
 			// For PostgreSQL, keep cfg.Host as the socket path - pgx handles this correctly
 		}
 
-		return cfg.SetDatabaseType(cfg.DatabaseType)
+		return cfg.ApplyDatabaseTypeWithDefaults(flagsSet)
 	},
 }
 

@@ -87,10 +87,20 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 		"password_source", passwordSource,
 	)
 
-	// Check for authentication mismatch before attempting connection
+	// Check for authentication mismatch (non-fatal: try connection anyway)
+	// pg_hba.conf may use peer maps (pg_ident.conf) allowing root→postgres,
+	// so a detected mismatch doesn't necessarily mean the connection will fail.
+	var mismatchWarning string
 	if mismatch, msg := auth.CheckAuthenticationMismatch(p.cfg); mismatch {
-		fmt.Println(msg)
-		return fmt.Errorf("authentication configuration required")
+		mismatchWarning = msg
+		if p.cfg.Debug {
+			fmt.Fprintf(os.Stderr, "[DEBUG] Auth mismatch detected (will try connection anyway): os_user=%s db_user=%s\n",
+				osUser, p.cfg.User)
+		}
+		p.log.Debug("Auth mismatch detected, will attempt connection anyway",
+			"os_user", osUser,
+			"db_user", p.cfg.User,
+		)
 	}
 
 	// Build PostgreSQL DSN (pgx format)
@@ -142,8 +152,11 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 			"password_source", passwordSource,
 			"error", err,
 		)
-		return fmt.Errorf("failed to create pgx pool: %w\n%s", err,
-			getConnectionHint(err.Error(), p.cfg.Host, p.cfg.Port, p.cfg.User, passwordSource))
+		hint := getConnectionHint(err.Error(), p.cfg.Host, p.cfg.Port, p.cfg.User, passwordSource)
+		if mismatchWarning != "" {
+			hint += "\n" + mismatchWarning
+		}
+		return fmt.Errorf("failed to create pgx pool: %w\n%s", err, hint)
 	}
 
 	// Test connection
@@ -157,8 +170,11 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 			"os_user", osUser,
 			"error", err,
 		)
-		return fmt.Errorf("failed to ping PostgreSQL: %w\n%s", err,
-			getConnectionHint(err.Error(), p.cfg.Host, p.cfg.Port, p.cfg.User, passwordSource))
+		hint := getConnectionHint(err.Error(), p.cfg.Host, p.cfg.Port, p.cfg.User, passwordSource)
+		if mismatchWarning != "" {
+			hint += "\n" + mismatchWarning
+		}
+		return fmt.Errorf("failed to ping PostgreSQL: %w\n%s", err, hint)
 	}
 
 	// Also create stdlib connection for compatibility

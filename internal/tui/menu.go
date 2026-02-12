@@ -176,14 +176,22 @@ func (m *MenuModel) checkConnectionHealth() tea.Cmd {
 			"user", cfg.User,
 			"host", cfg.Host,
 			"port", cfg.Port,
+			"database", cfg.Database,
 			"password_set", cfg.Password != "",
 			"os_user", os.Getenv("USER"),
 		)
 
+		// Use admin database for health checks to avoid failures from
+		// non-existent user databases (e.g., after switching engine types).
+		healthCfg := *cfg
+		if healthCfg.IsPostgreSQL() && healthCfg.Database == "" {
+			healthCfg.Database = "postgres"
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		dbClient, err := database.New(cfg, log)
+		dbClient, err := database.New(&healthCfg, log)
 		if err != nil {
 			log.Error("[TUI-MENU] database.New() failed", "error", err)
 			return connectionHealthMsg{err: err, timestamp: time.Now()}
@@ -193,9 +201,10 @@ func (m *MenuModel) checkConnectionHealth() tea.Cmd {
 		if err := dbClient.Connect(ctx); err != nil {
 			log.Error("[TUI-MENU] Connect() failed",
 				"error", err.Error(),
-				"user", cfg.User,
-				"host", cfg.Host,
-				"port", cfg.Port,
+				"user", healthCfg.User,
+				"host", healthCfg.Host,
+				"port", healthCfg.Port,
+				"database", healthCfg.Database,
 			)
 			return connectionHealthMsg{err: err, timestamp: time.Now()}
 		}

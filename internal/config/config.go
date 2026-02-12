@@ -583,10 +583,12 @@ func (c *Config) SetDatabaseType(dbType string) error {
 			}
 
 			// Auto-swap default database name between engine families.
-			// 'postgres' is invalid on MySQL/MariaDB; 'mysql' is invalid on PostgreSQL.
-			if nowPG && (c.Database == "" || c.Database == "mysql") {
+			// When switching from MySQL/MariaDB → PostgreSQL (or vice versa),
+			// the current database name is almost certainly invalid on the new engine.
+			// Reset to the engine's admin database to ensure connectivity.
+			if nowPG {
 				c.Database = "postgres"
-			} else if !nowPG && c.Database == "postgres" {
+			} else {
 				c.Database = ""
 			}
 		}
@@ -615,6 +617,71 @@ func (c *Config) SetDatabaseType(dbType string) error {
 		// (PostgreSQL reads credentials from .pgpass automatically)
 		if normalized != previous {
 			c.Password = ""
+		}
+	}
+
+	return nil
+}
+
+// ApplyDatabaseTypeWithDefaults applies the database type and ensures sensible
+// defaults when the user explicitly specifies --db-type. When cobra processes
+// --db-type, it sets cfg.DatabaseType before PersistentPreRunE runs, making
+// SetDatabaseType see previous==new and skip default swapping. This method
+// detects when the current config values (port, user) belong to a different
+// engine family and forcibly applies the correct defaults.
+func (c *Config) ApplyDatabaseTypeWithDefaults(flagsSet map[string]bool) error {
+	// First, normalize the database type
+	if err := c.SetDatabaseType(c.DatabaseType); err != nil {
+		return err
+	}
+
+	// If the user didn't explicitly set --db-type, SetDatabaseType already
+	// handled everything (or there was no switch).
+	if !flagsSet["db-type"] {
+		return nil
+	}
+
+	nowPG := c.DatabaseType == "postgres"
+
+	// Detect and fix stale values from the other engine family.
+	// These indicate SetDatabaseType didn't swap because it saw previous==new.
+
+	// Port: if user didn't set --port and the port belongs to the wrong engine
+	if !flagsSet["port"] {
+		if nowPG && c.Port == 3306 {
+			c.Port = 5432
+		} else if !nowPG && c.Port == 5432 {
+			c.Port = 3306
+		}
+	}
+
+	// User: if user didn't set --user and the username is the other engine's default
+	if !flagsSet["user"] {
+		if nowPG && c.User == "root" {
+			c.User = "postgres"
+		} else if !nowPG && c.User == "postgres" {
+			c.User = "root"
+		}
+	}
+
+	// Database: if user didn't set --database, reset to engine default
+	if !flagsSet["database"] {
+		if nowPG {
+			c.Database = "postgres"
+		} else if c.Database == "postgres" {
+			c.Database = ""
+		}
+	}
+
+	// Password: clear stale password from the other engine
+	if c.Password != "" {
+		if nowPG {
+			// Clear MySQL/MariaDB password; PostgreSQL uses .pgpass
+			c.Password = ""
+		} else {
+			// Clear PostgreSQL password; MySQL will reload from .my.cnf
+			c.Password = ""
+			ApplyMyCnfCredentials(c)
 		}
 	}
 

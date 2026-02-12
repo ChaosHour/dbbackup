@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.31.0] - 2026-02-12 — TUI PostgreSQL Connection Fix
+
+### Fixed
+
+- **TUI PostgreSQL health check showing "[FAIL] Disconnected" when running as root** — Three interrelated issues fixed:
+  1. **Database name not swapped on engine switch**: When switching from MariaDB/MySQL to PostgreSQL in the TUI, the database name (e.g., `bench_source_maria`) was kept instead of being reset to `postgres`. PostgreSQL doesn't have MariaDB databases, so the connection failed. `SetDatabaseType()` now always resets to the engine's admin database when switching families.
+  2. **`--db-type` flag defaults not applied**: Cobra sets `cfg.DatabaseType` before `PersistentPreRunE` runs, so `SetDatabaseType()` saw `previous==new` and skipped port/user/database swapping. New `ApplyDatabaseTypeWithDefaults()` detects stale values from the other engine and corrects them.
+  3. **Auth mismatch check was fatal**: `CheckAuthenticationMismatch()` blocked PostgreSQL connection when OS user ≠ DB user, but `pg_hba.conf` may use peer maps (`pg_ident.conf`) that allow the connection. Made the check non-fatal — connection is attempted regardless, with guidance shown only on actual failure.
+- **TUI health check now uses admin database** — Health checks connect to the engine's admin database (`postgres`/`mysql`) instead of the user's selected database, preventing false negatives from non-existent databases.
+
 ## [6.30.0] - 2026-02-12 — First Fully Tested Stable Release
 
 **This is the first release comprehensively tested across all three database engines

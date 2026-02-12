@@ -85,11 +85,17 @@ TUI Automation Flags (for testing and CI/CD):
 		}
 		// Note: LargeDBMode is no longer forced - user controls it via settings
 
-		// Check authentication before starting TUI
+		// Check authentication before starting TUI (non-fatal warning)
+		// pg_hba.conf may use peer maps that allow the connection despite apparent mismatch
 		if cfg.IsPostgreSQL() {
 			if mismatch, msg := auth.CheckAuthenticationMismatch(cfg); mismatch {
-				fmt.Println(msg)
-				return fmt.Errorf("authentication configuration required")
+				if cfg.Debug {
+					fmt.Println(msg)
+				}
+				log.Warn("PostgreSQL auth mismatch detected (will try connection anyway)",
+					"os_user", os.Getenv("USER"),
+					"db_user", cfg.User,
+				)
 			}
 		}
 

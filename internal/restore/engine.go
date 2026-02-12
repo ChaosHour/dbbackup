@@ -474,9 +474,16 @@ func (e *Engine) restorePostgreSQLSQL(ctx context.Context, archivePath, targetDB
 		e.log.Info("Using native Go streaming engine for restore", "database", targetDB, "file", archivePath)
 		nativeErr := e.restoreWithNativeEngine(ctx, archivePath, targetDB, compressed)
 		if nativeErr != nil {
-			return fmt.Errorf("native restore failed: %w", nativeErr)
+			if e.cfg.FallbackToTools {
+				e.log.Warn("Native restore failed, falling back to psql",
+					"database", targetDB, "error", nativeErr)
+				// Fall through to psql path below
+			} else {
+				return fmt.Errorf("native restore failed: %w", nativeErr)
+			}
+		} else {
+			return nil
 		}
-		return nil
 	}
 
 	// Use psql for SQL scripts (fallback or non-native mode)
@@ -944,7 +951,18 @@ func (e *Engine) restoreMySQLSQL(ctx context.Context, archivePath, targetDB stri
 	// Use native engine if configured (pure Go MySQL restore with bulk load optimizations)
 	if e.cfg.UseNativeEngine {
 		e.log.Info("Using native Go MySQL engine for restore", "database", targetDB, "file", archivePath)
-		return e.restoreWithMySQLNativeEngine(ctx, archivePath, targetDB, compressed)
+		nativeErr := e.restoreWithMySQLNativeEngine(ctx, archivePath, targetDB, compressed)
+		if nativeErr != nil {
+			if e.cfg.FallbackToTools {
+				e.log.Warn("Native MySQL restore failed, falling back to mysql CLI",
+					"database", targetDB, "error", nativeErr)
+				// Fall through to mysql CLI path below
+			} else {
+				return fmt.Errorf("native MySQL restore failed: %w", nativeErr)
+			}
+		} else {
+			return nil
+		}
 	}
 
 	options := database.RestoreOptions{}

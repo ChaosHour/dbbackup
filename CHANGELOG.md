@@ -5,6 +5,15 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.26.1] - 2026-02-12
+
+### Fixed — Native vs Tools Engine Consistency
+
+- **BackupSingle() now respects UseNativeEngine** — Single database backup previously always used `pg_dump`/`mysqldump` regardless of the native engine config flag. Now uses the native Go engine (PostgreSQL and MySQL) when `UseNativeEngine=true`, with automatic fallback to external tools when `FallbackToTools=true`.
+- **FallbackToTools for restorePostgreSQLSQL()** — Native restore failure was previously terminal with no fallback. Now falls through to `psql` when `FallbackToTools=true`, matching the backup engine's fallback behavior.
+- **FallbackToTools for restoreMySQLSQL()** — Native MySQL restore failure now falls through to `mysql` CLI when `FallbackToTools=true`.
+- All backup/restore paths (single, cluster, TUI, CLI) now consistently respect the `UseNativeEngine` config flag.
+
 ## [6.26.0] - 2026-02-12
 
 ### Added — MariaDB/MySQL Cluster Backup & Restore

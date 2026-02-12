@@ -241,6 +241,46 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	timestamp := time.Now().Format("20060102_150405")
 	var outputFile string
 
+	// USE NATIVE ENGINE if configured — pure Go backup (no pg_dump/mysqldump)
+	if e.cfg.UseNativeEngine {
+		algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
+		nativeExt := ".sql" + comp.FileExtension(algo)
+		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("db_%s_%s%s", databaseName, timestamp, nativeExt))
+
+		tracker.SetDetails("output_file", outputFile)
+		tracker.SetDetails("engine", "native")
+		tracker.UpdateProgress(20, "Using native Go engine")
+
+		nativeStep := tracker.AddStep("native_backup", "Executing native backup")
+		tracker.UpdateProgress(30, "Starting native backup...")
+
+		var nativeErr error
+		if e.cfg.IsMySQL() {
+			nativeErr = e.backupSingleNativeMySQL(ctx, databaseName, outputFile, algo, tracker)
+		} else {
+			nativeErr = e.backupSingleNativePostgreSQL(ctx, databaseName, outputFile, algo, tracker)
+		}
+
+		if nativeErr != nil {
+			if e.cfg.FallbackToTools {
+				e.log.Warn("Native backup failed, falling back to external tools",
+					"database", databaseName, "error", nativeErr)
+				nativeStep.Fail(nativeErr)
+				os.Remove(outputFile) // Clean up partial file
+				// Fall through to external tools path below
+			} else {
+				nativeStep.Fail(nativeErr)
+				tracker.Fail(nativeErr)
+				return fmt.Errorf("native backup failed for %s: %w", databaseName, nativeErr)
+			}
+		} else {
+			nativeStep.Complete("Native backup completed")
+			tracker.UpdateProgress(80, "Native backup completed")
+			goto postBackup
+		}
+	}
+
+	{
 	// Use configured output format (compressed or plain)
 	extension := e.cfg.GetBackupExtension(e.cfg.DatabaseType)
 	outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("db_%s_%s%s", databaseName, timestamp, extension))
@@ -282,6 +322,9 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	}
 	execStep.Complete("Database backup completed")
 	tracker.UpdateProgress(80, "Database backup completed")
+	}
+
+postBackup:
 
 	// Verify backup file
 	verifyStep := tracker.AddStep("verify", "Verifying backup file")
@@ -2176,4 +2219,125 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%dm %ds", minutes, seconds)
 	}
 	return fmt.Sprintf("%ds", seconds)
+}
+
+// backupSingleNativePostgreSQL performs a single database backup using the native Go engine
+func (e *Engine) backupSingleNativePostgreSQL(ctx context.Context, databaseName, outputFile string, algo comp.Algorithm, tracker *progress.OperationTracker) error {
+	e.log.Info("Using native Go engine for single database backup", "database", databaseName)
+
+	nativeCfg := &native.PostgreSQLNativeConfig{
+		Host:        e.cfg.Host,
+		Port:        e.cfg.Port,
+		User:        e.cfg.User,
+		Password:    e.cfg.Password,
+		Database:    databaseName,
+		SSLMode:     e.cfg.SSLMode,
+		Format:      "sql",
+		Compression: e.cfg.GetEffectiveCompressionLevel(),
+		Parallel:    e.cfg.Jobs,
+		Blobs:       true,
+		Verbose:     e.cfg.Debug,
+	}
+
+	nativeEngine, err := native.NewPostgreSQLNativeEngine(nativeCfg, e.log)
+	if err != nil {
+		return fmt.Errorf("failed to create native engine: %w", err)
+	}
+
+	if err := nativeEngine.Connect(ctx); err != nil {
+		nativeEngine.Close()
+		return fmt.Errorf("native engine connection failed: %w", err)
+	}
+	defer nativeEngine.Close()
+
+	outFile, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+
+	compWriter, _ := comp.NewCompressor(outFile, algo, e.cfg.GetEffectiveCompressionLevel())
+
+	tracker.UpdateProgress(50, "Native backup in progress...")
+	result, backupErr := nativeEngine.Backup(ctx, compWriter.Writer)
+	compWriter.Close()
+	outFile.Close()
+
+	if backupErr != nil {
+		return fmt.Errorf("native backup failed: %w", backupErr)
+	}
+
+	// Validate output size
+	if info, err := os.Stat(outputFile); err == nil && info.Size() < 1024 {
+		return fmt.Errorf("native backup produced empty output (%d bytes)", info.Size())
+	}
+
+	e.log.Info("Native PostgreSQL backup completed",
+		"database", databaseName,
+		"duration", result.Duration,
+		"engine", result.EngineUsed)
+
+	return nil
+}
+
+// backupSingleNativeMySQL performs a single database backup using the native Go MySQL engine
+func (e *Engine) backupSingleNativeMySQL(ctx context.Context, databaseName, outputFile string, algo comp.Algorithm, tracker *progress.OperationTracker) error {
+	e.log.Info("Using native Go MySQL engine for single database backup", "database", databaseName)
+
+	nativeCfg := &native.MySQLNativeConfig{
+		Host:              e.cfg.Host,
+		Port:              e.cfg.Port,
+		User:              e.cfg.User,
+		Password:          e.cfg.Password,
+		Database:          databaseName,
+		SSLMode:           e.cfg.SSLMode,
+		Format:            "sql",
+		Compression:       e.cfg.GetEffectiveCompressionLevel(),
+		SingleTransaction: true,
+		Routines:          true,
+		Triggers:          true,
+		Events:            true,
+		AddDropTable:      true,
+		CreateOptions:     true,
+		DisableKeys:       true,
+		ExtendedInsert:    true,
+	}
+
+	nativeEngine, err := native.NewMySQLNativeEngine(nativeCfg, e.log)
+	if err != nil {
+		return fmt.Errorf("failed to create MySQL native engine: %w", err)
+	}
+
+	if err := nativeEngine.Connect(ctx); err != nil {
+		nativeEngine.Close()
+		return fmt.Errorf("MySQL native engine connection failed: %w", err)
+	}
+	defer nativeEngine.Close()
+
+	outFile, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+
+	compWriter, _ := comp.NewCompressor(outFile, algo, e.cfg.GetEffectiveCompressionLevel())
+
+	tracker.UpdateProgress(50, "Native MySQL backup in progress...")
+	result, backupErr := nativeEngine.Backup(ctx, compWriter.Writer)
+	compWriter.Close()
+	outFile.Close()
+
+	if backupErr != nil {
+		return fmt.Errorf("native MySQL backup failed: %w", backupErr)
+	}
+
+	// Validate output size
+	if info, err := os.Stat(outputFile); err == nil && info.Size() < 512 {
+		return fmt.Errorf("native MySQL backup produced empty output (%d bytes)", info.Size())
+	}
+
+	e.log.Info("Native MySQL backup completed",
+		"database", databaseName,
+		"duration", result.Duration,
+		"engine", result.EngineUsed)
+
+	return nil
 }

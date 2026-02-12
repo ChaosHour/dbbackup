@@ -245,7 +245,8 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	if e.cfg.UseNativeEngine {
 		algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
 		nativeExt := ".sql" + comp.FileExtension(algo)
-		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("db_%s_%s%s", databaseName, timestamp, nativeExt))
+		prefix := e.cfg.GetBackupPrefix()
+		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("%s_%s_%s%s", prefix, databaseName, timestamp, nativeExt))
 
 		tracker.SetDetails("output_file", outputFile)
 		tracker.SetDetails("engine", "native")
@@ -283,7 +284,8 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	{
 	// Use configured output format (compressed or plain)
 	extension := e.cfg.GetBackupExtension(e.cfg.DatabaseType)
-	outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("db_%s_%s%s", databaseName, timestamp, extension))
+	prefix := e.cfg.GetBackupPrefix()
+	outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("%s_%s_%s%s", prefix, databaseName, timestamp, extension))
 
 	tracker.SetDetails("output_file", outputFile)
 	tracker.UpdateProgress(20, "Generated backup filename")
@@ -416,8 +418,9 @@ func (e *Engine) BackupSample(ctx context.Context, databaseName string) error {
 
 	// Generate timestamp and filename
 	timestamp := time.Now().Format("20060102_150405")
+	prefix := e.cfg.GetBackupPrefix()
 	outputFile := filepath.Join(e.cfg.BackupDir,
-		fmt.Sprintf("sample_%s_%s%d_%s.sql", databaseName, e.cfg.SampleStrategy, e.cfg.SampleValue, timestamp))
+		fmt.Sprintf("%s_sample_%s_%s%d_%s.sql", prefix, databaseName, e.cfg.SampleStrategy, e.cfg.SampleValue, timestamp))
 
 	operation.Update("Starting sample database backup")
 	e.progress.Start(fmt.Sprintf("Creating sample backup of '%s' (%s=%d)", databaseName, e.cfg.SampleStrategy, e.cfg.SampleValue))
@@ -525,13 +528,14 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	var outputFile string
 	var plainOutput bool // Track if we're doing plain (uncompressed) output
 
+	prefix := e.cfg.GetBackupPrefix()
 	if e.cfg.ShouldOutputCompressed() {
 		clusterExt := e.cfg.GetClusterExtension()
-		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("cluster_%s%s", timestamp, clusterExt))
+		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("%s_cluster_%s%s", prefix, timestamp, clusterExt))
 		plainOutput = false
 	} else {
 		// Plain output: create a directory instead of archive
-		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("cluster_%s", timestamp))
+		outputFile = filepath.Join(e.cfg.BackupDir, fmt.Sprintf("%s_cluster_%s", prefix, timestamp))
 		plainOutput = true
 	}
 
@@ -1677,6 +1681,9 @@ func (e *Engine) createMetadata(backupFile, database, backupType, strategy strin
 		meta.ExtraInfo["sample_strategy"] = strategy
 		meta.ExtraInfo["sample_value"] = fmt.Sprintf("%d", e.cfg.SampleValue)
 	}
+
+	// Store backup prefix for identification
+	meta.ExtraInfo["prefix"] = e.cfg.GetBackupPrefix()
 
 	// Save metadata
 	if err := meta.Save(); err != nil {

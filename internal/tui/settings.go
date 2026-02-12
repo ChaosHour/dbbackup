@@ -975,6 +975,70 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 			Type:        "bool",
 			Description: "Enable WAL archiving for Point-in-Time Recovery (PITR)",
 		},
+		// ─── Backup Prefix Configuration ─────────────────────────────────────
+		{
+			Key:         "prefix_postgres",
+			DisplayName: "PostgreSQL Prefix",
+			Value: func(c *config.Config) string {
+				if c.PrefixPostgres != "" {
+					return c.PrefixPostgres
+				}
+				return config.DefaultBackupPrefix("postgres")
+			},
+			Update: func(c *config.Config, v string) error {
+				if v == "" {
+					c.PrefixPostgres = "" // Reset to default
+					return nil
+				}
+				c.PrefixPostgres = v
+				return nil
+			},
+			Type:        "string",
+			Description: fmt.Sprintf("Filename prefix for PostgreSQL backups (default: %s). Example: %s_mydb_20260212_0645.dump",
+				config.DefaultBackupPrefix("postgres"), config.DefaultBackupPrefix("postgres")),
+		},
+		{
+			Key:         "prefix_mysql",
+			DisplayName: "MySQL Prefix",
+			Value: func(c *config.Config) string {
+				if c.PrefixMySQL != "" {
+					return c.PrefixMySQL
+				}
+				return config.DefaultBackupPrefix("mysql")
+			},
+			Update: func(c *config.Config, v string) error {
+				if v == "" {
+					c.PrefixMySQL = "" // Reset to default
+					return nil
+				}
+				c.PrefixMySQL = v
+				return nil
+			},
+			Type:        "string",
+			Description: fmt.Sprintf("Filename prefix for MySQL backups (default: %s). Example: %s_shop_20260212_0645.sql.gz",
+				config.DefaultBackupPrefix("mysql"), config.DefaultBackupPrefix("mysql")),
+		},
+		{
+			Key:         "prefix_mariadb",
+			DisplayName: "MariaDB Prefix",
+			Value: func(c *config.Config) string {
+				if c.PrefixMariaDB != "" {
+					return c.PrefixMariaDB
+				}
+				return config.DefaultBackupPrefix("mariadb")
+			},
+			Update: func(c *config.Config, v string) error {
+				if v == "" {
+					c.PrefixMariaDB = "" // Reset to default
+					return nil
+				}
+				c.PrefixMariaDB = v
+				return nil
+			},
+			Type:        "string",
+			Description: fmt.Sprintf("Filename prefix for MariaDB backups (default: %s). Example: %s_shop_20260212_0645.sql.gz",
+				config.DefaultBackupPrefix("mariadb"), config.DefaultBackupPrefix("mariadb")),
+		},
 		// ─── BLOB Optimization Settings (Page 3) ────────────────────────────
 		{
 			Key:         "detect_blob_types",
@@ -1522,6 +1586,9 @@ func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 			BLOBStreamCount:     m.config.BLOBStreamCount,
 			Deduplicate:         m.config.Deduplicate,
 			DedupExpectedBLOBs:  m.config.DedupExpectedBLOBs,
+			PrefixPostgres:      m.config.PrefixPostgres,
+			PrefixMySQL:         m.config.PrefixMySQL,
+			PrefixMariaDB:       m.config.PrefixMariaDB,
 		}
 		if err := config.SaveLocalConfig(localCfg); err != nil {
 			m.message = errorStyle.Render(fmt.Sprintf("[FAIL] Failed to save config: %s", err.Error()))

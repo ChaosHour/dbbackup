@@ -41,6 +41,11 @@ type Config struct {
 	CompressionAlgorithm    string // "gzip" or "zstd" - compression algorithm for backups
 	BackupOutputFormat      string // "compressed" or "plain" - output format for backups
 	TrustFilesystemCompress bool   // Trust filesystem-level compression (ZFS/Btrfs), skip app compression
+
+	// Backup filename prefix per database type (v6.29.0+)
+	PrefixPostgres string // Filename prefix for PostgreSQL backups (default: "pg")
+	PrefixMySQL    string // Filename prefix for MySQL backups (default: "mysql")
+	PrefixMariaDB  string // Filename prefix for MariaDB backups (default: "maria")
 	Jobs                    int
 	DumpJobs                int
 	MaxCores                int
@@ -818,6 +823,38 @@ func (c *Config) ShouldOutputCompressed() bool {
 	}
 	// Default to compressed
 	return true
+}
+
+// DefaultBackupPrefix returns the default filename prefix for a database type
+func DefaultBackupPrefix(dbType string) string {
+	switch dbType {
+	case "mysql":
+		return "mysql"
+	case "mariadb":
+		return "maria"
+	default:
+		return "pg"
+	}
+}
+
+// GetBackupPrefix returns the configured filename prefix for the current database type.
+// Falls back to the default prefix if none is configured.
+func (c *Config) GetBackupPrefix() string {
+	switch c.DatabaseType {
+	case "mysql":
+		if c.PrefixMySQL != "" {
+			return c.PrefixMySQL
+		}
+	case "mariadb":
+		if c.PrefixMariaDB != "" {
+			return c.PrefixMariaDB
+		}
+	default:
+		if c.PrefixPostgres != "" {
+			return c.PrefixPostgres
+		}
+	}
+	return DefaultBackupPrefix(c.DatabaseType)
 }
 
 // GetBackupExtension returns the appropriate file extension based on output format

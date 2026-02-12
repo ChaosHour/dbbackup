@@ -422,19 +422,24 @@ func (m ArchiveBrowserModel) filterArchives(archives []ArchiveInfo) []ArchiveInf
 
 	var filtered []ArchiveInfo
 	for _, archive := range archives {
+		lower := strings.ToLower(archive.Name)
 		switch m.filterType {
 		case "postgres":
-			// Show all PostgreSQL formats (single DB)
+			// Show PostgreSQL formats — match by format or by prefix
 			if archive.Format.IsPostgreSQL() && !archive.Format.IsClusterBackup() {
+				filtered = append(filtered, archive)
+			} else if strings.HasPrefix(lower, "pg_") && !archive.Format.IsClusterBackup() {
 				filtered = append(filtered, archive)
 			}
 		case "mysql":
 			if archive.Format.IsMySQL() {
 				filtered = append(filtered, archive)
+			} else if strings.HasPrefix(lower, "mysql_") || strings.HasPrefix(lower, "maria_") {
+				filtered = append(filtered, archive)
 			}
 		case "cluster":
-			// Show .tar.gz cluster archives
-			if archive.Format.IsClusterBackup() {
+			// Show cluster archives (any prefix)
+			if archive.Format.IsClusterBackup() || strings.Contains(lower, "_cluster_") {
 				filtered = append(filtered, archive)
 			}
 		}
@@ -461,16 +466,51 @@ func stripFileExtensions(name string) string {
 }
 
 // extractDBNameFromFilename extracts database name from archive filename
+// Handles both legacy format (db_myapp_20260212_143000.dump)
+// and prefix format (pg_mydb_20260212_0645.dump, mysql_shop_20260212_0645.sql.gz)
 func extractDBNameFromFilename(filename string) string {
 	base := filepath.Base(filename)
 
 	// Remove extensions
 	base = stripFileExtensions(base)
 
-	// Remove timestamp patterns (YYYYMMDD_HHMMSS)
+	// Handle cluster names: {prefix}_cluster_{timestamp} or cluster_{timestamp}
+	if strings.Contains(base, "_cluster_") || strings.HasPrefix(base, "cluster_") {
+		return "cluster"
+	}
+
+	// Handle sample names: {prefix}_sample_{dbname}_{strategy}{value}_{timestamp}
+	if idx := strings.Index(base, "_sample_"); idx >= 0 {
+		rest := base[idx+len("_sample_"):]
+		parts := strings.Split(rest, "_")
+		if len(parts) > 0 {
+			return parts[0]
+		}
+	}
+	if strings.HasPrefix(base, "sample_") {
+		rest := base[len("sample_"):]
+		parts := strings.Split(rest, "_")
+		if len(parts) > 0 {
+			return parts[0]
+		}
+	}
+
+	// Strip known static prefix: db_
+	if strings.HasPrefix(base, "db_") {
+		base = base[len("db_"):]
+	} else {
+		// Strip engine prefixes: pg_, mysql_, maria_
+		for _, pfx := range []string{"mysql_", "maria_", "pg_"} {
+			if strings.HasPrefix(base, pfx) {
+				base = base[len(pfx):]
+				break
+			}
+		}
+	}
+
+	// Remove timestamp patterns (YYYYMMDD_HHMMSS) from end
 	parts := strings.Split(base, "_")
 	for i := len(parts) - 1; i >= 0; i-- {
-		// Check if part looks like a date or time
 		if len(parts[i]) == 8 || len(parts[i]) == 6 {
 			parts = parts[:i]
 		} else {
@@ -479,7 +519,7 @@ func extractDBNameFromFilename(filename string) string {
 	}
 
 	if len(parts) > 0 {
-		return parts[0]
+		return strings.Join(parts, "_")
 	}
 
 	return base

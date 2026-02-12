@@ -37,6 +37,11 @@ type LocalConfig struct {
 	BackupOutputFormat      string // compressed, plain
 	TrustFilesystemCompress bool
 
+	// Backup filename prefixes per database type
+	PrefixPostgres string // Filename prefix for PostgreSQL backups (default: pg)
+	PrefixMySQL    string // Filename prefix for MySQL backups (default: mysql)
+	PrefixMariaDB  string // Filename prefix for MariaDB backups (default: maria)
+
 	// Performance settings
 	CPUWorkload     string
 	MaxCores        int
@@ -235,6 +240,12 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.BackupOutputFormat = value
 			case "trust_filesystem_compress":
 				cfg.TrustFilesystemCompress = value == "true" || value == "1"
+			case "prefix_postgres":
+				cfg.PrefixPostgres = value
+			case "prefix_mysql":
+				cfg.PrefixMySQL = value
+			case "prefix_mariadb":
+				cfg.PrefixMariaDB = value
 			}
 		case "performance":
 			switch key {
@@ -417,6 +428,15 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 		sb.WriteString(fmt.Sprintf("backup_output_format = %s\n", cfg.BackupOutputFormat))
 	}
 	sb.WriteString(fmt.Sprintf("trust_filesystem_compress = %t\n", cfg.TrustFilesystemCompress))
+	if cfg.PrefixPostgres != "" && cfg.PrefixPostgres != "pg" {
+		sb.WriteString(fmt.Sprintf("prefix_postgres = %s\n", cfg.PrefixPostgres))
+	}
+	if cfg.PrefixMySQL != "" && cfg.PrefixMySQL != "mysql" {
+		sb.WriteString(fmt.Sprintf("prefix_mysql = %s\n", cfg.PrefixMySQL))
+	}
+	if cfg.PrefixMariaDB != "" && cfg.PrefixMariaDB != "maria" {
+		sb.WriteString(fmt.Sprintf("prefix_mariadb = %s\n", cfg.PrefixMariaDB))
+	}
 	sb.WriteString("\n")
 
 	// Performance section - ALWAYS write all values
@@ -612,6 +632,15 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.TrustFilesystemCompress {
 		cfg.TrustFilesystemCompress = true
 	}
+	if local.PrefixPostgres != "" {
+		cfg.PrefixPostgres = local.PrefixPostgres
+	}
+	if local.PrefixMySQL != "" {
+		cfg.PrefixMySQL = local.PrefixMySQL
+	}
+	if local.PrefixMariaDB != "" {
+		cfg.PrefixMariaDB = local.PrefixMariaDB
+	}
 	if local.CPUWorkload != "" {
 		cfg.CPUWorkloadType = local.CPUWorkload
 	}
@@ -762,6 +791,9 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		AutoDetectCompression:   cfg.AutoDetectCompression,
 		BackupOutputFormat:      cfg.BackupOutputFormat,
 		TrustFilesystemCompress: cfg.TrustFilesystemCompress,
+		PrefixPostgres:          cfg.PrefixPostgres,
+		PrefixMySQL:             cfg.PrefixMySQL,
+		PrefixMariaDB:           cfg.PrefixMariaDB,
 		CPUWorkload:             cfg.CPUWorkloadType,
 		MaxCores:                cfg.MaxCores,
 		AutoDetectCores:         cfg.AutoDetectCores,

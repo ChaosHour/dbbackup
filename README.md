@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.17.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.30.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -217,7 +217,7 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.15.0/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.30.0/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
@@ -471,8 +471,12 @@ All systems operational
 # Single database backup
 dbbackup backup single myapp_db
 
-# Cluster backup (PostgreSQL)
+# Cluster backup (all databases — PostgreSQL, MySQL, MariaDB)
 dbbackup backup cluster
+
+# MariaDB/MySQL cluster backup
+dbbackup backup cluster --db-type mariadb --user root
+dbbackup backup cluster --db-type mysql --user root --socket /var/run/mysqld/mysqld.sock
 
 # Sample backup (reduced data for testing)
 dbbackup backup sample myapp_db --sample-strategy percent --sample-value 10
@@ -488,6 +492,9 @@ dbbackup restore single backup.dump --target myapp_db --create --confirm
 
 # Restore cluster (adaptive job sizing is enabled by default)
 dbbackup restore cluster cluster_backup.tar.gz --confirm
+
+# Restore MariaDB/MySQL cluster
+dbbackup restore cluster cluster_backup.tar.gz --db-type mariadb --user root --confirm
 
 # Restore with specific I/O governor (for BLOB-heavy databases)
 dbbackup restore cluster backup.tar.gz --io-governor=bfq --confirm
@@ -518,34 +525,113 @@ dbbackup backup single mydb --dry-run
 
 | Command | Description |
 |---------|-------------|
+| **Backup** | |
 | `backup single` | Backup single database |
-| `backup cluster` | Backup all databases (PostgreSQL) |
+| `backup cluster` | Backup all databases (PostgreSQL, MySQL, MariaDB) |
 | `backup sample` | Backup with reduced data |
+| **Restore** | |
 | `restore single` | Restore single database |
 | `restore cluster` | Restore full cluster |
-| `restore pitr` | Point-in-Time Recovery |
+| `restore pitr` | Point-in-Time Recovery restore |
 | `restore diagnose` | Diagnose backup file integrity |
+| `restore preview` | Preview backup contents before restoring |
+| **Dedup** | |
+| `dedup backup` | Create deduplicated backup of a file |
+| `dedup backup-db` | Direct database dump with deduplication |
+| `dedup restore` | Restore from deduplicated backup |
+| `dedup list` | List deduplicated backups |
+| `dedup stats` | Show deduplication statistics |
+| `dedup gc` | Garbage collect unreferenced chunks |
+| `dedup verify` | Verify chunk integrity against manifests |
+| `dedup prune` | Apply retention policy to manifests |
+| `dedup delete` | Delete a backup manifest |
+| `dedup metrics` | Export dedup stats as Prometheus metrics |
+| **Verification** | |
 | `verify-backup` | Verify backup integrity (updates catalog for Prometheus metrics) |
 | `verify-locks` | Check PostgreSQL lock settings and get restore guidance |
-| `cleanup` | Remove old backups |
+| `verify-restore` | Systematic verification for large database restores |
+| **PITR** | |
+| `pitr enable` | Enable PostgreSQL PITR (WAL archiving) |
+| `pitr disable` | Disable PostgreSQL PITR |
+| `pitr status` | Show PITR/WAL archive status |
+| `pitr mysql-enable` | Enable MySQL/MariaDB PITR (binary logging) |
+| `pitr mysql-status` | Show MySQL/MariaDB PITR status |
+| **WAL / Binlog** | |
+| `wal archive` | Archive a WAL file |
+| `wal list` | List archived WAL files |
+| `wal cleanup` | Remove old WAL archives |
+| `wal timeline` | Show timeline branching history |
+| `binlog list` | List binary log files |
+| `binlog archive` | Archive binary log files |
+| `binlog watch` | Watch and auto-archive new binlog files |
+| `binlog validate` | Validate binlog chain integrity |
+| `binlog position` | Show current binary log position |
+| **Cloud** | |
+| `cloud upload` | Upload backup to cloud storage |
+| `cloud download` | Download backup from cloud storage |
+| `cloud list` | List backups in cloud storage |
+| `cloud delete` | Delete backup from cloud storage |
+| `cloud status` | Check cloud storage connectivity |
+| `cloud sync` | Sync local backups to cloud storage |
+| `cloud cross-region-sync` | Sync backups between cloud regions |
+| **Catalog** | |
+| `catalog sync` | Sync backups from directory into catalog |
+| `catalog list` | List backups in catalog |
+| `catalog stats` | Show catalog statistics |
+| `catalog gaps` | Detect gaps in backup schedule |
+| `catalog search` | Search backups in catalog |
+| `catalog info` | Show detailed info for a backup |
+| `catalog export` | Export catalog to CSV/HTML/JSON |
+| `catalog dashboard` | Interactive catalog browser (TUI) |
+| `catalog check` | Verify backup archives and metadata |
+| **Analysis** | |
+| `diff` | Compare two backups and show differences |
+| `estimate single` | Estimate single database backup size |
+| `estimate cluster` | Estimate full cluster backup size |
+| `forecast` | Predict future disk space requirements |
+| `cost analyze` | Analyze cloud storage costs |
+| `compression analyze` | Analyze database for optimal compression |
+| `retention-simulator` | Simulate retention policy effects |
+| **Infrastructure** | |
 | `status` | Check connection status |
 | `preflight` | Run pre-backup checks |
+| `health` | Check backup system health |
 | `list` | List databases and backups |
 | `cpu` | Show CPU optimization settings |
-| `cloud` | Cloud storage operations |
-| `pitr` | PITR management |
-| `wal` | WAL archive operations |
-| `interactive` | Start interactive UI |
-| `catalog` | Backup catalog management |
-| `drill` | DR drill testing |
-| `report` | Compliance report generation |
-| `rto` | RTO/RPO analysis |
-| `blob stats` | Analyze blob/bytea columns in database |
-| `blob backup` | Backup BLOBs with type detection, dedup, and split mode |
-| `install` | Install as systemd service |
-| `uninstall` | Remove systemd service |
+| `profile` | Profile system and show recommended settings |
+| `diagnose` | Troubleshoot common backup issues with auto-fix |
+| `validate` | Validate configuration and environment |
+| `chain` | Show backup chain (full → incremental) |
+| **Monitoring** | |
+| `rto analyze` | Analyze RTO/RPO for databases |
+| `rto status` | Show RTO/RPO status summary |
+| `rto check` | Check RTO/RPO compliance |
 | `metrics export` | Export Prometheus metrics to textfile |
 | `metrics serve` | Run Prometheus HTTP exporter |
+| `report generate` | Generate compliance report |
+| `notify test` | Test notification integrations |
+| **DR & Migration** | |
+| `drill run` | Run DR drill on a backup |
+| `drill quick` | Quick restore test with minimal validation |
+| `drill list` | List DR drill containers |
+| `drill cleanup` | Cleanup DR drill containers |
+| `migrate single` | Migrate single database to target server |
+| `migrate cluster` | Migrate entire cluster to target server |
+| **Operations** | |
+| `cleanup` | Remove old backups (supports GFS retention) |
+| `install` | Install as systemd service |
+| `uninstall` | Remove systemd service |
+| `schedule` | Show scheduled backup times |
+| `interactive` | Start interactive TUI |
+| `blob stats` | Analyze blob/bytea columns in database |
+| `blob backup` | Backup BLOBs with parallel pipeline |
+| `blob restore` | Restore BLOBs from blob archive |
+| `encryption rotate` | Rotate encryption keys |
+| `engine list` | List available backup engines |
+| `parallel-restore` | Configure and test parallel restore |
+| `completion` | Generate shell completion scripts |
+| `version` | Show version and system information |
+| `man` | Generate man pages |
 
 ## Global Flags
 
@@ -555,10 +641,14 @@ dbbackup backup single mydb --dry-run
 | `--host` | Database host | localhost |
 | `--port` | Database port | 5432/3306 |
 | `--user` | Database user | current user |
+| `--socket` | Unix socket path (MySQL/MariaDB) | - |
 | `MYSQL_PWD` / `PGPASSWORD` | Database password (env var) | - |
 | `--backup-dir` | Backup directory | ~/db_backups |
 | `--compression` | Compression level (0-9) | 6 |
 | `--jobs` | Parallel jobs | 8 |
+| `--dump-jobs` | Parallel dump jobs | (jobs) |
+| `--max-cores` | Maximum CPU cores to use | all |
+| `--cpu-workload` | Workload type (cpu-intensive/io-intensive/balanced) | balanced |
 | `--profile` | Resource profile (conservative/balanced/aggressive) | balanced |
 | `--adaptive` | Adaptive per-DB job sizing (overlays profile) | true |
 | `--io-governor` | I/O scheduler governor (auto/noop/bfq/mq-deadline/deadline) | auto |
@@ -566,8 +656,21 @@ dbbackup backup single mydb --dry-run
 | `--encrypt` | Enable encryption | false |
 | `--dry-run, -n` | Run preflight checks only | false |
 | `--debug` | Enable debug logging (activates DEBUG log level) | false |
+| `--debug-locks` | Enable detailed lock debugging | false |
 | `--save-debug-log` | Save error report to file on failure | - |
-| `--native-engine` | Use native Go restore engine | true |
+| `--native, --native-engine` | Use native Go backup/restore engine | true |
+| `--fallback-tools` | Fallback to external tools if native engine fails | false |
+| `--native-debug` | Enable detailed native engine debugging | false |
+| `--ssl-mode` | SSL mode for connections | - |
+| `--insecure` | Disable SSL (shortcut for --ssl-mode=disable) | false |
+| `--retention-days` | Backup retention period in days (0=disabled) | 0 |
+| `--min-backups` | Minimum number of backups to keep | 0 |
+| `--max-retries` | Maximum connection retry attempts | 3 |
+| `--no-config` | Skip loading saved configuration | false |
+| `--no-save-config` | Prevent saving configuration | false |
+| `--no-color` | Disable colored output | false |
+| `--allow-root` | Allow running as root/Administrator | false |
+| `--check-resources` | Check system resource limits | false |
 
 ## Encryption
 
@@ -618,13 +721,56 @@ dbbackup backup single mydb --cloud gcs://bucket/path/
 
 See [CLOUD.md](CLOUD.md) for detailed configuration.
 
-## Point-in-Time Recovery
+## Deduplicated Backups
 
-PITR for PostgreSQL allows restoring to any specific point in time:
+Content-addressed deduplication for storage-efficient backups. Uses SHA-256 chunking with a Bloom filter to eliminate duplicate data across backups.
 
 ```bash
-# Enable PITR
+# Deduplicated backup of a file
+dbbackup dedup backup /backups/mydb_20250601.dump.gz
+
+# Direct database dump with deduplication
+dbbackup dedup backup-db mydb --db-type mariadb --user root
+
+# List deduplicated backups
+dbbackup dedup list
+
+# Show deduplication statistics (savings, chunk counts)
+dbbackup dedup stats
+
+# Restore from dedup backup
+dbbackup dedup restore <manifest-id> /tmp/restored.dump.gz
+
+# Verify chunk integrity
+dbbackup dedup verify
+
+# Garbage collect unreferenced chunks
+dbbackup dedup gc
+
+# Apply retention policy to manifests
+dbbackup dedup prune --retention-days 90
+
+# Export dedup metrics for Prometheus
+dbbackup dedup metrics --output /var/lib/node_exporter/textfile_collector/dedup.prom
+```
+
+**Storage savings** depend on data similarity between backups. Typical results:
+- Daily backups of slowly-changing databases: **50–80%** reduction
+- Databases with large static BLOBs: **60–90%** reduction
+- Highly volatile databases: **20–40%** reduction
+
+## Point-in-Time Recovery
+
+PITR allows restoring databases to any specific point in time.
+
+### PostgreSQL PITR
+
+```bash
+# Enable PITR (WAL archiving)
 dbbackup pitr enable --archive-dir /backups/wal_archive
+
+# Check PITR status
+dbbackup pitr status
 
 # Restore to timestamp
 dbbackup restore pitr \
@@ -634,7 +780,29 @@ dbbackup restore pitr \
   --target-dir /var/lib/postgresql/14/restored
 ```
 
-See [PITR.md](PITR.md) for detailed documentation.
+### MySQL/MariaDB PITR
+
+```bash
+# Enable binary logging for PITR
+dbbackup pitr mysql-enable --db-type mariadb --user root
+
+# Check MySQL/MariaDB PITR status
+dbbackup pitr mysql-status --db-type mariadb --user root
+
+# List binary log files
+dbbackup binlog list --db-type mariadb --user root
+
+# Archive binary logs
+dbbackup binlog archive --db-type mariadb --user root --archive-dir /backups/binlogs
+
+# Watch for new binlogs and auto-archive
+dbbackup binlog watch --db-type mariadb --user root --archive-dir /backups/binlogs
+
+# Validate binlog chain integrity
+dbbackup binlog validate --db-type mariadb --user root
+```
+
+See [PITR.md](PITR.md) for PostgreSQL and [docs/MYSQL_PITR.md](docs/MYSQL_PITR.md) for MySQL/MariaDB.
 
 ## Backup Cleanup
 
@@ -1448,7 +1616,7 @@ See [docs/testing/phase1-manual-tests.md](docs/testing/phase1-manual-tests.md) f
 **Database Engines:**
 - [docs/ENGINES.md](docs/ENGINES.md) — Database engine configuration
 - [docs/PITR.md](docs/PITR.md) — Point-in-Time Recovery (PostgreSQL)
-- [docs/MYSQL_PITR.md](docs/MYSQL_PITR.md) — Point-in-Time Recovery (MySQL)
+- [docs/MYSQL_PITR.md](docs/MYSQL_PITR.md) — Point-in-Time Recovery (MySQL/MariaDB)
 
 **Cloud Storage:**
 - [docs/CLOUD.md](docs/CLOUD.md) — Cloud storage overview
@@ -1471,4 +1639,4 @@ See [docs/testing/phase1-manual-tests.md](docs/testing/phase1-manual-tests.md) f
 
 Apache License 2.0 - see [LICENSE](LICENSE).
 
-Copyright 2025 dbbackup Project
+Copyright 2025-2026 dbbackup Project

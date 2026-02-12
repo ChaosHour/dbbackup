@@ -259,6 +259,35 @@ dbbackup interactive --db-type mysql --socket /var/run/mysqld/mysqld.sock
 
 # Using TCP
 dbbackup interactive --db-type mysql --host 127.0.0.1 --port 3306 --user root
+
+# Using ~/.my.cnf for credentials (auto-loaded when MYSQL_PWD is not set)
+cat > ~/.my.cnf << EOF
+[client]
+user=root
+password=secret
+EOF
+chmod 0600 ~/.my.cnf
+dbbackup interactive --db-type mysql
+```
+
+> **Tip:** dbbackup automatically loads `~/.my.cnf` for MySQL/MariaDB connections when
+> no password is provided via `MYSQL_PWD` environment variable.
+
+### Binary Log / PITR Issues (MySQL/MariaDB)
+
+For binlog and PITR troubleshooting, see [MYSQL_PITR.md](MYSQL_PITR.md).
+
+### Dedup Issues
+
+```bash
+# Verify dedup store integrity
+dbbackup dedup verify
+
+# Check dedup statistics  
+dbbackup dedup stats
+
+# Garbage collect orphaned chunks
+dbbackup dedup gc --dry-run
 ```
 
 ---

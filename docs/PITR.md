@@ -1,6 +1,8 @@
 # Point-in-Time Recovery (PITR) Guide
 
-Complete guide to Point-in-Time Recovery in dbbackup v3.1.
+Complete guide to Point-in-Time Recovery in dbbackup (PostgreSQL).
+
+> **For MySQL/MariaDB PITR**, see [MYSQL_PITR.md](MYSQL_PITR.md).
 
 ## Table of Contents
 
@@ -63,7 +65,7 @@ The specific point in time you want to restore to. Can be:
 
 - PostgreSQL 9.5+ (12+ recommended for modern recovery format)
 - Sufficient disk space for WAL archives (~10-50 GB/day typical)
-- dbbackup v3.1 or later
+- dbbackup v6.0 or later
 
 ### Step 1: Enable WAL Archiving
 
@@ -730,4 +732,4 @@ PITR helps meet:
 
 ---
 
-**dbbackup v3.1** | Point-in-Time Recovery for PostgreSQL
+**dbbackup v6.30.0** | Point-in-Time Recovery for PostgreSQL

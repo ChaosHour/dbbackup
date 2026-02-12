@@ -1,6 +1,8 @@
 # MySQL/MariaDB Point-in-Time Recovery (PITR)
 
-This guide explains how to use dbbackup for Point-in-Time Recovery with MySQL and MariaDB databases.
+Binary log-based Point-in-Time Recovery for MySQL and MariaDB databases.
+
+> Available since dbbackup v6.28.0. See [PITR.md](PITR.md) for PostgreSQL PITR.
 
 ## Overview
 

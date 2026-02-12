@@ -447,7 +447,7 @@ dbbackup backup single testdb \
 ```
 
 Tests include:
-- PostgreSQL and MySQL backups
+- PostgreSQL, MySQL, and MariaDB backups
 - Upload/download operations
 - Large file handling (200MB+)
 - Verification and cleanup

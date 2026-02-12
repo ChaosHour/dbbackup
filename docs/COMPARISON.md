@@ -28,7 +28,7 @@
 - **Barman**: Wrapper around pg_dump/pg_basebackup
 
 ### Multi-Database Support  
-- **dbbackup**: PostgreSQL and MySQL in single tool
+- **dbbackup**: PostgreSQL, MySQL, and MariaDB in single tool
 - **pgBackRest**: PostgreSQL only
 - **Barman**: PostgreSQL only
 
@@ -50,7 +50,7 @@
 ## Decision Matrix
 
 ### Choose dbbackup if:
-- Managing both PostgreSQL and MySQL
+- Managing PostgreSQL, MySQL, and MariaDB
 - Need simplified operations with powerful features
 - Require disaster recovery testing automation
 - Want modern tooling with enterprise features

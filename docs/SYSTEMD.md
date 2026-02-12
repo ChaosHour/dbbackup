@@ -560,7 +560,7 @@ curl -X POST http://localhost:9090/-/reload
 
 ## Catalog Sync for Existing Backups
 
-If you have existing backups created before installing v3.41+, sync them to the catalog:
+If you have existing backups created before enabling catalog support, sync them to the catalog:
 
 ```bash
 # Sync existing backups to catalog

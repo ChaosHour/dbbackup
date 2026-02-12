@@ -1,5 +1,7 @@
 # v6.0.0 Release Summary
 
+> **Note:** This is a historical document for the v6.0.0 release. For the latest version (v6.30.0), see [CHANGELOG.md](../CHANGELOG.md).
+
 ## Overview
 
 **Release Date:** 2026-02-08

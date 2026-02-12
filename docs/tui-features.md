@@ -1,6 +1,6 @@
 # TUI Features Reference
 
-> Production-hardened interactive terminal UI for dbbackup v6.15.0
+> Production-hardened interactive terminal UI for dbbackup v6.30.0
 
 ## Overview
 
@@ -177,7 +177,7 @@ The warning appears when ALL of these are true:
 
 ---
 
-## I/O Governor Selector (v6.15.0)
+## I/O Governor Selector
 
 **What:** A setting in Configuration Settings to choose the I/O scheduling governor for BLOB operations.
 

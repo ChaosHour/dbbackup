@@ -487,13 +487,25 @@ func (m *MenuModel) View() string {
 	s += "\n"
 
 	// Menu items
+	prefix := m.config.GetBackupPrefix()
 	for i, choice := range m.choices {
+		// Inject active prefix into backup menu labels
+		display := choice
+		switch i {
+		case 0:
+			display = fmt.Sprintf("Single Database Backup  [%s_<db>_*.ext]", prefix)
+		case 1:
+			display = fmt.Sprintf("Sample Database Backup  [%s_sample_<db>_*.sql]", prefix)
+		case 2:
+			display = fmt.Sprintf("Cluster Backup (all databases)  [%s_cluster_*.ext]", prefix)
+		}
+
 		cursor := " "
 		if m.cursor == i {
 			cursor = ">"
-			s += menuSelectedStyle.Render(fmt.Sprintf("%s %s", cursor, choice))
+			s += menuSelectedStyle.Render(fmt.Sprintf("%s %s", cursor, display))
 		} else {
-			s += menuStyle.Render(fmt.Sprintf("%s %s", cursor, choice))
+			s += menuStyle.Render(fmt.Sprintf("%s %s", cursor, display))
 		}
 		s += "\n"
 	}
@@ -535,7 +547,7 @@ func (m *MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
 	}
 	confirm := NewConfirmationModelWithAction(m.config, m.logger, m,
 		"[CHECK] Cluster Backup",
-		"This will backup ALL databases in the cluster. Continue?",
+		fmt.Sprintf("This will backup ALL databases in the cluster.\nFilename: %s_cluster_<timestamp>.ext\nContinue?", m.config.GetBackupPrefix()),
 		func() (tea.Model, tea.Cmd) {
 			executor := NewBackupExecution(m.config, m.logger, m, m.ctx, "cluster", "", 0)
 			return executor, executor.Init()

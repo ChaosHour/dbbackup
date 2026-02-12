@@ -284,8 +284,12 @@ func New() *Config {
 		host = getEnvString("MYSQL_HOST", host)
 		port = getEnvInt("MYSQL_PORT", mysqlDefaultPort)
 		user = getEnvString("MYSQL_USER", user)
+		// Default database for MySQL/MariaDB: empty (connect without selecting a DB)
+		// PostgreSQL default 'postgres' is invalid for MySQL.
 		if db := getEnvString("MYSQL_DATABASE", ""); db != "" {
 			databaseName = db
+		} else if databaseName == "postgres" {
+			databaseName = ""
 		}
 		if pwd := getEnvString("MYSQL_PWD", ""); pwd != "" {
 			password = pwd
@@ -576,6 +580,14 @@ func (c *Config) SetDatabaseType(dbType string) error {
 				c.User = "postgres"
 			} else if !nowPG && c.User == "postgres" {
 				c.User = "root"
+			}
+
+			// Auto-swap default database name between engine families.
+			// 'postgres' is invalid on MySQL/MariaDB; 'mysql' is invalid on PostgreSQL.
+			if nowPG && (c.Database == "" || c.Database == "mysql") {
+				c.Database = "postgres"
+			} else if !nowPG && c.Database == "postgres" {
+				c.Database = ""
 			}
 		}
 	}

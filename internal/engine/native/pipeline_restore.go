@@ -261,6 +261,12 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 	go func() {
 		defer close(scannerDone)
 		defer close(jobChan)
+		defer func() {
+			if r := recover(); r != nil {
+				e.log.Error("Scanner goroutine panic (recovered)", "panic", fmt.Sprintf("%v", r))
+				scanErr = fmt.Errorf("scanner panic: %v", r)
+			}
+		}()
 
 		scanner := bufio.NewScanner(reader)
 		scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024) // 64MB max line
@@ -421,7 +427,18 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 		go func(workerID int) {
 			defer wg.Done()
 
-			for job := range jobChan {
+			for {
+				var job copyJob
+				var ok bool
+				select {
+				case job, ok = <-jobChan:
+					if !ok {
+						return // channel closed, worker exits
+					}
+				case <-ctx.Done():
+					return // context cancelled, worker exits
+				}
+
 				if ctx.Err() != nil {
 					// Release unreferenced chunks
 					for _, c := range job.chunks {
@@ -457,6 +474,7 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 
 				// CopyFrom reads from pipe (no FREEZE — schema created on separate connection)
 				rows, copyErr := e.streamCopyNoFreeze(ctx, job.tableName, pr)
+				pr.Close() // Unblock feeder goroutine if COPY returned early
 
 				dur := time.Since(copyStart)
 				atomic.AddInt64(&totalBytes, job.totalSize)

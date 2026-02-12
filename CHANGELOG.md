@@ -5,6 +5,14 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.25.7] - 2026-02-12
+
+### Fixed — Pipeline Restore Goroutine Deadlock
+
+- **Worker goroutines stuck forever on channel receive** — Workers used `for job := range jobChan` with no context escape. If the scanner goroutine exited abnormally (panic, error) without closing `jobChan`, all workers would block indefinitely. Replaced with `select` on both `jobChan` and `ctx.Done()` so workers always exit on cancellation.
+- **Scanner panic kills all workers** — Scanner goroutine had no `recover()`, so a panic would skip `defer close(jobChan)`, permanently blocking every worker. Added panic recovery to guarantee channel closure.
+- **Feeder goroutine leak on early COPY return** — `io.Pipe` reader was never closed after `streamCopyNoFreeze` returned, leaving the feeder goroutine blocked on a pipe write. Added `pr.Close()` after COPY completes.
+
 ## [6.25.6] - 2026-02-11
 
 ### Fixed — TUI Crash: Leaked Goroutines

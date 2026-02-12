@@ -167,8 +167,8 @@ func (t *ToolsMenu) handleCompressionAdvisor() (tea.Model, tea.Cmd) {
 
 // handleBlobExtract opens the blob extraction wizard
 func (t *ToolsMenu) handleBlobExtract() (tea.Model, tea.Cmd) {
-	t.message = warnStyle.Render("[TODO] Blob extraction - planned for v6.1")
-	return t, nil
+	view := NewBlobExtractView(t.config, t.logger, t, t.ctx)
+	return view, view.Init()
 }
 
 // handleSystemHealth opens the system health check
@@ -179,8 +179,8 @@ func (t *ToolsMenu) handleSystemHealth() (tea.Model, tea.Cmd) {
 
 // handleDedupAnalyze shows dedup store analysis
 func (t *ToolsMenu) handleDedupAnalyze() (tea.Model, tea.Cmd) {
-	t.message = warnStyle.Render("[TODO] Dedup analyze - planned for v6.1")
-	return t, nil
+	view := NewDedupAnalyzeView(t.config, t.logger, t)
+	return view, view.Init()
 }
 
 // handleVerifyIntegrity opens backup verification
@@ -192,8 +192,8 @@ func (t *ToolsMenu) handleVerifyIntegrity() (tea.Model, tea.Cmd) {
 
 // handleCatalogSync synchronizes backup catalog
 func (t *ToolsMenu) handleCatalogSync() (tea.Model, tea.Cmd) {
-	t.message = warnStyle.Render("[TODO] Catalog sync TUI - use CLI: dbbackup catalog sync")
-	return t, nil
+	view := NewCatalogSyncView(t.config, t.logger, t, t.ctx)
+	return view, view.Init()
 }
 
 // handleGenerateMetadata opens the archive metadata generator

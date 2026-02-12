@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.27.0] - 2026-02-12
+
+### Added — TUI Tools Menu: All Functions Fully Implemented
+
+- **Blob Extract (Externalize LOBs)** — New interactive TUI view that scans PostgreSQL (`bytea`/`oid`) and MySQL (`blob`/`longblob`/etc.) columns, displays sizes, and exports BLOB data to individual files. Supports column selection (toggle/all/none) with max 10,000 rows per column.
+- **Dedup Store Analyze** — New TUI view that reads the dedup chunk store (`$BACKUP_DIR/dedup/`) and displays global statistics (manifests, chunks, raw/stored sizes, dedup ratio, disk usage, chunk ages) and per-database breakdown. Uses the existing `dedup.CollectMetrics()` engine.
+- **Catalog Sync** — New TUI view that runs catalog sync against the backup directory, importing metadata into the SQLite catalog. Shows results (added/updated/removed/skipped/errors) and details inline.
+- **Active Operations (rewritten)** — Now detects real running processes (`pg_dump`, `pg_restore`, `psql`, `mysqldump`, `mysql`, `dbbackup`) via `pgrep`, shows PID/uptime/command, and lists lock/pid files in the backup directory. Supports refresh (`r` key).
+- **Clear Operation History (implemented)** — Now actually deletes `.info`, `.meta.json`, and `.sha256` files from the backup directory (with confirmation dialog). Previously only displayed a message without deleting anything.
+
 ## [6.26.1] - 2026-02-12
 
 ### Fixed — Native vs Tools Engine Consistency

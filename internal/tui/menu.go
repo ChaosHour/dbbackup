@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -297,7 +298,7 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 16: // Settings
 				return m.handleSettings()
 			case 17: // Clear History
-				m.message = "[DEL] History cleared"
+				return m.handleClearHistory()
 			case 18: // Quit
 				if m.cancel != nil {
 					m.cancel()
@@ -413,7 +414,7 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case 16: // Settings
 				return m.handleSettings()
 			case 17: // Clear History
-				m.message = "[DEL] History cleared"
+				return m.handleClearHistory()
 			case 18: // Quit
 				if m.cancel != nil {
 					m.cancel()
@@ -539,7 +540,7 @@ func (m *MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
 // handleViewOperations shows active operations
 func (m *MenuModel) handleViewOperations() (tea.Model, tea.Cmd) {
 	ops := NewOperationsView(m.config, m.logger, m)
-	return ops, nil
+	return ops, ops.Init()
 }
 
 // handleOperationHistory shows operation history
@@ -611,6 +612,64 @@ func (m *MenuModel) handleTools() (tea.Model, tea.Cmd) {
 func (m *MenuModel) handleProfile() (tea.Model, tea.Cmd) {
 	profile := NewProfileModel(m.config, m.logger, m)
 	return profile, profile.Init()
+}
+
+// handleClearHistory deletes metadata/info files from the backup directory
+func (m *MenuModel) handleClearHistory() (tea.Model, tea.Cmd) {
+	confirm := NewConfirmationModelWithAction(m.config, m.logger, m,
+		"[CHECK] Clear History",
+		"This will delete all .info and .meta.json files from the backup directory. Backup data files will NOT be deleted. Continue?",
+		func() (tea.Model, tea.Cmd) {
+			deleted := 0
+			backupDir := m.config.BackupDir
+			if backupDir == "" {
+				m.message = errorStyle.Render("[FAIL] No backup directory configured")
+				return m, nil
+			}
+
+			// Delete .info files
+			infoFiles, _ := filepath.Glob(filepath.Join(backupDir, "*.info"))
+			for _, f := range infoFiles {
+				if os.Remove(f) == nil {
+					deleted++
+				}
+			}
+
+			// Delete .meta.json files
+			metaFiles, _ := filepath.Glob(filepath.Join(backupDir, "*.meta.json"))
+			for _, f := range metaFiles {
+				if os.Remove(f) == nil {
+					deleted++
+				}
+			}
+
+			// Also check subdirectories
+			subInfoFiles, _ := filepath.Glob(filepath.Join(backupDir, "*", "*.info"))
+			for _, f := range subInfoFiles {
+				if os.Remove(f) == nil {
+					deleted++
+				}
+			}
+			subMetaFiles, _ := filepath.Glob(filepath.Join(backupDir, "*", "*.meta.json"))
+			for _, f := range subMetaFiles {
+				if os.Remove(f) == nil {
+					deleted++
+				}
+			}
+
+			// Delete .sha256 checksum files
+			shaFiles, _ := filepath.Glob(filepath.Join(backupDir, "*.sha256"))
+			for _, f := range shaFiles {
+				if os.Remove(f) == nil {
+					deleted++
+				}
+			}
+
+			m.logger.Info("History cleared", "deleted_files", deleted)
+			m.message = successStyle.Render(fmt.Sprintf("[DEL] Cleared %d history/metadata files", deleted))
+			return m, nil
+		})
+	return confirm, confirm.Init()
 }
 
 func (m *MenuModel) applyDatabaseSelection() {

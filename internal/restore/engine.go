@@ -1934,38 +1934,54 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	}
 
 	// Check if user has superuser privileges (required for ownership restoration)
+	// Only relevant for PostgreSQL
 	e.progress.Update("Checking privileges...")
-	isSuperuser, err := e.checkSuperuser(ctx)
-	if err != nil {
-		e.log.Warn("Could not verify superuser status", "error", err)
-		isSuperuser = false // Assume not superuser if check fails
-	}
+	isSuperuser := false
+	if e.cfg.IsPostgreSQL() {
+		var err error
+		isSuperuser, err = e.checkSuperuser(ctx)
+		if err != nil {
+			e.log.Warn("Could not verify superuser status", "error", err)
+			isSuperuser = false // Assume not superuser if check fails
+		}
 
-	if !isSuperuser {
-		e.log.Warn("Current user is not a superuser - database ownership may not be fully restored")
-		e.progress.Update("[WARN]  Warning: Non-superuser - ownership restoration limited")
-		sleepWithContext(ctx, 2*time.Second) // Give user time to see warning
-	} else {
-		e.log.Info("Superuser privileges confirmed - full ownership restoration enabled")
+		if !isSuperuser {
+			e.log.Warn("Current user is not a superuser - database ownership may not be fully restored")
+			e.progress.Update("[WARN]  Warning: Non-superuser - ownership restoration limited")
+			sleepWithContext(ctx, 2*time.Second) // Give user time to see warning
+		} else {
+			e.log.Info("Superuser privileges confirmed - full ownership restoration enabled")
+		}
 	}
 
 	// Restore global objects FIRST (roles, tablespaces) - CRITICAL for ownership
 	globalsFile := filepath.Join(tempDir, "globals.sql")
 	if _, err := os.Stat(globalsFile); err == nil {
-		e.log.Info("Restoring global objects (roles, tablespaces)")
-		e.progress.Update("Restoring global objects (roles, tablespaces)...")
-		if err := e.restoreGlobals(ctx, globalsFile); err != nil {
-			e.log.Error("Failed to restore global objects", "error", err)
-			if isSuperuser {
-				// If we're superuser and can't restore globals, this is a problem
-				e.progress.Fail("Failed to restore global objects")
-				operation.Fail("Global objects restoration failed")
-				return fmt.Errorf("failed to restore global objects: %w", err)
+		if e.cfg.IsMySQL() {
+			e.log.Info("Restoring global objects (users, grants)")
+			e.progress.Update("Restoring global objects (users, grants)...")
+			if err := e.restoreMySQLGlobals(ctx, globalsFile); err != nil {
+				e.log.Warn("Failed to restore MySQL globals", "error", err)
+				// Non-fatal for MySQL — individual DBs can still restore
 			} else {
-				e.log.Warn("Continuing without global objects (may cause ownership issues)")
+				e.log.Info("Successfully restored MySQL global objects")
 			}
 		} else {
-			e.log.Info("Successfully restored global objects")
+			e.log.Info("Restoring global objects (roles, tablespaces)")
+			e.progress.Update("Restoring global objects (roles, tablespaces)...")
+			if err := e.restoreGlobals(ctx, globalsFile); err != nil {
+				e.log.Error("Failed to restore global objects", "error", err)
+				if isSuperuser {
+					// If we're superuser and can't restore globals, this is a problem
+					e.progress.Fail("Failed to restore global objects")
+					operation.Fail("Global objects restoration failed")
+					return fmt.Errorf("failed to restore global objects: %w", err)
+				} else {
+					e.log.Warn("Continuing without global objects (may cause ownership issues)")
+				}
+			} else {
+				e.log.Info("Successfully restored global objects")
+			}
 		}
 	} else {
 		e.log.Warn("No globals.sql file found in backup - roles and tablespaces will not be restored")
@@ -2115,98 +2131,100 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 		guard.WarnUser(strategy, e.silentMode)
 	}
 
-	// Calculate optimal lock boost based on BLOB count
-	lockBoostValue := 2048 // Default
-	if preflight != nil && preflight.Archive.RecommendedLockBoost > 0 {
-		lockBoostValue = preflight.Archive.RecommendedLockBoost
-	}
-
-	// AUTO-TUNE: Boost PostgreSQL settings for large restores
-	e.progress.Update("Tuning PostgreSQL for large restore...")
-
-	if e.cfg.DebugLocks {
-		e.log.Debug("Lock boost: attempting to boost PostgreSQL lock settings",
-			"target_max_locks", lockBoostValue,
-			"conservative_mode", strategy.UseConservative)
-	}
-
-	originalSettings, tuneErr := e.boostPostgreSQLSettings(ctx, lockBoostValue)
-	if tuneErr != nil {
-		e.log.Error("Could not boost PostgreSQL settings", "error", tuneErr)
-
-		if e.cfg.DebugLocks {
-			e.log.Error("Lock boost: attempt failed",
-				"error", tuneErr,
-				"phase", "boostPostgreSQLSettings")
+	// PostgreSQL-specific tuning and lock boosting (skip for MySQL/MariaDB)
+	var originalSettings *OriginalSettings
+	if e.cfg.IsPostgreSQL() {
+		// Calculate optimal lock boost based on BLOB count
+		lockBoostValue := 2048 // Default
+		if preflight != nil && preflight.Archive.RecommendedLockBoost > 0 {
+			lockBoostValue = preflight.Archive.RecommendedLockBoost
 		}
 
-		operation.Fail("PostgreSQL tuning failed")
-		return fmt.Errorf("failed to boost PostgreSQL settings: %w", tuneErr)
-	}
-
-	if e.cfg.DebugLocks {
-		e.log.Debug("Lock boost: function returned",
-			"original_max_locks", originalSettings.MaxLocks,
-			"target_max_locks", lockBoostValue,
-			"boost_successful", originalSettings.MaxLocks >= lockBoostValue)
-	}
-
-	// INFORMATIONAL: Check if locks are sufficient, but DO NOT override user's Jobs setting
-	// The user explicitly chose their profile/jobs - respect that choice
-	if originalSettings.MaxLocks < lockBoostValue {
-		e.log.Warn("⚠️ PostgreSQL locks may be insufficient for optimal restore",
-			"current_locks", originalSettings.MaxLocks,
-			"recommended_locks", lockBoostValue,
-			"user_jobs", e.cfg.Jobs,
-			"user_parallelism", e.cfg.ClusterParallelism)
+		// AUTO-TUNE: Boost PostgreSQL settings for large restores
+		e.progress.Update("Tuning PostgreSQL for large restore...")
 
 		if e.cfg.DebugLocks {
-			e.log.Debug("Lock verification: warning (user settings preserved)",
-				"actual_locks", originalSettings.MaxLocks,
+			e.log.Debug("Lock boost: attempting to boost PostgreSQL lock settings",
+				"target_max_locks", lockBoostValue,
+				"conservative_mode", strategy.UseConservative)
+		}
+
+		var tuneErr error
+		originalSettings, tuneErr = e.boostPostgreSQLSettings(ctx, lockBoostValue)
+		if tuneErr != nil {
+			e.log.Error("Could not boost PostgreSQL settings", "error", tuneErr)
+
+			if e.cfg.DebugLocks {
+				e.log.Error("Lock boost: attempt failed",
+					"error", tuneErr,
+					"phase", "boostPostgreSQLSettings")
+			}
+
+			operation.Fail("PostgreSQL tuning failed")
+			return fmt.Errorf("failed to boost PostgreSQL settings: %w", tuneErr)
+		}
+
+		if e.cfg.DebugLocks {
+			e.log.Debug("Lock boost: function returned",
+				"original_max_locks", originalSettings.MaxLocks,
+				"target_max_locks", lockBoostValue,
+				"boost_successful", originalSettings.MaxLocks >= lockBoostValue)
+		}
+
+		// INFORMATIONAL: Check if locks are sufficient, but DO NOT override user's Jobs setting
+		if originalSettings.MaxLocks < lockBoostValue {
+			e.log.Warn("⚠️ PostgreSQL locks may be insufficient for optimal restore",
+				"current_locks", originalSettings.MaxLocks,
 				"recommended_locks", lockBoostValue,
-				"delta", lockBoostValue-originalSettings.MaxLocks,
-				"verdict", "PROCEEDING WITH USER SETTINGS")
+				"user_jobs", e.cfg.Jobs,
+				"user_parallelism", e.cfg.ClusterParallelism)
+
+			if e.cfg.DebugLocks {
+				e.log.Debug("Lock verification: warning (user settings preserved)",
+					"actual_locks", originalSettings.MaxLocks,
+					"recommended_locks", lockBoostValue,
+					"delta", lockBoostValue-originalSettings.MaxLocks,
+					"verdict", "PROCEEDING WITH USER SETTINGS")
+			}
+
+			e.log.Warn("=" + strings.Repeat("=", 70))
+			e.log.Warn("LOCK WARNING (user settings preserved):")
+			e.log.Warn("Current locks: %d, Recommended: %d", originalSettings.MaxLocks, lockBoostValue)
+			e.log.Warn("Using user-configured: jobs=%d, cluster-parallelism=%d", e.cfg.Jobs, e.cfg.ClusterParallelism)
+			e.log.Warn("If restore fails with lock errors, reduce --jobs or use --profile conservative")
+			e.log.Warn("=" + strings.Repeat("=", 70))
+
+			e.log.Info("Proceeding with user settings",
+				"jobs", e.cfg.Jobs,
+				"cluster_parallelism", e.cfg.ClusterParallelism,
+				"available_locks", originalSettings.MaxLocks,
+				"note", "User profile settings respected")
 		}
 
-		// WARN but DO NOT override user's settings
-		e.log.Warn("=" + strings.Repeat("=", 70))
-		e.log.Warn("LOCK WARNING (user settings preserved):")
-		e.log.Warn("Current locks: %d, Recommended: %d", originalSettings.MaxLocks, lockBoostValue)
-		e.log.Warn("Using user-configured: jobs=%d, cluster-parallelism=%d", e.cfg.Jobs, e.cfg.ClusterParallelism)
-		e.log.Warn("If restore fails with lock errors, reduce --jobs or use --profile conservative")
-		e.log.Warn("=" + strings.Repeat("=", 70))
+		e.log.Info("PostgreSQL tuning verified - locks sufficient for restore",
+			"max_locks_per_transaction", originalSettings.MaxLocks,
+			"target_locks", lockBoostValue,
+			"maintenance_work_mem", "2GB",
+			"conservative_mode", strategy.UseConservative)
 
-		// DO NOT force Jobs=1 anymore - respect user's choice!
-		// The previous code here was overriding e.cfg.Jobs = 1 which broke turbo/performance profiles
-
-		e.log.Info("Proceeding with user settings",
-			"jobs", e.cfg.Jobs,
-			"cluster_parallelism", e.cfg.ClusterParallelism,
-			"available_locks", originalSettings.MaxLocks,
-			"note", "User profile settings respected")
-	}
-
-	e.log.Info("PostgreSQL tuning verified - locks sufficient for restore",
-		"max_locks_per_transaction", originalSettings.MaxLocks,
-		"target_locks", lockBoostValue,
-		"maintenance_work_mem", "2GB",
-		"conservative_mode", strategy.UseConservative)
-
-	if e.cfg.DebugLocks {
-		e.log.Debug("Lock verification: passed",
-			"actual_locks", originalSettings.MaxLocks,
-			"required_locks", lockBoostValue,
-			"verdict", "PROCEED WITH RESTORE")
-	}
-
-	// Ensure we reset settings when done (even on failure)
-	defer func() {
-		if resetErr := e.resetPostgreSQLSettings(ctx, originalSettings); resetErr != nil {
-			e.log.Warn("Could not reset PostgreSQL settings", "error", resetErr)
-		} else {
-			e.log.Info("Reset PostgreSQL settings to original values")
+		if e.cfg.DebugLocks {
+			e.log.Debug("Lock verification: passed",
+				"actual_locks", originalSettings.MaxLocks,
+				"required_locks", lockBoostValue,
+				"verdict", "PROCEED WITH RESTORE")
 		}
-	}()
+	}
+
+	// Ensure we reset PostgreSQL settings when done (even on failure)
+	if originalSettings != nil {
+		defer func() {
+			if resetErr := e.resetPostgreSQLSettings(ctx, originalSettings); resetErr != nil {
+				e.log.Warn("Could not reset PostgreSQL settings", "error", resetErr)
+			} else {
+				e.log.Info("Reset PostgreSQL settings to original values")
+			}
+		}()
+	}
 
 	var restoreErrors *multierror.Error
 	var restoreErrorsMu sync.Mutex
@@ -2223,6 +2241,8 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 				dbName := entry.Name()
 				dbName = strings.TrimSuffix(dbName, ".dump")
 				dbName = strings.TrimSuffix(dbName, ".sql.gz")
+				dbName = strings.TrimSuffix(dbName, ".sql.zst")
+				dbName = strings.TrimSuffix(dbName, ".sql")
 				dbSizes[dbName] = info.Size()
 				totalBytes += info.Size()
 			}
@@ -2394,6 +2414,8 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			dbName := filename
 			dbName = strings.TrimSuffix(dbName, ".dump")
 			dbName = strings.TrimSuffix(dbName, ".sql.gz")
+			dbName = strings.TrimSuffix(dbName, ".sql.zst")
+			dbName = strings.TrimSuffix(dbName, ".sql")
 
 			// Log adaptive sizing info per database in cluster restore
 			if e.cfg.AdaptiveJobs {
@@ -2451,7 +2473,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 
 			// STEP 3: Restore with ownership preservation if superuser
 			preserveOwnership := isSuperuser
-			isCompressedSQL := strings.HasSuffix(dumpFile, ".sql.gz")
+			isCompressedSQL := strings.HasSuffix(dumpFile, ".sql.gz") || strings.HasSuffix(dumpFile, ".sql.zst")
 
 			// Get expected size for this database for progress estimation
 			expectedDBSize := dbSizes[dbName]
@@ -2511,7 +2533,14 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			}()
 
 			var restoreErr error
-			if isCompressedSQL {
+			if e.cfg.IsMySQL() {
+				// MySQL/MariaDB restore path
+				isMySQLCompressed := strings.HasSuffix(dumpFile, ".sql.gz") || strings.HasSuffix(dumpFile, ".sql.zst")
+				mu.Lock()
+				e.log.Info("Restoring MySQL database", "file", dumpFile, "database", dbName, "compressed", isMySQLCompressed)
+				mu.Unlock()
+				restoreErr = e.restoreMySQLSQL(ctx, dumpFile, dbName, isMySQLCompressed)
+			} else if isCompressedSQL {
 				mu.Lock()
 				if e.cfg.UseNativeEngine {
 					e.log.Info("Detected compressed SQL format, using native Go engine", "file", dumpFile, "database", dbName)
@@ -2883,6 +2912,46 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 	if errorCount > 0 {
 		e.log.Info("Globals restore completed with some errors (usually 'already exists' - expected)",
 			"error_count", errorCount)
+	}
+
+	return nil
+}
+
+// restoreMySQLGlobals restores MySQL/MariaDB global objects from globals.sql
+// Pipes the dump through the mysql CLI to restore users, grants, etc.
+func (e *Engine) restoreMySQLGlobals(ctx context.Context, globalsFile string) error {
+	args := []string{"-u", e.cfg.User}
+
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		args = append(args, "-h", e.cfg.Host)
+	}
+	args = append(args, "-P", fmt.Sprintf("%d", e.cfg.Port))
+	args = append(args, "mysql") // target the mysql system database
+
+	cmd := cleanup.SafeCommand(ctx, "mysql", args...)
+	cmd.Env = os.Environ()
+	if e.cfg.Password != "" {
+		cmd.Env = append(cmd.Env, "MYSQL_PWD="+e.cfg.Password)
+	}
+
+	// Pipe globals.sql through stdin
+	globalsData, err := os.Open(globalsFile)
+	if err != nil {
+		return fmt.Errorf("failed to open globals file: %w", err)
+	}
+	defer globalsData.Close()
+
+	cmd.Stdin = globalsData
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		outStr := strings.TrimSpace(string(output))
+		// Ignore "already exists" errors — common on re-restore
+		if strings.Contains(outStr, "already exists") {
+			e.log.Debug("MySQL globals restore: some objects already exist (expected)", "output", outStr)
+			return nil
+		}
+		return fmt.Errorf("mysql globals restore failed: %w\nOutput: %s", err, outStr)
 	}
 
 	return nil

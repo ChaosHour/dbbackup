@@ -21,8 +21,8 @@ import (
 
 // runClusterBackup performs a full cluster backup
 func runClusterBackup(ctx context.Context) error {
-	if !cfg.IsPostgreSQL() {
-		return fmt.Errorf("cluster backup requires PostgreSQL (detected: %s). Use 'backup single' for individual database backups", cfg.DisplayDatabaseType())
+	if !cfg.IsPostgreSQL() && !cfg.IsMySQL() {
+		return fmt.Errorf("cluster backup requires PostgreSQL or MariaDB/MySQL (detected: %s). Use 'backup single' for individual database backups", cfg.DisplayDatabaseType())
 	}
 
 	// Update config from environment
@@ -96,9 +96,23 @@ func runClusterBackup(ctx context.Context) error {
 	if err := db.Connect(ctx); err != nil {
 		rateLimiter.RecordFailure(host)
 		auditLogger.LogBackupFailed(user, "all_databases", err)
-		return fmt.Errorf("failed to connect to %s@%s:%d. Check: 1) Database is running 2) Credentials are correct 3) pg_hba.conf allows connection: %w", cfg.User, cfg.Host, cfg.Port, err)
+		connHint := "pg_hba.conf allows connection"
+		if cfg.IsMySQL() {
+			connHint = "user has required privileges"
+		}
+		return fmt.Errorf("failed to connect to %s@%s:%d. Check: 1) Database is running 2) Credentials are correct 3) %s: %w", cfg.User, cfg.Host, cfg.Port, connHint, err)
 	}
 	rateLimiter.RecordSuccess(host)
+
+	// Galera cluster handling for MariaDB/MySQL
+	if cfg.IsMySQL() {
+		if myDB, ok := db.(*database.MySQL); ok {
+			if err := handleGaleraCluster(ctx, myDB.GetConn()); err != nil {
+				auditLogger.LogBackupFailed(user, "all_databases", err)
+				return fmt.Errorf("galera cluster check failed: %w", err)
+			}
+		}
+	}
 
 	// Create backup engine
 	engine := backup.New(cfg, log, db)

@@ -50,8 +50,45 @@ func (e *Engine) terminateConnections(ctx context.Context, dbName string) error 
 }
 
 // dropDatabaseIfExists drops a database completely (clean slate)
-// Uses PostgreSQL 13+ WITH (FORCE) option to forcefully drop even with active connections
+// Routes to PostgreSQL or MySQL implementation based on config
 func (e *Engine) dropDatabaseIfExists(ctx context.Context, dbName string) error {
+	if e.cfg.IsMySQL() {
+		return e.dropMySQLDatabaseIfExists(ctx, dbName)
+	}
+	return e.dropPostgresDatabaseIfExists(ctx, dbName)
+}
+
+// dropMySQLDatabaseIfExists drops a MySQL/MariaDB database using the mysql CLI
+func (e *Engine) dropMySQLDatabaseIfExists(ctx context.Context, dbName string) error {
+	safeDB := strings.ReplaceAll(dbName, "`", "``")
+	args := []string{
+		"-u", e.cfg.User,
+		"-P", fmt.Sprintf("%d", e.cfg.Port),
+		"-e", fmt.Sprintf("DROP DATABASE IF EXISTS `%s`", safeDB),
+	}
+
+	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+		args = append([]string{"-h", e.cfg.Host}, args...)
+	}
+
+	cmd := cleanup.SafeCommand(ctx, "mysql", args...)
+	cmd.Env = os.Environ()
+	if e.cfg.Password != "" {
+		cmd.Env = append(cmd.Env, "MYSQL_PWD="+e.cfg.Password)
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to drop MySQL database '%s': %w\nOutput: %s", dbName, err, string(output))
+	}
+
+	e.log.Info("Dropped MySQL database", "name", dbName)
+	return nil
+}
+
+// dropPostgresDatabaseIfExists drops a PostgreSQL database completely (clean slate)
+// Uses PostgreSQL 13+ WITH (FORCE) option to forcefully drop even with active connections
+func (e *Engine) dropPostgresDatabaseIfExists(ctx context.Context, dbName string) error {
 	// First terminate all connections
 	if err := e.terminateConnections(ctx, dbName); err != nil {
 		e.log.Warn("Could not terminate connections", "database", dbName, "error", err)

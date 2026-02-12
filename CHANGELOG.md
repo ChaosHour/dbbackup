@@ -5,6 +5,17 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.26.0] - 2026-02-12
+
+### Added — MariaDB/MySQL Cluster Backup & Restore
+
+- **Cluster backup for MariaDB/MySQL** — `backup cluster` now supports MariaDB and MySQL in addition to PostgreSQL. Uses `mysqldump` per-database with parallel workers, compressed output (gzip/zstd), and the same archive format (`cluster_<timestamp>.tar.gz`) as PostgreSQL cluster backups.
+- **Cluster restore for MariaDB/MySQL** — `restore cluster` detects MySQL dump files in cluster archives and routes through the `mysql` CLI (or native engine when enabled). Handles `.sql`, `.sql.gz`, and `.sql.zst` dump files.
+- **MySQL globals backup/restore** — Exports the `mysql` system database (users, grants, stored procedures) as `globals.sql` during cluster backup, and restores it before individual databases.
+- **Galera cluster awareness** — Cluster backup automatically detects Galera clusters, validates node health, and optionally enables desync mode (`--galera-desync`) to reduce cluster impact during backup.
+- **TUI support** — Cluster Backup and Restore Cluster menu items now work for MariaDB/MySQL targets (previously PostgreSQL-only).
+- **CLI support** — `dbbackup backup cluster` and `dbbackup restore cluster` commands accept MariaDB/MySQL connections with full Galera handling.
+
 ## [6.25.9] - 2026-02-12
 
 ### Fixed — Native Engine Empty Backup Detection

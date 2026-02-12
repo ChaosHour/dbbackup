@@ -22,6 +22,7 @@ import (
 	comp "dbbackup/internal/compression"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	galera "dbbackup/internal/engine"
 	"dbbackup/internal/engine/native"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
@@ -404,10 +405,10 @@ func (e *Engine) BackupSample(ctx context.Context, databaseName string) error {
 	return nil
 }
 
-// BackupCluster performs a full cluster backup (PostgreSQL only)
+// BackupCluster performs a full cluster backup (PostgreSQL and MariaDB/MySQL)
 func (e *Engine) BackupCluster(ctx context.Context) error {
-	if !e.cfg.IsPostgreSQL() {
-		return fmt.Errorf("cluster backup is only supported for PostgreSQL")
+	if !e.cfg.IsPostgreSQL() && !e.cfg.IsMySQL() {
+		return fmt.Errorf("cluster backup requires PostgreSQL or MariaDB/MySQL (detected: %s)", e.cfg.DisplayDatabaseType())
 	}
 
 	operation := e.log.StartOperation("Cluster Backup")
@@ -506,12 +507,50 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		defer os.RemoveAll(tempDir)
 	}
 
-	// Backup globals
+	// Backup globals (users, roles, grants)
 	e.printf("   Backing up global objects...\n")
-	if err := e.backupGlobals(ctx, tempDir); err != nil {
-		quietProgress.Fail(fmt.Sprintf("Failed to backup globals: %v", err))
+	var globalsErr error
+	if e.cfg.IsMySQL() {
+		globalsErr = e.backupMySQLGlobals(ctx, tempDir)
+	} else {
+		globalsErr = e.backupGlobals(ctx, tempDir)
+	}
+	if globalsErr != nil {
+		quietProgress.Fail(fmt.Sprintf("Failed to backup globals: %v", globalsErr))
 		operation.Fail("Global backup failed")
-		return fmt.Errorf("failed to backup globals: %w", err)
+		return fmt.Errorf("failed to backup globals: %w", globalsErr)
+	}
+
+	// Galera cluster handling for MariaDB/MySQL
+	if e.cfg.IsMySQL() && e.cfg.GaleraHealthCheck {
+		if myDB, ok := e.db.(*database.MySQL); ok && myDB != nil {
+			sqlDB := myDB.GetConn()
+			if sqlDB != nil {
+				clusterInfo, galeraErr := galera.DetectGaleraCluster(ctx, sqlDB)
+				if galeraErr == nil {
+					e.printf("   [INFO] Galera cluster detected: %s (size=%d, state=%s)\n",
+						clusterInfo.NodeName, clusterInfo.ClusterSize, clusterInfo.LocalStateString())
+					if !clusterInfo.IsHealthyForBackup() {
+						e.log.Warn("Galera node not healthy for backup", "summary", clusterInfo.HealthSummary())
+						e.printf("   [WARN] Galera node health: %s\n", clusterInfo.HealthSummary())
+					}
+					if e.cfg.GaleraDesync {
+						e.printf("   [INFO] Enabling Galera desync mode for backup\n")
+						if dsErr := galera.SetDesyncMode(ctx, sqlDB, true); dsErr != nil {
+							e.log.Warn("Failed to enable desync", "error", dsErr)
+						} else {
+							defer func() {
+								if dsErr := galera.SetDesyncMode(ctx, sqlDB, false); dsErr != nil {
+									e.log.Error("Failed to disable desync", "error", dsErr)
+								}
+							}()
+						}
+					}
+				} else {
+					e.log.Debug("Not a Galera cluster, skipping cluster checks")
+				}
+			}
+		}
 	}
 
 	// Get list of databases
@@ -619,6 +658,57 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 				e.printf("       [WARN]  Large database detected - this may take a while\n")
 			}
 			mu.Unlock()
+
+			// MySQL/MariaDB per-database backup path (uses mysqldump)
+			if e.cfg.IsMySQL() {
+				algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
+				ext := comp.FileExtension(algo)
+				sqlFile := filepath.Join(tempDir, "dumps", name+".sql"+ext)
+				mu.Lock()
+				e.printf("       Using mysqldump engine\n")
+				mu.Unlock()
+
+				options := database.BackupOptions{
+					Compression: 0, // compression handled externally
+				}
+				cmdArgs := e.db.BuildBackupCommand(name, "", options)
+
+				// Set up live file size monitoring
+				monitorCtx, cancelMonitor := context.WithCancel(ctx)
+				go e.monitorFileSize(monitorCtx, sqlFile, completedBytes, 2*time.Second)
+
+				var backupErr error
+				if e.cfg.CompressionLevel > 0 {
+					backupErr = e.executeMySQLWithCompression(ctx, cmdArgs, sqlFile)
+				} else {
+					// Uncompressed: pipe mysqldump stdout to file
+					sqlFile = filepath.Join(tempDir, "dumps", name+".sql")
+					backupErr = e.executeMySQLToFile(ctx, cmdArgs, sqlFile)
+				}
+
+				cancelMonitor()
+
+				if backupErr != nil {
+					e.log.Warn("Failed to backup database", "database", name, "error", backupErr)
+					mu.Lock()
+					e.printf("   [WARN]  WARNING: Failed to backup %s: %v\n", name, backupErr)
+					mu.Unlock()
+					atomic.AddInt32(&failCount, 1)
+					doneAfter := int(atomic.AddInt32(&dbCompleted, 1))
+					e.reportDatabaseProgress(doneAfter, len(databases), name, atomic.LoadInt64(&completedBytes), totalBytes)
+				} else {
+					atomic.AddInt64(&completedBytes, thisDbSize)
+					if info, statErr := os.Stat(sqlFile); statErr == nil {
+						mu.Lock()
+						e.printf("   [OK] Completed %s (%s) [mysqldump]\n", name, formatBytes(info.Size()))
+						mu.Unlock()
+					}
+					atomic.AddInt32(&successCount, 1)
+					doneAfter := int(atomic.AddInt32(&dbCompleted, 1))
+					e.reportDatabaseProgress(doneAfter, len(databases), name, atomic.LoadInt64(&completedBytes), totalBytes)
+				}
+				return
+			}
 
 			dumpFile := filepath.Join(tempDir, "dumps", name+".dump")
 
@@ -1197,6 +1287,61 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	return nil
 }
 
+// executeMySQLToFile runs mysqldump and writes stdout directly to a file (no compression)
+func (e *Engine) executeMySQLToFile(ctx context.Context, cmdArgs []string, outputFile string) error {
+	dumpCmd := cleanup.SafeCommand(ctx, cmdArgs[0], cmdArgs[1:]...)
+	dumpCmd.Env = os.Environ()
+	if e.cfg.Password != "" {
+		dumpCmd.Env = append(dumpCmd.Env, "MYSQL_PWD="+e.cfg.Password)
+	}
+
+	outFile, err := fs.SecureCreate(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outFile.Close()
+
+	pipe, err := dumpCmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create pipe: %w", err)
+	}
+
+	if err := dumpCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start mysqldump: %w", err)
+	}
+
+	copyDone := make(chan error, 1)
+	go func() {
+		_, err := fs.CopyWithContext(ctx, outFile, pipe)
+		copyDone <- err
+	}()
+
+	dumpDone := make(chan error, 1)
+	go func() {
+		dumpDone <- dumpCmd.Wait()
+	}()
+
+	var dumpErr error
+	select {
+	case dumpErr = <-dumpDone:
+	case <-ctx.Done():
+		e.log.Warn("Backup cancelled - killing mysqldump process group")
+		cleanup.KillCommandGroup(dumpCmd)
+		<-dumpDone
+		return ctx.Err()
+	}
+
+	if copyErr := <-copyDone; copyErr != nil {
+		return fmt.Errorf("write failed: %w", copyErr)
+	}
+
+	if dumpErr != nil {
+		return fmt.Errorf("mysqldump failed: %w", dumpErr)
+	}
+
+	return nil
+}
+
 // createSampleBackup creates a sample backup with reduced dataset
 func (e *Engine) createSampleBackup(ctx context.Context, databaseName, outputFile string) error {
 	// This is a simplified implementation
@@ -1326,6 +1471,84 @@ func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 	}
 	if readErr != nil {
 		return fmt.Errorf("failed to read pg_dumpall output: %w", readErr)
+	}
+
+	return os.WriteFile(globalsFile, output, 0644)
+}
+
+// backupMySQLGlobals creates a backup of MySQL/MariaDB global objects (users, grants, system tables)
+func (e *Engine) backupMySQLGlobals(ctx context.Context, tempDir string) error {
+	globalsFile := filepath.Join(tempDir, "globals.sql")
+
+	// Build mysqldump command to export the 'mysql' system database
+	// This captures users, grants, stored procedures in the mysql schema, etc.
+	args := []string{"mysqldump"}
+
+	// Connection parameters
+	if e.cfg.Socket != "" {
+		args = append(args, "-S", e.cfg.Socket)
+		args = append(args, "-u", e.cfg.User)
+	} else if e.cfg.Host == "" || e.cfg.Host == "localhost" {
+		args = append(args, "-u", e.cfg.User)
+	} else {
+		args = append(args, "-h", e.cfg.Host)
+		args = append(args, "-P", fmt.Sprintf("%d", e.cfg.Port))
+		args = append(args, "-u", e.cfg.User)
+	}
+
+	args = append(args, "--single-transaction", "--routines", "--events", "--triggers")
+	args = append(args, "--flush-privileges")
+	args = append(args, "mysql") // system database for users/grants
+
+	cmd := cleanup.SafeCommand(ctx, args[0], args[1:]...)
+	cmd.Env = os.Environ()
+	if e.cfg.Password != "" {
+		cmd.Env = append(cmd.Env, "MYSQL_PWD="+e.cfg.Password)
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start mysqldump for globals: %w", err)
+	}
+
+	var output []byte
+	var readErr error
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
+		output, readErr = io.ReadAll(stdout)
+	}()
+
+	cmdDone := make(chan error, 1)
+	go func() {
+		cmdDone <- cmd.Wait()
+	}()
+
+	var cmdErr error
+	select {
+	case cmdErr = <-cmdDone:
+	case <-ctx.Done():
+		e.log.Warn("Globals backup cancelled - killing mysqldump process group")
+		cleanup.KillCommandGroup(cmd)
+		<-cmdDone
+		return ctx.Err()
+	}
+
+	<-readDone
+
+	if cmdErr != nil {
+		// mysqldump of 'mysql' schema may fail with warnings on some systems.
+		// Fall back to a FLUSH PRIVILEGES stub so cluster restore can still proceed.
+		e.log.Warn("mysqldump globals failed, writing stub globals.sql", "error", cmdErr)
+		stub := fmt.Sprintf("-- dbbackup: globals backup failed (%v)\n-- Run FLUSH PRIVILEGES after restore if needed.\nFLUSH PRIVILEGES;\n", cmdErr)
+		return os.WriteFile(globalsFile, []byte(stub), 0644)
+	}
+	if readErr != nil {
+		return fmt.Errorf("failed to read mysqldump output: %w", readErr)
 	}
 
 	return os.WriteFile(globalsFile, output, 0644)

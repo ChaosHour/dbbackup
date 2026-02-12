@@ -517,8 +517,8 @@ func (m *MenuModel) handleSampleBackup() (tea.Model, tea.Cmd) {
 
 // handleClusterBackup shows confirmation and executes cluster backup
 func (m *MenuModel) handleClusterBackup() (tea.Model, tea.Cmd) {
-	if !m.config.IsPostgreSQL() {
-		m.message = errorStyle.Render("[FAIL] Cluster backup is available only for PostgreSQL targets")
+	if !m.config.IsPostgreSQL() && !m.config.IsMySQL() {
+		m.message = errorStyle.Render("[FAIL] Cluster backup requires PostgreSQL or MariaDB/MySQL")
 		return m, nil
 	}
 	// Skip confirmation in auto-confirm mode
@@ -569,8 +569,8 @@ func (m *MenuModel) handleRestoreSingle() (tea.Model, tea.Cmd) {
 
 // handleRestoreCluster opens archive browser for cluster restore
 func (m *MenuModel) handleRestoreCluster() (tea.Model, tea.Cmd) {
-	if !m.config.IsPostgreSQL() {
-		m.message = errorStyle.Render("[FAIL] Cluster restore is available only for PostgreSQL")
+	if !m.config.IsPostgreSQL() && !m.config.IsMySQL() {
+		m.message = errorStyle.Render("[FAIL] Cluster restore requires PostgreSQL or MariaDB/MySQL")
 		return m, nil
 	}
 	browser := NewArchiveBrowser(m.config, m.logger, m, m.ctx, "restore-cluster")

@@ -263,7 +263,10 @@ func (f ArchiveFormat) CanBeClusterRestore() bool {
 	return f == FormatClusterTarGz ||
 		f == FormatClusterDir ||
 		f == FormatPostgreSQLSQL ||
-		f == FormatPostgreSQLSQLGz
+		f == FormatPostgreSQLSQLGz ||
+		f == FormatMySQLSQL ||
+		f == FormatMySQLSQLGz ||
+		f == FormatMySQLSQLZst
 }
 
 // IsPostgreSQL returns true if the archive is PostgreSQL format

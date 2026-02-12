@@ -5,6 +5,14 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.25.8] - 2026-02-12
+
+### Fixed — Cluster Backup Progress Display
+
+- **Progress counted databases at start, not completion** — `dbDone` was set to `idx+1` when a database backup *started*, making the TUI progress jump ahead of reality. Now uses a separate `dbCompleted` atomic counter that increments only after each database finishes.
+- **No post-completion progress callback** — After a database finished backing up, `completedBytes` was updated but no callback fired to notify the TUI. Now fires a completion callback with accurate byte counts after each database succeeds or fails.
+- **Phase 3 (compressing) never signaled** — The TUI stayed frozen at Phase 2 progress during archive compression. Now signals `backupPhaseCompressing` before `createArchive` runs, so the TUI displays "Phase 3/3: Compressing Archive".
+
 ## [6.25.7] - 2026-02-12
 
 ### Fixed — Pipeline Restore Goroutine Deadlock

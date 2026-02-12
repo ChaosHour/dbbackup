@@ -394,8 +394,15 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 			progressState.dbName = currentDB
 			progressState.bytesDone = bytesDone
 			progressState.bytesTotal = bytesTotal
-			progressState.overallPhase = backupPhaseDatabases
-			progressState.phaseDesc = fmt.Sprintf("Phase 2/3: Backing up Databases (%d/%d)", done, total)
+
+			// Detect Phase 3 transition: all DBs done + "compressing" signal
+			if currentDB == "compressing" && done == total && total > 0 {
+				progressState.overallPhase = backupPhaseCompressing
+				progressState.phaseDesc = "Phase 3/3: Compressing Archive"
+			} else {
+				progressState.overallPhase = backupPhaseDatabases
+				progressState.phaseDesc = fmt.Sprintf("Phase 2/3: Backing up Databases (%d/%d)", done, total)
+			}
 			progressState.hasUpdate = true
 			// Set phase 2 start time on first callback (for realtime ETA calculation)
 			if progressState.phase2StartTime.IsZero() {

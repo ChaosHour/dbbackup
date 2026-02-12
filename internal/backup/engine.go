@@ -556,7 +556,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 
 	// Use worker pool for parallel backup
 	var successCount, failCount int32
-	var mu sync.Mutex // Protect shared resources (printf, estimator)
+	var dbCompleted int32 // Track actually completed databases (not started)
+	var mu sync.Mutex     // Protect shared resources (printf, estimator)
 
 	// Create semaphore to limit concurrency
 	semaphore := make(chan struct{}, parallelism)
@@ -605,8 +606,9 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			estimator.UpdateProgress(idx)
 			e.printf("   [%d/%d] Backing up database: %s\n", idx+1, len(databases), name)
 			quietProgress.Update(fmt.Sprintf("Backing up database %d/%d: %s", idx+1, len(databases), name))
-			// Report database progress to TUI callback with size-weighted info
-			e.reportDatabaseProgress(idx+1, len(databases), name, completedBytes, totalBytes)
+			// Report database STARTED to TUI — dbDone = actually completed count (not idx+1)
+			doneNow := int(atomic.LoadInt32(&dbCompleted))
+			e.reportDatabaseProgress(doneNow, len(databases), name, atomic.LoadInt64(&completedBytes), totalBytes)
 			mu.Unlock()
 
 			// Use cached size, warn if very large
@@ -783,6 +785,9 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 				e.printf("   [WARN]  WARNING: Failed to backup %s: %v\n", name, err)
 				mu.Unlock()
 				atomic.AddInt32(&failCount, 1)
+				// Count failed as completed for progress tracking
+				doneAfter := int(atomic.AddInt32(&dbCompleted, 1))
+				e.reportDatabaseProgress(doneAfter, len(databases), name, atomic.LoadInt64(&completedBytes), totalBytes)
 			} else {
 				// Update completed bytes for size-weighted ETA
 				atomic.AddInt64(&completedBytes, thisDbSize)
@@ -796,6 +801,9 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 				}
 				mu.Unlock()
 				atomic.AddInt32(&successCount, 1)
+				// Report completion to TUI with updated counts
+				doneAfter := int(atomic.AddInt32(&dbCompleted, 1))
+				e.reportDatabaseProgress(doneAfter, len(databases), name, atomic.LoadInt64(&completedBytes), totalBytes)
 			}
 		}(i, dbName)
 	}
@@ -820,6 +828,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	} else {
 		// Compressed output: create tar.gz archive
 		e.printf("   Creating compressed archive...\n")
+		// Signal Phase 3 (compressing) to TUI
+		e.reportDatabaseProgress(len(databases), len(databases), "compressing", totalBytes, totalBytes)
 		if err := e.createArchive(ctx, tempDir, outputFile); err != nil {
 			quietProgress.Fail(fmt.Sprintf("Failed to create archive: %v", err))
 			operation.Fail("Archive creation failed")

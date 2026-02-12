@@ -169,7 +169,26 @@ func (pm *PITRManager) GetCurrentPITRConfig(ctx context.Context) (*PITRConfig, e
 		}
 
 		key := strings.TrimSpace(parts[0])
-		value := strings.Trim(strings.TrimSpace(parts[1]), "'\"")
+		rawValue := strings.TrimSpace(parts[1])
+
+		// Strip inline comments: handle both quoted and unquoted values
+		// For quoted values like 'replica'  # comment or "replica"  # comment
+		if (strings.HasPrefix(rawValue, "'") || strings.HasPrefix(rawValue, "\"")) && len(rawValue) > 1 {
+			quote := rawValue[0]
+			// Find the closing quote
+			endIdx := strings.IndexByte(rawValue[1:], quote)
+			if endIdx >= 0 {
+				rawValue = rawValue[1 : endIdx+1] // extract content between quotes
+			} else {
+				rawValue = strings.Trim(rawValue, "'\"")
+			}
+		} else {
+			// Unquoted value: strip # comments
+			if idx := strings.Index(rawValue, "#"); idx >= 0 {
+				rawValue = strings.TrimSpace(rawValue[:idx])
+			}
+		}
+		value := rawValue
 
 		switch key {
 		case "wal_level":

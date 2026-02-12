@@ -553,6 +553,20 @@ func (c *Config) SetDatabaseType(dbType string) error {
 		if previousPort == defaultPortFor(previous) || previousPort == 0 {
 			c.Port = defaultPortFor(normalized)
 		}
+
+		// Auto-swap user between well-known engine defaults when switching families.
+		// postgres↔root are the standard admin users for PG and MySQL/MariaDB.
+		// Only swap if the current user is the OTHER engine's default — don't touch
+		// custom usernames (e.g. "appuser") since those may be valid on both engines.
+		wasPG := previous == "postgres"
+		nowPG := normalized == "postgres"
+		if wasPG != nowPG {
+			if nowPG && c.User == "root" {
+				c.User = "postgres"
+			} else if !nowPG && c.User == "postgres" {
+				c.User = "root"
+			}
+		}
 	}
 
 	// Adjust SSL mode defaults when switching engines. Preserve explicit user choices.

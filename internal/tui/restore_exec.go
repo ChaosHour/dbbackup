@@ -1003,7 +1003,7 @@ func (m RestoreExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.config.TUIAutoConfirm && m.done {
 			return m.parent, tea.Quit
 		}
-		return m, nil
+		return m, tea.ClearScreen
 
 	case tea.InterruptMsg:
 		// Handle Ctrl+C signal (SIGINT) - Bubbletea v1.3+ sends this instead of KeyMsg for ctrl+c

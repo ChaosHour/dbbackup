@@ -948,30 +948,30 @@ func (m BackupExecutionModel) View() string {
 
 	// Clear screen with newlines and render header
 	s.WriteString("\n\n")
-	header := "[EXEC] Backing up Database"
-	if m.backupType == "cluster" {
-		header = "[EXEC] Cluster Backup"
-	}
-	s.WriteString(titleStyle.Render(header))
-	s.WriteString("\n\n")
 
-	// Backup details - properly aligned
-	s.WriteString(fmt.Sprintf("  %-10s %s\n", "Type:", m.backupType))
-	if m.databaseName != "" {
-		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Database:", m.databaseName))
-	}
-	if m.ratio > 0 {
-		s.WriteString(fmt.Sprintf("  %-10s %d\n", "Sample:", m.ratio))
-	}
-
-	// Show system resource profile summary
-	if profileSummary := GetCompactProfileSummary(); profileSummary != "" {
-		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Resources:", profileSummary))
-	}
-	s.WriteString("\n")
-
-	// Status display
 	if !m.done {
+		// In-progress: show execution header with details
+		header := "[EXEC] Backing up Database"
+		if m.backupType == "cluster" {
+			header = "[EXEC] Cluster Backup"
+		}
+		s.WriteString(titleStyle.Render(header))
+		s.WriteString("\n\n")
+
+		// Backup details - properly aligned
+		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Type:", m.backupType))
+		if m.databaseName != "" {
+			s.WriteString(fmt.Sprintf("  %-10s %s\n", "Database:", m.databaseName))
+		}
+		if m.ratio > 0 {
+			s.WriteString(fmt.Sprintf("  %-10s %d\n", "Sample:", m.ratio))
+		}
+
+		// Show system resource profile summary
+		if profileSummary := GetCompactProfileSummary(); profileSummary != "" {
+			s.WriteString(fmt.Sprintf("  %-10s %s\n", "Resources:", profileSummary))
+		}
+		s.WriteString("\n")
 		// Unified progress display for cluster backup
 		if m.backupType == "cluster" {
 			// Calculate overall progress across all phases

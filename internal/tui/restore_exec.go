@@ -1154,28 +1154,9 @@ func (m RestoreExecutionModel) View() string {
 		return m.viewSimple()
 	}
 
-	// Title
-	title := "[EXEC] Restoring Database"
-	if m.restoreType == "restore-cluster" {
-		title = "[EXEC] Restoring Cluster"
-	} else if m.restoreType == "restore-cluster-single" {
-		title = "[EXEC] Restoring Single Database from Cluster"
-	}
-	s.WriteString(titleStyle.Render(title))
-	s.WriteString("\n\n")
-
-	// Archive info with system resources - aligned
-	s.WriteString(fmt.Sprintf("  %-10s %s\n", "Archive:", m.archive.Name))
-	if m.restoreType == "restore-single" || m.restoreType == "restore-cluster-single" {
-		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Target:", m.targetDB))
-	}
-	// Show system resource profile summary
-	if profileSummary := GetCompactProfileSummary(); profileSummary != "" {
-		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Resources:", profileSummary))
-	}
-	s.WriteString("\n")
-
 	if m.done {
+		// Completion: skip the in-progress header — summary section has all details
+		s.WriteString("\n\n")
 		// Show result with comprehensive summary
 		if m.err != nil {
 			s.WriteString(errorStyle.Render("═══════════════════════════════════════════════════════════════"))
@@ -1276,6 +1257,27 @@ func (m RestoreExecutionModel) View() string {
 			s.WriteString(infoStyle.Render("  [KEYS]  Press Enter to continue"))
 		}
 	} else {
+		// In-progress: show execution header with details
+		title := "[EXEC] Restoring Database"
+		if m.restoreType == "restore-cluster" {
+			title = "[EXEC] Restoring Cluster"
+		} else if m.restoreType == "restore-cluster-single" {
+			title = "[EXEC] Restoring Single Database from Cluster"
+		}
+		s.WriteString(titleStyle.Render(title))
+		s.WriteString("\n\n")
+
+		// Archive info with system resources - aligned
+		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Archive:", m.archive.Name))
+		if m.restoreType == "restore-single" || m.restoreType == "restore-cluster-single" {
+			s.WriteString(fmt.Sprintf("  %-10s %s\n", "Target:", m.targetDB))
+		}
+		// Show system resource profile summary
+		if profileSummary := GetCompactProfileSummary(); profileSummary != "" {
+			s.WriteString(fmt.Sprintf("  %-10s %s\n", "Resources:", profileSummary))
+		}
+		s.WriteString("\n")
+
 		// Show unified progress for cluster restore
 		if m.restoreType == "restore-cluster" {
 			// Use rich progress view when we have unified progress data

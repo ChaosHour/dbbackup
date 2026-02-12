@@ -458,6 +458,12 @@ func (e *Engine) BackupSample(ctx context.Context, databaseName string) error {
 		e.log.Warn("Failed to create metadata file", "error", err)
 	}
 
+	// Store last backup result for TUI summary
+	e.LastBackupFile = outputFile
+	if info, err := os.Stat(outputFile); err == nil {
+		e.LastBackupSize = info.Size()
+	}
+
 	return nil
 }
 

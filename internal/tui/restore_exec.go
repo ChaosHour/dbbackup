@@ -1164,14 +1164,14 @@ func (m RestoreExecutionModel) View() string {
 	s.WriteString(titleStyle.Render(title))
 	s.WriteString("\n\n")
 
-	// Archive info with system resources
-	s.WriteString(fmt.Sprintf("Archive: %s\n", m.archive.Name))
+	// Archive info with system resources - aligned
+	s.WriteString(fmt.Sprintf("  %-10s %s\n", "Archive:", m.archive.Name))
 	if m.restoreType == "restore-single" || m.restoreType == "restore-cluster-single" {
-		s.WriteString(fmt.Sprintf("Target: %s\n", m.targetDB))
+		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Target:", m.targetDB))
 	}
 	// Show system resource profile summary
 	if profileSummary := GetCompactProfileSummary(); profileSummary != "" {
-		s.WriteString(fmt.Sprintf("Resources: %s\n", profileSummary))
+		s.WriteString(fmt.Sprintf("  %-10s %s\n", "Resources:", profileSummary))
 	}
 	s.WriteString("\n")
 
@@ -1209,6 +1209,9 @@ func (m RestoreExecutionModel) View() string {
 			if m.archive.Size > 0 {
 				s.WriteString(fmt.Sprintf("    Archive Size:  %s\n", FormatBytes(m.archive.Size)))
 			}
+
+			// Engine type
+			s.WriteString(fmt.Sprintf("    Engine:        %s\n", m.config.DisplayDatabaseType()))
 
 			// Restore type specific info
 			if m.restoreType == "restore-cluster" {

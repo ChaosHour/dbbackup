@@ -5,6 +5,26 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.30.0] - 2026-02-12 — First Fully Tested Stable Release
+
+**This is the first release comprehensively tested across all three database engines
+(PostgreSQL, MariaDB, MySQL) covering single backup, cluster backup, single restore,
+cluster restore, PITR, and content-defined deduplication — all verified end-to-end via CLI.**
+
+### Tested & Verified
+
+- **PostgreSQL**: Single backup (67 MB), cluster backup (5.1 GB / 4 databases), single restore (7.4s, multi-schema verification), cluster restore (4 databases / 3m 32s)
+- **MariaDB**: Single backup (142 MB / 14.2s), cluster backup (544 MB / 24.7s), single restore (1m 34s / 7 tables verified), cluster restore (4 databases / 6m 46s)
+- **MySQL**: Single backup (142 MB / 14.3s), single restore (1m 35s / 7 tables + 1.5M rows verified)
+- **PITR**: Enable + status verified for PostgreSQL (WAL archiving), MariaDB (binlog ROW), MySQL (binlog ROW)
+- **Dedup**: All 3 engines — first backup chunks correctly, second backup achieves 100% dedup ratio, restore verifies SHA-256 match
+
+### Fixed
+
+- **CLI `--db-type` flag ignored by config file** — The `-d mariadb` or `-d mysql` CLI flag was silently overridden by the `type = postgres` setting in `.dbbackup.conf`. Added `DatabaseType` and `Socket` to the flag save/restore priority list in `PersistentPreRunE`.
+- **`~/.my.cnf` not loaded in CLI mode** — `ApplyMyCnfCredentials` was only called on engine *change*, but after flag restore the previous type already matched the current type. Now always attempts credential loading when password is empty for MySQL/MariaDB.
+- **PITR status shows garbled values** — `postgresql.conf` parser used `strings.Trim()` which failed on values with inline comments (e.g., `wal_level = 'replica'  # Added by dbbackup` displayed as `replica'  # Added by dbbackup`). Now uses quote-aware extraction.
+
 ## [6.29.0] - 2026-02-12
 
 ### Added — Configurable Backup Prefix & MySQL/MariaDB Credential File Support
@@ -20,6 +40,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Password cleared on engine switch** — Switching between PostgreSQL and MySQL/MariaDB now clears the stale password from the previous engine. Previously, the PostgreSQL password was sent to MariaDB (causing `Access denied`).
 - **User auto-swap on engine switch** — `SetDatabaseType()` now swaps `postgres` ↔ `root` when switching engine families, preventing connection attempts with the wrong admin user.
 - **MySQL/MariaDB credential loading on switch** — When switching to MySQL/MariaDB, credentials from `~/.my.cnf` are automatically loaded. When switching to PostgreSQL, MySQL credentials are cleared (PostgreSQL reads `.pgpass` via libpq).
+
+## [6.29.1] - 2026-02-12
+
+### Fixed — TUI Completion Screens & Rendering
+
+- **Backup completion screen enriched** — Now shows archive filename, file size, and engine type on the completion summary (previously sparse with minimal info).
+- **Restore completion screen aligned** — Added Engine line and aligned header formatting to match the backup completion screen.
+- **Duplicate header on completion removed** — Header details (Type/Database/Resources) were shown during both progress and completion, repeating what the summary already displayed. Now only shown during in-progress phase.
+- **Render artifacts on completion** — In non-altscreen mode, the shorter completion view left stale lines from the taller progress view (old spinner, progress bar, [EXEC] header). Fixed by returning `tea.ClearScreen` on backup/restore completion messages.
+- **Health/profile TUI scrambled layout** — `\n` embedded inside lipgloss `Render()` calls caused ANSI escape codes to bleed across line boundaries. Moved newlines outside all `Render()` calls in health, profile, and archive browser views.
+- **Database name swap on engine switch** — Default database name now swaps between `postgres` (PostgreSQL) and empty (MySQL/MariaDB) when the engine type changes, preventing "database 'postgres' not found" errors.
+
+## [6.28.3] - 2026-02-12
+
+### Fixed — Accidental DB Type Switch & MySQL Socket Support
+
+- **Settings cursor movement changed DB type** — Moving the cursor in TUI Settings accidentally triggered `SetDatabaseType()` on every navigation, switching the engine. Now only triggers on explicit change.
+- **MySQL socket support** — Added `--socket` CLI flag and TUI setting for Unix socket connections (e.g., `/var/run/mysqld/mysqld.sock`), required for local MariaDB/MySQL on many Linux distributions.
+
+## [6.28.2] - 2026-02-12
+
+### Fixed — Cluster Restore TUI Corruption
+
+- **TUI corruption during cluster restore** — Progress updates from concurrent database restores caused garbled terminal output. Fixed race conditions in TUI progress rendering.
+- **"Database already exists" errors** — Cluster restore failed when target databases already existed. Now drops and recreates databases before restoring.
+
+## [6.28.1] - 2026-02-12
+
+### Fixed — Silent Data-Skip Bug in pg_restore
+
+- **pg_restore reported success but loaded 0 rows** — `pg_restore` exit code 0 even when schema mismatches caused all `COPY` statements to be silently skipped. Added post-restore row count verification to detect empty restores.
+
+## [6.28.0] - 2026-02-12
+
+### Added — Post-Restore Verification
+
+- **Automatic post-restore verification** — After every restore operation, dbbackup now connects to the restored database and verifies that tables exist and contain data. Reports table count, total rows, and flags empty databases as warnings.
+
+## [6.27.1] - 2026-02-12
+
+### Fixed — Pipeline Restore Goroutine Deadlock (#2)
+
+- **Second deadlock fix** — Additional goroutine leak scenario where the feeder goroutine blocks on pipe write after `streamCopyNoFreeze` returns. Added `pr.Close()` cleanup.
 
 ## [6.27.0] - 2026-02-12
 

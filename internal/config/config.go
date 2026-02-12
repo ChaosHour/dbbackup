@@ -602,6 +602,9 @@ func (c *Config) SetDatabaseType(dbType string) error {
 		if normalized != previous {
 			// Clear stale PostgreSQL password — it doesn't belong to MySQL
 			c.Password = ""
+		}
+		// Always try to load .my.cnf if no password is set
+		if c.Password == "" {
 			ApplyMyCnfCredentials(c)
 		}
 	case "postgres":

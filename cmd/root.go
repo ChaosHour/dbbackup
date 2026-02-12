@@ -94,6 +94,8 @@ For help with specific commands, use: dbbackup [command] --help`,
 				savedDumpJobs := cfg.DumpJobs
 				savedRetentionDays := cfg.RetentionDays
 				savedMinBackups := cfg.MinBackups
+				savedDatabaseType := cfg.DatabaseType
+				savedSocket := cfg.Socket
 
 				// Apply config from file
 				config.ApplyLocalConfig(cfg, localCfg)
@@ -128,6 +130,12 @@ For help with specific commands, use: dbbackup [command] --help`,
 				}
 				if flagsSet["min-backups"] {
 					cfg.MinBackups = savedMinBackups
+				}
+				if flagsSet["db-type"] {
+					cfg.DatabaseType = savedDatabaseType
+				}
+				if flagsSet["socket"] {
+					cfg.Socket = savedSocket
 				}
 			}
 		}

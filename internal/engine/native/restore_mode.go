@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -163,13 +164,17 @@ func DetectOptimalRestoreMode(ctx context.Context, pool *pgxpool.Pool, log logge
 // The table data is NOT preserved across a PostgreSQL crash.
 func setTableUnlogged(ctx context.Context, pool *pgxpool.Pool, tableName string, log logger.Logger) error {
 	sql := fmt.Sprintf("ALTER TABLE %s SET UNLOGGED", tableName)
-	conn, err := pool.Acquire(ctx)
+	acquireCtx, acquireCancel := context.WithTimeout(ctx, 30*time.Second)
+	conn, err := pool.Acquire(acquireCtx)
+	acquireCancel()
 	if err != nil {
 		return fmt.Errorf("acquire connection for SET UNLOGGED %s: %w", tableName, err)
 	}
 	defer conn.Release()
 
-	_, err = conn.Exec(ctx, sql)
+	execCtx, execCancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer execCancel()
+	_, err = conn.Exec(execCtx, sql)
 	if err != nil {
 		// Some tables (partitioned, temp, already unlogged) can't be altered
 		log.Debug("SET UNLOGGED skipped", "table", tableName, "reason", err)
@@ -183,13 +188,17 @@ func setTableUnlogged(ctx context.Context, pool *pgxpool.Pool, tableName string,
 // Must be called BEFORE creating indexes if using balanced mode.
 func setTableLogged(ctx context.Context, pool *pgxpool.Pool, tableName string, log logger.Logger) error {
 	sql := fmt.Sprintf("ALTER TABLE %s SET LOGGED", tableName)
-	conn, err := pool.Acquire(ctx)
+	acquireCtx, acquireCancel := context.WithTimeout(ctx, 30*time.Second)
+	conn, err := pool.Acquire(acquireCtx)
+	acquireCancel()
 	if err != nil {
 		return fmt.Errorf("acquire connection for SET LOGGED %s: %w", tableName, err)
 	}
 	defer conn.Release()
 
-	_, err = conn.Exec(ctx, sql)
+	execCtx, execCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer execCancel()
+	_, err = conn.Exec(execCtx, sql)
 	if err != nil {
 		return fmt.Errorf("SET LOGGED %s: %w", tableName, err)
 	}
@@ -199,14 +208,18 @@ func setTableLogged(ctx context.Context, pool *pgxpool.Pool, tableName string, l
 // forceCheckpoint issues a CHECKPOINT to flush all WAL and dirty pages.
 // Called after switching tables from UNLOGGED → LOGGED to ensure durability.
 func forceCheckpoint(ctx context.Context, pool *pgxpool.Pool, log logger.Logger) error {
-	conn, err := pool.Acquire(ctx)
+	acquireCtx, acquireCancel := context.WithTimeout(ctx, 30*time.Second)
+	conn, err := pool.Acquire(acquireCtx)
+	acquireCancel()
 	if err != nil {
 		return fmt.Errorf("acquire connection for CHECKPOINT: %w", err)
 	}
 	defer conn.Release()
 
 	log.Info("Forcing CHECKPOINT (flushing WAL after UNLOGGED→LOGGED switch)")
-	_, err = conn.Exec(ctx, "CHECKPOINT")
+	execCtx, execCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer execCancel()
+	_, err = conn.Exec(execCtx, "CHECKPOINT")
 	if err != nil {
 		// CHECKPOINT requires superuser; log warning but don't fail restore
 		log.Warn("CHECKPOINT failed (requires superuser privileges)", "error", err)

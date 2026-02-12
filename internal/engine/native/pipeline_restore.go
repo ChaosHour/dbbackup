@@ -152,6 +152,11 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 	startTime := time.Now()
 	result := &ParallelRestoreResult{}
 
+	// Derived cancel context — allows us to force-terminate all goroutines
+	// if the scanner or workers are stuck (deadlock watchdog).
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if options == nil {
 		options = &ParallelRestoreOptions{Workers: e.parallelWorkers}
 	}
@@ -252,6 +257,12 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 	// ═══════════════════════════════════════════════════════════════
 
 	jobChan := make(chan copyJob, pipelineCfg.ChannelSize)
+
+	// Idempotent close for jobChan — can be called safely from both the
+	// scanner goroutine (normal exit) and the main flow (watchdog/error).
+	var jobChanOnce sync.Once
+	closeJobChan := func() { jobChanOnce.Do(func() { close(jobChan) }) }
+
 	var postDataStmts []string
 	var postDataMu sync.Mutex
 	var scanErr error
@@ -260,7 +271,7 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 	scannerDone := make(chan struct{})
 	go func() {
 		defer close(scannerDone)
-		defer close(jobChan)
+		defer closeJobChan()
 		defer func() {
 			if r := recover(); r != nil {
 				e.log.Error("Scanner goroutine panic (recovered)", "panic", fmt.Sprintf("%v", r))
@@ -507,15 +518,69 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 		}(i)
 	}
 
-	// Wait for scanner to finish
-	<-scannerDone
+	// ═══════════════════════════════════════════════════════════════
+	// STAGE 4: Wait for scanner + workers with deadlock watchdog
+	// ═══════════════════════════════════════════════════════════════
+	//
+	// Previous bug: if the scanner goroutine blocks indefinitely (e.g.,
+	// pool exhaustion in setTableUnlogged/executeStatement), jobChan
+	// never closes and workers block forever at <-jobChan. We now:
+	//   1. Use sync.Once for close(jobChan) so it can be called safely
+	//      from both the scanner defer and the main flow.
+	//   2. Wait for scanner in a non-blocking select with a watchdog.
+	//   3. Explicitly close jobChan after scanner finishes (redundancy).
+	//   4. If workers don't finish within 5 minutes of scanner
+	//      completion, cancel the context to force-unblock everything.
 
-	// Wait for all workers to complete
+	// Wait for scanner (or detect stuck scanner via watchdog)
+	scannerFinished := false
+	select {
+	case <-scannerDone:
+		scannerFinished = true
+	case <-ctx.Done():
+		// Parent context was cancelled — force everything to stop
+		e.log.Warn("Pipeline restore: context cancelled while waiting for scanner")
+	}
+
+	// Explicitly close jobChan to unblock workers (idempotent via sync.Once).
+	// Critical: even if scanner panicked or got stuck, workers MUST see
+	// the channel close so they can exit their select loop.
+	closeJobChan()
+
+	// If scanner didn't finish (ctx cancelled), wait briefly for it
+	if !scannerFinished {
+		select {
+		case <-scannerDone:
+		case <-time.After(10 * time.Second):
+			e.log.Warn("Pipeline restore: scanner did not stop within 10s, continuing")
+		}
+	}
+
+	// Wait for all workers with a safety timeout
 	inFlight := atomic.LoadInt64(&tablesStarted) - atomic.LoadInt64(&tablesCompleted)
 	if inFlight > 0 {
 		e.log.Info("Pipeline: waiting for COPY workers...", "in_flight", inFlight)
 	}
-	wg.Wait()
+
+	workersDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(workersDone)
+	}()
+
+	select {
+	case <-workersDone:
+		// All workers finished cleanly
+	case <-time.After(5 * time.Minute):
+		// Workers stuck — cancel context to force CopyFrom/Acquire to abort
+		e.log.Error("Pipeline restore: workers stuck for 5 minutes after scanner, forcing shutdown")
+		cancel()
+		select {
+		case <-workersDone:
+		case <-time.After(30 * time.Second):
+			e.log.Error("Pipeline restore: workers did not exit after cancel, abandoning")
+		}
+	}
 
 	result.SchemaStatements = atomic.LoadInt64(&schemaCount)
 	result.TablesRestored = atomic.LoadInt64(&tablesCompleted)

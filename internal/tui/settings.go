@@ -638,14 +638,56 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				if c.Password != "" {
 					return strings.Repeat("•", len(c.Password))
 				}
+				dbType := strings.ToLower(c.DatabaseType)
+				if dbType == "mysql" || dbType == "mariadb" {
+					if _, path, _ := config.LoadMyCnf(); path != "" {
+						return "(from " + path + ")"
+					}
+					return "(not set — create ~/.my.cnf)"
+				}
 				return "(from .pgpass / PGPASSWORD)"
 			},
 			Update: func(c *config.Config, v string) error {
-				c.Password = v // kept in memory only, never persisted to disk
+				c.Password = v
+				// For MySQL/MariaDB, also save to ~/.my.cnf for persistence
+				dbType := strings.ToLower(c.DatabaseType)
+				if dbType == "mysql" || dbType == "mariadb" {
+					creds := &config.MyCnfCredentials{
+						User:     c.User,
+						Password: v,
+						Host:     c.Host,
+						Port:     fmt.Sprintf("%d", c.Port),
+					}
+					if c.Socket != "" {
+						creds.Socket = c.Socket
+					}
+					if err := config.SaveMyCnf(creds); err == nil {
+						// Saved to ~/.my.cnf
+					}
+				}
 				return nil
 			},
 			Type:        "string",
-			Description: "Database password (in-memory only — use .pgpass for persistent config)",
+			Description: "Database password (PostgreSQL: in-memory, use .pgpass; MySQL/MariaDB: saved to ~/.my.cnf)",
+		},
+		{
+			Key:         "credential_file",
+			DisplayName: "Credential File",
+			Value: func(c *config.Config) string {
+				dbType := strings.ToLower(c.DatabaseType)
+				if dbType == "mysql" || dbType == "mariadb" {
+					if _, path, _ := config.LoadMyCnf(); path != "" {
+						return path + "  ✓"
+					}
+					return "~/.my.cnf  ✗  (set Password above to create)"
+				}
+				return "~/.pgpass  (auto-read by libpq)"
+			},
+			Update: func(c *config.Config, v string) error {
+				return fmt.Errorf("credential file path is read-only")
+			},
+			Type:        "readonly",
+			Description: "Credential file location (PostgreSQL: ~/.pgpass, MySQL/MariaDB: ~/.my.cnf)",
 		},
 		{
 			Key:         "database",
@@ -1477,6 +1519,10 @@ func (m SettingsModel) startEditing() (tea.Model, tea.Cmd) {
 	}
 
 	setting := m.settings[realIdx]
+	if setting.Type == "readonly" {
+		m.message = infoStyle.Render("This field is read-only")
+		return m, nil
+	}
 	m.editing = true
 	m.editingField = setting.Key
 	if setting.Key == "password" {

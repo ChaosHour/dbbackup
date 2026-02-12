@@ -280,7 +280,7 @@ func New() *Config {
 	password := getEnvString("PGPASSWORD", "")
 	sslMode := getEnvString("PG_SSLMODE", "prefer")
 
-	if canonicalType == "mysql" {
+	if canonicalType == "mysql" || canonicalType == "mariadb" {
 		host = getEnvString("MYSQL_HOST", host)
 		port = getEnvInt("MYSQL_PORT", mysqlDefaultPort)
 		user = getEnvString("MYSQL_USER", user)
@@ -291,6 +291,17 @@ func New() *Config {
 			password = pwd
 		}
 		sslMode = ""
+
+		// Load credentials from ~/.my.cnf (MySQL/MariaDB equivalent of .pgpass).
+		// Only fills in fields that aren't already set by env vars above.
+		if myCnf, _, _ := LoadMyCnf(); myCnf != nil {
+			if password == "" && myCnf.Password != "" {
+				password = myCnf.Password
+			}
+			if user == getCurrentUser() && myCnf.User != "" {
+				user = myCnf.User
+			}
+		}
 	}
 
 	// Detect memory information
@@ -571,13 +582,24 @@ func (c *Config) SetDatabaseType(dbType string) error {
 
 	// Adjust SSL mode defaults when switching engines. Preserve explicit user choices.
 	switch normalized {
-	case "mysql":
+	case "mysql", "mariadb":
 		if strings.EqualFold(c.SSLMode, "prefer") || strings.EqualFold(c.SSLMode, "preferred") {
 			c.SSLMode = ""
+		}
+		// Load MySQL/MariaDB credentials from ~/.my.cnf (equivalent of .pgpass)
+		if normalized != previous {
+			// Clear stale PostgreSQL password — it doesn't belong to MySQL
+			c.Password = ""
+			ApplyMyCnfCredentials(c)
 		}
 	case "postgres":
 		if c.SSLMode == "" {
 			c.SSLMode = "prefer"
+		}
+		// Clear MySQL password when switching back to PostgreSQL
+		// (PostgreSQL reads credentials from .pgpass automatically)
+		if normalized != previous {
+			c.Password = ""
 		}
 	}
 

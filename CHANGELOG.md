@@ -5,6 +5,22 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.29.0] - 2026-02-12
+
+### Added — Configurable Backup Prefix & MySQL/MariaDB Credential File Support
+
+- **Configurable backup filename prefix** — Backup filenames now use engine-specific prefixes: `pg` (PostgreSQL), `mysql` (MySQL), `maria` (MariaDB). Format: `{prefix}_{dbname}_{timestamp}.{ext}`. Prefixes are customizable in TUI Settings and persisted to `.dbbackup.conf`.
+- **Live prefix preview in TUI menu** — Backup menu items show the active filename pattern (e.g. `Single Database Backup [pg_<db>_*.sql.gz]`), updating dynamically when the engine is switched.
+- **~/.my.cnf credential file support** — MySQL/MariaDB credentials are now loaded from `~/.my.cnf` (the standard MySQL credential file, equivalent of PostgreSQL's `.pgpass`). Search order: `./.my.cnf` → `~/.my.cnf` → `/etc/mysql/debian.cnf`. Credentials are applied at startup and on engine switch.
+- **TUI password auto-save to ~/.my.cnf** — When setting a password for MySQL/MariaDB in TUI Settings, it is automatically written to `~/.my.cnf` with 0600 permissions. PostgreSQL passwords remain in-memory only (use `.pgpass`).
+- **Credential file status in TUI** — New read-only "Credential File" indicator in Settings shows whether `~/.my.cnf` (MySQL/MariaDB) or `~/.pgpass` (PostgreSQL) is found and active.
+
+### Fixed — Engine Switch Credential Isolation
+
+- **Password cleared on engine switch** — Switching between PostgreSQL and MySQL/MariaDB now clears the stale password from the previous engine. Previously, the PostgreSQL password was sent to MariaDB (causing `Access denied`).
+- **User auto-swap on engine switch** — `SetDatabaseType()` now swaps `postgres` ↔ `root` when switching engine families, preventing connection attempts with the wrong admin user.
+- **MySQL/MariaDB credential loading on switch** — When switching to MySQL/MariaDB, credentials from `~/.my.cnf` are automatically loaded. When switching to PostgreSQL, MySQL credentials are cleared (PostgreSQL reads `.pgpass` via libpq).
+
 ## [6.27.0] - 2026-02-12
 
 ### Added — TUI Tools Menu: All Functions Fully Implemented

@@ -87,92 +87,108 @@ func (e *Engine) dropMySQLDatabaseIfExists(ctx context.Context, dbName string) e
 }
 
 // dropPostgresDatabaseIfExists drops a PostgreSQL database completely (clean slate)
-// Uses PostgreSQL 13+ WITH (FORCE) option to forcefully drop even with active connections
+// Uses PostgreSQL 13+ WITH (FORCE) option to forcefully drop even with active connections.
+// Retries up to 3 times with escalating delays to handle stubborn connections.
 func (e *Engine) dropPostgresDatabaseIfExists(ctx context.Context, dbName string) error {
-	// First terminate all connections
-	if err := e.terminateConnections(ctx, dbName); err != nil {
-		e.log.Warn("Could not terminate connections", "database", dbName, "error", err)
-	}
+	const maxRetries = 3
 
-	// Wait a moment for connections to terminate (context-aware)
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(500 * time.Millisecond):
-	}
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Terminate all connections
+		if err := e.terminateConnections(ctx, dbName); err != nil {
+			e.log.Warn("Could not terminate connections", "database", dbName, "error", err, "attempt", attempt)
+		}
 
-	// Try to revoke new connections (prevents race condition)
-	// This only works if we have the privilege to do so
-	revokeArgs := []string{
-		"-p", fmt.Sprintf("%d", e.cfg.Port),
-		"-U", e.cfg.User,
-		"-d", "postgres",
-		"-c", fmt.Sprintf("REVOKE CONNECT ON DATABASE %s FROM PUBLIC", database.QuotePGIdentifier(dbName)),
-	}
-	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
-		revokeArgs = append([]string{"-h", e.cfg.Host}, revokeArgs...)
-	}
-	revokeCmd := cleanup.SafeCommand(ctx, "psql", revokeArgs...)
-	revokeCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
-	revokeCmd.Run() // Ignore errors - database might not exist
+		// Wait for connections to terminate (escalating delay)
+		delay := time.Duration(attempt) * 500 * time.Millisecond
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
 
-	// Terminate connections again after revoking connect privilege
-	e.terminateConnections(ctx, dbName)
-
-	// Context-aware wait
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-time.After(200 * time.Millisecond):
-	}
-
-	// Try DROP DATABASE WITH (FORCE) first (PostgreSQL 13+)
-	// This forcefully terminates connections and drops the database atomically
-	forceArgs := []string{
-		"-p", fmt.Sprintf("%d", e.cfg.Port),
-		"-U", e.cfg.User,
-		"-d", "postgres",
-		"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE)", database.QuotePGIdentifier(dbName)),
-	}
-	if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
-		forceArgs = append([]string{"-h", e.cfg.Host}, forceArgs...)
-	}
-	forceCmd := cleanup.SafeCommand(ctx, "psql", forceArgs...)
-	forceCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
-
-	output, err := forceCmd.CombinedOutput()
-	if err == nil {
-		e.log.Info("Dropped existing database (with FORCE)", "name", dbName)
-		return nil
-	}
-
-	// If FORCE option failed (PostgreSQL < 13), try regular drop
-	if strings.Contains(string(output), "syntax error") || strings.Contains(string(output), "WITH (FORCE)") {
-		e.log.Debug("WITH (FORCE) not supported, using standard DROP", "name", dbName)
-
-		args := []string{
+		// Revoke new connections to prevent reconnection race
+		revokeArgs := []string{
 			"-p", fmt.Sprintf("%d", e.cfg.Port),
 			"-U", e.cfg.User,
 			"-d", "postgres",
-			"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %s", database.QuotePGIdentifier(dbName)),
+			"-c", fmt.Sprintf("REVOKE CONNECT ON DATABASE %s FROM PUBLIC", database.QuotePGIdentifier(dbName)),
 		}
 		if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
-			args = append([]string{"-h", e.cfg.Host}, args...)
+			revokeArgs = append([]string{"-h", e.cfg.Host}, revokeArgs...)
+		}
+		revokeCmd := cleanup.SafeCommand(ctx, "psql", revokeArgs...)
+		revokeCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+		revokeCmd.Run() // Ignore errors - database might not exist
+
+		// Terminate again after revoking
+		e.terminateConnections(ctx, dbName)
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(200 * time.Millisecond):
 		}
 
-		cmd := cleanup.SafeCommand(ctx, "psql", args...)
-		cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
-
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to drop database '%s': %w\nOutput: %s", dbName, err, string(output))
+		// Try DROP DATABASE WITH (FORCE) first (PostgreSQL 13+)
+		forceArgs := []string{
+			"-p", fmt.Sprintf("%d", e.cfg.Port),
+			"-U", e.cfg.User,
+			"-d", "postgres",
+			"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %s WITH (FORCE)", database.QuotePGIdentifier(dbName)),
 		}
-	} else if err != nil {
-		return fmt.Errorf("failed to drop database '%s': %w\nOutput: %s", dbName, err, string(output))
+		if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+			forceArgs = append([]string{"-h", e.cfg.Host}, forceArgs...)
+		}
+		forceCmd := cleanup.SafeCommand(ctx, "psql", forceArgs...)
+		forceCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+
+		output, err := forceCmd.CombinedOutput()
+		if err == nil {
+			e.log.Info("Dropped existing database (with FORCE)", "name", dbName, "attempt", attempt)
+			return nil
+		}
+
+		// If FORCE option not supported (PostgreSQL < 13), try regular drop
+		if strings.Contains(string(output), "syntax error") || strings.Contains(string(output), "WITH (FORCE)") {
+			e.log.Debug("WITH (FORCE) not supported, using standard DROP", "name", dbName)
+
+			args := []string{
+				"-p", fmt.Sprintf("%d", e.cfg.Port),
+				"-U", e.cfg.User,
+				"-d", "postgres",
+				"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %s", database.QuotePGIdentifier(dbName)),
+			}
+			if e.cfg.Host != "localhost" && e.cfg.Host != "127.0.0.1" && e.cfg.Host != "" {
+				args = append([]string{"-h", e.cfg.Host}, args...)
+			}
+
+			cmd := cleanup.SafeCommand(ctx, "psql", args...)
+			cmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
+
+			output, err = cmd.CombinedOutput()
+			if err == nil {
+				e.log.Info("Dropped existing database", "name", dbName, "attempt", attempt)
+				return nil
+			}
+		}
+
+		// Drop failed — log and retry (unless last attempt)
+		if attempt < maxRetries {
+			e.log.Warn("Drop database failed, retrying",
+				"database", dbName,
+				"attempt", attempt,
+				"output", strings.TrimSpace(string(output)),
+				"next_delay", time.Duration(attempt+1)*500*time.Millisecond)
+		} else {
+			e.log.Warn("Drop database failed after all retries — pg_restore will use --clean --if-exists as fallback",
+				"database", dbName,
+				"attempts", maxRetries,
+				"output", strings.TrimSpace(string(output)))
+			return fmt.Errorf("failed to drop database '%s' after %d attempts: %s", dbName, maxRetries, strings.TrimSpace(string(output)))
+		}
 	}
 
-	e.log.Info("Dropped existing database", "name", dbName)
-	return nil
+	return nil // unreachable
 }
 
 // ensureDatabaseExists checks if a database exists and creates it if not

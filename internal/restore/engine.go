@@ -317,9 +317,13 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 	if parallelJobs <= 0 {
 		parallelJobs = 1 // Default fallback
 	}
+	// Use --clean --if-exists even though we already dropped/created the DB.
+	// Belt-and-suspenders: if dropDatabaseIfExists failed silently (active connections),
+	// pg_restore with --clean will DROP+CREATE objects instead of hitting "already exists".
 	opts := database.RestoreOptions{
 		Parallel:          parallelJobs,
-		Clean:             false,              // We already dropped the database
+		Clean:             true,               // Safety net for failed drops
+		IfExists:          true,               // Pair with --clean to avoid DROP errors
 		NoOwner:           !preserveOwnership, // Preserve ownership if we're superuser
 		NoPrivileges:      !preserveOwnership, // Preserve privileges if we're superuser
 		SingleTransaction: false,              // CRITICAL: Disabled to prevent lock exhaustion with large objects
@@ -331,7 +335,8 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 		"parallel_jobs", parallelJobs,
 		"preserveOwnership", preserveOwnership,
 		"noOwner", opts.NoOwner,
-		"noPrivileges", opts.NoPrivileges)
+		"noPrivileges", opts.NoPrivileges,
+		"clean", opts.Clean)
 
 	cmd := e.db.BuildRestoreCommand(targetDB, archivePath, opts)
 
@@ -340,7 +345,7 @@ func (e *Engine) restorePostgreSQLDumpWithOwnership(ctx context.Context, archive
 		return e.executeRestoreWithDecompression(ctx, archivePath, cmd)
 	}
 
-	return e.executeRestoreCommand(ctx, cmd)
+	return e.executeRestoreCommandWithContext(ctx, cmd, archivePath, targetDB, FormatPostgreSQLDump)
 }
 
 // restorePostgreSQLDumpPhased performs a multi-phase restore to prevent lock table exhaustion
@@ -420,14 +425,17 @@ func (e *Engine) restoreSection(ctx context.Context, archivePath, targetDB, sect
 		args = append(args, "--no-owner", "--no-privileges")
 	}
 
-	// Skip data for failed tables (prevents cascading errors)
+	// Use --clean --if-exists so pg_restore drops and recreates objects.
+	// This is safe because the cluster path already dropped and recreated the DB.
+	// Without --clean, CREATE TABLE hits "already exists" and data may be skipped.
+	args = append(args, "--clean", "--if-exists")
 	args = append(args, "--no-data-for-failed-tables")
 
 	// Database and input
 	args = append(args, "--dbname="+targetDB)
 	args = append(args, archivePath)
 
-	return e.executeRestoreCommand(ctx, args)
+	return e.executeRestoreCommandWithContext(ctx, args, archivePath, targetDB, FormatPostgreSQLDump)
 }
 
 // checkDumpHasLargeObjects checks if a PostgreSQL custom dump contains large objects (BLOBs)
@@ -1260,8 +1268,10 @@ func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs [
 				errHint,
 			)
 
-			// Print report to console
-			collector.PrintReport(report)
+			// Print report to console (skip in TUI/silent mode to avoid corrupting bubbletea output)
+			if !e.silentMode {
+				collector.PrintReport(report)
+			}
 
 			// Save to file
 			if e.debugLogPath != "" {

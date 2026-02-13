@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.32.0] - 2026-02-13 — CopyFrom Deadlock Fix & QA Script Hardening
+
+### Fixed
+
+- **CopyFrom deadlock during parallel restore** — Fixed a deadlock in `RestoreFile` and `RestoreFileStreaming` where the scanner goroutine and pgx CopyFrom writer goroutine could permanently block each other. Root cause: when `CopyFrom` returned early with an error (e.g., PostgreSQL under disk/WAL pressure), the `PipeReader` was never closed, leaving pgx's internal writer goroutine stuck in `r.Read()` and the scanner stuck on `pw.Write()`. Added `defer r.Close()` to all COPY worker goroutines, matching the pattern already used in `RestoreFilePipeline`.
+- **No deadlock watchdog in streaming restore** — `RestoreFile` had a bare `wg.Wait()` with no timeout, causing indefinite hangs if COPY workers got stuck. Added a 5-minute watchdog with automatic context cancellation, matching `RestoreFilePipeline`'s existing safety mechanism.
+- **Unbounded reader drain on CopyFrom error** — `streamCopyWithOptions` drained the reader via `io.Copy(io.Discard, reader)` which could block forever if the pipe writer was also stuck. Replaced with a 30-second bounded drain — the deferred `PipeReader.Close()` breaks any remaining blockage.
+- **QA script false crash report** — `run_full_qa.sh` ERR trap fired on intentional non-zero exit when tests failed, printing `ERROR: Script failed at line...` which looked like a script crash. Scoped the ERR trap to setup only.
+- **QA dedup restore test always failing** — Manifest ID was computed with `basename "$manifest" .json`, but manifest files are named `*.manifest.json`. This produced a double extension (`.manifest.manifest.json`). Fixed to strip `.manifest.json`.
+
 ## [6.31.0] - 2026-02-12 — TUI PostgreSQL Connection Fix
 
 ### Fixed

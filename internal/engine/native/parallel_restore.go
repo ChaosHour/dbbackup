@@ -405,6 +405,11 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 		"workers", options.Workers,
 		"restore_mode", restoreMode.String())
 
+	// Derived cancel context — allows the deadlock watchdog to force-terminate
+	// all goroutines if workers are stuck after the scanner finishes.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	// Apply turbo session settings early (connection-level optimizations)
 	if restoreMode == RestoreModeTurbo {
 		applyTurboSessionSettings(ctx, e.pool, e.log)
@@ -556,6 +561,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 			go func(tbl string, num int64, r *io.PipeReader) {
 				defer wg.Done()
 				defer func() { <-semaphore }()
+				defer r.Close() // Unblock scanner PipeWriter if CopyFrom exits early
 
 				e.log.Info("COPY streaming", "table", tbl, "number", num)
 				copyStart := time.Now()
@@ -659,12 +665,31 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 		result.Errors = append(result.Errors, scanErr.Error())
 	}
 
-	// Wait for all COPY workers
+	// Wait for all COPY workers with deadlock watchdog
 	inFlight := atomic.LoadInt64(&tablesStarted) - atomic.LoadInt64(&tablesCompleted)
 	if inFlight > 0 {
 		e.log.Info("Waiting for COPY workers...", "in_flight", inFlight)
 	}
-	wg.Wait()
+
+	workersDone := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(workersDone)
+	}()
+
+	select {
+	case <-workersDone:
+		// All workers finished cleanly
+	case <-time.After(5 * time.Minute):
+		// Workers stuck — cancel context to force CopyFrom/Acquire to abort
+		e.log.Error("Streaming restore: workers stuck for 5 minutes, forcing shutdown")
+		cancel()
+		select {
+		case <-workersDone:
+		case <-time.After(30 * time.Second):
+			e.log.Error("Streaming restore: workers did not exit after cancel, abandoning")
+		}
+	}
 
 	result.TablesRestored = atomic.LoadInt64(&tablesCompleted)
 	result.RowsRestored = atomic.LoadInt64(&totalRows)
@@ -936,8 +961,20 @@ func (e *ParallelRestoreEngine) streamCopyWithOptions(ctx context.Context, table
 
 	tag, err := conn.Conn().PgConn().CopyFrom(copyCtx, reader, copySQL)
 	if err != nil {
-		// Drain reader to unblock the pipe writer goroutine
-		_, _ = io.Copy(io.Discard, reader)
+		// Drain reader to unblock the pipe writer goroutine.
+		// Use a bounded drain: if the pipe writer is stuck or the data is
+		// huge, don't block forever — the deferred PipeReader.Close() in
+		// the caller will break it out.
+		drainDone := make(chan struct{})
+		go func() {
+			_, _ = io.Copy(io.Discard, reader)
+			close(drainDone)
+		}()
+		select {
+		case <-drainDone:
+		case <-time.After(30 * time.Second):
+			e.log.Warn("Reader drain timed out after 30s", "table", tableName)
+		}
 		if ctx.Err() != nil {
 			return 0, ctx.Err()
 		}
@@ -1551,6 +1588,7 @@ func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath strin
 			go func(tbl string, r *io.PipeReader) {
 				defer wg.Done()
 				defer func() { <-semaphore }()
+				defer r.Close() // Unblock scanner PipeWriter if CopyFrom exits early
 
 				copyStart := time.Now()
 				progressR := &ProgressReader{

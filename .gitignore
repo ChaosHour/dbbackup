@@ -44,6 +44,10 @@ QUICK_WINS.md
 test-backups/
 test-backups-*/
 
+# QA test suite artifacts
+run_full_qa.sh
+QA_FULL_REPORT_*.md
+
 # Ignore development artifacts
 *.swp
 *.swo

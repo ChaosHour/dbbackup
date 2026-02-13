@@ -1097,6 +1097,7 @@ func (e *Engine) restoreWithMySQLParallelEngine(ctx context.Context, archivePath
 		Workers:         e.cfg.Jobs,
 		ContinueOnError: true,
 		DisableKeys:     true,
+		TargetDB:        targetDB,
 		ProgressCallback: func(phase, table string, rows int64) {
 			e.log.Debug("MySQL parallel restore progress",
 				"phase", phase, "table", table, "rows", rows)

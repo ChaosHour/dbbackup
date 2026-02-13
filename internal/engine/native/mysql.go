@@ -352,6 +352,15 @@ func (e *MySQLNativeEngine) backupTableData(ctx context.Context, w io.Writer, da
 	}
 	defer rows.Close()
 
+	// Get column type metadata to handle DECIMAL/NUMERIC correctly
+	colTypes, _ := rows.ColumnTypes()
+	var colTypeNames []string
+	if colTypes != nil {
+		for _, ct := range colTypes {
+			colTypeNames = append(colTypeNames, strings.ToUpper(ct.DatabaseTypeName()))
+		}
+	}
+
 	// Process rows in batches and generate INSERT statements
 	var bytesWritten int64
 	var insertValues []string
@@ -366,7 +375,7 @@ func (e *MySQLNativeEngine) backupTableData(ctx context.Context, w io.Writer, da
 		}
 
 		// Format values for INSERT
-		valueStr := e.formatInsertValues(values)
+		valueStr := e.formatInsertValuesTyped(values, colTypeNames)
 		insertValues = append(insertValues, valueStr)
 		rowCount++
 
@@ -414,8 +423,14 @@ func (e *MySQLNativeEngine) buildDSN() string {
 
 		// Performance settings
 		Timeout:      30 * time.Second,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		ReadTimeout:  5 * time.Minute,
+		WriteTimeout: 5 * time.Minute,
+
+		// Allow large INSERT batches (native dumps use extended-insert of ~40MB+)
+		MaxAllowedPacket: 64 * 1024 * 1024, // 64MB
+
+		// Allow LOAD DATA LOCAL INFILE for parallel restore
+		AllowAllFiles: true,
 
 		// Auth settings - required for MariaDB unix_socket auth
 		AllowNativePasswords: true,
@@ -893,6 +908,100 @@ func (e *MySQLNativeEngine) formatInsertValues(values []interface{}) string {
 	return "(" + strings.Join(formattedValues, ",") + ")"
 }
 
+// isNumericDBType returns true if the MySQL column type is numeric.
+// DECIMAL/NUMERIC values are returned by the Go driver as []byte and must
+// not be hex-encoded, or MySQL will interpret the hex literal as an integer
+// overflowing the column's range.
+func isNumericDBType(typeName string) bool {
+	switch typeName {
+	case "DECIMAL", "NUMERIC", "DEC", "FIXED",
+		"FLOAT", "DOUBLE", "REAL",
+		"TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT",
+		"BIT", "YEAR":
+		return true
+	}
+	return false
+}
+
+// formatInsertValuesTyped is like formatInsertValues but uses column type
+// metadata to correctly handle DECIMAL/NUMERIC columns that the Go driver
+// returns as []byte. Without type info it falls back to formatInsertValues.
+func (e *MySQLNativeEngine) formatInsertValuesTyped(values []interface{}, colTypeNames []string) string {
+	if len(colTypeNames) == 0 || len(colTypeNames) != len(values) {
+		return e.formatInsertValues(values)
+	}
+
+	var formattedValues []string
+
+	for i, value := range values {
+		if value == nil {
+			formattedValues = append(formattedValues, "NULL")
+			continue
+		}
+
+		switch v := value.(type) {
+		case []byte:
+			if isNumericDBType(colTypeNames[i]) {
+				// DECIMAL/NUMERIC: output the raw textual value without hex or quotes
+				if len(v) == 0 {
+					formattedValues = append(formattedValues, "NULL")
+				} else {
+					formattedValues = append(formattedValues, string(v))
+				}
+			} else {
+				// Delegate to the normal []byte handling
+				if len(v) == 0 {
+					formattedValues = append(formattedValues, "''")
+				} else if e.cfg.HexBlob {
+					formattedValues = append(formattedValues, fmt.Sprintf("0x%X", v))
+				} else if e.isPrintableBinary(v) {
+					formattedValues = append(formattedValues, e.escapeBinaryString(string(v)))
+				} else {
+					formattedValues = append(formattedValues, fmt.Sprintf("0x%X", v))
+				}
+			}
+		default:
+			// For all other Go types, use the existing formatter (single-value)
+			formattedValues = append(formattedValues, e.formatSingleValue(v))
+		}
+	}
+
+	return "(" + strings.Join(formattedValues, ",") + ")"
+}
+
+// formatSingleValue formats a single non-nil, non-[]byte value for INSERT.
+func (e *MySQLNativeEngine) formatSingleValue(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return e.escapeString(v)
+	case time.Time:
+		if v.Nanosecond() != 0 {
+			return fmt.Sprintf("'%s'", v.Format("2006-01-02 15:04:05.999999"))
+		}
+		return fmt.Sprintf("'%s'", v.Format("2006-01-02 15:04:05"))
+	case bool:
+		if v {
+			return "1"
+		}
+		return "0"
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%v", v)
+	case float32:
+		f := float64(v)
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return "NULL"
+		}
+		return fmt.Sprintf("%v", v)
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return "NULL"
+		}
+		return fmt.Sprintf("%v", v)
+	default:
+		return e.escapeString(fmt.Sprintf("%v", v))
+	}
+}
+
 // isPrintableBinary checks if binary data contains mostly printable characters
 func (e *MySQLNativeEngine) isPrintableBinary(data []byte) bool {
 	if len(data) == 0 {
@@ -930,18 +1039,21 @@ func (e *MySQLNativeEngine) writeInsertBatch(w io.Writer, database, table string
 		return nil
 	}
 
+	// Use unqualified table names — the USE `database` statement at the top
+	// of the dump sets the context. This allows restoring to a different
+	// target database via --target without hardcoded source DB references.
 	var insertSQL string
 
 	if e.cfg.ExtendedInsert {
 		// Use extended INSERT syntax for better performance
-		insertSQL = fmt.Sprintf("INSERT INTO `%s`.`%s` (%s) VALUES\n%s;\n",
-			database, table, strings.Join(columns, ","), strings.Join(values, ",\n"))
+		insertSQL = fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n%s;\n",
+			table, strings.Join(columns, ","), strings.Join(values, ",\n"))
 	} else {
 		// Use individual INSERT statements
 		var statements []string
 		for _, value := range values {
-			stmt := fmt.Sprintf("INSERT INTO `%s`.`%s` (%s) VALUES %s;",
-				database, table, strings.Join(columns, ","), value)
+			stmt := fmt.Sprintf("INSERT INTO `%s` (%s) VALUES %s;",
+				table, strings.Join(columns, ","), value)
 			statements = append(statements, stmt)
 		}
 		insertSQL = strings.Join(statements, "\n") + "\n"
@@ -1214,6 +1326,10 @@ func (e *MySQLNativeEngine) Restore(ctx context.Context, inputReader io.Reader, 
 		e.db.ExecContext(ctx, "SET SESSION innodb_flush_log_at_trx_commit = 1")
 	}()
 
+	// Detect source database name from the dump so we can rewrite
+	// USE / CREATE DATABASE / fully-qualified references to point at targetDB.
+	var sourceDB string
+
 	// Read and execute SQL script
 	scanner := bufio.NewScanner(inputReader)
 	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024) // 10MB max line
@@ -1236,6 +1352,11 @@ func (e *MySQLNativeEngine) Restore(ctx context.Context, inputReader io.Reader, 
 			stmt := sqlBuffer.String()
 			sqlBuffer.Reset()
 
+			// Rewrite database references when restoring to a different target
+			if targetDB != "" {
+				stmt = e.rewriteMySQLDatabaseRefs(stmt, targetDB, &sourceDB)
+			}
+
 			if _, err := e.db.ExecContext(ctx, stmt); err != nil {
 				e.log.Warn("Failed to execute statement", "error", err, "statement", stmt[:min(len(stmt), 100)])
 				// Continue with next statement (non-fatal errors)
@@ -1249,6 +1370,65 @@ func (e *MySQLNativeEngine) Restore(ctx context.Context, inputReader io.Reader, 
 
 	e.log.Info("Native MySQL restore completed")
 	return nil
+}
+
+// rewriteMySQLDatabaseRefs rewrites CREATE DATABASE, USE, and fully-qualified
+// table references from the source database name to the target database name.
+// sourceDB is detected from the first CREATE DATABASE or USE statement.
+func (e *MySQLNativeEngine) rewriteMySQLDatabaseRefs(stmt, targetDB string, sourceDB *string) string {
+	upper := strings.ToUpper(strings.TrimSpace(stmt))
+
+	// Detect source database from CREATE DATABASE `xxx`
+	if *sourceDB == "" && strings.HasPrefix(upper, "CREATE DATABASE") {
+		if name := extractBacktickedName(stmt); name != "" {
+			*sourceDB = name
+			e.log.Info("Detected source database in dump", "source", name, "target", targetDB)
+		}
+	}
+
+	// Detect source database from USE `xxx`
+	if *sourceDB == "" && strings.HasPrefix(upper, "USE ") {
+		if name := extractBacktickedName(stmt); name != "" {
+			*sourceDB = name
+			e.log.Info("Detected source database in dump", "source", name, "target", targetDB)
+		}
+	}
+
+	// If source == target, nothing to rewrite
+	if *sourceDB == "" || *sourceDB == targetDB {
+		return stmt
+	}
+
+	// Rewrite CREATE DATABASE `source` → CREATE DATABASE `target`
+	if strings.HasPrefix(upper, "CREATE DATABASE") {
+		return strings.Replace(stmt, "`"+*sourceDB+"`", "`"+targetDB+"`", 1)
+	}
+
+	// Rewrite USE `source` → USE `target`
+	if strings.HasPrefix(upper, "USE ") {
+		return strings.Replace(stmt, "`"+*sourceDB+"`", "`"+targetDB+"`", 1)
+	}
+
+	// Rewrite fully-qualified references: `source`.`table` → `target`.`table`
+	if *sourceDB != "" {
+		stmt = strings.ReplaceAll(stmt, "`"+*sourceDB+"`.", "`"+targetDB+"`.")
+	}
+
+	return stmt
+}
+
+// extractBacktickedName extracts the first backtick-quoted name from a SQL statement.
+// e.g. "CREATE DATABASE `mydb` ..." → "mydb"
+func extractBacktickedName(stmt string) string {
+	start := strings.IndexByte(stmt, '`')
+	if start < 0 {
+		return ""
+	}
+	end := strings.IndexByte(stmt[start+1:], '`')
+	if end < 0 {
+		return ""
+	}
+	return stmt[start+1 : start+1+end]
 }
 
 func (e *MySQLNativeEngine) Close() error {

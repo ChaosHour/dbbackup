@@ -335,6 +335,16 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 		options = &RestoreOptions{}
 	}
 
+	// Pin a single connection so USE, SET, and all DML/DDL share session state.
+	// Using db.Conn(ctx) ensures the same underlying TCP connection is used
+	// for the entire restore, which is critical because USE, SET AUTOCOMMIT,
+	// SET FOREIGN_KEY_CHECKS etc. are session-level commands.
+	conn, err := r.engine.db.Conn(ctx)
+	if err != nil {
+		return result, fmt.Errorf("failed to acquire dedicated connection: %w", err)
+	}
+	defer conn.Close()
+
 	// Apply MySQL bulk load optimizations for faster restores
 	// These provide 2-4x speedup for large SQL restores
 	optimizations := []string{
@@ -347,9 +357,9 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 		"SET SESSION bulk_insert_buffer_size = 268435456", // 256MB bulk insert buffer
 	}
 	appliedCount := 0
-	for _, sql := range optimizations {
-		if _, err := r.engine.db.ExecContext(ctx, sql); err != nil {
-			r.engine.log.Debug("MySQL optimization not available (may require privileges)", "sql", sql, "error", err)
+	for _, sqlStmt := range optimizations {
+		if _, err := conn.ExecContext(ctx, sqlStmt); err != nil {
+			r.engine.log.Debug("MySQL optimization not available (may require privileges)", "sql", sqlStmt, "error", err)
 		} else {
 			appliedCount++
 		}
@@ -358,12 +368,12 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 
 	// Restore settings at end
 	defer func() {
-		r.engine.db.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1")
-		r.engine.db.ExecContext(ctx, "SET UNIQUE_CHECKS = 1")
-		r.engine.db.ExecContext(ctx, "COMMIT")
-		r.engine.db.ExecContext(ctx, "SET AUTOCOMMIT = 1")
-		r.engine.db.ExecContext(ctx, "SET sql_log_bin = 1")
-		r.engine.db.ExecContext(ctx, "SET SESSION innodb_flush_log_at_trx_commit = 1")
+		conn.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1")
+		conn.ExecContext(ctx, "SET UNIQUE_CHECKS = 1")
+		conn.ExecContext(ctx, "COMMIT")
+		conn.ExecContext(ctx, "SET AUTOCOMMIT = 1")
+		conn.ExecContext(ctx, "SET sql_log_bin = 1")
+		conn.ExecContext(ctx, "SET SESSION innodb_flush_log_at_trx_commit = 1")
 	}()
 
 	// Parse and execute SQL statements from the backup
@@ -379,17 +389,22 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 		currentTable     string   // Track current table for DISABLE KEYS
 		disabledTables   []string // Tables with disabled keys (for deferred ENABLE)
 		tableInsertCount int64    // INSERT count for current table
+		sourceDB         string   // Detected source DB name from dump (for rewriting)
 	)
 
-	// Note: Foreign key checks already disabled in optimizations above
-	// The DisableForeignKeys option is redundant but we keep it for API compatibility
+	// Target database name for USE / CREATE DATABASE / qualified reference rewriting
+	targetDB := options.Database
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
-		// Skip comments and empty lines
-		if trimmed == "" || strings.HasPrefix(trimmed, "--") || strings.HasPrefix(trimmed, "/*") {
+		// Skip comments and empty lines (but NOT MySQL conditional comments /*!...*/
+		// which are executable statements like SET NAMES, FOREIGN_KEY_CHECKS, etc.)
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "/*") && !strings.HasPrefix(trimmed, "/*!") {
 			continue
 		}
 
@@ -431,7 +446,7 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 				if tbl := extractMySQLTableName(stmt); tbl != "" {
 					// ENABLE KEYS for previous table if we had one
 					if currentTable != "" && tableInsertCount > 0 {
-						if _, err := r.engine.db.ExecContext(ctx,
+						if _, err := conn.ExecContext(ctx,
 							fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", currentTable)); err != nil {
 							r.engine.log.Debug("ENABLE KEYS failed (non-critical)", "table", currentTable, "error", err)
 						}
@@ -443,7 +458,7 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 
 			// DISABLE KEYS before first INSERT into a table (deferred until data load)
 			if strings.HasPrefix(upperStmt, "INSERT") && currentTable != "" && tableInsertCount == 0 {
-				if _, err := r.engine.db.ExecContext(ctx,
+				if _, err := conn.ExecContext(ctx,
 					fmt.Sprintf("ALTER TABLE %s DISABLE KEYS", currentTable)); err != nil {
 					r.engine.log.Debug("DISABLE KEYS not supported (MyISAM only)", "table", currentTable, "error", err)
 				} else {
@@ -452,8 +467,13 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 				}
 			}
 
+			// Rewrite database references when restoring to a different target
+			if targetDB != "" {
+				stmt = r.engine.rewriteMySQLDatabaseRefs(stmt, targetDB, &sourceDB)
+			}
+
 			// Execute the statement
-			res, err := r.engine.db.ExecContext(ctx, stmt)
+			res, err := conn.ExecContext(ctx, stmt)
 			if err != nil {
 				if options.ContinueOnError {
 					r.engine.log.Warn("Statement failed, continuing", "error", err)
@@ -485,7 +505,7 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 
 	// ENABLE KEYS for the last table
 	if currentTable != "" && tableInsertCount > 0 {
-		if _, err := r.engine.db.ExecContext(ctx,
+		if _, err := conn.ExecContext(ctx,
 			fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", currentTable)); err != nil {
 			r.engine.log.Debug("ENABLE KEYS failed (non-critical)", "table", currentTable, "error", err)
 		}
@@ -493,13 +513,13 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 
 	// Re-enable keys on all tables that were disabled (safety net)
 	for _, tbl := range disabledTables {
-		r.engine.db.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", tbl))
+		conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", tbl))
 	}
 
 	// Handle any remaining statement
 	if stmtBuffer.Len() > 0 && !inMultiLine {
 		stmt := stmtBuffer.String()
-		if _, err := r.engine.db.ExecContext(ctx, stmt); err != nil {
+		if _, err := conn.ExecContext(ctx, stmt); err != nil {
 			if !options.ContinueOnError {
 				return result, fmt.Errorf("final statement failed: %w", err)
 			}

@@ -14,6 +14,7 @@ import (
 
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/metadata"
 	"dbbackup/internal/restore"
 )
 
@@ -134,8 +135,8 @@ func loadArchives(cfg *config.Config, log logger.Logger) tea.Cmd {
 				size = info.Size()
 			}
 
-			// Extract database name
-			dbName := extractDBNameFromFilename(name)
+			// Extract database name (try metadata sidecar first, fall back to filename parsing)
+			dbName := extractDBNameFromPath(fullPath)
 
 			// Basic validation (just check if file is readable)
 			valid := true
@@ -465,6 +466,15 @@ func stripFileExtensions(name string) string {
 	return name
 }
 
+// extractDBNameFromPath tries to read the database name from the .meta.json sidecar file,
+// and falls back to filename-based extraction if metadata is unavailable.
+func extractDBNameFromPath(fullPath string) string {
+	if meta, err := metadata.Load(fullPath); err == nil && meta.Database != "" {
+		return meta.Database
+	}
+	return extractDBNameFromFilename(filepath.Base(fullPath))
+}
+
 // extractDBNameFromFilename extracts database name from archive filename
 // Handles both legacy format (db_myapp_20260212_143000.dump)
 // and prefix format (pg_mydb_20260212_0645.dump, mysql_shop_20260212_0645.sql.gz)
@@ -511,7 +521,8 @@ func extractDBNameFromFilename(filename string) string {
 	// Remove timestamp patterns (YYYYMMDD_HHMMSS) from end
 	parts := strings.Split(base, "_")
 	for i := len(parts) - 1; i >= 0; i-- {
-		if len(parts[i]) == 8 || len(parts[i]) == 6 {
+		p := parts[i]
+		if (len(p) == 8 || len(p) == 6) && isAllDigits(p) {
 			parts = parts[:i]
 		} else {
 			break
@@ -523,6 +534,16 @@ func extractDBNameFromFilename(filename string) string {
 	}
 
 	return base
+}
+
+// isAllDigits returns true if s consists entirely of ASCII digits
+func isAllDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
 }
 
 // formatSize formats file size

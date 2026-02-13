@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
+	"dbbackup/internal/cleanup"
 	"dbbackup/internal/database"
 	"dbbackup/internal/engine/native"
 	"dbbackup/internal/notify"
@@ -109,6 +111,14 @@ func runNativeRestore(ctx context.Context, db database.Database, archivePath, ta
 		"clean_first", cleanFirst,
 		"create_if_missing", createIfMissing)
 
+	// Create target database if requested and it doesn't exist
+	if createIfMissing {
+		log.Info("Ensuring target database exists", "database", targetDB)
+		if err := ensureTargetDatabaseExists(ctx, targetDB, dbType); err != nil {
+			return fmt.Errorf("failed to create target database '%s': %w", targetDB, err)
+		}
+	}
+
 	// Perform restore using native engine
 	if err := engineManager.RestoreWithNativeEngine(ctx, reader, targetDB); err != nil {
 		auditLogger.LogRestoreFailed(user, targetDB, err)
@@ -138,6 +148,63 @@ func runNativeRestore(ctx context.Context, db database.Database, archivePath, ta
 			WithDetail("engine", dbType))
 	}
 
+	return nil
+}
+
+// ensureTargetDatabaseExists creates the target database if it doesn't exist
+func ensureTargetDatabaseExists(ctx context.Context, targetDB, dbType string) error {
+	switch dbType {
+	case "postgresql":
+		// Build psql connection args — omit -h for localhost to use
+		// Unix socket peer auth (same as internal/restore/database.go).
+		psqlArgs := []string{"-U", cfg.User}
+		if cfg.Host != "" && cfg.Host != "localhost" && cfg.Host != "127.0.0.1" {
+			psqlArgs = append(psqlArgs, "-h", cfg.Host)
+		}
+		if cfg.Port > 0 {
+			psqlArgs = append(psqlArgs, "-p", fmt.Sprintf("%d", cfg.Port))
+		}
+
+		// Check if database exists
+		checkArgs := append(psqlArgs, "-At", "-c",
+			fmt.Sprintf("SELECT 1 FROM pg_database WHERE datname = '%s'", strings.ReplaceAll(targetDB, "'", "''")))
+		checkCmd := cleanup.SafeCommand(ctx, "psql", checkArgs...)
+		output, err := checkCmd.CombinedOutput()
+		if err == nil && strings.TrimSpace(string(output)) == "1" {
+			log.Info("Target database already exists", "database", targetDB)
+			return nil
+		}
+
+		// Create the database
+		createArgs := append(psqlArgs, "-c",
+			fmt.Sprintf("CREATE DATABASE %s", database.QuotePGIdentifier(targetDB)))
+		createCmd := cleanup.SafeCommand(ctx, "psql", createArgs...)
+		if out, err := createCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("CREATE DATABASE failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
+		}
+		log.Info("Created target database", "database", targetDB)
+
+	case "mysql", "mariadb":
+		args := []string{"-u", cfg.User, "-e",
+			fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", database.QuoteMySQLIdentifier(targetDB))}
+		if cfg.Socket != "" {
+			args = append(args, "-S", cfg.Socket)
+		} else {
+			args = append(args, "-h", cfg.Host, "-P", fmt.Sprintf("%d", cfg.Port))
+		}
+		cmd := cleanup.SafeCommand(ctx, "mysql", args...)
+		cmd.Env = os.Environ()
+		if cfg.Password != "" {
+			cmd.Env = append(cmd.Env, "MYSQL_PWD="+cfg.Password)
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("CREATE DATABASE failed: %w (output: %s)", err, strings.TrimSpace(string(out)))
+		}
+		log.Info("Ensured target database exists", "database", targetDB)
+
+	default:
+		return fmt.Errorf("unsupported database type for auto-create: %s", dbType)
+	}
 	return nil
 }
 

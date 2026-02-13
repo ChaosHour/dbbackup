@@ -519,12 +519,37 @@ func (e *PostgreSQLNativeEngine) getDatabaseObjects(ctx context.Context) ([]Data
 		return nil, err
 	}
 
-	// Process each schema
+	// Emit CREATE SCHEMA for every non-default schema so the restore
+	// target database has them before any CREATE TABLE / COPY runs.
+	for _, schema := range schemas {
+		if schema == "public" {
+			continue
+		}
+		if !e.shouldIncludeSchema(schema) {
+			continue
+		}
+		objects = append(objects, DatabaseObject{
+			Name:      schema,
+			Type:      "schema",
+			Schema:    schema,
+			CreateSQL: fmt.Sprintf("CREATE SCHEMA IF NOT EXISTS %q;\n", schema),
+		})
+	}
+
+	// Process each schema: sequences first (tables reference them via
+	// DEFAULT nextval(...)), then tables, then other objects.
 	for _, schema := range schemas {
 		// Skip filtered schemas
 		if !e.shouldIncludeSchema(schema) {
 			continue
 		}
+
+		// Get sequences FIRST — tables need them for DEFAULT expressions
+		sequences, err := e.getSequences(ctx, schema)
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, sequences...)
 
 		// Get tables
 		tables, err := e.getTables(ctx, schema)
@@ -534,13 +559,18 @@ func (e *PostgreSQLNativeEngine) getDatabaseObjects(ctx context.Context) ([]Data
 
 		objects = append(objects, tables...)
 
-		// Get other objects (views, functions, etc.)
-		otherObjects, err := e.getOtherObjects(ctx, schema)
+		// Get views and functions
+		views, err := e.getViews(ctx, schema)
 		if err != nil {
 			return nil, err
 		}
+		objects = append(objects, views...)
 
-		objects = append(objects, otherObjects...)
+		functions, err := e.getFunctions(ctx, schema)
+		if err != nil {
+			return nil, err
+		}
+		objects = append(objects, functions...)
 	}
 
 	// Sort by dependencies
@@ -586,15 +616,27 @@ func (e *PostgreSQLNativeEngine) getTables(ctx context.Context, schema string) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var objects []DatabaseObject
+	// Collect all table names first so we close rows before issuing
+	// sub-queries (getTableCreateSQL) on the same connection.
+	// A pgx.Conn supports only one active query at a time; querying
+	// while rows are open causes "conn busy" errors.
+	var tableNames []string
 	for rows.Next() {
 		var tableName string
 		if err := rows.Scan(&tableName); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		tableNames = append(tableNames, tableName)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
+	var objects []DatabaseObject
+	for _, tableName := range tableNames {
 		// Skip filtered tables
 		if !e.shouldIncludeTable(schema, tableName) {
 			continue
@@ -625,7 +667,7 @@ func (e *PostgreSQLNativeEngine) getTables(ctx context.Context, schema string) (
 		}
 	}
 
-	return objects, rows.Err()
+	return objects, nil
 }
 
 // getTableCreateSQL generates CREATE TABLE statement
@@ -999,22 +1041,24 @@ func (e *PostgreSQLNativeEngine) getOtherObjects(ctx context.Context, schema str
 }
 
 func (e *PostgreSQLNativeEngine) sortByDependencies(objects []DatabaseObject) []DatabaseObject {
-	// Proper dependency graph analysis using pg_depend
-	// Falls back to simple type-based ordering if dependency query fails
-	depOrder, err := e.topologicalSort(objects)
-	if err != nil {
-		e.log.Debug("Dependency graph analysis failed, using type-based ordering", "error", err)
-		return e.sortByType(objects)
-	}
-	return depOrder
+	// Use type-based ordering which guarantees: schemas → sequences → tables →
+	// views → functions. This is the correct CREATE order because tables
+	// reference sequences in DEFAULT expressions (nextval).
+	//
+	// NOTE: topological sort via pg_depend is NOT used because PostgreSQL
+	// records auto-dependency edges (sequence depends on owning table for
+	// DROP CASCADE) which invert the creation order we need for restore.
+	return e.sortByType(objects)
 }
 
 // sortByType provides simple type-based ordering (fallback)
 func (e *PostgreSQLNativeEngine) sortByType(objects []DatabaseObject) []DatabaseObject {
-	var tables, views, sequences, functions, others []DatabaseObject
+	var schemas, tables, views, sequences, functions, others []DatabaseObject
 
 	for _, obj := range objects {
 		switch obj.Type {
+		case "schema":
+			schemas = append(schemas, obj)
 		case "table", "table_data":
 			tables = append(tables, obj)
 		case "view":
@@ -1029,6 +1073,7 @@ func (e *PostgreSQLNativeEngine) sortByType(objects []DatabaseObject) []Database
 	}
 
 	result := make([]DatabaseObject, 0, len(objects))
+	result = append(result, schemas...)
 	result = append(result, sequences...)
 	result = append(result, tables...)
 	result = append(result, views...)
@@ -1256,15 +1301,25 @@ func (e *PostgreSQLNativeEngine) getSequences(ctx context.Context, schema string
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var objects []DatabaseObject
+	// Collect all sequence names first to free the connection before
+	// issuing per-sequence detail queries (avoids "conn busy").
+	var seqNames []string
 	for rows.Next() {
 		var seqName string
 		if err := rows.Scan(&seqName); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		seqNames = append(seqNames, seqName)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
+	var objects []DatabaseObject
+	for _, seqName := range seqNames {
 		// Get sequence definition
 		createSQL, err := e.getSequenceCreateSQL(ctx, schema, seqName)
 		if err != nil {
@@ -1280,7 +1335,7 @@ func (e *PostgreSQLNativeEngine) getSequences(ctx context.Context, schema string
 		})
 	}
 
-	return objects, rows.Err()
+	return objects, nil
 }
 
 // getFunctions retrieves functions and procedures for a schema
@@ -1296,30 +1351,44 @@ func (e *PostgreSQLNativeEngine) getFunctions(ctx context.Context, schema string
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var objects []DatabaseObject
+	// Collect all function names/types first to free the connection
+	// before issuing per-function detail queries (avoids "conn busy").
+	type funcEntry struct {
+		name     string
+		funcType string
+	}
+	var funcs []funcEntry
 	for rows.Next() {
 		var funcName, funcType string
 		if err := rows.Scan(&funcName, &funcType); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		funcs = append(funcs, funcEntry{name: funcName, funcType: funcType})
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
+	var objects []DatabaseObject
+	for _, f := range funcs {
 		// Get function definition
-		createSQL, err := e.getFunctionCreateSQL(ctx, schema, funcName)
+		createSQL, err := e.getFunctionCreateSQL(ctx, schema, f.name)
 		if err != nil {
 			continue // Skip functions we can't read
 		}
 
 		objects = append(objects, DatabaseObject{
-			Name:      funcName,
-			Type:      strings.ToLower(funcType),
+			Name:      f.name,
+			Type:      strings.ToLower(f.funcType),
 			Schema:    schema,
 			CreateSQL: createSQL,
 		})
 	}
 
-	return objects, rows.Err()
+	return objects, nil
 }
 
 // getSequenceCreateSQL builds CREATE SEQUENCE statement

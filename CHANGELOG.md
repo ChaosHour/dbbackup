@@ -5,6 +5,22 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.33.0] - 2026-02-13 — Native Engine Hardening & Restore Naming Fix
+
+### Fixed
+
+- **MariaDB/MySQL DECIMAL values corrupted on restore** — The Go MySQL driver returns `DECIMAL`/`NUMERIC` column values as `[]byte`. With `HexBlob=true`, a salary like `54780.00` became hex literal `0x35343738302E3030`, which MySQL interprets as a huge integer overflowing `DECIMAL(12,2)`. New type-aware `formatInsertValuesTyped()` detects numeric column types via `rows.ColumnTypes()` and emits plain text instead of hex for `DECIMAL`, `NUMERIC`, `FLOAT`, `DOUBLE`, and all `INT` variants.
+- **MariaDB/MySQL restore session isolation** — `Restore()` used `*sql.DB` connection pool (10 connections), causing `USE`, `SET AUTOCOMMIT=0`, `SET FOREIGN_KEY_CHECKS=0` to run on random connections while `INSERT` statements went to different ones. Replaced with `db.Conn(ctx)` to pin a single connection for the entire restore session.
+- **MySQL conditional comments skipped** — The SQL comment filter stripped `/*...*/` blocks, which also removed `/*!40000 ...*/` MySQL conditional/executable comments (used for `SET NAMES`, `FOREIGN_KEY_CHECKS`, `DISABLE KEYS`). Now preserves `/*!` prefixed comments.
+- **Restore creates wrong database name from filename** — Three independent `extractDBName*` functions (CLI, TUI, preview) only parsed filenames—never reading `.meta.json` sidecar files. The CLI version returned only `parts[0]` (first underscore segment), so `9.10.3_prod_dump-resydb_20260211.sql` became database `9` instead of `resydb`. All three now try `metadata.Load()` first for the authoritative name, then fall back to joining all non-timestamp parts.
+- **6-character database names falsely matched as timestamps** — The timestamp stripper checked `len(part) == 6 || len(part) == 8` without verifying digits-only, causing names like `resydb` (6 chars) to be stripped. Added `isAllDigits()` guard to all three extraction functions.
+- **Native restore: target database auto-creation** — `ensureTargetDatabaseExists()` now creates the target database (PostgreSQL via `psql`, MySQL/MariaDB via `mysql` CLI) when `--create` is used, preventing "database does not exist" errors.
+- **QA test ordering** — Dedup and PITR tests now run before cluster restore (which drops all databases) in both PostgreSQL and MariaDB QA sections, preventing false failures.
+
+### Added
+
+- **TUI: inline database name editing** — Press `n` in the restore preview to edit the target database name with an inline text input. Shows cursor with `Enter` to confirm and `Esc` to cancel. Safety net for cases where both metadata and filename parsing produce the wrong name.
+
 ## [6.32.0] - 2026-02-13 — CopyFrom Deadlock Fix & QA Script Hardening
 
 ### Fixed

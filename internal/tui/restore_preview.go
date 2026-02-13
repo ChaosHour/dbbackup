@@ -54,6 +54,8 @@ type RestorePreviewModel struct {
 	debugLocks        bool        // Enable detailed lock debugging
 	workDir           string      // Resolved work directory path
 	workDirMode       WorkDirMode // Which source is selected
+	editingTargetDB   bool        // True when user is editing database name
+	targetDBInput     string      // Buffer for in-progress edit
 }
 
 // NewRestorePreview creates a new restore preview
@@ -357,9 +359,47 @@ func (m RestorePreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.parent, nil
 
 	case tea.KeyMsg:
+		// Handle inline database name editing mode
+		if m.editingTargetDB {
+			switch msg.String() {
+			case "enter":
+				// Accept the edited name
+				if m.targetDBInput != "" {
+					m.targetDB = m.targetDBInput
+					m.message = infoStyle.Render(fmt.Sprintf("[OK] Target database set to: %s", m.targetDB))
+				}
+				m.editingTargetDB = false
+			case "esc":
+				// Cancel editing
+				m.editingTargetDB = false
+				m.message = "Database name edit cancelled"
+			case "backspace":
+				if len(m.targetDBInput) > 0 {
+					m.targetDBInput = m.targetDBInput[:len(m.targetDBInput)-1]
+				}
+			case "ctrl+u":
+				m.targetDBInput = ""
+			default:
+				// Only accept printable single characters
+				key := msg.String()
+				if len(key) == 1 && key[0] >= 32 && key[0] <= 126 {
+					m.targetDBInput += key
+				}
+			}
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m.parent, nil
+
+		case "n":
+			// Edit target database name
+			if m.mode == "restore-single" {
+				m.editingTargetDB = true
+				m.targetDBInput = m.targetDB
+				m.message = infoStyle.Render("Editing database name (Enter to confirm, Esc to cancel)")
+			}
 
 		case "t", "f":
 			// Toggle force overwrite (clean-first)
@@ -574,7 +614,12 @@ func (m RestorePreviewModel) View() string {
 	if m.mode == "restore-single" {
 		s.WriteString(archiveHeaderStyle.Render("[TARGET] Information"))
 		s.WriteString("\n")
-		s.WriteString(fmt.Sprintf("  Database: %s\n", m.targetDB))
+		if m.editingTargetDB {
+			s.WriteString(CheckWarningStyle.Render(fmt.Sprintf("  Database: %s▏ (Enter to confirm, Esc to cancel)", m.targetDBInput)))
+		} else {
+			s.WriteString(fmt.Sprintf("  Database: %s (press 'n' to change)\n", m.targetDB))
+		}
+		s.WriteString("\n")
 		s.WriteString(fmt.Sprintf("  Host: %s:%d\n", m.config.Host, m.config.Port))
 
 		// Show Engine Mode for single restore too
@@ -828,7 +873,7 @@ func (m RestorePreviewModel) View() string {
 		s.WriteString(successStyle.Render("[OK] Ready to restore"))
 		s.WriteString("\n")
 		if m.mode == "restore-single" {
-			s.WriteString(infoStyle.Render("f: Overwrite | c: Create | w: WorkDir | d: Debug | l: LockDebug | Enter: Proceed | Esc: Cancel"))
+			s.WriteString(infoStyle.Render("n: Name | f: Overwrite | c: Create | w: WorkDir | d: Debug | l: LockDebug | Enter: Proceed | Esc: Cancel"))
 		} else if m.mode == "restore-cluster" {
 			if m.existingDBCount > 0 {
 				s.WriteString(infoStyle.Render("c: Cleanup | w: WorkDir | d: Debug | l: LockDebug | Enter: Proceed | Esc: Cancel"))

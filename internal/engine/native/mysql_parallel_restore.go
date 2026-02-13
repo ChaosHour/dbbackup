@@ -43,6 +43,7 @@ type MySQLParallelRestoreOptions struct {
 	TempDir          string // Override temp directory (default: os.TempDir())
 	DisableKeys      bool   // DISABLE KEYS before LOAD DATA, ENABLE after
 	BatchSize        int    // Rows per TSV file (0 = all rows in one file)
+	TargetDB         string // Target database name (rewrites USE/CREATE DATABASE/qualified refs)
 	ProgressCallback func(phase string, table string, rows int64)
 }
 
@@ -151,9 +152,19 @@ func (e *MySQLParallelRestoreEngine) RestoreFile(ctx context.Context, filePath s
 
 	// Phase 2: Execute schema statements (sequential)
 	e.log.Info("Phase 2: Executing schema statements", "count", len(schemaStmts))
-	for _, stmt := range schemaStmts {
+
+	// When restoring to a different target DB, rewrite USE/CREATE DATABASE
+	// and fully-qualified table references from source → target.
+	var sourceDB string
+	rewriter := &MySQLNativeEngine{log: e.log}
+
+	for i, stmt := range schemaStmts {
 		if ctx.Err() != nil {
 			return result, ctx.Err()
+		}
+		if options.TargetDB != "" {
+			stmt = rewriter.rewriteMySQLDatabaseRefs(stmt, options.TargetDB, &sourceDB)
+			schemaStmts[i] = stmt
 		}
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
 			if options.ContinueOnError {
@@ -164,6 +175,13 @@ func (e *MySQLParallelRestoreEngine) RestoreFile(ctx context.Context, filePath s
 			}
 		}
 		result.SchemaStatements++
+	}
+
+	// Rewrite table names in data chunks if source != target
+	if sourceDB != "" && options.TargetDB != "" && sourceDB != options.TargetDB {
+		for _, chunk := range chunks {
+			chunk.TableName = strings.ReplaceAll(chunk.TableName, "`"+sourceDB+"`.", "`"+options.TargetDB+"`.")
+		}
 	}
 
 	// Apply session optimizations for bulk loading

@@ -11,6 +11,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 
+	"dbbackup/internal/metadata"
 	"dbbackup/internal/restore"
 )
 
@@ -306,17 +307,31 @@ func runRestorePreview(cmd *cobra.Command, args []string) error {
 // Helper functions
 
 func extractDatabaseName(archivePath string, result *restore.DiagnoseResult) string {
-	// Try to extract from filename
+	// Try metadata sidecar first — it has the authoritative database name
+	if meta, err := metadata.Load(archivePath); err == nil && meta.Database != "" {
+		return meta.Database
+	}
+
+	// Fall back to filename parsing
 	baseName := filepath.Base(archivePath)
 	baseName = strings.TrimSuffix(baseName, ".gz")
 	baseName = strings.TrimSuffix(baseName, ".dump")
 	baseName = strings.TrimSuffix(baseName, ".sql")
 	baseName = strings.TrimSuffix(baseName, ".tar")
 
-	// Remove timestamp patterns
+	// Remove timestamp patterns from end
 	parts := strings.Split(baseName, "_")
+	for i := len(parts) - 1; i >= 0; i-- {
+		p := parts[i]
+		if (len(p) == 8 || len(p) == 6) && isAllDigits(p) {
+			parts = parts[:i]
+		} else {
+			break
+		}
+	}
+
 	if len(parts) > 0 {
-		return parts[0]
+		return strings.Join(parts, "_")
 	}
 
 	return "unknown"

@@ -15,6 +15,7 @@ import (
 	"dbbackup/internal/cloud"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
+	"dbbackup/internal/metadata"
 	"dbbackup/internal/notify"
 	"dbbackup/internal/pitr"
 	"dbbackup/internal/progress"
@@ -1505,6 +1506,16 @@ type archiveInfo struct {
 	DBName   string
 }
 
+// isAllDigits returns true if s consists entirely of ASCII digits
+func isAllDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
+}
+
 // stripFileExtensions removes common backup file extensions from a name
 func stripFileExtensions(name string) string {
 	// Remove extensions (handle double extensions like .sql.gz.sql.gz)
@@ -1525,17 +1536,22 @@ func stripFileExtensions(name string) string {
 
 // extractDBNameFromArchive extracts database name from archive filename
 func extractDBNameFromArchive(filename string) string {
+	// Try metadata sidecar first — it has the authoritative database name
+	if meta, err := metadata.Load(filename); err == nil && meta.Database != "" {
+		return meta.Database
+	}
+
 	base := filepath.Base(filename)
 
 	// Remove extensions
 	base = stripFileExtensions(base)
 
-	// Remove timestamp patterns (YYYYMMDD_HHMMSS)
+	// Remove timestamp patterns (YYYYMMDD_HHMMSS) from end
 	parts := strings.Split(base, "_")
 	for i := len(parts) - 1; i >= 0; i-- {
-		// Check if part looks like a date
-		if len(parts[i]) == 8 || len(parts[i]) == 6 {
-			// Could be date or time, remove it
+		// Check if part looks like a date (8 digits) or time (6 digits)
+		p := parts[i]
+		if (len(p) == 8 || len(p) == 6) && isAllDigits(p) {
 			parts = parts[:i]
 		} else {
 			break
@@ -1543,7 +1559,7 @@ func extractDBNameFromArchive(filename string) string {
 	}
 
 	if len(parts) > 0 {
-		return parts[0]
+		return strings.Join(parts, "_")
 	}
 
 	return base

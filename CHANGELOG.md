@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.34.0] - 2026-02-13 — pgzip Panic Fix & Comprehensive QA
+
+### Fixed
+
+- **pgzip goroutine panic during cluster backup** — `pgzip.(*Writer).Write` panicked in background listener goroutines when the underlying `*os.File` was closed before all compression goroutines finished writing. Root cause: `pgzip.Close()` can return early on error, leaving active goroutines that then write to a closed file descriptor. Introduced `SafeWriter` wrapper (`internal/fs`) with an atomic shutdown flag that converts post-close writes into clean `io.ErrClosedPipe` errors. Applied to all 13 pgzip write sites across backup engine, WAL compression, binlog archiving, parallel dump, snapshot engine, clone, mysqldump, incremental backup, PITR, and native backup CLI.
+
+### Added
+
+- **Comprehensive QA test suite** — Extended `run_full_qa.sh` from ~35 to 138 test cases across 5 test sections (PostgreSQL, MariaDB, MySQL, cross-engine, advanced). Now covers: restore preview, diagnose, force overwrite, diff, verify-restore, verify-locks, estimate, validate, version, cpu, profile, compression analysis, forecast, compliance reports, retention simulator (including GFS), RTO, schedule, catalog dashboard/export, progress webhooks, batch verify, parallel-restore, restore-benchmark, metrics, notify, man pages, shell completions, cloud status, engine info, blob stats, WAL ops, encryption, and advanced stress tests.
+
 ## [6.33.0] - 2026-02-13 — Native Engine Hardening & Restore Naming Fix
 
 ### Fixed

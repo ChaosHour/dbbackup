@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/fs"
+
 	"github.com/klauspost/pgzip"
 )
 
@@ -429,9 +431,14 @@ func (m *MySQLPITR) CreateBackup(ctx context.Context, opts BackupOptions) (*PITR
 	var writer io.WriteCloser = outFile
 
 	if opts.Compression {
-		gzWriter := NewGzipWriter(outFile, opts.CompressionLvl)
+		// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+		sw := fs.NewSafeWriter(outFile)
+		gzWriter := NewGzipWriter(sw, opts.CompressionLvl)
 		writer = gzWriter
-		defer gzWriter.Close()
+		defer func() {
+			gzWriter.Close()
+			sw.Shutdown()
+		}()
 	}
 
 	cmd.Stdout = writer

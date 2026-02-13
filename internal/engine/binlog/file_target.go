@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"dbbackup/internal/fs"
+
 	"github.com/klauspost/pgzip"
 )
 
@@ -168,6 +170,7 @@ type CompressedFileTarget struct {
 
 	mu       sync.Mutex
 	file     *os.File
+	sw       *fs.SafeWriter
 	gzWriter *pgzip.Writer
 	written  int64
 	fileNum  int
@@ -262,7 +265,9 @@ func (c *CompressedFileTarget) openNewFile() error {
 	}
 
 	c.file = file
-	c.gzWriter = pgzip.NewWriter(file)
+	// Wrap file in SafeWriter to prevent pgzip goroutine panics
+	c.sw = fs.NewSafeWriter(file)
+	c.gzWriter = pgzip.NewWriter(c.sw)
 	c.written = 0
 	return nil
 }
@@ -271,6 +276,10 @@ func (c *CompressedFileTarget) openNewFile() error {
 func (c *CompressedFileTarget) rotate() error {
 	if c.gzWriter != nil {
 		c.gzWriter.Close()
+	}
+	if c.sw != nil {
+		c.sw.Shutdown() // Block lingering pgzip goroutines before closing file
+		c.sw = nil
 	}
 	if c.file != nil {
 		c.file.Close()

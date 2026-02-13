@@ -1,0 +1,256 @@
+.nh
+.TH "DBBACKUP" "1" "Feb 2026" "dbbackup" "Database Backup Tool"
+
+.SH NAME
+dbbackup-migrate-cluster - Migrate entire database cluster to target server
+
+
+.SH SYNOPSIS
+\fBdbbackup migrate cluster [flags]\fP
+
+
+.SH DESCRIPTION
+Migrate all databases from source cluster to target server.
+
+.PP
+This command:
+1. Connects to source server and lists all databases
+2. Creates individual backups of each database
+3. Restores each database to target server
+4. Optionally cleans up backup files after successful migration
+
+.PP
+Requirements:
+- Database client tools (pg_dump/pg_restore or mysqldump/mysql)
+- Network access to both source and target servers
+- Sufficient disk space in working directory for backups
+
+.PP
+Safety features:
+- Dry-run mode by default (use --confirm to execute)
+- Pre-flight checks on both servers
+- Optional backup retention after migration
+
+.PP
+Examples:
+  # Preview migration
+  dbbackup migrate cluster \\
+    --source-host old-server \\
+    --target-host new-server
+
+.PP
+# Execute migration with cleanup of existing databases
+  dbbackup migrate cluster \\
+    --source-host old-server --source-user postgres \\
+    --target-host new-server --target-user postgres \\
+    --clean --confirm
+
+.PP
+# Exclude specific databases
+  dbbackup migrate cluster \\
+    --source-host old-server \\
+    --target-host new-server \\
+    --exclude template0,template1 \\
+    --confirm
+
+
+.SH OPTIONS
+\fB--exclude\fP=[]
+	Databases to exclude from migration
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for cluster
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--allow-root\fP[=false]
+	Allow running as root/Administrator
+
+.PP
+\fB--auto-detect-cores\fP[=true]
+	Auto-detect CPU cores
+
+.PP
+\fB--backup-dir\fP="/root/db_backups"
+	Backup directory
+
+.PP
+\fB--check-resources\fP[=true]
+	Check system resource limits
+
+.PP
+\fB--clean\fP[=false]
+	Drop existing databases on target before restore
+
+.PP
+\fB--compression\fP=6
+	Compression level (0-9)
+
+.PP
+\fB-c\fP, \fB--config\fP=""
+	Path to config file (default: .dbbackup.conf in current directory)
+
+.PP
+\fB--confirm\fP[=false]
+	Confirm and execute migration (default: dry-run)
+
+.PP
+\fB--cpu-workload\fP="balanced"
+	CPU workload type (cpu-intensive|io-intensive|balanced)
+
+.PP
+\fB--database\fP="postgres"
+	Database name
+
+.PP
+\fB-d\fP, \fB--db-type\fP="postgres"
+	Database type (postgres|mysql|mariadb)
+
+.PP
+\fB--debug\fP[=false]
+	Enable debug logging
+
+.PP
+\fB--debug-locks\fP[=false]
+	Enable detailed lock debugging (captures PostgreSQL lock configuration, Large DB Guard decisions, boost attempts)
+
+.PP
+\fB--dry-run\fP[=false]
+	Preview migration without executing
+
+.PP
+\fB--dump-jobs\fP=8
+	Number of parallel dump jobs
+
+.PP
+\fB--fallback-tools\fP[=true]
+	Fallback to external tools if native engine fails
+
+.PP
+\fB--host\fP="localhost"
+	Database host
+
+.PP
+\fB--insecure\fP[=false]
+	Disable SSL (shortcut for --ssl-mode=disable)
+
+.PP
+\fB--jobs\fP=4
+	Parallel jobs for backup/restore
+
+.PP
+\fB--keep-backup\fP[=false]
+	Keep backup files after successful migration
+
+.PP
+\fB--max-cores\fP=32
+	Maximum CPU cores to use
+
+.PP
+\fB--max-retries\fP=3
+	Maximum connection retry attempts
+
+.PP
+\fB--min-backups\fP=5
+	Minimum number of backups to keep
+
+.PP
+\fB--native\fP[=true]
+	Use pure Go native engines (no external tools)
+
+.PP
+\fB--native-debug\fP[=false]
+	Enable detailed native engine debugging
+
+.PP
+\fB--native-engine\fP[=true]
+	Use pure Go native engines (alias for --native)
+
+.PP
+\fB--no-color\fP[=false]
+	Disable colored output
+
+.PP
+\fB--no-config\fP[=false]
+	Don't load configuration from .dbbackup.conf
+
+.PP
+\fB--no-save-config\fP[=false]
+	Don't save configuration after successful operations
+
+.PP
+\fB--port\fP=5432
+	Database port
+
+.PP
+\fB--retention-days\fP=30
+	Backup retention period in days (0=disabled)
+
+.PP
+\fB--socket\fP=""
+	Unix socket path for MySQL/MariaDB (e.g., /var/run/mysqld/mysqld.sock)
+
+.PP
+\fB--source-host\fP="localhost"
+	Source database host
+
+.PP
+\fB--source-password\fP=""
+	Source database password
+
+.PP
+\fB--source-port\fP=5432
+	Source database port
+
+.PP
+\fB--source-ssl-mode\fP="prefer"
+	Source SSL mode (disable, prefer, require)
+
+.PP
+\fB--source-user\fP=""
+	Source database user
+
+.PP
+\fB--ssl-mode\fP="prefer"
+	SSL mode for connections
+
+.PP
+\fB--target-host\fP=""
+	Target database host (required)
+
+.PP
+\fB--target-password\fP=""
+	Target database password
+
+.PP
+\fB--target-port\fP=5432
+	Target database port
+
+.PP
+\fB--target-ssl-mode\fP="prefer"
+	Target SSL mode (disable, prefer, require)
+
+.PP
+\fB--target-user\fP=""
+	Target database user (default: same as source)
+
+.PP
+\fB--user\fP="postgres"
+	Database user
+
+.PP
+\fB--verbose\fP[=false]
+	Verbose output
+
+.PP
+\fB--workdir\fP=""
+	Working directory for backup files (default: system temp)
+
+
+.SH SEE ALSO
+\fBdbbackup-migrate(1)\fP
+
+
+.SH HISTORY
+13-Feb-2026 Auto generated by spf13/cobra

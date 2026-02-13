@@ -1,0 +1,361 @@
+.nh
+.TH "DBBACKUP" "1" "Feb 2026" "dbbackup" "Database Backup Tool"
+
+.SH NAME
+dbbackup-restore-cluster - Restore full cluster from tar.gz archive
+
+
+.SH SYNOPSIS
+\fBdbbackup restore cluster [archive-file] [flags]\fP
+
+
+.SH DESCRIPTION
+Restore a complete database cluster from a tar.gz archive.
+
+.PP
+This command restores all databases that were backed up together
+in a cluster backup operation.
+
+.PP
+Single Database Extraction:
+  Use --list-databases to see available databases
+  Use --database to extract/restore a specific database
+  Use --output-dir to extract without restoring
+
+.PP
+Safety features:
+  - Dry-run by default (use --confirm to execute)
+  - Archive validation and listing
+  - Disk space verification
+  - Sequential database restoration
+
+.PP
+Examples:
+  # List databases in cluster backup
+  dbbackup restore cluster backup.tar.gz --list-databases
+
+.PP
+# Extract single database (no restore)
+  dbbackup restore cluster backup.tar.gz --database myapp --output-dir /tmp/extract
+
+.PP
+# Restore single database from cluster
+  dbbackup restore cluster backup.tar.gz --database myapp --confirm
+
+.PP
+# Restore single database with different name
+  dbbackup restore cluster backup.tar.gz --database myapp --target myapp_test --confirm
+
+.PP
+# Extract multiple databases
+  dbbackup restore cluster backup.tar.gz --databases "app1,app2,app3" --output-dir /tmp/extract
+
+.PP
+# Preview cluster restore
+  dbbackup restore cluster cluster_backup_20240101_120000.tar.gz
+
+.PP
+# Restore full cluster
+  dbbackup restore cluster cluster_backup_20240101_120000.tar.gz --confirm
+
+.EX
+# Memory-constrained server (conservative profile)
+dbbackup restore cluster cluster_backup.tar.gz --profile=conservative --confirm
+
+# Maximum performance (dedicated server)
+dbbackup restore cluster cluster_backup.tar.gz --profile=aggressive --confirm
+
+# TURBO: 8 parallel jobs for fastest restore (like pg_restore -j8)
+dbbackup restore cluster cluster_backup.tar.gz --profile=turbo --confirm
+
+# Use parallel decompression
+dbbackup restore cluster cluster_backup.tar.gz --jobs 4 --confirm
+
+# Use alternative working directory (for VMs with small system disk)
+dbbackup restore cluster cluster_backup.tar.gz --workdir /mnt/storage/restore_tmp --confirm
+
+# Disaster recovery: drop all existing databases first (clean slate)
+dbbackup restore cluster cluster_backup.tar.gz --clean-cluster --confirm
+.EE
+
+
+.SH OPTIONS
+\fB--adaptive\fP[=true]
+	Enable adaptive per-database job sizing based on dump file size and CPU cores (default: on)
+
+.PP
+\fB--auto\fP[=true]
+	Auto-detect optimal settings based on system resources
+
+.PP
+\fB--batch-size\fP=0
+	Batch size for bulk operations (0 = auto-detect)
+
+.PP
+\fB--buffer-size\fP=0
+	Buffer size in KB for native engine (0 = auto-detect)
+
+.PP
+\fB--clean\fP[=false]
+	Drop and recreate target database (for single DB restore)
+
+.PP
+\fB--clean-cluster\fP[=false]
+	Drop all existing user databases before restore (disaster recovery)
+
+.PP
+\fB--cold-tables\fP=[]
+	Cold table patterns restored last (e.g., \fI_log,\fP_archive)
+
+.PP
+\fB--confirm\fP[=false]
+	Confirm and execute restore (required)
+
+.PP
+\fB--create\fP[=false]
+	Create target database if it doesn't exist (for single DB restore)
+
+.PP
+\fB--critical-tables\fP=[]
+	Critical table patterns restored first (e.g., user\fI,session\fP,payment*)
+
+.PP
+\fB--database\fP=""
+	Extract/restore single database from cluster
+
+.PP
+\fB--databases\fP=""
+	Extract multiple databases (comma-separated)
+
+.PP
+\fB--debug-locks\fP[=false]
+	Enable detailed lock debugging (captures PostgreSQL config, Guard decisions, boost attempts)
+
+.PP
+\fB--diagnose\fP[=false]
+	Run deep diagnosis on all dumps before restore
+
+.PP
+\fB--disk-space-multiplier\fP=0
+	Override disk space multiplier (0 = auto-detect from metadata/format)
+
+.PP
+\fB--dry-run\fP[=false]
+	Show what would be done without executing
+
+.PP
+\fB--encryption-key-env\fP="DBBACKUP_ENCRYPTION_KEY"
+	Environment variable containing encryption key
+
+.PP
+\fB--encryption-key-file\fP=""
+	Path to encryption key file (required for encrypted backups)
+
+.PP
+\fB--fallback-tools\fP[=false]
+	Fall back to external tools if native engine fails
+
+.PP
+\fB--force\fP[=false]
+	Skip safety checks and confirmations
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for cluster
+
+.PP
+\fB--important-tables\fP=[]
+	Important table patterns restored second (e.g., order\fI,product\fP)
+
+.PP
+\fB--jobs\fP=0
+	Number of parallel decompression jobs (0 = auto, overrides profile)
+
+.PP
+\fB--list-databases\fP[=false]
+	List databases in cluster backup and exit
+
+.PP
+\fB--low-memory\fP[=false]
+	Force low-memory mode: single-threaded restore with minimal memory (use for  RAM or very large backups)
+
+.PP
+\fB--native\fP[=false]
+	Use pure Go native engine for .sql.gz files (no psql/pg_restore required)
+
+.PP
+\fB--no-progress\fP[=false]
+	Disable progress indicators
+
+.PP
+\fB--no-tui\fP[=false]
+	Disable TUI for maximum performance (benchmark mode)
+
+.PP
+\fB--oom-protection\fP[=false]
+	Enable OOM protection: disable swap, tune PostgreSQL memory, protect from OOM killer
+
+.PP
+\fB--output-dir\fP=""
+	Extract to directory without restoring (requires --database or --databases)
+
+.PP
+\fB--parallel-dbs\fP=0
+	Number of databases to restore in parallel (0 = use profile, 1 = sequential, -1 = auto-detect, overrides profile)
+
+.PP
+\fB--pipeline\fP[=false]
+	Use pipeline restore engine (decoupled scanner, higher throughput)
+
+.PP
+\fB--pool-size\fP=0
+	Connection pool size for native engine (0 = auto-detect)
+
+.PP
+\fB--profile\fP="conservative"
+	Resource profile: conservative, balanced, turbo (--jobs=8), max-performance
+
+.PP
+\fB--quiet\fP[=false]
+	Suppress all output except errors
+
+.PP
+\fB--restore-fsync-mode\fP="on"
+	Fsync mode: on (safe, default), auto (off when restore-mode=turbo), off (fast, TEST ONLY!)
+
+.PP
+\fB--restore-mode\fP="safe"
+	WAL logging strategy: safe (full WAL), balanced (UNLOGGED COPY, LOGGED indexes), turbo (UNLOGGED all, dev/test only)
+
+.PP
+\fB--save-debug-log\fP=""
+	Save detailed error report to file on failure (e.g., /tmp/restore-debug.json)
+
+.PP
+\fB--skip-disk-check\fP[=false]
+	Skip disk space checks (use when you know there's enough space)
+
+.PP
+\fB--tiered-restore\fP[=false]
+	Enable priority-based phased restore (critical → important → cold) for RTO optimization
+
+.PP
+\fB--verbose\fP[=false]
+	Show detailed restore progress
+
+.PP
+\fB--workdir\fP=""
+	Working directory for extraction (use when system disk is small, e.g. /mnt/storage/restore_tmp)
+
+.PP
+\fB--workers\fP=0
+	Number of parallel workers for native engine (0 = auto-detect)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--allow-root\fP[=false]
+	Allow running as root/Administrator
+
+.PP
+\fB--auto-detect-cores\fP[=true]
+	Auto-detect CPU cores
+
+.PP
+\fB--backup-dir\fP="/root/db_backups"
+	Backup directory
+
+.PP
+\fB--check-resources\fP[=true]
+	Check system resource limits
+
+.PP
+\fB--compression\fP=6
+	Compression level (0-9)
+
+.PP
+\fB-c\fP, \fB--config\fP=""
+	Path to config file (default: .dbbackup.conf in current directory)
+
+.PP
+\fB--cpu-workload\fP="balanced"
+	CPU workload type (cpu-intensive|io-intensive|balanced)
+
+.PP
+\fB-d\fP, \fB--db-type\fP="postgres"
+	Database type (postgres|mysql|mariadb)
+
+.PP
+\fB--debug\fP[=false]
+	Enable debug logging
+
+.PP
+\fB--dump-jobs\fP=8
+	Number of parallel dump jobs
+
+.PP
+\fB--host\fP="localhost"
+	Database host
+
+.PP
+\fB--insecure\fP[=false]
+	Disable SSL (shortcut for --ssl-mode=disable)
+
+.PP
+\fB--max-cores\fP=32
+	Maximum CPU cores to use
+
+.PP
+\fB--max-retries\fP=3
+	Maximum connection retry attempts
+
+.PP
+\fB--min-backups\fP=5
+	Minimum number of backups to keep
+
+.PP
+\fB--native-debug\fP[=false]
+	Enable detailed native engine debugging
+
+.PP
+\fB--native-engine\fP[=true]
+	Use pure Go native engines (alias for --native)
+
+.PP
+\fB--no-color\fP[=false]
+	Disable colored output
+
+.PP
+\fB--no-config\fP[=false]
+	Don't load configuration from .dbbackup.conf
+
+.PP
+\fB--no-save-config\fP[=false]
+	Don't save configuration after successful operations
+
+.PP
+\fB--port\fP=5432
+	Database port
+
+.PP
+\fB--retention-days\fP=30
+	Backup retention period in days (0=disabled)
+
+.PP
+\fB--socket\fP=""
+	Unix socket path for MySQL/MariaDB (e.g., /var/run/mysqld/mysqld.sock)
+
+.PP
+\fB--ssl-mode\fP="prefer"
+	SSL mode for connections
+
+.PP
+\fB--user\fP="postgres"
+	Database user
+
+
+.SH SEE ALSO
+\fBdbbackup-restore(1)\fP
+
+
+.SH HISTORY
+13-Feb-2026 Auto generated by spf13/cobra

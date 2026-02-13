@@ -1,0 +1,257 @@
+.nh
+.TH "DBBACKUP" "1" "Feb 2026" "dbbackup" "Database Backup Tool"
+
+.SH NAME
+dbbackup-backup-single - Create single database backup
+
+
+.SH SYNOPSIS
+\fBdbbackup backup single [database] [flags]\fP
+
+
+.SH DESCRIPTION
+Create a backup of a single database with all its data and schema.
+
+.PP
+Backup Types:
+  --backup-type full         - Complete full backup (default)
+  --backup-type incremental  - Incremental backup (only changed files since base)
+
+.PP
+Examples:
+  # Full backup (default)
+  dbbackup backup single mydb
+
+.PP
+# Incremental backup (requires previous full backup)
+  dbbackup backup single mydb --backup-type incremental --base-backup mydb_20250126.tar.gz
+
+
+.SH OPTIONS
+\fB--auto\fP[=true]
+	Auto-detect optimal settings based on system resources
+
+.PP
+\fB--backup-type\fP="full"
+	Backup type: full or incremental
+
+.PP
+\fB--base-backup\fP=""
+	Path to base backup (required for incremental)
+
+.PP
+\fB--batch-size\fP=0
+	Batch size for bulk operations (0 = auto-detect)
+
+.PP
+\fB--buffer-size\fP=0
+	Buffer size in KB (0 = auto-detect)
+
+.PP
+\fB--cloud\fP=""
+	Cloud storage URI (e.g., s3://bucket/path) - takes precedence over individual flags
+
+.PP
+\fB--cloud-auto-upload\fP[=false]
+	Automatically upload backup to cloud after completion
+
+.PP
+\fB--cloud-bucket\fP=""
+	Cloud bucket name
+
+.PP
+\fB--cloud-endpoint\fP=""
+	Cloud endpoint (for MinIO/B2)
+
+.PP
+\fB--cloud-prefix\fP=""
+	Cloud key prefix
+
+.PP
+\fB--cloud-provider\fP=""
+	Cloud provider (s3, minio, b2)
+
+.PP
+\fB--cloud-region\fP="us-east-1"
+	Cloud region
+
+.PP
+\fB--compression-algorithm\fP="gzip"
+	Compression algorithm: gzip or zstd (zstd is 4-6x faster decompression)
+
+.PP
+\fB-n\fP, \fB--dry-run\fP[=false]
+	Validate configuration without executing backup
+
+.PP
+\fB--encrypt\fP[=false]
+	Encrypt backup with AES-256-GCM
+
+.PP
+\fB--encryption-key-env\fP="DBBACKUP_ENCRYPTION_KEY"
+	Environment variable containing encryption key/passphrase
+
+.PP
+\fB--encryption-key-file\fP=""
+	Path to encryption key file (32 bytes)
+
+.PP
+\fB--galera-desync\fP[=false]
+	Enable Galera desync mode during backup (reduces cluster impact)
+
+.PP
+\fB--galera-health-check\fP[=true]
+	Verify Galera node health before backup
+
+.PP
+\fB--galera-min-cluster-size\fP=2
+	Minimum Galera cluster size required for backup
+
+.PP
+\fB--galera-prefer-node\fP=""
+	Preferred Galera node name for backup (empty = current node)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for single
+
+.PP
+\fB--no-verify\fP[=false]
+	Skip automatic backup verification after creation
+
+.PP
+\fB--pool-size\fP=0
+	Connection pool size (0 = auto-detect)
+
+.PP
+\fB--workers\fP=0
+	Number of parallel workers (0 = auto-detect)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--allow-root\fP[=false]
+	Allow running as root/Administrator
+
+.PP
+\fB--auto-detect-cores\fP[=true]
+	Auto-detect CPU cores
+
+.PP
+\fB--backup-dir\fP="/root/db_backups"
+	Backup directory
+
+.PP
+\fB--check-resources\fP[=true]
+	Check system resource limits
+
+.PP
+\fB--compression\fP=6
+	Compression level (0-9)
+
+.PP
+\fB-c\fP, \fB--config\fP=""
+	Path to config file (default: .dbbackup.conf in current directory)
+
+.PP
+\fB--cpu-workload\fP="balanced"
+	CPU workload type (cpu-intensive|io-intensive|balanced)
+
+.PP
+\fB--database\fP="postgres"
+	Database name
+
+.PP
+\fB-d\fP, \fB--db-type\fP="postgres"
+	Database type (postgres|mysql|mariadb)
+
+.PP
+\fB--debug\fP[=false]
+	Enable debug logging
+
+.PP
+\fB--debug-locks\fP[=false]
+	Enable detailed lock debugging (captures PostgreSQL lock configuration, Large DB Guard decisions, boost attempts)
+
+.PP
+\fB--dump-jobs\fP=8
+	Number of parallel dump jobs
+
+.PP
+\fB--fallback-tools\fP[=true]
+	Fallback to external tools if native engine fails
+
+.PP
+\fB--host\fP="localhost"
+	Database host
+
+.PP
+\fB--insecure\fP[=false]
+	Disable SSL (shortcut for --ssl-mode=disable)
+
+.PP
+\fB--jobs\fP=16
+	Number of parallel jobs
+
+.PP
+\fB--max-cores\fP=32
+	Maximum CPU cores to use
+
+.PP
+\fB--max-retries\fP=3
+	Maximum connection retry attempts
+
+.PP
+\fB--min-backups\fP=5
+	Minimum number of backups to keep
+
+.PP
+\fB--native\fP[=true]
+	Use pure Go native engines (no external tools)
+
+.PP
+\fB--native-debug\fP[=false]
+	Enable detailed native engine debugging
+
+.PP
+\fB--native-engine\fP[=true]
+	Use pure Go native engines (alias for --native)
+
+.PP
+\fB--no-color\fP[=false]
+	Disable colored output
+
+.PP
+\fB--no-config\fP[=false]
+	Don't load configuration from .dbbackup.conf
+
+.PP
+\fB--no-save-config\fP[=false]
+	Don't save configuration after successful operations
+
+.PP
+\fB--port\fP=5432
+	Database port
+
+.PP
+\fB--retention-days\fP=30
+	Backup retention period in days (0=disabled)
+
+.PP
+\fB--socket\fP=""
+	Unix socket path for MySQL/MariaDB (e.g., /var/run/mysqld/mysqld.sock)
+
+.PP
+\fB--ssl-mode\fP="prefer"
+	SSL mode for connections
+
+.PP
+\fB--user\fP="postgres"
+	Database user
+
+
+.SH SEE ALSO
+\fBdbbackup-backup(1)\fP
+
+
+.SH HISTORY
+13-Feb-2026 Auto generated by spf13/cobra

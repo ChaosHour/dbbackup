@@ -1,0 +1,249 @@
+.nh
+.TH "DBBACKUP" "1" "Feb 2026" "dbbackup" "Database Backup Tool"
+
+.SH NAME
+dbbackup-restore-pitr - Point-in-Time Recovery (PITR) restore
+
+
+.SH SYNOPSIS
+\fBdbbackup restore pitr [flags]\fP
+
+
+.SH DESCRIPTION
+Restore PostgreSQL database to a specific point in time using WAL archives.
+
+.PP
+PITR allows restoring to any point in time, not just the backup moment.
+Requires a base backup and continuous WAL archives.
+
+.PP
+Recovery Target Types:
+  --target-time      Restore to specific timestamp
+  --target-xid       Restore to transaction ID
+  --target-lsn       Restore to Log Sequence Number
+  --target-name      Restore to named restore point
+  --target-immediate Restore to earliest consistent point
+
+.PP
+Examples:
+  # Restore to specific time
+  dbbackup restore pitr \\
+    --base-backup /backups/base.tar.gz \\
+    --wal-archive /backups/wal/ \\
+    --target-time "2024-11-26 12:00:00" \\
+    --target-dir /var/lib/postgresql/14/main
+
+.PP
+# Restore to transaction ID
+  dbbackup restore pitr \\
+    --base-backup /backups/base.tar.gz \\
+    --wal-archive /backups/wal/ \\
+    --target-xid 1000000 \\
+    --target-dir /var/lib/postgresql/14/main \\
+    --auto-start
+
+.PP
+# Restore to LSN
+  dbbackup restore pitr \\
+    --base-backup /backups/base.tar.gz \\
+    --wal-archive /backups/wal/ \\
+    --target-lsn "0/3000000" \\
+    --target-dir /var/lib/postgresql/14/main
+
+.PP
+# Restore to earliest consistent point
+  dbbackup restore pitr \\
+    --base-backup /backups/base.tar.gz \\
+    --wal-archive /backups/wal/ \\
+    --target-immediate \\
+    --target-dir /var/lib/postgresql/14/main
+
+
+.SH OPTIONS
+\fB--auto-start\fP[=false]
+	Automatically start PostgreSQL after setup
+
+.PP
+\fB--base-backup\fP=""
+	Path to base backup file (.tar.gz) (required)
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for pitr
+
+.PP
+\fB--inclusive\fP[=true]
+	Include target transaction/time
+
+.PP
+\fB--monitor\fP[=false]
+	Monitor recovery progress (requires --auto-start)
+
+.PP
+\fB--skip-extraction\fP[=false]
+	Skip base backup extraction (data dir exists)
+
+.PP
+\fB--target-action\fP="promote"
+	Action after recovery (promote|pause|shutdown)
+
+.PP
+\fB--target-dir\fP=""
+	PostgreSQL data directory (required)
+
+.PP
+\fB--target-immediate\fP[=false]
+	Restore to earliest consistent point
+
+.PP
+\fB--target-lsn\fP=""
+	Restore to LSN (e.g., 0/3000000)
+
+.PP
+\fB--target-name\fP=""
+	Restore to named restore point
+
+.PP
+\fB--target-time\fP=""
+	Restore to timestamp (YYYY-MM-DD HH:MM:SS)
+
+.PP
+\fB--target-xid\fP=""
+	Restore to transaction ID
+
+.PP
+\fB--timeline\fP="latest"
+	Timeline to follow (latest or timeline ID)
+
+.PP
+\fB--wal-archive\fP=""
+	Path to WAL archive directory (required)
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
+\fB--allow-root\fP[=false]
+	Allow running as root/Administrator
+
+.PP
+\fB--auto-detect-cores\fP[=true]
+	Auto-detect CPU cores
+
+.PP
+\fB--backup-dir\fP="/root/db_backups"
+	Backup directory
+
+.PP
+\fB--check-resources\fP[=true]
+	Check system resource limits
+
+.PP
+\fB--compression\fP=6
+	Compression level (0-9)
+
+.PP
+\fB-c\fP, \fB--config\fP=""
+	Path to config file (default: .dbbackup.conf in current directory)
+
+.PP
+\fB--cpu-workload\fP="balanced"
+	CPU workload type (cpu-intensive|io-intensive|balanced)
+
+.PP
+\fB--database\fP="postgres"
+	Database name
+
+.PP
+\fB-d\fP, \fB--db-type\fP="postgres"
+	Database type (postgres|mysql|mariadb)
+
+.PP
+\fB--debug\fP[=false]
+	Enable debug logging
+
+.PP
+\fB--debug-locks\fP[=false]
+	Enable detailed lock debugging (captures PostgreSQL lock configuration, Large DB Guard decisions, boost attempts)
+
+.PP
+\fB--dump-jobs\fP=8
+	Number of parallel dump jobs
+
+.PP
+\fB--fallback-tools\fP[=true]
+	Fallback to external tools if native engine fails
+
+.PP
+\fB--host\fP="localhost"
+	Database host
+
+.PP
+\fB--insecure\fP[=false]
+	Disable SSL (shortcut for --ssl-mode=disable)
+
+.PP
+\fB--jobs\fP=16
+	Number of parallel jobs
+
+.PP
+\fB--max-cores\fP=32
+	Maximum CPU cores to use
+
+.PP
+\fB--max-retries\fP=3
+	Maximum connection retry attempts
+
+.PP
+\fB--min-backups\fP=5
+	Minimum number of backups to keep
+
+.PP
+\fB--native\fP[=true]
+	Use pure Go native engines (no external tools)
+
+.PP
+\fB--native-debug\fP[=false]
+	Enable detailed native engine debugging
+
+.PP
+\fB--native-engine\fP[=true]
+	Use pure Go native engines (alias for --native)
+
+.PP
+\fB--no-color\fP[=false]
+	Disable colored output
+
+.PP
+\fB--no-config\fP[=false]
+	Don't load configuration from .dbbackup.conf
+
+.PP
+\fB--no-save-config\fP[=false]
+	Don't save configuration after successful operations
+
+.PP
+\fB--port\fP=5432
+	Database port
+
+.PP
+\fB--retention-days\fP=30
+	Backup retention period in days (0=disabled)
+
+.PP
+\fB--socket\fP=""
+	Unix socket path for MySQL/MariaDB (e.g., /var/run/mysqld/mysqld.sock)
+
+.PP
+\fB--ssl-mode\fP="prefer"
+	SSL mode for connections
+
+.PP
+\fB--user\fP="postgres"
+	Database user
+
+
+.SH SEE ALSO
+\fBdbbackup-restore(1)\fP
+
+
+.SH HISTORY
+13-Feb-2026 Auto generated by spf13/cobra

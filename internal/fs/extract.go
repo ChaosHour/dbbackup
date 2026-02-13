@@ -44,6 +44,51 @@ func (s *safeReader) shutdown() {
 	s.closed.Store(true)
 }
 
+// safeWriter wraps an io.Writer and returns ErrClosedPipe once shut down.
+// pgzip spawns a background listener goroutine that calls Write() on the
+// underlying writer concurrently. When we close the file before pgzip's
+// internal goroutines finish (e.g. after Close returns early due to a
+// pushed error), those goroutines can panic on a write to a closed file
+// descriptor. safeWriter prevents this by atomically checking a closed
+// flag before every write, turning potential panics into clean errors.
+type safeWriter struct {
+	w      io.Writer
+	closed atomic.Bool
+}
+
+func (s *safeWriter) Write(p []byte) (int, error) {
+	if s.closed.Load() {
+		return 0, io.ErrClosedPipe
+	}
+	n, err := s.w.Write(p)
+	if s.closed.Load() {
+		// Return what was written but signal closed
+		return n, io.ErrClosedPipe
+	}
+	return n, err
+}
+
+func (s *safeWriter) shutdown() {
+	s.closed.Store(true)
+}
+
+// NewSafeWriter creates a safeWriter that wraps w. Call Shutdown() before
+// closing the underlying writer to prevent pgzip goroutine panics.
+func NewSafeWriter(w io.Writer) *SafeWriter {
+	return &SafeWriter{sw: safeWriter{w: w}}
+}
+
+// SafeWriter is the exported wrapper around safeWriter for use by other packages.
+type SafeWriter struct {
+	sw safeWriter
+}
+
+func (s *SafeWriter) Write(p []byte) (int, error) { return s.sw.Write(p) }
+
+// Shutdown signals the safeWriter to reject further writes.
+// Call this before closing the underlying writer.
+func (s *SafeWriter) Shutdown() { s.sw.shutdown() }
+
 // CopyWithContext copies data from src to dst while checking for context cancellation.
 // This allows Ctrl+C to interrupt large file extractions instead of blocking until complete.
 // Checks context every 1MB of data copied for responsive interruption.
@@ -665,9 +710,16 @@ func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, comp
 	}
 	defer outFile.Close()
 
+	// Wrap file in safeWriter to prevent pgzip goroutine panics on early close.
+	// pgzip spawns a background listener goroutine that writes compressed data
+	// to the underlying writer. If Close() returns early due to an error, that
+	// goroutine may try to write to a closed file, causing a panic. safeWriter
+	// converts such writes into clean io.ErrClosedPipe errors.
+	sw := &safeWriter{w: outFile}
+
 	// Create parallel gzip writer
 	// Uses all available CPU cores for compression
-	gzWriter, err := pgzip.NewWriterLevel(outFile, compressionLevel)
+	gzWriter, err := pgzip.NewWriterLevel(sw, compressionLevel)
 	if err != nil {
 		return fmt.Errorf("cannot create gzip writer: %w", err)
 	}
@@ -675,7 +727,11 @@ func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, comp
 	if err := gzWriter.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
 		// Non-fatal, continue with defaults
 	}
-	defer gzWriter.Close()
+	defer func() {
+		gzWriter.Close()
+		// Signal safeWriter to reject further writes from lingering pgzip goroutines
+		sw.shutdown()
+	}()
 
 	// Create tar writer
 	tarWriter := tar.NewWriter(gzWriter)
@@ -762,6 +818,9 @@ func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, comp
 
 	if err != nil {
 		// Clean up partial file on error
+		// Signal safeWriter first so pgzip goroutines get clean errors
+		sw.shutdown()
+		gzWriter.Close()
 		outFile.Close()
 		os.Remove(outputPath)
 		return err
@@ -774,6 +833,8 @@ func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, comp
 	if err := gzWriter.Close(); err != nil {
 		return fmt.Errorf("cannot close gzip writer: %w", err)
 	}
+	// Signal safeWriter so deferred gzWriter.Close() (no-op) won't race
+	sw.shutdown()
 
 	return nil
 }

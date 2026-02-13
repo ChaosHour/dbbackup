@@ -21,8 +21,12 @@ func (e *PostgresIncrementalEngine) createTarGz(ctx context.Context, outputFile 
 	}
 	defer outFile.Close()
 
+	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	sw := fs.NewSafeWriter(outFile)
+	defer sw.Shutdown()
+
 	// Create parallel gzip writer for faster compression
-	gzWriter, err := pgzip.NewWriterLevel(outFile, config.CompressionLevel)
+	gzWriter, err := pgzip.NewWriterLevel(sw, config.CompressionLevel)
 	if err != nil {
 		return fmt.Errorf("failed to create gzip writer: %w", err)
 	}

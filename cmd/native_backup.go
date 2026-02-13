@@ -11,6 +11,7 @@ import (
 
 	"dbbackup/internal/database"
 	"dbbackup/internal/engine/native"
+	"dbbackup/internal/fs"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/notify"
 
@@ -126,12 +127,18 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 
 	// Wrap with compression if enabled (use pgzip for parallel compression)
 	var writer io.Writer = file
+	var sw *fs.SafeWriter
 	if cfg.CompressionLevel > 0 {
-		gzWriter, err := pgzip.NewWriterLevel(file, cfg.CompressionLevel)
+		// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+		sw = fs.NewSafeWriter(file)
+		gzWriter, err := pgzip.NewWriterLevel(sw, cfg.CompressionLevel)
 		if err != nil {
 			return fmt.Errorf("failed to create gzip writer: %w", err)
 		}
-		defer gzWriter.Close()
+		defer func() {
+			gzWriter.Close()
+			sw.Shutdown()
+		}()
 		writer = gzWriter
 	}
 

@@ -15,6 +15,7 @@ import (
 
 	"dbbackup/internal/checks"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/fs"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
 
@@ -609,12 +610,16 @@ func (e *CloneEngine) compressClone(ctx context.Context, sourceDir, targetFile s
 	}
 	defer outFile.Close()
 
+	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	sw := fs.NewSafeWriter(outFile)
+	defer sw.Shutdown()
+
 	// Create parallel gzip writer for faster compression
 	level := e.config.CompressLevel
 	if level == 0 {
 		level = pgzip.DefaultCompression
 	}
-	gzWriter, err := pgzip.NewWriterLevel(outFile, level)
+	gzWriter, err := pgzip.NewWriterLevel(sw, level)
 	if err != nil {
 		return err
 	}

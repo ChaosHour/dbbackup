@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"dbbackup/internal/logger"
+	"dbbackup/internal/fs"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
 
@@ -186,16 +187,22 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 	// Setup writer (with optional compression)
 	var writer io.Writer = outFile
 	var gzWriter *pgzip.Writer
+	var sw *fs.SafeWriter
 	if opts.Compress {
 		level := opts.CompressLevel
 		if level == 0 {
 			level = pgzip.DefaultCompression
 		}
-		gzWriter, err = pgzip.NewWriterLevel(outFile, level)
+		// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+		sw = fs.NewSafeWriter(outFile)
+		gzWriter, err = pgzip.NewWriterLevel(sw, level)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create gzip writer: %w", err)
 		}
-		defer gzWriter.Close()
+		defer func() {
+			gzWriter.Close()
+			sw.Shutdown()
+		}()
 		writer = gzWriter
 	}
 

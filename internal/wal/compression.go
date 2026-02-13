@@ -56,8 +56,12 @@ func (c *Compressor) CompressWALFileContext(ctx context.Context, sourcePath, des
 	}
 	defer dstFile.Close()
 
+	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	sw := fs.NewSafeWriter(dstFile)
+	defer sw.Shutdown()
+
 	// Create parallel gzip writer for faster compression
-	gzWriter, err := pgzip.NewWriterLevel(dstFile, level)
+	gzWriter, err := pgzip.NewWriterLevel(sw, level)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create gzip writer: %w", err)
 	}

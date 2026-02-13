@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/fs"
+
 	"github.com/klauspost/pgzip"
 )
 
@@ -440,11 +442,21 @@ func (m *BinlogManager) ArchiveBinlog(ctx context.Context, binlog *BinlogFile) (
 
 	var writer io.Writer = dst
 	var gzWriter *pgzip.Writer
+	var sw *fs.SafeWriter
 
 	if m.compression {
-		gzWriter = pgzip.NewWriter(dst)
+		// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+		sw = fs.NewSafeWriter(dst)
+		gzWriter = pgzip.NewWriter(sw)
 		writer = gzWriter
-		defer gzWriter.Close()
+		defer func() {
+			if gzWriter != nil {
+				gzWriter.Close()
+			}
+			if sw != nil {
+				sw.Shutdown()
+			}
+		}()
 	}
 
 	// TODO: Add encryption layer if enabled

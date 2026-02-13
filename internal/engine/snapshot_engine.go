@@ -12,6 +12,7 @@ import (
 
 	"dbbackup/internal/engine/snapshot"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/fs"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
 
@@ -297,13 +298,17 @@ func (e *SnapshotEngine) streamSnapshot(ctx context.Context, sourcePath, destFil
 	// Wrap in counting writer for progress
 	countWriter := &countingWriter{w: outFile}
 
+	// Wrap in SafeWriter to prevent pgzip goroutine panics on early close
+	sw := fs.NewSafeWriter(countWriter)
+	defer sw.Shutdown()
+
 	// Create parallel gzip writer for faster compression
 	level := pgzip.DefaultCompression
 	if e.config.Threads > 1 {
 		// pgzip already uses parallel compression
 		level = pgzip.BestSpeed // Faster for parallel streaming
 	}
-	gzWriter, err := pgzip.NewWriterLevel(countWriter, level)
+	gzWriter, err := pgzip.NewWriterLevel(sw, level)
 	if err != nil {
 		return 0, err
 	}

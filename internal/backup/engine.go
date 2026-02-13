@@ -850,12 +850,20 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 						monitorCtx, cancelMonitor := context.WithCancel(ctx)
 						go e.monitorFileSize(monitorCtx, sqlFile, completedBytes, 2*time.Second)
 
+						// Wrap file in SafeWriter to prevent pgzip goroutine panics.
+						// pgzip spawns a listener goroutine that writes compressed data
+						// to the underlying writer. If Close() returns early due to an
+						// error, that goroutine may try to write to the closed file.
+						// SafeWriter converts such writes into clean io.ErrClosedPipe.
+						sw := fs.NewSafeWriter(outFile)
+
 						// Use parallel compression (gzip or zstd based on config)
 						algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
-						compWriter, _ := comp.NewCompressor(outFile, algo, compressionLevel)
+						compWriter, _ := comp.NewCompressor(sw, algo, compressionLevel)
 
 						result, backupErr := nativeEngine.Backup(ctx, compWriter.Writer)
 						compWriter.Close()
+						sw.Shutdown() // Block lingering pgzip goroutines before closing file
 						outFile.Close()
 						nativeEngine.Close()
 
@@ -2147,9 +2155,13 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	}
 	defer outFile.Close()
 
+	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	sw := fs.NewSafeWriter(outFile)
+	defer sw.Shutdown()
+
 	// Create compressor with parallel compression
 	// For streaming, use fastest compression level for throughput
-	compWriter, err := comp.NewCompressor(outFile, algo, 1)
+	compWriter, err := comp.NewCompressor(sw, algo, 1)
 	if err != nil {
 		return fmt.Errorf("failed to create compression writer: %w", err)
 	}
@@ -2284,11 +2296,14 @@ func (e *Engine) backupSingleNativePostgreSQL(ctx context.Context, databaseName,
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
 
-	compWriter, _ := comp.NewCompressor(outFile, algo, e.cfg.GetEffectiveCompressionLevel())
+	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	sw := fs.NewSafeWriter(outFile)
+	compWriter, _ := comp.NewCompressor(sw, algo, e.cfg.GetEffectiveCompressionLevel())
 
 	tracker.UpdateProgress(50, "Native backup in progress...")
 	result, backupErr := nativeEngine.Backup(ctx, compWriter.Writer)
 	compWriter.Close()
+	sw.Shutdown() // Block lingering pgzip goroutines before closing file
 	outFile.Close()
 
 	if backupErr != nil {
@@ -2348,11 +2363,14 @@ func (e *Engine) backupSingleNativeMySQL(ctx context.Context, databaseName, outp
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
 
-	compWriter, _ := comp.NewCompressor(outFile, algo, e.cfg.GetEffectiveCompressionLevel())
+	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	sw := fs.NewSafeWriter(outFile)
+	compWriter, _ := comp.NewCompressor(sw, algo, e.cfg.GetEffectiveCompressionLevel())
 
 	tracker.UpdateProgress(50, "Native MySQL backup in progress...")
 	result, backupErr := nativeEngine.Backup(ctx, compWriter.Writer)
 	compWriter.Close()
+	sw.Shutdown() // Block lingering pgzip goroutines before closing file
 	outFile.Close()
 
 	if backupErr != nil {

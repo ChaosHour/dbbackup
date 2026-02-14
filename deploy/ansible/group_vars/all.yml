@@ -2,7 +2,7 @@
 # =========================
 
 # Version and Installation
-dbbackup_version: "6.36.0"
+dbbackup_version: "6.37.0"
 dbbackup_download_url: "https://github.com/PlusOne/dbbackup/releases/download/v{{ dbbackup_version }}"
 dbbackup_install_dir: "/usr/local/bin"
 dbbackup_config_dir: "/etc/dbbackup"

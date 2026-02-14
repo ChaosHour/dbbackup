@@ -5,7 +5,7 @@ all:
   vars:
     ansible_user: root
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
-    dbbackup_version: "6.36.0"
+    dbbackup_version: "6.37.0"
     # Binary wird von dev.uuxo.net aus deployed (dort liegt es in /tmp nach scp)
     dbbackup_binary_src: "/tmp/dbbackup_linux_amd64"
 

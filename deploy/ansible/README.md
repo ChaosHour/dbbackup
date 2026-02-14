@@ -40,7 +40,7 @@ See `group_vars/all.yml` for all configurable options.
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `dbbackup_version` | Version to install | `6.36.0` |
+| `dbbackup_version` | Version to install | `6.37.0` |
 | `dbbackup_db_type` | Database type | `postgres`, `mariadb`, or `mysql` |
 | `dbbackup_backup_dir` | Backup storage path | `/var/backups/databases` |
 
@@ -69,7 +69,7 @@ dbbackup_binary_src: "/tmp/dbbackup_linux_amd64"
 ### Download from GitHub
 If `dbbackup_binary_src` is not set, the role downloads directly from GitHub Releases:
 ```
-https://github.com/PlusOne/dbbackup/releases/download/v6.36.0/dbbackup_linux_amd64
+https://github.com/PlusOne/dbbackup/releases/download/v6.37.0/dbbackup_linux_amd64
 ```
 
 ## Directory Structure

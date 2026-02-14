@@ -40,7 +40,7 @@ spec:
           
           containers:
           - name: dbbackup
-            image: ghcr.io/plusone/dbbackup:6.36.0
+            image: ghcr.io/plusone/dbbackup:6.37.0
             imagePullPolicy: IfNotPresent
             
             args:
@@ -109,7 +109,7 @@ spec:
           
           containers:
           - name: dbbackup
-            image: ghcr.io/plusone/dbbackup:6.36.0
+            image: ghcr.io/plusone/dbbackup:6.37.0
             
             args:
               - cleanup

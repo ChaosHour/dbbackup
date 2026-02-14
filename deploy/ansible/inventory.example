@@ -6,7 +6,7 @@
 all:
   vars:
     ansible_user: root
-    dbbackup_version: "6.36.0"
+    dbbackup_version: "6.37.0"
     # Pre-download binary to Ansible controller, then deploy via copy:
     dbbackup_binary_src: "/tmp/dbbackup_linux_amd64"
 

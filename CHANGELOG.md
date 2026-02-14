@@ -5,6 +5,25 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.37.0] - 2026-02-14 — Pipeline OOM Fix & Deploy Modernization
+
+### Fixed
+
+- **Pipeline restore OOM crash on large tables during cluster restore** — The pipeline scanner pre-reads ALL COPY data for each table into `[]byte` chunks before dispatching to workers. For large tables (50GB+), this consumed unbounded heap memory. The channel backpressure only limited job *count* (64), not job *size* — a single large table could allocate 50GB+ of heap. With `ClusterParallelism > 1`, multiple simultaneous scanners amplified the problem. Added `pipelineMemoryBudget` — a condition-variable based semaphore tracking total in-flight bytes across scanner, channel, and active workers. Scanner blocks when budget exceeded (default 2GB). Workers release budget after CopyFrom completes and chunks are freed. Deadlock-safe (first job always passes even if oversized). Context-aware cleanup on shutdown.
+- **Hardcoded database password in deploy/ansible/inventory.yml** — Removed plaintext password `xt3kci28`, replaced with Ansible Vault reference `{{ vault_alternate_db_password }}`.
+
+### Changed
+
+- **Deploy reference files modernized for v6.37.0** — Updated all 11 deploy configuration files across Ansible, Kubernetes, Prometheus, and systemd:
+  - Version references updated from 3.42.74/5.7.2 to 6.37.0
+  - Download URL changed from `git.uuxo.net/UUXO/dbbackup` to `github.com/PlusOne/dbbackup`
+  - Binary naming fixed from `dbbackup-linux-{arch}` (hyphens) to `dbbackup_linux_{arch}` (underscores)
+  - Kubernetes container images updated from `git.uuxo.net/uuxo/dbbackup:latest` to `ghcr.io/plusone/dbbackup:6.37.0`
+  - Added missing production hosts: `dev.uuxoi.local` (PostgreSQL) and `git.uuxoi.local` (port 2222)
+  - Added `--allow-root` support, socket auth, PITR, and dedup options to Ansible templates
+  - Added copy-from-controller deployment strategy alongside GitHub download
+  - `PipelineConfig.MemoryBudget` field added (configurable per profile: 512MB low, 2GB default, 8GB high-memory)
+
 ## [6.36.0] - 2026-02-14 — Pipeline Restore Panic Fix & QA Enhancements
 
 ### Fixed

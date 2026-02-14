@@ -69,6 +69,13 @@ const (
 	// defaultPipelineCopyBuffer is the bufio.Writer size wrapping the pipe
 	// writer to CopyFrom. Larger = fewer syscalls.
 	defaultPipelineCopyBuffer = 4 * 1024 * 1024
+
+	// defaultPipelineMemoryBudget is the maximum total bytes of pre-read COPY
+	// data allowed in-flight (scanner buffer + channel + active workers).
+	// The scanner blocks when this limit is reached, providing memory-based
+	// backpressure that prevents OOM for large tables.
+	// 2GB is safe for most systems; override via PipelineConfig.MemoryBudget.
+	defaultPipelineMemoryBudget = 2 * 1024 * 1024 * 1024 // 2 GB
 )
 
 // PipelineConfig controls pipeline restore tuning parameters.
@@ -81,6 +88,11 @@ type PipelineConfig struct {
 	FileBufferSize int
 	// CopyBufferSize is the CopyFrom pipe write buffer size (bytes).
 	CopyBufferSize int
+	// MemoryBudget is the maximum total bytes of pre-read COPY data allowed
+	// in-flight across all buffered and in-progress jobs. The scanner blocks
+	// when this limit is reached, preventing OOM on large tables.
+	// 0 means use default (2 GB).
+	MemoryBudget int64
 }
 
 // DefaultPipelineConfig returns production-tuned pipeline settings.
@@ -90,6 +102,7 @@ func DefaultPipelineConfig() *PipelineConfig {
 		ChannelSize:    defaultPipelineChannelSize,
 		FileBufferSize: defaultPipelineFileBuffer,
 		CopyBufferSize: defaultPipelineCopyBuffer,
+		MemoryBudget:   defaultPipelineMemoryBudget,
 	}
 }
 
@@ -101,16 +114,18 @@ func HighMemoryPipelineConfig() *PipelineConfig {
 		ChannelSize:    128,               // 128 × 16MB = 2GB max
 		FileBufferSize: 16 * 1024 * 1024,  // 16MB read buffer
 		CopyBufferSize: 8 * 1024 * 1024,   // 8MB write buffer
+		MemoryBudget:   8 * 1024 * 1024 * 1024, // 8GB for 32GB+ systems
 	}
 }
 
 // LowMemoryPipelineConfig returns settings for systems with <8GB RAM.
 func LowMemoryPipelineConfig() *PipelineConfig {
 	return &PipelineConfig{
-		ChunkSize:      1 * 1024 * 1024, // 1MB chunks
-		ChannelSize:    16,              // 16 × 1MB = 16MB max
-		FileBufferSize: 1 * 1024 * 1024, // 1MB read buffer
-		CopyBufferSize: 1 * 1024 * 1024, // 1MB write buffer
+		ChunkSize:      1 * 1024 * 1024,  // 1MB chunks
+		ChannelSize:    16,               // 16 × 1MB = 16MB max
+		FileBufferSize: 1 * 1024 * 1024,  // 1MB read buffer
+		CopyBufferSize: 1 * 1024 * 1024,  // 1MB write buffer
+		MemoryBudget:   512 * 1024 * 1024, // 512MB for <8GB systems
 	}
 }
 
@@ -120,6 +135,59 @@ type copyJob struct {
 	copySQL   string   // "COPY table FROM STDIN WITH (FREEZE)"
 	chunks    [][]byte // Pre-read data chunks (each ≤ chunkSize)
 	totalSize int64    // Total bytes across all chunks
+}
+
+// pipelineMemoryBudget limits total in-flight bytes across scanner, channel,
+// and active workers to prevent OOM on databases with large tables.
+// The scanner calls acquire() before sending a job and blocks if the budget
+// is exhausted. Workers call release() after CopyFrom completes (and chunks
+// are nil'd), freeing the budget for more pre-reads from the scanner.
+type pipelineMemoryBudget struct {
+	mu      sync.Mutex
+	cond    *sync.Cond
+	current int64
+	limit   int64
+	closed  bool // Set when context is cancelled to unblock waiters
+}
+
+func newPipelineMemoryBudget(limit int64) *pipelineMemoryBudget {
+	b := &pipelineMemoryBudget{limit: limit}
+	b.cond = sync.NewCond(&b.mu)
+	return b
+}
+
+// acquire blocks until size bytes fit within the budget, or the budget is closed.
+// Returns false if the budget was closed (context cancelled).
+func (b *pipelineMemoryBudget) acquire(size int64) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	// Always allow at least one job through (even if it exceeds budget)
+	// to prevent deadlock when a single table is larger than the budget.
+	for b.current > 0 && b.current+size > b.limit && !b.closed {
+		b.cond.Wait()
+	}
+	if b.closed {
+		return false
+	}
+	b.current += size
+	return true
+}
+
+func (b *pipelineMemoryBudget) release(size int64) {
+	b.mu.Lock()
+	b.current -= size
+	if b.current < 0 {
+		b.current = 0
+	}
+	b.mu.Unlock()
+	b.cond.Broadcast()
+}
+
+func (b *pipelineMemoryBudget) close() {
+	b.mu.Lock()
+	b.closed = true
+	b.mu.Unlock()
+	b.cond.Broadcast()
 }
 
 // chunkPool reuses []byte slices to reduce GC pressure during pipeline restore.
@@ -198,7 +266,20 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 		"channel_size", pipelineCfg.ChannelSize,
 		"file_buffer_mb", pipelineCfg.FileBufferSize/(1024*1024),
 		"copy_buffer_mb", pipelineCfg.CopyBufferSize/(1024*1024),
-		"max_memory_mb", (pipelineCfg.ChunkSize*pipelineCfg.ChannelSize)/(1024*1024))
+		"memory_budget_mb", pipelineCfg.MemoryBudget/(1024*1024))
+
+	// ── Memory budget: prevents OOM on large tables ──
+	// Scanner pre-reads ALL COPY data for each table. Without a budget, a
+	// 50 GB table consumes 50 GB of heap. With ClusterParallelism > 1,
+	// multiple pipelines can each buffer large tables simultaneously.
+	// The budget blocks the scanner when total in-flight bytes exceed the
+	// limit, providing memory-based backpressure (separate from channel
+	// backpressure, which only limits job *count*, not job *size*).
+	memBudget := pipelineCfg.MemoryBudget
+	if memBudget <= 0 {
+		memBudget = defaultPipelineMemoryBudget
+	}
+	budget := newPipelineMemoryBudget(memBudget)
 
 	// Apply turbo session settings
 	if restoreMode == RestoreModeTurbo {
@@ -235,6 +316,7 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 	go func() {
 		select {
 		case <-ctx.Done():
+			budget.close() // Unblock scanner if waiting on memory budget
 			cleanupFn()
 		case <-ctxDone:
 		}
@@ -364,6 +446,13 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 					break
 				}
 
+				// Memory budget: block if total in-flight data exceeds limit.
+				// This prevents OOM when large tables (50GB+) are pre-read
+				// faster than workers can CopyFrom them to PostgreSQL.
+				if !budget.acquire(totalSize) {
+					return // budget closed (context cancelled)
+				}
+
 				// Send job to workers via buffered channel
 				// This blocks if channel is full (backpressure from workers)
 				job := copyJob{
@@ -376,6 +465,7 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 				select {
 				case jobChan <- job:
 				case <-ctx.Done():
+					budget.release(totalSize)
 					// Release chunks that won't be used
 					for _, c := range chunks {
 						_ = c // will be GC'd
@@ -466,6 +556,7 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 					for _, c := range job.chunks {
 						_ = c
 					}
+					budget.release(job.totalSize)
 					continue
 				}
 
@@ -542,10 +633,11 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 					}
 				}
 
-				// Release chunk memory early
+				// Release chunk memory early and free memory budget
 				for i := range job.chunks {
 					job.chunks[i] = nil
 				}
+				budget.release(job.totalSize)
 			}
 		}(i)
 	}

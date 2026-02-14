@@ -42,8 +42,9 @@ import (
 //     streams chunks to CopyFrom. Multiple workers execute COPY in
 //     true parallel.
 //
-// Memory budget: bounded by channelSize * chunkSize (default: 64 * 4MB = 256MB).
-// This is controllable and still O(1) per dump size.
+// Memory budget: bounded by the sum of all buffered job sizes, not channelSize * chunkSize.
+// Each job holds all chunks for one table. The channel limits job count (backpressure).
+// For typical mixed-table dumps, peak memory is well-bounded and controllable.
 //
 // Expected speedup: 3-6x for multi-table dumps (21 MB/s → 80-120 MB/s).
 // Combined with binary COPY: 120-200 MB/s.
@@ -56,8 +57,9 @@ const (
 	defaultPipelineChunkSize = 4 * 1024 * 1024
 
 	// defaultPipelineChannelSize is the buffered channel capacity for copyJobs.
-	// 64 jobs × 4MB = 256MB max memory. Provides enough buffering for the
-	// scanner to read ahead while workers are busy.
+	// NOTE: Each job contains ALL chunks for one table, so actual memory is
+	// bounded by sum(table_sizes) for all buffered jobs, not channelSize × chunkSize.
+	// For a mix of tables, 64 jobs is a good throughput/memory trade-off.
 	defaultPipelineChannelSize = 64
 
 	// defaultPipelineFileBuffer is the file read buffer size.
@@ -437,7 +439,16 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
-
+			defer func() {
+				if r := recover(); r != nil {
+					e.log.Error("Pipeline worker goroutine panic (recovered)",
+						"worker", workerID,
+						"panic", fmt.Sprintf("%v", r))
+					copyErrMu.Lock()
+					copyErrors = append(copyErrors, fmt.Sprintf("worker %d panic: %v", workerID, r))
+					copyErrMu.Unlock()
+				}
+			}()
 			for {
 				var job copyJob
 				var ok bool
@@ -471,21 +482,42 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 				// Create io.Pipe and feed pre-read chunks through it
 				pr, pw := io.Pipe()
 
-				// Feeder goroutine: writes pre-read chunks to pipe
+				// Feeder goroutine: writes pre-read chunks to pipe.
+				// IMPORTANT: pw.Close() is deferred to guarantee the pipe
+				// reader always sees EOF/error, even on panic. Without this,
+				// a panic leaves CopyFrom blocked on pr.Read() forever.
+				feederDone := make(chan struct{})
 				go func(chunks [][]byte) {
+					defer close(feederDone)
+					defer func() {
+						if r := recover(); r != nil {
+							e.log.Error("Feeder goroutine panic (recovered)",
+								"table", job.tableName,
+								"panic", fmt.Sprintf("%v", r))
+							pw.CloseWithError(fmt.Errorf("feeder panic: %v", r))
+						} else {
+							pw.Close()
+						}
+					}()
 					bw := bufio.NewWriterSize(pw, pipelineCfg.CopyBufferSize)
 					for _, chunk := range chunks {
 						if _, werr := bw.Write(chunk); werr != nil {
-							break
+							return
 						}
 					}
-					bw.Flush()
-					pw.Close()
+					if err := bw.Flush(); err != nil {
+						e.log.Warn("Feeder flush error", "table", job.tableName, "error", err)
+					}
 				}(job.chunks)
 
 				// CopyFrom reads from pipe (no FREEZE — schema created on separate connection)
 				rows, copyErr := e.streamCopyNoFreeze(ctx, job.tableName, pr)
 				pr.Close() // Unblock feeder goroutine if COPY returned early
+
+				// Wait for feeder to finish before touching job.chunks.
+				// Without this, nilling chunks races with the feeder's range loop
+				// (they share the same underlying array).
+				<-feederDone
 
 				dur := time.Since(copyStart)
 				atomic.AddInt64(&totalBytes, job.totalSize)

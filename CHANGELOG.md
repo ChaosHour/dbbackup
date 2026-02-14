@@ -5,6 +5,21 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.36.0] - 2026-02-14 — Pipeline Restore Panic Fix & QA Enhancements
+
+### Fixed
+
+- **Pipeline restore feeder goroutine panic on large cluster restores** — The feeder goroutine in `RestoreFilePipeline` (line 475) did not defer `pw.Close()`. A runtime panic (OOM, nil slice) skipped pipe closure, leaving `CopyFrom` permanently blocked on `pr.Read()` and the pgx `SendUnbufferedEncodedCopyData` goroutine stuck on network write. Three compounding issues fixed:
+  1. **`pw.Close()` not deferred**: Now uses `defer pw.CloseWithError()` on panic, `defer pw.Close()` on success — guarantees the pipe reader always gets EOF/error.
+  2. **No panic recovery in feeder or worker goroutines**: Added `recover()` in both the feeder goroutine and the COPY worker goroutine. Panics are logged and recorded as errors instead of crashing the process.
+  3. **Data race on chunk slice**: Worker nilled `job.chunks[i]` while the feeder concurrently iterated the same underlying array. Added `feederDone` channel — worker waits via `<-feederDone` before touching chunks.
+- **Incorrect memory budget documentation** — Comments claimed `64 × 4MB = 256MB` max memory, but each job holds ALL chunks for one table. A 1GB table = 1GB per job. Corrected documentation to reflect actual memory model.
+
+### Added
+
+- **QA suite: `--email` notification** — New `--email`, `--no-email`, and `--email-to <addr>` flags. Sends the QA report as a MIME email attachment via SMTP(S)/curl after test completion. Includes pass/fail status, test counts, duration, and hostname in subject line.
+- **QA suite: `--all` scope flag fix** — The `--comprehensive`/`--all` flag did not activate extended test phases due to a bash operator precedence bug (`||`/`&&` chain). Fixed with proper `if ... then` block.
+
 ## [6.35.0] - 2026-02-14 — QA Suite Fix: 15 Test Failures Resolved
 
 ### Fixed

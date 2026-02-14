@@ -1,4 +1,27 @@
-# Ignore backup artifacts and logs in project subdir
+# ═══════════════════════════════════════════════════════════════════
+# dbbackup .gitignore
+# ═══════════════════════════════════════════════════════════════════
+
+# ─── Built binaries (rebuilt fresh via build_all.sh on release) ───
+/dbbackup
+/dbbackup_*
+/dbbackup-*
+!dbbackup.png
+bin/
+bins/
+
+# ─── Release binaries (uploaded to GitHub Releases, not git) ─────
+release/dbbackup_*
+release/dbbackup-*
+release/v*/
+
+# ─── QA test suite artifacts ─────────────────────────────────────
+run_full_qa.sh
+reports/
+QA_FULL_REPORT_*.md
+validation_results/
+
+# ─── Backup artifacts & logs ─────────────────────────────────────
 pg_backups/
 *.tar.gz
 *.dump
@@ -9,19 +32,13 @@ logs/
 *.trace
 *.err
 
-# Ignore built binaries (built fresh via build_all.sh on release)
-/dbbackup
-/dbbackup_*
-/dbbackup-*
-!dbbackup.png
-bin/
-bins/
+# ─── Test backups ────────────────────────────────────────────────
+test-backups/
+test-backups-*/
 
-# Ignore local configuration (may contain IPs/credentials)
-.dbbackup.conf
+# ─── Security — NEVER commit ─────────────────────────────────────
 .gh_token
-
-# Security - NEVER commit these files
+.dbbackup.conf
 .env
 .env.*
 *.pem
@@ -35,56 +52,43 @@ secrets.json
 *_token
 *.secret
 
-# Ignore session/development notes
-TODO_SESSION.md
-QUICK.md
-QUICK_WINS.md
+# ─── Coverage output ─────────────────────────────────────────────
+*.cover
+*_cover.out
+coverage.out
+coverage*.out
+coverage.html
 
-# Ignore test backups
-test-backups/
-test-backups-*/
+# ─── CI backup files ─────────────────────────────────────────────
+*.bak-*
 
-# QA test suite artifacts
-run_full_qa.sh
-QA_FULL_REPORT_*.md
-
-# Ignore development artifacts
+# ─── Editor / IDE ────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
 *.swp
 *.swo
 *~
 .DS_Store
 
-# Ignore IDE files
-.vscode/
-.idea/
-*.iml
-
-# Ignore test coverage
-*.cover
-coverage.html
-
-# Ignore temporary files
+# ─── Temporary files ─────────────────────────────────────────────
 tmp/
 temp/
+
+# ─── Generated internal docs (not for distribution) ──────────────
 CRITICAL_BUGS_FIXED.md
 LEGAL_DOCUMENTATION.md
 LEGAL_*.md
 legal/
-
-# Release binaries (uploaded via gh release, not git)
-release/dbbackup_*
-
-# Coverage output files
-*_cover.out
-
-# Audit and production reports (internal docs)
 EDGE_CASE_AUDIT_REPORT.md
 PRODUCTION_READINESS_AUDIT.md
-CRITICAL_BUGS_FIXED.md
+TODO_SESSION.md
+QUICK.md
+QUICK_WINS.md
 
-# Examples directory (if contains sensitive samples)
+# ─── Examples (if contains sensitive samples) ────────────────────
 examples/
 
-# Local database/test artifacts
+# ─── Local database artifacts ────────────────────────────────────
 *.db
 *.sqlite

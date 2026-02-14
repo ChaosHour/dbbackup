@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.40.0] - 2026-02-14 — QA Report Size Preservation
+
+### Fixed
+
+- **QA report overwrites real DB size with tiny recreated size** — When `ensure_maria_exists()` / `ensure_mysql_exists()` recreate minimal databases for cross-engine tests after the main DBs are dropped, the original benchmark DB size (e.g. 1736 MB) was overwritten with the tiny recreated size (0.1 MB) in the per-database detail table. Now existing entries are preserved — only new entries (first creation) get the measured size.
+
 ## [6.39.0] - 2026-02-14 — BLOB Database Restore Fix (Enterprise)
 
 ### Fixed

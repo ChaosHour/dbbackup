@@ -40,12 +40,13 @@ spec:
           
           containers:
           - name: dbbackup
-            image: git.uuxo.net/uuxo/dbbackup:latest
+            image: ghcr.io/plusone/dbbackup:6.36.0
             imagePullPolicy: IfNotPresent
             
             args:
               - backup
               - cluster
+              - --allow-root
               - --compression
               - "$(COMPRESSION)"
             
@@ -108,7 +109,7 @@ spec:
           
           containers:
           - name: dbbackup
-            image: git.uuxo.net/uuxo/dbbackup:latest
+            image: ghcr.io/plusone/dbbackup:6.36.0
             
             args:
               - cleanup

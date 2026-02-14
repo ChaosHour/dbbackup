@@ -5,8 +5,8 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=postgres
-Group=postgres
+# User=postgres  # Uncomment if running as postgres user
+# Group=postgres
 
 # Load GFS policy from environment file
 EnvironmentFile=-/etc/dbbackup/prune.env
@@ -17,6 +17,7 @@ ExecStart=/usr/local/bin/dbbackup catalog prune \
     --keep-weekly ${KEEP_WEEKLY} \
     --keep-monthly ${KEEP_MONTHLY} \
     --keep-yearly ${KEEP_YEARLY} \
+    --allow-root \
     --delete-files \
     --verbose
 

@@ -1,25 +1,55 @@
 # dbbackup Ansible Inventory Example
-# Copy to 'inventory' and customize
+# Copy to 'inventory.yml' and customize
+#
+# Production deployment uses YAML format - see inventory.yml
 
-[db_servers]
-# PostgreSQL servers
-pg-primary.example.com   dbbackup_db_type=postgres
-pg-replica.example.com   dbbackup_db_type=postgres dbbackup_backup_from_replica=true
+all:
+  vars:
+    ansible_user: root
+    dbbackup_version: "6.36.0"
+    # Pre-download binary to Ansible controller, then deploy via copy:
+    dbbackup_binary_src: "/tmp/dbbackup_linux_amd64"
 
-# MySQL servers  
-mysql-01.example.com     dbbackup_db_type=mysql
+  children:
+    db_servers:
+      hosts:
+        # MariaDB with socket auth
+        mariadb-server.example.com:
+          dbbackup_db_type: mariadb
+          dbbackup_databases:
+            - myapp_db
+          dbbackup_socket: /var/run/mysqld/mysqld.sock
+          dbbackup_backup_dir: /var/backups/databases
+          dbbackup_backup_script: backup-mariadb.sh
 
-[db_servers:vars]
-ansible_user=deploy
-ansible_become=yes
+        # MariaDB with password auth (use vault!)
+        mariadb-remote.example.com:
+          dbbackup_db_type: mariadb
+          dbbackup_databases:
+            - app1
+            - app2
+          dbbackup_host: 127.0.0.1
+          dbbackup_port: 3306
+          dbbackup_password: "{{ vault_mariadb_password }}"
+          dbbackup_backup_script: backup-remote.sh
 
-# Group-level defaults
-dbbackup_backup_dir=/var/backups/databases
-dbbackup_schedule=daily
+        # PostgreSQL (runs as postgres user)
+        pg-primary.example.com:
+          dbbackup_db_type: postgres
+          dbbackup_databases:
+            - keycloak
+            - myapp
+          dbbackup_run_as: postgres
+          dbbackup_backup_dir: /home/postgres/db_backups
+          dbbackup_backup_script: backup-pg.sh
 
-[monitoring]
-prometheus.example.com
-
-[monitoring:vars]
-# Servers where metrics are scraped
-dbbackup_exporter_enabled=true
+      # Host with non-standard SSH port
+    special_hosts:
+      hosts:
+        custom-port.example.com:
+          ansible_port: 2222
+          dbbackup_db_type: mariadb
+          dbbackup_databases:
+            - gitea
+          dbbackup_socket: /var/run/mysqld/mysqld.sock
+          dbbackup_backup_script: backup-custom.sh

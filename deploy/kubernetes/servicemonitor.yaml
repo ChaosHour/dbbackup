@@ -48,7 +48,7 @@ spec:
       
       containers:
       - name: exporter
-        image: git.uuxo.net/uuxo/dbbackup:latest
+        image: ghcr.io/plusone/dbbackup:6.36.0
         args:
           - metrics
           - serve

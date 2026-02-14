@@ -2,19 +2,22 @@
 # =========================
 
 # Version and Installation
-dbbackup_version: "3.42.74"
-dbbackup_download_url: "https://git.uuxo.net/UUXO/dbbackup/releases/download/v{{ dbbackup_version }}"
+dbbackup_version: "6.36.0"
+dbbackup_download_url: "https://github.com/PlusOne/dbbackup/releases/download/v{{ dbbackup_version }}"
 dbbackup_install_dir: "/usr/local/bin"
 dbbackup_config_dir: "/etc/dbbackup"
 dbbackup_data_dir: "/var/lib/dbbackup"
 dbbackup_log_dir: "/var/log/dbbackup"
+dbbackup_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+dbbackup_allow_root: true  # Run as root (use --allow-root flag)
 
 # Database Configuration
 dbbackup_db_type: "postgres"  # postgres, mysql, mariadb
 dbbackup_db_host: "localhost"
-dbbackup_db_port: 5432        # 5432 for postgres, 3306 for mysql
+dbbackup_db_port: 5432        # 5432 for postgres, 3306 for mysql/mariadb
 dbbackup_db_user: "postgres"
 # dbbackup_db_password: ""    # Use vault for passwords!
+# dbbackup_socket: ""         # Unix socket for MariaDB (e.g. /var/run/mysqld/mysqld.sock)
 
 # Backup Configuration
 dbbackup_backup_dir: "/var/backups/databases"
@@ -24,7 +27,10 @@ dbbackup_encryption_enabled: false
 # dbbackup_encryption_key: "" # Use vault!
 
 # Schedule (systemd OnCalendar format)
-dbbackup_schedule: "daily"  # daily, weekly, *-*-* 02:00:00
+dbbackup_schedule: "*-*-* 03:00:00"  # daily, weekly, *-*-* 02:00:00
+
+# PITR (Point-in-Time Recovery)
+dbbackup_pitr_enabled: false
 
 # Retention Policy
 dbbackup_retention_days: 30

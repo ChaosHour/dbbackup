@@ -11,7 +11,8 @@ deploy/
 │   ├── basic.yml         # Simple installation
 │   ├── with-exporter.yml # With Prometheus metrics
 │   ├── with-notifications.yml # With email/Slack alerts
-│   └── enterprise.yml    # Full enterprise setup
+│   ├── enterprise.yml    # Full enterprise setup
+│   └── deploy-production.yml # Production binary deployment
 ├── kubernetes/           # Kubernetes manifests
 │   ├── cronjob.yaml      # Scheduled backup CronJob
 │   ├── configmap.yaml    # Configuration
@@ -21,6 +22,10 @@ deploy/
 ├── prometheus/           # Prometheus configuration
 │   ├── alerting-rules.yaml
 │   └── scrape-config.yaml
+├── systemd/              # Systemd units for GFS pruning
+│   ├── dbbackup-prune.service
+│   ├── dbbackup-prune.timer
+│   └── prune.env
 ├── terraform/            # Infrastructure as Code
 │   └── aws/              # AWS deployment (S3 bucket)
 └── scripts/              # Helper scripts

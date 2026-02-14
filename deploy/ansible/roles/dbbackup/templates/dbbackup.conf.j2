@@ -3,13 +3,30 @@
 
 # Database
 db-type = {{ dbbackup_db_type }}
+{% if dbbackup_socket is defined %}
+socket = {{ dbbackup_socket }}
+{% else %}
 host = {{ dbbackup_db_host }}
 port = {{ dbbackup_db_port }}
+{% endif %}
 user = {{ dbbackup_db_user }}
+{% if dbbackup_allow_root | default(true) %}
+allow-root = true
+{% endif %}
 
 # Backup
 backup-dir = {{ dbbackup_backup_dir }}
 compression = {{ dbbackup_compression }}
+
+{% if dbbackup_pitr_enabled | default(false) %}
+# Point-in-Time Recovery
+pitr = true
+{% endif %}
+
+{% if dbbackup_dedup_enabled | default(false) %}
+# Deduplication
+dedup = true
+{% endif %}
 
 # Retention
 retention-days = {{ dbbackup_retention_days }}

@@ -10,9 +10,11 @@ scrape_configs:
     # Static targets - list your database servers
     static_configs:
       - targets:
-          - 'db-server-01:9399'
-          - 'db-server-02:9399'
-          - 'db-server-03:9399'
+          - 'mysql01.example.com:9399'
+          - 'alternate.example.com:9399'
+          - 'cloud.example.com:9399'
+          - 'dev.example.com:9399'
+          - 'git.example.com:9399'
         labels:
           environment: 'production'
       

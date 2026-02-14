@@ -41,13 +41,26 @@
   set_fact:
     dbbackup_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
 
-- name: Download dbbackup binary
-  get_url:
-    url: "{{ dbbackup_download_url }}/dbbackup-linux-{{ dbbackup_arch }}"
+# Option A: Copy binary from Ansible controller (recommended for production)
+- name: Copy dbbackup binary from controller
+  copy:
+    src: "{{ dbbackup_binary_src }}"
     dest: "{{ dbbackup_install_dir }}/dbbackup"
     mode: "0755"
     owner: root
     group: root
+  when: dbbackup_binary_src is defined
+  notify: restart dbbackup
+
+# Option B: Download binary from GitHub releases
+- name: Download dbbackup binary
+  get_url:
+    url: "{{ dbbackup_download_url }}/dbbackup_linux_{{ dbbackup_arch }}"
+    dest: "{{ dbbackup_install_dir }}/dbbackup"
+    mode: "0755"
+    owner: root
+    group: root
+  when: dbbackup_binary_src is not defined
   notify: restart dbbackup
 
 - name: Deploy configuration file
@@ -73,6 +86,7 @@
     {{ dbbackup_install_dir }}/dbbackup install
     --backup-type {{ dbbackup_backup_type }}
     --schedule "{{ dbbackup_schedule }}"
+    {% if dbbackup_allow_root | default(true) %}--allow-root{% endif %}
     {% if dbbackup_exporter_enabled %}--with-metrics --metrics-port {{ dbbackup_exporter_port }}{% endif %}
   args:
     creates: "/etc/systemd/system/dbbackup-{{ dbbackup_backup_type }}.service"

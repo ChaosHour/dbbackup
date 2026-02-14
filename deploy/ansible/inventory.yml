@@ -5,7 +5,7 @@ all:
   vars:
     ansible_user: root
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
-    dbbackup_version: "5.7.2"
+    dbbackup_version: "6.36.0"
     # Binary wird von dev.uuxo.net aus deployed (dort liegt es in /tmp nach scp)
     dbbackup_binary_src: "/tmp/dbbackup_linux_amd64"
 
@@ -34,7 +34,8 @@ all:
           dbbackup_backup_dir: /mnt/smb-alternate/backups/databases
           dbbackup_host: 127.0.0.1
           dbbackup_port: 3306
-          dbbackup_password: "xt3kci28"
+          # Password from Ansible Vault - see: ansible-vault edit vault.yml
+          dbbackup_password: "{{ vault_alternate_db_password }}"
           dbbackup_backup_script: backup-alternate.sh
 
         cloud.uuxoi.local:
@@ -46,11 +47,24 @@ all:
           dbbackup_dedup_enabled: true
           dbbackup_backup_script: backup-cloud.sh
 
+        dev.uuxoi.local:
+          dbbackup_db_type: postgres
+          dbbackup_databases:
+            - keycloak
+            - funkrunde
+          dbbackup_backup_dir: /home/postgres/db_backups
+          dbbackup_run_as: postgres  # sudo -u postgres
+          dbbackup_backup_script: backup-dev.sh
+
     # Hosts mit speziellen Anforderungen
     special_hosts:
       hosts:
         git.uuxoi.local:
+          ansible_port: 2222
           dbbackup_db_type: mariadb
           dbbackup_databases:
             - gitea
-          dbbackup_note: "Docker-based MariaDB - needs SSH key setup"
+          dbbackup_socket: /var/run/mysqld/mysqld.sock
+          dbbackup_db_user: gitea
+          dbbackup_backup_dir: /home/git/db_backups
+          dbbackup_backup_script: backup-git.sh

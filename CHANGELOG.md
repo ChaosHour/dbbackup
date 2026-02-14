@@ -5,6 +5,15 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.35.0] - 2026-02-14 — QA Suite Fix: 15 Test Failures Resolved
+
+### Fixed
+
+- **PG small database dropped too early** — `drop_pg_dbs()` destroyed `qa_pg_small` after the PostgreSQL test phase, but 10 later tests in `test_cross_engine()` and `test_advanced()` still needed it (Estimate, compression-level backups, rapid backups, dump-jobs). Introduced `drop_pg_large_db()` that only drops the large DB and `qa_pg_restored`; the small DB now survives until all cross-engine and advanced tests finish.
+- **Shell completion commands fail with "received 3 args"** — The `completion` command uses `DisableFlagParsing: true` (required for clean shell script generation), so `--no-config --allow-root` were treated as positional arguments. Removed those flags from the QA test invocations since they are unnecessary for completion script generation.
+- **Dedup prune fails with "at least one of --keep-last, --keep-daily, or --keep-weekly must be specified"** — QA invoked `dedup prune` without any retention policy flags. Added `--keep-last 3 --dry-run` to the test command.
+- **Compression analyze (MariaDB) fails with "database name required"** — The QA command was missing the `--database` flag. Added `--database $MARIA_DB` to pass the MariaDB test database name.
+
 ## [6.34.0] - 2026-02-13 — pgzip Panic Fix & Comprehensive QA
 
 ### Fixed

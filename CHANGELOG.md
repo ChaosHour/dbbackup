@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.38.0] - 2026-02-14 — QA Report Fix
+
+### Fixed
+
+- **Duplicate database entries in QA report** — The per-database detail table in `run_full_qa.sh` showed duplicate rows for MariaDB and MySQL databases (e.g. `qa_maria_test` appearing twice: once with the real 1.7 GB size and again as 0.1 MB). Cause: `ensure_maria_exists()` and `ensure_mysql_exists()` recreate minimal databases for cross-engine tests after the main DBs are dropped, and `create_mysql_db`/`create_pg_db` unconditionally appended new entries to `DB_DETAILS`. Now checks for an existing entry by engine+dbname before appending — updates size in-place if found, preserving backup/restore timing fields.
+
 ## [6.37.0] - 2026-02-14 — Pipeline OOM Fix & Deploy Modernization
 
 ### Fixed

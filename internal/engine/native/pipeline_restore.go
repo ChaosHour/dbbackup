@@ -76,6 +76,21 @@ const (
 	// backpressure that prevents OOM for large tables.
 	// 2GB is safe for most systems; override via PipelineConfig.MemoryBudget.
 	defaultPipelineMemoryBudget = 2 * 1024 * 1024 * 1024 // 2 GB
+
+	// maxPipelineJobSize is the maximum bytes of pre-read COPY data per job.
+	// When a single table's COPY data exceeds this, the scanner dispatches
+	// a sub-job immediately and continues reading, splitting the table's
+	// COPY stream across multiple bounded jobs. Each sub-job is an
+	// independent COPY FROM STDIN — PostgreSQL handles concurrent/sequential
+	// COPY inserts to the same table correctly.
+	// This prevents unbounded heap growth for BLOB-heavy tables (800k+ BLOBs)
+	// where a single table's COPY data can be hundreds of GB.
+	maxPipelineJobSize int64 = 256 * 1024 * 1024 // 256 MB
+
+	// maxScannerLineSize is the maximum size of a single line in the dump.
+	// PostgreSQL hex-encodes BLOBs in COPY output: a 50MB BLOB = 100MB line.
+	// The old 64MB limit caused "token too long" errors for large BLOBs.
+	maxScannerLineSize = 1024 * 1024 * 1024 // 1 GB
 )
 
 // PipelineConfig controls pipeline restore tuning parameters.
@@ -364,7 +379,7 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 		}()
 
 		scanner := bufio.NewScanner(reader)
-		scanner.Buffer(make([]byte, 1024*1024), 64*1024*1024) // 64MB max line
+		scanner.Buffer(make([]byte, 1024*1024), maxScannerLineSize) // 1GB max line (BLOB rows)
 
 		var stmtBuf strings.Builder
 		lineCount := 0
@@ -385,7 +400,14 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 
 			upper := strings.ToUpper(trimmed)
 
-			// ── COPY block: pre-read all rows into chunks ──
+			// ── COPY block: read rows into bounded sub-jobs ──
+			// For BLOB-heavy databases (800k+ large objects), a single table's
+			// COPY data can be hundreds of GB. The old approach pre-read ALL data
+			// before checking the memory budget — OOM happened during pre-read.
+			// Now: dispatch a sub-job every maxPipelineJobSize (256MB). Each
+			// sub-job is an independent COPY FROM STDIN to the same table.
+			// Budget is acquired per sub-job BEFORE dispatch, so the scanner
+			// never holds more than ~256MB of unbudgeted data.
 			if strings.HasPrefix(upper, "COPY ") && strings.HasSuffix(trimmed, "FROM stdin;") {
 				parts := strings.Fields(trimmed)
 				tableName := ""
@@ -402,7 +424,33 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 					}
 				}
 
-				// Pre-read COPY data into chunks
+				copySQL := fmt.Sprintf("COPY %s FROM STDIN", tableName)
+
+				// dispatchSubJob acquires budget and sends a bounded sub-job.
+				// Returns false if budget closed or context cancelled.
+				dispatchSubJob := func(chunks [][]byte, totalSize int64) bool {
+					if len(chunks) == 0 {
+						return true
+					}
+					if !budget.acquire(totalSize) {
+						return false
+					}
+					job := copyJob{
+						tableName: tableName,
+						copySQL:   copySQL,
+						chunks:    chunks,
+						totalSize: totalSize,
+					}
+					select {
+					case jobChan <- job:
+						return true
+					case <-ctx.Done():
+						budget.release(totalSize)
+						return false
+					}
+				}
+
+				// Read COPY data into chunks, dispatching sub-jobs at maxPipelineJobSize
 				var chunks [][]byte
 				var totalSize int64
 				currentChunk := getChunk(pipelineCfg.ChunkSize)
@@ -423,6 +471,18 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 						chunks = append(chunks, sealed)
 						totalSize += int64(len(sealed))
 						currentChunk = currentChunk[:0]
+
+						// Dispatch sub-job when accumulated data exceeds cap.
+						// This prevents unbounded heap growth for BLOB tables
+						// where one table's COPY data can be 100s of GB.
+						if totalSize >= maxPipelineJobSize {
+							if !dispatchSubJob(chunks, totalSize) {
+								putChunk(currentChunk)
+								return
+							}
+							chunks = nil
+							totalSize = 0
+						}
 					}
 
 					currentChunk = append(currentChunk, dataLine...)
@@ -446,30 +506,8 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 					break
 				}
 
-				// Memory budget: block if total in-flight data exceeds limit.
-				// This prevents OOM when large tables (50GB+) are pre-read
-				// faster than workers can CopyFrom them to PostgreSQL.
-				if !budget.acquire(totalSize) {
-					return // budget closed (context cancelled)
-				}
-
-				// Send job to workers via buffered channel
-				// This blocks if channel is full (backpressure from workers)
-				job := copyJob{
-					tableName: tableName,
-					copySQL:   fmt.Sprintf("COPY %s FROM STDIN WITH (FREEZE)", tableName),
-					chunks:    chunks,
-					totalSize: totalSize,
-				}
-
-				select {
-				case jobChan <- job:
-				case <-ctx.Done():
-					budget.release(totalSize)
-					// Release chunks that won't be used
-					for _, c := range chunks {
-						_ = c // will be GC'd
-					}
+				// Dispatch final sub-job (or the only job for small tables)
+				if !dispatchSubJob(chunks, totalSize) {
 					return
 				}
 

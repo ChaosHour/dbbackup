@@ -5,6 +5,13 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.39.0] - 2026-02-14 — BLOB Database Restore Fix (Enterprise)
+
+### Fixed
+
+- **Pipeline restore OOM on BLOB-heavy PostgreSQL databases** — The scanner pre-read ALL COPY data for an entire table into memory before checking the memory budget. For tables with 800k+ BLOBs, this meant hundreds of GB were allocated in heap before any backpressure kicked in. The budget `acquire()` call happened AFTER the data was already in memory — too late. Now the scanner dispatches bounded sub-jobs (max 256MB each) during the read. When accumulated data for one table exceeds 256MB, a sub-job is dispatched immediately with budget acquired BEFORE dispatch. The scanner never holds more than ~256MB + 1 chunk of unbudgeted data. Each sub-job is an independent `COPY FROM STDIN` to the same table — PostgreSQL handles this correctly.
+- **Scanner max line size too small for large BLOBs** — PostgreSQL hex-encodes binary data in COPY output (a 32MB BLOB = 64MB hex line). The previous 64MB scanner line limit caused `bufio.Scanner: token too long` errors. Increased to 1GB to safely handle BLOBs up to ~500MB.
+
 ## [6.38.0] - 2026-02-14 — QA Report Fix
 
 ### Fixed

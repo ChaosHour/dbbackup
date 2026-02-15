@@ -480,7 +480,7 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	if cfg.CompressionAlgo != "" {
 		sb.WriteString(fmt.Sprintf("compression_algorithm = %s\n", cfg.CompressionAlgo))
 	}
-	if cfg.BackupFormat != "" && cfg.BackupFormat != "sql" {
+	if cfg.BackupFormat != "" {
 		sb.WriteString(fmt.Sprintf("backup_format = %s\n", cfg.BackupFormat))
 	}
 	if cfg.PITREnabled {

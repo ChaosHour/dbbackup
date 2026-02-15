@@ -127,6 +127,7 @@ func init() {
 	// Native engine flags for cluster backup
 	clusterCmd.Flags().Bool("native", false, "Use pure Go native engine (SQL format, no external tools)")
 	clusterCmd.Flags().Bool("fallback-tools", false, "Fall back to external tools if native engine fails")
+	clusterCmd.Flags().String("dump-format", "", "PostgreSQL dump format: custom (parallel restore, default), plain (SQL text), directory (parallel dump+restore)")
 	clusterCmd.Flags().BoolVar(&nativeAutoProfile, "auto", true, "Auto-detect optimal settings based on system resources (default: true)")
 	clusterCmd.Flags().IntVar(&nativeWorkers, "workers", 0, "Number of parallel workers (0 = auto-detect)")
 	clusterCmd.Flags().IntVar(&nativePoolSize, "pool-size", 0, "Connection pool size (0 = auto-detect)")
@@ -144,6 +145,11 @@ func init() {
 			fallback, _ := cmd.Flags().GetBool("fallback-tools")
 			cfg.FallbackToTools = fallback
 		}
+		if cmd.Flags().Changed("dump-format") {
+			dumpFormat, _ := cmd.Flags().GetString("dump-format")
+			cfg.BackupFormat = dumpFormat
+			log.Info("Dump format override", "format", dumpFormat)
+		}
 		if cmd.Flags().Changed("auto") {
 			nativeAutoProfile, _ = cmd.Flags().GetBool("auto")
 		}
@@ -156,6 +162,17 @@ func init() {
 	singleCmd.Flags().IntVar(&nativePoolSize, "pool-size", 0, "Connection pool size (0 = auto-detect)")
 	singleCmd.Flags().IntVar(&nativeBufferSizeKB, "buffer-size", 0, "Buffer size in KB (0 = auto-detect)")
 	singleCmd.Flags().IntVar(&nativeBatchSize, "batch-size", 0, "Batch size for bulk operations (0 = auto-detect)")
+
+	// Dump format flag for single backup (same as cluster)
+	singleCmd.Flags().String("dump-format", "", "PostgreSQL dump format: custom (parallel restore, default), plain (SQL text)")
+	singleCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if cmd.Flags().Changed("dump-format") {
+			dumpFormat, _ := cmd.Flags().GetString("dump-format")
+			cfg.BackupFormat = dumpFormat
+			log.Info("Dump format override", "format", dumpFormat)
+		}
+		return nil
+	}
 
 	// Incremental backup flags (single backup only) - using global vars to avoid initialization cycle
 	singleCmd.Flags().StringVar(&backupTypeFlag, "backup-type", "full", "Backup type: full or incremental")

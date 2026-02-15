@@ -75,7 +75,7 @@ type Config struct {
 	MaxMemoryMB        int // Maximum memory usage hint in MB (0 = auto from system)
 	TransactionBatchSize int // Rows per transaction batch in restore (0 = single transaction)
 	BufferSize         int    // I/O buffer size in bytes (0 = 262144 = 256KB default)
-	BackupFormat       string // Native engine backup format: sql, custom, directory, tar (default: sql)
+	BackupFormat       string // PostgreSQL dump format: custom, plain, directory, tar (default: custom for pg_dump)
 
 	// Native engine options
 	UseNativeEngine   bool     // Use pure Go native engines instead of external tools (default: true)
@@ -978,6 +978,18 @@ func (c *Config) GetBackupPrefix() string {
 // GetBackupExtension returns the appropriate file extension based on output format
 // For single database backups
 func (c *Config) GetBackupExtension(dbType string) string {
+	// Explicit dump format override for PostgreSQL
+	if (dbType == "postgres" || dbType == "postgresql") && c.BackupFormat != "" {
+		switch c.BackupFormat {
+		case "custom":
+			return ".dump"
+		case "directory":
+			return "" // pg_dump directory format (no extension, creates a directory)
+		case "tar":
+			return ".tar"
+		}
+		// "plain" or "sql" falls through to normal logic
+	}
 	if c.ShouldOutputCompressed() {
 		if dbType == "postgres" || dbType == "postgresql" {
 			return ".dump" // PostgreSQL custom format (includes compression)

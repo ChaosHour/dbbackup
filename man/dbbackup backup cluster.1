@@ -72,6 +72,10 @@ native Go engine, eliminating the need for pg_dump.
 	Validate configuration without executing backup
 
 .PP
+\fB--dump-format\fP=""
+	PostgreSQL dump format: custom (parallel restore, default), plain (SQL text), directory (parallel dump+restore)
+
+.PP
 \fB--encrypt\fP[=false]
 	Encrypt backup with AES-256-GCM
 

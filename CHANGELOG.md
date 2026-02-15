@@ -5,6 +5,25 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.41.0] - 2026-02-15 — Custom Dump Format, QA Accuracy & Backup Reliability
+
+### Fixed
+
+- **Per-database detail table shows "—" for PG backup/restore times** — The timing lookup used regex syntax (`.*`) inside bash glob patterns (literal match), so patterns like `single backup.*qa_pg_large` never matched. Additionally, PG test names include `large:`/`small:` prefixes that the fallback patterns missed. Restore patterns searched for the source DB name (`qa_maria_test`) instead of the target name in the test (`Maria single restore → qa_maria_restored`). Fixed all patterns in both terminal display and markdown report.
+- **MariaDB backup diff always skipped** — Only one MariaDB archive existed at diff time because (unlike PG) there was no second backup to slow storage. Added a "Maria single backup → slow storage" step before the diff test.
+- **Blob restore always skipped ("no blob backup found")** — The `blob backup` command requires `-o <file>` but the QA test didn't pass it, so no output file was created. Added explicit `-o` flag with a known output path.
+- **Custom format (.dump) single backup produced .sql.gz instead** — The native Go engine (enabled by default) always produces SQL text format, ignoring `--dump-format custom`. Now the native engine is automatically bypassed when an explicit dump format (custom/directory/tar) is requested.
+- **PG test databases undersized vs profile** — `repeat(md5(random()::text), 640)` generates highly TOAST-compressible data (same 32 chars repeated 640×), resulting in ~95% smaller on-disk size than expected. Changed to `string_agg(md5(random()::text), '')` over 640 iterations — each row gets 640 unique MD5 hashes (~20KB of incompressible data).
+
+### Added
+
+- **`--dump-format` flag for `backup single`** — PostgreSQL single database backups now support `--dump-format custom|plain|directory|tar`, matching the existing cluster backup flag. Custom format enables parallel restore via `pg_restore -j N`.
+- **`GetBackupExtension` respects explicit format** — File extension now correctly reflects `--dump-format`: custom→`.dump`, tar→`.tar`, directory→no extension, regardless of compression settings.
+
+### Changed
+
+- **Cluster backup: removed auto-downgrade to plain format for large DBs** — Previously, databases >5GB were silently switched from custom to plain format. Custom format (pg_dump -Fc) is now used for all PostgreSQL databases regardless of size, since it includes built-in compression and enables parallel restore.
+
 ## [6.40.0] - 2026-02-14 — QA Report Size Preservation
 
 ### Fixed

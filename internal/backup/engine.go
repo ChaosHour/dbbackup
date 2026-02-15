@@ -246,7 +246,14 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	var outputFile string
 
 	// USE NATIVE ENGINE if configured — pure Go backup (no pg_dump/mysqldump)
-	if e.cfg.UseNativeEngine {
+	// Skip native engine when an explicit dump format is requested (custom/directory/tar)
+	// because native engine only produces SQL text format (.sql.gz)
+	useNative := e.cfg.UseNativeEngine
+	if e.cfg.IsPostgreSQL() && e.cfg.BackupFormat != "" && e.cfg.BackupFormat != "plain" && e.cfg.BackupFormat != "sql" {
+		useNative = false
+		e.log.Info("Bypassing native engine for explicit dump format", "format", e.cfg.BackupFormat)
+	}
+	if useNative {
 		algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
 		nativeExt := ".sql" + comp.FileExtension(algo)
 		prefix := e.cfg.GetBackupPrefix()
@@ -301,6 +308,15 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 	backupFormat := "custom"
 	if !e.cfg.ShouldOutputCompressed() || !e.cfg.IsPostgreSQL() {
 		backupFormat = "plain" // SQL text format
+	}
+	// Respect explicit BackupFormat config override for PostgreSQL
+	if e.cfg.IsPostgreSQL() && e.cfg.BackupFormat != "" {
+		switch e.cfg.BackupFormat {
+		case "custom", "directory", "tar":
+			backupFormat = e.cfg.BackupFormat
+		case "plain", "sql":
+			backupFormat = "plain"
+		}
 	}
 
 	options := database.BackupOptions{
@@ -930,16 +946,20 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 			}
 
 			// Standard pg_dump path (for non-native mode or fallback)
-			if size, err := e.db.GetDatabaseSize(ctx, name); err == nil {
-				if size > 5*1024*1024*1024 {
-					format = "plain"
-					compressionLevel = 0
-					parallel = 0
-					mu.Lock()
-					e.printf("       Using plain format + external compression (optimal for large DBs)\n")
-					mu.Unlock()
-				}
+			// Respect BackupFormat config if set (custom, plain, directory)
+			if e.cfg.BackupFormat == "plain" || e.cfg.BackupFormat == "sql" {
+				format = "plain"
+				compressionLevel = 0
+				parallel = 0
+				dumpFile = filepath.Join(tempDir, "dumps", name+".sql")
+				mu.Lock()
+				e.printf("       Using plain SQL format (backup_format=plain)\n")
+				mu.Unlock()
 			}
+			// NOTE: custom format (.dump) is the default for all PostgreSQL databases
+			// regardless of size. pg_dump -Fc includes built-in compression and
+			// pg_restore -j N enables parallel restore — significantly faster than
+			// plain SQL format which is restored sequentially via psql.
 
 			options := database.BackupOptions{
 				Compression:  compressionLevel,

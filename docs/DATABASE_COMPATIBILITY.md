@@ -81,7 +81,7 @@ All cloud backends are database-agnostic:
 |---------|--------|--------|
 | MySQL parallel restore | Planned | - |
 | MySQL WAL-based incremental | Planned | - |
-| PostgreSQL custom format | Planned | - |
+| PostgreSQL custom format | Done | v6.25.0 |
 | MariaDB Galera cluster backup | Done | v5.9 |
 | MySQL/MariaDB PITR (binlog) | Done | v6.28.0 |
 | Dedup backup/restore | Done | v6.25.0 |

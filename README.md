@@ -471,6 +471,9 @@ All systems operational
 # Single database backup
 dbbackup backup single myapp_db
 
+# Single database backup — PostgreSQL custom format (.dump)
+dbbackup backup single myapp_db --dump-format custom
+
 # Cluster backup (all databases — PostgreSQL, MySQL, MariaDB)
 dbbackup backup cluster
 
@@ -686,6 +689,30 @@ dbbackup backup single mydb --encrypt --encryption-key-file encryption.key
 # Restore (decryption is automatic)
 dbbackup restore single mydb_encrypted.sql.gz --encryption-key-file encryption.key --target mydb --confirm
 ```
+
+## PostgreSQL Custom Format
+
+PostgreSQL custom format (`.dump`) enables parallel restore and selective table recovery:
+
+```bash
+# Single database — custom format
+dbbackup backup single mydb --dump-format custom
+
+# Cluster backup uses custom format by default for all PG databases
+dbbackup backup cluster
+
+# Available formats: custom | plain | directory | tar
+dbbackup backup single mydb --dump-format tar
+
+# Restore from custom format (parallel restore with -j)
+dbbackup restore single mydb.dump --target mydb --confirm --jobs 8
+```
+
+**Benefits of custom format:**
+- **2-3× faster restores** via TOC-based parallel processing
+- **Selective restore**: restore specific tables with `--include-table` / `--exclude-table`
+- **Built-in compression**: no separate gzip step needed
+- **Random access**: seek directly to any table's data block
 
 ## Incremental Backups
 

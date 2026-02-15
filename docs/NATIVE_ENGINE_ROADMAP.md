@@ -117,7 +117,7 @@
 
 #### PostgreSQL Restore Engine
 - [x] **SQL script execution**: Native psql replacement
-- [ ] **Custom format restore**: Parse and restore from binary format
+- [x] **Custom format restore**: Parse and restore from binary format
 - [x] **Selective restore**: Schema-only, data-only, table-specific
 - [x] **Parallel restore**: Zero-buffer streaming with `io.Pipe`, buffered I/O (256KB),
   tuned pgzip decompression, sorted post-data execution, index-specific optimizations

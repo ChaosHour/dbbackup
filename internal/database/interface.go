@@ -30,6 +30,7 @@ type Database interface {
 
 	// Information
 	GetVersion(ctx context.Context) (string, error)
+	GetMajorVersion(ctx context.Context) (int, error)
 	GetDatabaseSize(ctx context.Context, database string) (int64, error)
 	GetTableRowCount(ctx context.Context, database, table string) (int64, error)
 

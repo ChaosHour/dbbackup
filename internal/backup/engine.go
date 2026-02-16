@@ -818,7 +818,12 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 					SSLMode:     e.cfg.SSLMode,
 					Format:      "sql",
 					Compression: compressionLevel,
-					Parallel:    e.cfg.Jobs,
+					// During cluster backup, use sequential per-table processing
+					// (Parallel=1) to avoid OOM. Each table is buffered entirely
+					// in memory during parallel mode; with multiple large databases
+					// being backed up concurrently this compounds to many GB.
+					// The cluster-level parallelism already keeps CPUs busy.
+					Parallel:    1,
 					Blobs:       true,
 					Verbose:     e.cfg.Debug,
 				}

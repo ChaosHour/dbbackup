@@ -5,6 +5,24 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.42.0] - 2026-02-16 — PostgreSQL Large Object Vacuum, QA Fixes & Native Restore Safety
+
+### Added
+
+- **PostgreSQL Large Object vacuum (`--lo-vacuum`)** — Optional pre-backup maintenance that detects and cleans orphaned large objects. Version-aware: PostgreSQL ≥14 uses native `VACUUM pg_largeobject` (leveraging built-in LO autovacuum support); PostgreSQL <14 uses `lo_unlink()` on orphans discovered via dynamic OID column scanning. Fully opt-in via `--lo-vacuum` flag or `lo_vacuum = true` in `.dbbackup.conf`. Configurable timeout with `--lo-vacuum-timeout` (default 300s). Errors are non-fatal — logged as warnings without aborting the backup.
+- **`--lo-vacuum-timeout` flag** — Controls maximum duration for the large object vacuum operation (default: 300 seconds). Available on `backup cluster`, `backup single`, and `backup sample` commands.
+- **Large Object health check** — `dbbackup health` now reports LO status for PostgreSQL: total count, combined size, orphan count, and estimated orphan size. Warns when >100 orphaned LOs or >100 MB of orphan data is detected. Includes remediation recommendation to enable `--lo-vacuum`.
+- **`GetMajorVersion()` on Database interface** — PostgreSQL implementation parses `server_version_num` for reliable major version detection. MySQL/MariaDB stub returns 0. Used by LO vacuum to select the correct cleanup strategy.
+- **`internal/maintenance` package** — New package for optional database maintenance operations. Contains `VacuumLargeObjects()` (active cleanup), `DiagnoseLargeObjects()` (read-only health info), and orphan detection via dynamic discovery of OID-type columns across all user tables.
+- **LO vacuum config persistence** — `lo_vacuum` and `lo_vacuum_timeout` settings can be saved in `.dbbackup.conf` and are loaded automatically on startup.
+
+### Fixed
+
+- **QA test 03: Cluster native backup OOM** — Native backup engine buffered entire tables in `bytes.Buffer` during parallel mode. With two large databases concurrent, the process ran out of memory. Fixed by setting `Parallel: 1` for cluster native backup configuration.
+- **QA tests 183/187: Encryption round-trip used non-existent flag** — QA script used `--encryption-key` which doesn't exist. The binary uses `--encrypt` combined with `DBBACKUP_ENCRYPTION_KEY` environment variable. Fixed to use the correct flag and env var approach.
+- **QA test 217: Pipeline negation logic** — `!` in `! cmd 2>&1 | grep` negated the entire pipeline exit code (grep's exit code), not just the command's. Removed the erroneous negation.
+- **QA test 218: Native restore to existing database with tables** — Native restore didn't check for existing tables before restoring, causing data corruption risk. Added `nativeTargetHasTables()` safety check that refuses to restore into a database containing tables unless `--force` or `--clean` is specified.
+
 ## [6.41.0] - 2026-02-15 — Custom Dump Format, QA Accuracy & Backup Reliability
 
 ### Fixed

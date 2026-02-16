@@ -239,6 +239,11 @@ func (m *MySQL) GetVersion(ctx context.Context) (string, error) {
 	return version, nil
 }
 
+// GetMajorVersion returns 0 for MySQL/MariaDB (not applicable for LO vacuum).
+func (m *MySQL) GetMajorVersion(ctx context.Context) (int, error) {
+	return 0, nil
+}
+
 // GetDatabaseSize returns database size in bytes
 func (m *MySQL) GetDatabaseSize(ctx context.Context, database string) (int64, error) {
 	if m.db == nil {

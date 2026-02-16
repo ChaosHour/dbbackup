@@ -148,6 +148,10 @@ type Config struct {
 	PITREnabled    bool   // Enable WAL archiving for PITR
 	WALArchiveDir  string // Directory to store WAL archives
 	WALCompression bool   // Compress WAL files
+
+	// Large Object maintenance (PostgreSQL)
+	LOVacuum        bool // Run orphaned large object cleanup before backup (default: false)
+	LOVacuumTimeout int  // Timeout in seconds for LO vacuum (default: 300 = 5 min)
 	WALEncryption  bool   // Encrypt WAL files
 
 	// MySQL PITR options

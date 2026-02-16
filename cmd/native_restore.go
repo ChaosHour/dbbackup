@@ -119,6 +119,16 @@ func runNativeRestore(ctx context.Context, db database.Database, archivePath, ta
 		}
 	}
 
+	// Safety check: refuse to restore into an existing database that already
+	// has tables unless --force or --clean is set. This prevents silent data
+	// corruption where CREATE TABLE fails with "already exists" and COPY data
+	// is skipped.
+	if !restoreForce && !cleanFirst {
+		if hasTables, _ := nativeTargetHasTables(ctx, targetDB, dbType); hasTables {
+			return fmt.Errorf("target database '%s' already contains tables; use --force or --clean to overwrite", targetDB)
+		}
+	}
+
 	// Perform restore using native engine
 	if err := engineManager.RestoreWithNativeEngine(ctx, reader, targetDB); err != nil {
 		auditLogger.LogRestoreFailed(user, targetDB, err)
@@ -211,4 +221,55 @@ func ensureTargetDatabaseExists(ctx context.Context, targetDB, dbType string) er
 // isGzipFile checks if file has gzip extension
 func isGzipFile(path string) bool {
 	return len(path) > 3 && path[len(path)-3:] == ".gz"
+}
+
+// nativeTargetHasTables checks whether the target database already contains
+// user tables. Returns false (safe to restore) when the DB doesn't exist or
+// when we can't connect to it.
+func nativeTargetHasTables(ctx context.Context, targetDB, dbType string) (bool, error) {
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	switch dbType {
+	case "postgresql":
+		psqlArgs := []string{"-U", cfg.User}
+		if cfg.Host != "" && cfg.Host != "localhost" && cfg.Host != "127.0.0.1" {
+			psqlArgs = append(psqlArgs, "-h", cfg.Host)
+		}
+		if cfg.Port > 0 {
+			psqlArgs = append(psqlArgs, "-p", fmt.Sprintf("%d", cfg.Port))
+		}
+		psqlArgs = append(psqlArgs, "-d", targetDB, "-tAc",
+			"SELECT COUNT(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema')")
+		cmd := cleanup.SafeCommand(checkCtx, "psql", psqlArgs...)
+		cmd.Env = os.Environ()
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return false, err
+		}
+		count := strings.TrimSpace(string(out))
+		return count != "0" && count != "", nil
+
+	case "mysql", "mariadb":
+		args := []string{"-u", cfg.User, "-N", "-e",
+			fmt.Sprintf("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='%s' AND table_type='BASE TABLE'",
+				strings.ReplaceAll(targetDB, "'", "\\'"))}
+		if cfg.Socket != "" {
+			args = append(args, "-S", cfg.Socket)
+		} else {
+			args = append(args, "-h", cfg.Host, "-P", fmt.Sprintf("%d", cfg.Port))
+		}
+		cmd := cleanup.SafeCommand(checkCtx, "mysql", args...)
+		cmd.Env = os.Environ()
+		if cfg.Password != "" {
+			cmd.Env = append(cmd.Env, "MYSQL_PWD="+cfg.Password)
+		}
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return false, err
+		}
+		count := strings.TrimSpace(string(out))
+		return count != "0" && count != "", nil
+	}
+	return false, nil
 }

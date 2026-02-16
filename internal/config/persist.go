@@ -71,6 +71,10 @@ type LocalConfig struct {
 	PITREnabled   bool   // Enable WAL archiving for Point-in-Time Recovery
 	WALArchiveDir string // Directory to store WAL archives
 
+	// Large Object maintenance (PostgreSQL)
+	LOVacuum        bool // Run orphaned LO cleanup before backup
+	LOVacuumTimeout int  // Timeout seconds (0 = 300 default)
+
 	// Safety settings
 	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
 
@@ -305,6 +309,12 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.PITREnabled = value == "true" || value == "1"
 			case "wal_archive_dir":
 				cfg.WALArchiveDir = value
+			case "lo_vacuum":
+				cfg.LOVacuum = value == "true" || value == "1"
+			case "lo_vacuum_timeout":
+				if v, err := strconv.Atoi(value); err == nil {
+					cfg.LOVacuumTimeout = v
+				}
 			case "skip_disk_check":
 				cfg.SkipDiskCheck = value == "true" || value == "1"
 			}
@@ -488,6 +498,12 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	}
 	if cfg.WALArchiveDir != "" {
 		sb.WriteString(fmt.Sprintf("wal_archive_dir = %s\n", cfg.WALArchiveDir))
+	}
+	if cfg.LOVacuum {
+		sb.WriteString(fmt.Sprintf("lo_vacuum = %t\n", cfg.LOVacuum))
+	}
+	if cfg.LOVacuumTimeout > 0 {
+		sb.WriteString(fmt.Sprintf("lo_vacuum_timeout = %d\n", cfg.LOVacuumTimeout))
 	}
 	sb.WriteString(fmt.Sprintf("skip_disk_check = %t\n", cfg.SkipDiskCheck))
 	sb.WriteString("\n")
@@ -701,6 +717,12 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.WALArchiveDir != "" {
 		cfg.WALArchiveDir = local.WALArchiveDir
 	}
+	if local.LOVacuum {
+		cfg.LOVacuum = true
+	}
+	if local.LOVacuumTimeout > 0 {
+		cfg.LOVacuumTimeout = local.LOVacuumTimeout
+	}
 	if local.SkipDiskCheck {
 		cfg.SkipDiskCheck = true
 	}
@@ -814,6 +836,8 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		BackupFormat:           cfg.BackupFormat,
 		PITREnabled:            cfg.PITREnabled,
 		WALArchiveDir:          cfg.WALArchiveDir,
+		LOVacuum:               cfg.LOVacuum,
+		LOVacuumTimeout:        cfg.LOVacuumTimeout,
 		SkipDiskCheck:           cfg.SkipDiskCheck,
 		SkipPreflightChecks:     cfg.SkipPreflightChecks,
 		CloudEnabled:            cfg.CloudEnabled,

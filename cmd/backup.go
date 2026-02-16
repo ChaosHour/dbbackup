@@ -200,6 +200,12 @@ func init() {
 		cmd.Flags().Bool("no-verify", false, "Skip automatic backup verification after creation")
 	}
 
+	// Large Object vacuum flag for PG backup commands (optional pre-backup maintenance)
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
+		cmd.Flags().Bool("lo-vacuum", false, "Clean up orphaned PostgreSQL large objects before backup (PG only)")
+		cmd.Flags().Int("lo-vacuum-timeout", 300, "Timeout in seconds for large object vacuum (default: 300)")
+	}
+
 	// Cloud storage flags for all backup commands
 	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
 		cmd.Flags().String("cloud", "", "Cloud storage URI (e.g., s3://bucket/path) - takes precedence over individual flags")
@@ -265,6 +271,16 @@ func init() {
 			if c.Flags().Changed("compression-algorithm") {
 				algo, _ := c.Flags().GetString("compression-algorithm")
 				cfg.CompressionAlgorithm = algo
+			}
+
+			// Handle --lo-vacuum flag (PostgreSQL large object maintenance)
+			if c.Flags().Changed("lo-vacuum") {
+				loVac, _ := c.Flags().GetBool("lo-vacuum")
+				cfg.LOVacuum = loVac
+			}
+			if c.Flags().Changed("lo-vacuum-timeout") {
+				loTimeout, _ := c.Flags().GetInt("lo-vacuum-timeout")
+				cfg.LOVacuumTimeout = loTimeout
 			}
 
 			return nil

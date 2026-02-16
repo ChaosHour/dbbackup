@@ -363,6 +363,23 @@ func (p *PostgreSQL) GetVersion(ctx context.Context) (string, error) {
 	return version, nil
 }
 
+// GetMajorVersion returns the PostgreSQL major version number (e.g., 14, 15, 16).
+// Uses server_version_num which returns an integer like 140005 for PG 14.5.
+func (p *PostgreSQL) GetMajorVersion(ctx context.Context) (int, error) {
+	if p.db == nil {
+		return 0, fmt.Errorf("not connected to database")
+	}
+
+	var versionNum int
+	err := p.db.QueryRowContext(ctx, "SHOW server_version_num").Scan(&versionNum)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get server_version_num: %w", err)
+	}
+
+	// server_version_num format: major * 10000 + minor (e.g., 140005 = 14.5)
+	return versionNum / 10000, nil
+}
+
 // GetDatabaseSize returns database size in bytes
 func (p *PostgreSQL) GetDatabaseSize(ctx context.Context, database string) (int64, error) {
 	if p.db == nil {

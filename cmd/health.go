@@ -11,6 +11,7 @@ import (
 
 	"dbbackup/internal/catalog"
 	"dbbackup/internal/database"
+	"dbbackup/internal/maintenance"
 
 	"github.com/spf13/cobra"
 )
@@ -120,6 +121,11 @@ func runHealthCheck(cmd *cobra.Command, args []string) error {
 	// 2. Database connectivity (unless skipped)
 	if !healthSkipDB {
 		report.addCheck(checkDatabaseConnectivity(ctx))
+
+		// 2b. Large Object health (PostgreSQL only)
+		if cfg.IsPostgreSQL() {
+			report.addCheck(checkLargeObjectHealth(ctx))
+		}
 	}
 
 	// 3. Backup directory check
@@ -222,6 +228,8 @@ func (r *HealthReport) generateRecommendations() {
 			r.Recommendations = append(r.Recommendations, "Clean orphaned entries: dbbackup catalog cleanup --orphaned")
 		case check.Name == "Database Connectivity" && check.Status != StatusHealthy:
 			r.Recommendations = append(r.Recommendations, "Check database connection settings in .dbbackup.conf")
+		case check.Name == "Large Objects" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Enable pre-backup LO cleanup: dbbackup backup cluster --lo-vacuum")
 		}
 	}
 }
@@ -699,4 +707,75 @@ func formatBytesHealth(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// checkLargeObjectHealth reports on PostgreSQL large object status.
+func checkLargeObjectHealth(ctx context.Context) HealthCheck {
+	check := HealthCheck{
+		Name:   "Large Objects",
+		Status: StatusHealthy,
+	}
+
+	db, err := database.New(cfg, log)
+	if err != nil {
+		check.Status = StatusWarning
+		check.Message = "Could not create database instance for LO check"
+		check.Details = err.Error()
+		return check
+	}
+	defer db.Close()
+
+	if err := db.Connect(ctx); err != nil {
+		check.Status = StatusWarning
+		check.Message = "Could not connect for LO check"
+		check.Details = err.Error()
+		return check
+	}
+
+	pgDB, ok := db.(*database.PostgreSQL)
+	if !ok {
+		check.Message = "Not PostgreSQL – skipped"
+		return check
+	}
+
+	pgMajor, err := pgDB.GetMajorVersion(ctx)
+	if err != nil {
+		check.Status = StatusWarning
+		check.Message = "Could not detect PG version for LO check"
+		check.Details = err.Error()
+		return check
+	}
+
+	sqlDB := pgDB.GetConn()
+	info, err := maintenance.DiagnoseLargeObjects(ctx, sqlDB, pgMajor, log)
+	if err != nil {
+		check.Status = StatusWarning
+		check.Message = "LO diagnostic failed"
+		check.Details = err.Error()
+		return check
+	}
+
+	details := fmt.Sprintf("Total LOs: %d, Size: %s, Orphaned: %d (~%s), PG %d",
+		info.TotalLOs,
+		formatBytesHealth(info.TotalSizeBytes),
+		info.OrphanedLOs,
+		formatBytesHealth(info.OrphanSizeEst),
+		info.PGMajorVersion,
+	)
+
+	if info.OrphanedLOs > 100 || info.OrphanSizeEst > 100*1024*1024 {
+		check.Status = StatusWarning
+		check.Message = "Significant orphaned large objects detected"
+		check.Details = details
+		return check
+	}
+
+	if info.OrphanedLOs > 0 {
+		check.Message = fmt.Sprintf("Minor orphaned LOs (%d)", info.OrphanedLOs)
+	} else {
+		check.Message = "No orphaned large objects"
+	}
+	check.Details = details
+
+	return check
 }

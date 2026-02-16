@@ -14,6 +14,7 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/engine"
+	"dbbackup/internal/maintenance"
 	"dbbackup/internal/notify"
 	"dbbackup/internal/security"
 	"dbbackup/internal/validation"
@@ -112,6 +113,11 @@ func runClusterBackup(ctx context.Context) error {
 				return fmt.Errorf("galera cluster check failed: %w", err)
 			}
 		}
+	}
+
+	// Pre-backup: Large Object vacuum (PostgreSQL only, optional)
+	if cfg.LOVacuum && cfg.IsPostgreSQL() {
+		runPreBackupLOVacuum(ctx, db)
 	}
 
 	// Create backup engine
@@ -303,6 +309,11 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		err := fmt.Errorf("database '%s' does not exist", databaseName)
 		auditLogger.LogBackupFailed(user, databaseName, err)
 		return err
+	}
+
+	// Pre-backup: Large Object vacuum (PostgreSQL only, optional)
+	if cfg.LOVacuum && cfg.IsPostgreSQL() {
+		runPreBackupLOVacuum(ctx, db)
 	}
 
 	// Check if native engine should be used
@@ -827,4 +838,44 @@ func handleGaleraCluster(ctx context.Context, sqlDB *sql.DB) error {
 	}
 
 	return nil
+}
+
+// runPreBackupLOVacuum performs optional large object vacuum before backup.
+// Errors are logged but do not abort the backup.
+func runPreBackupLOVacuum(ctx context.Context, db database.Database) {
+	pgDB, ok := db.(*database.PostgreSQL)
+	if !ok {
+		return
+	}
+
+	pgMajor, err := pgDB.GetMajorVersion(ctx)
+	if err != nil {
+		log.Warn("Could not detect PostgreSQL version for LO vacuum", "error", err)
+		return
+	}
+
+	log.Info("Running pre-backup large object vacuum",
+		"pg_version", pgMajor)
+
+	timeout := time.Duration(cfg.LOVacuumTimeout) * time.Second
+	if timeout == 0 {
+		timeout = 5 * time.Minute
+	}
+
+	sqlDB := pgDB.GetConn()
+	result, err := maintenance.VacuumLargeObjects(ctx, sqlDB, pgMajor, log, maintenance.LOVacuumOptions{
+		Timeout: timeout,
+	})
+	if err != nil {
+		log.Warn("Large object vacuum failed (non-fatal)", "error", err)
+		return
+	}
+	if result != nil && result.Method != "skipped" {
+		log.Info("Large object vacuum completed",
+			"method", result.Method,
+			"total_los", result.TotalLOs,
+			"orphaned", result.OrphanedLOs,
+			"cleaned", result.CleanedLOs,
+			"duration", result.Duration)
+	}
 }

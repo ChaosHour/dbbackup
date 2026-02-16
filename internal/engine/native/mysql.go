@@ -79,6 +79,7 @@ type MySQLNativeConfig struct {
 	ExtendedInsert bool
 	HexBlob        bool
 	QuickDump      bool
+	BatchSize      int // Rows per extended INSERT (default: 5000)
 
 	// PITR options
 	MasterData       int // 0=disabled, 1=CHANGE MASTER, 2=commented
@@ -364,7 +365,10 @@ func (e *MySQLNativeEngine) backupTableData(ctx context.Context, w io.Writer, da
 	// Process rows in batches and generate INSERT statements
 	var bytesWritten int64
 	var insertValues []string
-	const batchSize = 1000
+	batchSize := e.cfg.BatchSize
+	if batchSize <= 0 {
+		batchSize = 5000 // default: 5000 rows per INSERT (was 1000 pre-v6.43)
+	}
 	rowCount := 0
 
 	for rows.Next() {

@@ -222,10 +222,11 @@ func (m *EngineManager) createMySQLEngine() (Engine, error) {
 		DataOnly:       false,
 		AddDropTable:   true,
 		CreateOptions:  true,
-		DisableKeys:    true,
-		ExtendedInsert: true,
+		DisableKeys:    m.cfg.MySQLDisableKeys,
+		ExtendedInsert: m.cfg.MySQLExtendedInsert,
 		HexBlob:        true,
-		QuickDump:      true,
+		QuickDump:      m.cfg.MySQLQuickDump,
+		BatchSize:      m.cfg.MySQLBatchSize,
 
 		MasterData:       0, // Disable by default
 		FlushLogs:        false,

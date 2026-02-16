@@ -5,6 +5,30 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.43.0] - 2026-02-16 — MySQL/MariaDB Dump & Restore Speed Optimizations
+
+### Added
+
+- **MySQL/MariaDB backup speed flags** — Eight new `--mysql-*` CLI flags for fine-grained control over mysqldump performance:
+  - `--mysql-quick` (default: true) — Row-by-row fetch from server, constant memory usage instead of buffering entire tables
+  - `--mysql-extended-insert` (default: true) — Multi-row INSERT statements for 5-20x faster import
+  - `--mysql-order-by-primary` (default: false) — Sort rows by primary key for better InnoDB clustered index locality on import
+  - `--mysql-disable-keys` (default: true) — `DISABLE KEYS` / `ENABLE KEYS` around data load for MyISAM/Aria tables
+  - `--mysql-net-buffer-length` (default: 1048576) — Network buffer size for dump transfers (1MB, max mysqldump allows)
+  - `--mysql-max-packet` (default: 256M) — `max-allowed-packet` for both dump and restore commands
+  - `--mysql-fast-restore` (default: true) — Pre-sets `foreign_key_checks=0, unique_checks=0, autocommit=0, sql_log_bin=0` via `--init-command` for bulk import speed
+  - `--mysql-batch-size` (default: 5000) — Rows per extended INSERT in native Go engine (was hardcoded 1000)
+- **Restore `--init-command` integration** — When `--mysql-fast-restore` is enabled (default), the mysql client restore command includes `--init-command` to disable FK/unique checks and binary logging before importing, yielding 2-5x faster restores on large datasets.
+- **Native engine configurable batch size** — The pure Go MySQL backup engine now uses the `--mysql-batch-size` config (default 5000, up from hardcoded 1000) for extended INSERT grouping. Larger batches reduce statement overhead and improve import throughput.
+- **Config persistence for MySQL speed options** — All eight MySQL performance settings are persisted in `.dbbackup.conf` under the `[performance]` section. Non-default values only are written to keep config files clean.
+- **QA test suite Phase 16: MySQL Speed Optimizations** — New `--with-mysql-speed` scope flag (also enabled by `--comprehensive`). Tests cover CLI flag acceptance, default value verification, flag override parsing, live MariaDB/MySQL backup with speed flags, PostgreSQL graceful ignore, and config file persistence. ~35 test points across 7 sections.
+
+### Changed
+
+- **BuildBackupCommand gains 6 new flags** — MySQL/MariaDB `mysqldump` commands now include `--quick`, `--extended-insert`, `--disable-keys`, `--net-buffer-length`, `--max-allowed-packet`, and optionally `--order-by-primary` based on configuration.
+- **BuildRestoreCommand gains `--init-command` and `--max-allowed-packet`** — MySQL client restore commands now set performance session variables and increase packet size for large INSERT handling.
+- **Native engine manager wires config values** — `DisableKeys`, `ExtendedInsert`, `QuickDump`, and `BatchSize` are now read from the main config instead of being hardcoded, allowing runtime tuning.
+
 ## [6.42.0] - 2026-02-16 — PostgreSQL Large Object Vacuum, QA Fixes & Native Restore Safety
 
 ### Added

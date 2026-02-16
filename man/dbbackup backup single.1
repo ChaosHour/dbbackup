@@ -128,6 +128,38 @@ Examples:
 	Timeout in seconds for large object vacuum (default: 300)
 
 .PP
+\fB--mysql-batch-size\fP=5000
+	Rows per extended INSERT in native engine (MySQL/MariaDB)
+
+.PP
+\fB--mysql-disable-keys\fP[=true]
+	mysqldump --disable-keys: DISABLE KEYS around data load (MySQL/MariaDB)
+
+.PP
+\fB--mysql-extended-insert\fP[=true]
+	mysqldump --extended-insert: multi-row INSERT (MySQL/MariaDB)
+
+.PP
+\fB--mysql-fast-restore\fP[=true]
+	SET fk_checks=0, unique_checks=0 before restore (MySQL/MariaDB)
+
+.PP
+\fB--mysql-max-packet\fP="256M"
+	max-allowed-packet for dump & restore (MySQL/MariaDB)
+
+.PP
+\fB--mysql-net-buffer-length\fP=1048576
+	mysqldump --net-buffer-length in bytes (MySQL/MariaDB, max 1MB)
+
+.PP
+\fB--mysql-order-by-primary\fP[=false]
+	mysqldump --order-by-primary: PK-sorted rows (MySQL/MariaDB)
+
+.PP
+\fB--mysql-quick\fP[=true]
+	mysqldump --quick: row-by-row transfer, constant memory (MySQL/MariaDB)
+
+.PP
 \fB--no-verify\fP[=false]
 	Skip automatic backup verification after creation
 

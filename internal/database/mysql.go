@@ -331,6 +331,28 @@ func (m *MySQL) BuildBackupCommand(database, outputFile string, options BackupOp
 	cmd = append(cmd, "--triggers")           // Include triggers
 	cmd = append(cmd, "--events")             // Include events
 
+	// Performance options (MariaDB/MySQL speedups v6.43.0+)
+	if m.cfg.MySQLQuickDump {
+		cmd = append(cmd, "--quick") // Row-by-row: constant memory, no temp table buffering
+	}
+	if m.cfg.MySQLExtendedInsert {
+		cmd = append(cmd, "--extended-insert") // Multi-row INSERTs: 5-20x faster import
+	}
+	if m.cfg.MySQLOrderByPrimary {
+		cmd = append(cmd, "--order-by-primary") // PK-sorted rows: better InnoDB import locality
+	}
+	if m.cfg.MySQLNetBufferLen > 0 {
+		cmd = append(cmd, fmt.Sprintf("--net-buffer-length=%d", m.cfg.MySQLNetBufferLen))
+	}
+	if m.cfg.MySQLMaxPacket != "" {
+		cmd = append(cmd, fmt.Sprintf("--max-allowed-packet=%s", m.cfg.MySQLMaxPacket))
+	}
+
+	// Disable keys for MyISAM/Aria tables (faster bulk load)
+	if m.cfg.MySQLDisableKeys {
+		cmd = append(cmd, "--disable-keys")
+	}
+
 	if options.SchemaOnly {
 		cmd = append(cmd, "--no-data")
 	} else if options.DataOnly {
@@ -380,6 +402,18 @@ func (m *MySQL) BuildRestoreCommand(database, inputFile string, options RestoreO
 	// Options
 	if options.SingleTransaction {
 		cmd = append(cmd, "--single-transaction")
+	}
+
+	// MySQL/MariaDB restore performance optimizations (v6.43.0+)
+	if m.cfg.MySQLMaxPacket != "" {
+		cmd = append(cmd, fmt.Sprintf("--max-allowed-packet=%s", m.cfg.MySQLMaxPacket))
+	}
+	if m.cfg.MySQLFastRestore {
+		// Pre-set session variables for bulk import speed:
+		// - foreign_key_checks=0: skip FK validation (restored data is already consistent)
+		// - unique_checks=0: skip unique index checks (dump was from consistent snapshot)
+		// - autocommit=0: batch statements in implicit transaction
+		cmd = append(cmd, "--init-command=SET foreign_key_checks=0, unique_checks=0, autocommit=0, sql_log_bin=0")
 	}
 
 	// Database

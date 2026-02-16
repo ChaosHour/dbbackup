@@ -283,6 +283,32 @@ func init() {
 				cfg.LOVacuumTimeout = loTimeout
 			}
 
+			// Handle MySQL/MariaDB performance flags (v6.43.0+)
+			if c.Flags().Changed("mysql-quick") {
+				cfg.MySQLQuickDump, _ = c.Flags().GetBool("mysql-quick")
+			}
+			if c.Flags().Changed("mysql-extended-insert") {
+				cfg.MySQLExtendedInsert, _ = c.Flags().GetBool("mysql-extended-insert")
+			}
+			if c.Flags().Changed("mysql-order-by-primary") {
+				cfg.MySQLOrderByPrimary, _ = c.Flags().GetBool("mysql-order-by-primary")
+			}
+			if c.Flags().Changed("mysql-disable-keys") {
+				cfg.MySQLDisableKeys, _ = c.Flags().GetBool("mysql-disable-keys")
+			}
+			if c.Flags().Changed("mysql-net-buffer-length") {
+				cfg.MySQLNetBufferLen, _ = c.Flags().GetInt("mysql-net-buffer-length")
+			}
+			if c.Flags().Changed("mysql-max-packet") {
+				cfg.MySQLMaxPacket, _ = c.Flags().GetString("mysql-max-packet")
+			}
+			if c.Flags().Changed("mysql-fast-restore") {
+				cfg.MySQLFastRestore, _ = c.Flags().GetBool("mysql-fast-restore")
+			}
+			if c.Flags().Changed("mysql-batch-size") {
+				cfg.MySQLBatchSize, _ = c.Flags().GetInt("mysql-batch-size")
+			}
+
 			return nil
 		}
 	}
@@ -330,6 +356,18 @@ func init() {
 		cmd.Flags().Int("galera-min-cluster-size", 2, "Minimum Galera cluster size required for backup")
 		cmd.Flags().String("galera-prefer-node", "", "Preferred Galera node name for backup (empty = current node)")
 		cmd.Flags().Bool("galera-health-check", true, "Verify Galera node health before backup")
+	}
+
+	// MySQL/MariaDB performance flags for all backup commands (v6.43.0+)
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
+		cmd.Flags().Bool("mysql-quick", true, "mysqldump --quick: row-by-row transfer, constant memory (MySQL/MariaDB)")
+		cmd.Flags().Bool("mysql-extended-insert", true, "mysqldump --extended-insert: multi-row INSERT (MySQL/MariaDB)")
+		cmd.Flags().Bool("mysql-order-by-primary", false, "mysqldump --order-by-primary: PK-sorted rows (MySQL/MariaDB)")
+		cmd.Flags().Bool("mysql-disable-keys", true, "mysqldump --disable-keys: DISABLE KEYS around data load (MySQL/MariaDB)")
+		cmd.Flags().Int("mysql-net-buffer-length", 1048576, "mysqldump --net-buffer-length in bytes (MySQL/MariaDB, max 1MB)")
+		cmd.Flags().String("mysql-max-packet", "256M", "max-allowed-packet for dump & restore (MySQL/MariaDB)")
+		cmd.Flags().Bool("mysql-fast-restore", true, "SET fk_checks=0, unique_checks=0 before restore (MySQL/MariaDB)")
+		cmd.Flags().Int("mysql-batch-size", 5000, "Rows per extended INSERT in native engine (MySQL/MariaDB)")
 	}
 }
 

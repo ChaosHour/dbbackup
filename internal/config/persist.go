@@ -92,6 +92,16 @@ type LocalConfig struct {
 	MinBackups    int
 	MaxRetries    int
 
+	// MySQL/MariaDB performance settings (v6.43.0+)
+	MySQLQuickDump      bool
+	MySQLExtendedInsert bool
+	MySQLOrderByPrimary bool
+	MySQLNetBufferLen   int
+	MySQLMaxPacket      string
+	MySQLFastRestore    bool
+	MySQLDisableKeys    bool
+	MySQLBatchSize      int
+
 	// BLOB optimization settings
 	DetectBLOBTypes     bool
 	SkipCompressImages  bool
@@ -315,6 +325,26 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				if v, err := strconv.Atoi(value); err == nil {
 					cfg.LOVacuumTimeout = v
 				}
+			case "mysql_quick_dump":
+				cfg.MySQLQuickDump = value == "true" || value == "1"
+			case "mysql_extended_insert":
+				cfg.MySQLExtendedInsert = value == "true" || value == "1"
+			case "mysql_order_by_primary":
+				cfg.MySQLOrderByPrimary = value == "true" || value == "1"
+			case "mysql_net_buffer_length":
+				if v, err := strconv.Atoi(value); err == nil {
+					cfg.MySQLNetBufferLen = v
+				}
+			case "mysql_max_packet":
+				cfg.MySQLMaxPacket = value
+			case "mysql_fast_restore":
+				cfg.MySQLFastRestore = value == "true" || value == "1"
+			case "mysql_disable_keys":
+				cfg.MySQLDisableKeys = value == "true" || value == "1"
+			case "mysql_batch_size":
+				if v, err := strconv.Atoi(value); err == nil {
+					cfg.MySQLBatchSize = v
+				}
 			case "skip_disk_check":
 				cfg.SkipDiskCheck = value == "true" || value == "1"
 			}
@@ -504,6 +534,31 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	}
 	if cfg.LOVacuumTimeout > 0 {
 		sb.WriteString(fmt.Sprintf("lo_vacuum_timeout = %d\n", cfg.LOVacuumTimeout))
+	}
+	// MySQL/MariaDB performance settings (only write non-defaults)
+	if !cfg.MySQLQuickDump {
+		sb.WriteString("mysql_quick_dump = false\n")
+	}
+	if !cfg.MySQLExtendedInsert {
+		sb.WriteString("mysql_extended_insert = false\n")
+	}
+	if cfg.MySQLOrderByPrimary {
+		sb.WriteString("mysql_order_by_primary = true\n")
+	}
+	if cfg.MySQLNetBufferLen > 0 && cfg.MySQLNetBufferLen != 1048576 {
+		sb.WriteString(fmt.Sprintf("mysql_net_buffer_length = %d\n", cfg.MySQLNetBufferLen))
+	}
+	if cfg.MySQLMaxPacket != "" && cfg.MySQLMaxPacket != "256M" {
+		sb.WriteString(fmt.Sprintf("mysql_max_packet = %s\n", cfg.MySQLMaxPacket))
+	}
+	if !cfg.MySQLFastRestore {
+		sb.WriteString("mysql_fast_restore = false\n")
+	}
+	if !cfg.MySQLDisableKeys {
+		sb.WriteString("mysql_disable_keys = false\n")
+	}
+	if cfg.MySQLBatchSize > 0 && cfg.MySQLBatchSize != 5000 {
+		sb.WriteString(fmt.Sprintf("mysql_batch_size = %d\n", cfg.MySQLBatchSize))
 	}
 	sb.WriteString(fmt.Sprintf("skip_disk_check = %t\n", cfg.SkipDiskCheck))
 	sb.WriteString("\n")
@@ -723,6 +778,31 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.LOVacuumTimeout > 0 {
 		cfg.LOVacuumTimeout = local.LOVacuumTimeout
 	}
+	// MySQL/MariaDB performance settings (these are opt-out, so apply explicit false too)
+	if local.MySQLQuickDump {
+		cfg.MySQLQuickDump = true
+	}
+	if local.MySQLExtendedInsert {
+		cfg.MySQLExtendedInsert = true
+	}
+	if local.MySQLOrderByPrimary {
+		cfg.MySQLOrderByPrimary = true
+	}
+	if local.MySQLNetBufferLen > 0 {
+		cfg.MySQLNetBufferLen = local.MySQLNetBufferLen
+	}
+	if local.MySQLMaxPacket != "" {
+		cfg.MySQLMaxPacket = local.MySQLMaxPacket
+	}
+	if local.MySQLFastRestore {
+		cfg.MySQLFastRestore = true
+	}
+	if local.MySQLDisableKeys {
+		cfg.MySQLDisableKeys = true
+	}
+	if local.MySQLBatchSize > 0 {
+		cfg.MySQLBatchSize = local.MySQLBatchSize
+	}
 	if local.SkipDiskCheck {
 		cfg.SkipDiskCheck = true
 	}
@@ -838,6 +918,14 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		WALArchiveDir:          cfg.WALArchiveDir,
 		LOVacuum:               cfg.LOVacuum,
 		LOVacuumTimeout:        cfg.LOVacuumTimeout,
+		MySQLQuickDump:         cfg.MySQLQuickDump,
+		MySQLExtendedInsert:    cfg.MySQLExtendedInsert,
+		MySQLOrderByPrimary:    cfg.MySQLOrderByPrimary,
+		MySQLNetBufferLen:      cfg.MySQLNetBufferLen,
+		MySQLMaxPacket:         cfg.MySQLMaxPacket,
+		MySQLFastRestore:       cfg.MySQLFastRestore,
+		MySQLDisableKeys:       cfg.MySQLDisableKeys,
+		MySQLBatchSize:         cfg.MySQLBatchSize,
 		SkipDiskCheck:           cfg.SkipDiskCheck,
 		SkipPreflightChecks:     cfg.SkipPreflightChecks,
 		CloudEnabled:            cfg.CloudEnabled,

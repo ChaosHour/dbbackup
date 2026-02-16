@@ -161,6 +161,16 @@ type Config struct {
 	RequireRowFormat      bool   // Require ROW format for binlog
 	RequireGTID           bool   // Require GTID mode enabled
 
+	// MySQL/MariaDB dump performance options (v6.43.0+)
+	MySQLQuickDump      bool // --quick: row-by-row fetch from server, constant memory (default: true)
+	MySQLExtendedInsert bool // --extended-insert: multi-row INSERT statements (default: true)
+	MySQLOrderByPrimary bool // --order-by-primary: sort rows by PK for faster clustered import
+	MySQLNetBufferLen   int  // --net-buffer-length in bytes (default: 1048576 = 1MB, max mysqldump allows)
+	MySQLMaxPacket      string // --max-allowed-packet for dump & restore (default: 256M)
+	MySQLFastRestore    bool // SET fk_checks=0, unique_checks=0, autocommit=0 before restore (default: true)
+	MySQLDisableKeys    bool // DISABLE KEYS around data load in native engine (default: true)
+	MySQLBatchSize      int  // Rows per extended INSERT in native engine (default: 5000)
+
 	// Galera Cluster options (MariaDB/MySQL)
 	GaleraDesync         bool   // Enable desync mode during backup (reduces cluster impact)
 	GaleraMinClusterSize int    // Minimum cluster size required for backup (default: 2)
@@ -443,6 +453,16 @@ func New() *Config {
 		UseNativeEngine:  getEnvBool("USE_NATIVE_ENGINE", true),
 		FallbackToTools:  getEnvBool("FALLBACK_TO_TOOLS", true),
 		RestoreFsyncMode: getEnvString("RESTORE_FSYNC_MODE", "on"),
+
+		// MySQL/MariaDB dump performance defaults (v6.43.0+) — on by default
+		MySQLQuickDump:      getEnvBool("MYSQL_QUICK_DUMP", true),
+		MySQLExtendedInsert: getEnvBool("MYSQL_EXTENDED_INSERT", true),
+		MySQLOrderByPrimary: getEnvBool("MYSQL_ORDER_BY_PRIMARY", false),
+		MySQLNetBufferLen:   getEnvInt("MYSQL_NET_BUFFER_LENGTH", 1048576), // 1MB
+		MySQLMaxPacket:      getEnvString("MYSQL_MAX_PACKET", "256M"),
+		MySQLFastRestore:    getEnvBool("MYSQL_FAST_RESTORE", true),
+		MySQLDisableKeys:    getEnvBool("MYSQL_DISABLE_KEYS", true),
+		MySQLBatchSize:      getEnvInt("MYSQL_BATCH_SIZE", 5000),
 	}
 
 	// Ensure canonical defaults are enforced

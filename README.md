@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.30.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.43.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -88,6 +88,7 @@ See [docs/tui-features.md](docs/tui-features.md) for full details.
 - **Bandwidth Throttling**: Rate-limit backup and upload operations (e.g., `--max-bandwidth 100M`)
 - **Intelligent Compression**: Detects blob types (JPEG, PDF, archives) and recommends optimal compression
 - **ZFS/Btrfs Detection**: Auto-detects filesystem compression and adjusts recommendations
+- **PostgreSQL Large Object Vacuum**: Optional `--lo-vacuum` pre-backup cleanup of orphaned large objects (PG ≥14 uses native autovacuum; PG <14 uses `lo_unlink()` on orphans)
 
 ### Native Database Engines
 
@@ -143,6 +144,9 @@ See [docs/tui-features.md](docs/tui-features.md) for full details.
 - **Streaming I/O** with 256KB batch pipeline (constant memory usage)
 - **UNLOGGED table optimization** during COPY phase (PostgreSQL balanced/turbo mode)
 - **Bulk load optimizations** for MySQL/MariaDB (FOREIGN_KEY_CHECKS, UNIQUE_CHECKS, sql_log_bin, innodb_flush_log)
+- **MySQL/MariaDB dump speedups** -- `--quick`, `--extended-insert`, `--disable-keys`, `--net-buffer-length=1MB`, `--max-allowed-packet=256M`, `--order-by-primary` (all on by default except order-by-primary)
+- **MySQL/MariaDB fast restore** -- `--init-command` sets `fk_checks=0, unique_checks=0, autocommit=0, sql_log_bin=0` before import (2-5× faster)
+- **Configurable INSERT batch size** -- Native engine groups 5,000 rows per INSERT (was 1,000), tunable via `--mysql-batch-size`
 - **Index type detection** -- GIN/GIST indexes get 4GB RAM allocation and 8 parallel workers
 - **Adaptive worker allocation** based on table size metadata with physical CPU core detection
 
@@ -164,8 +168,8 @@ dbbackup restore single dump.sql.gz \
 ### Multi-Database Support
 
 - **PostgreSQL 10+** -- Fully optimized (UNLOGGED tables, parallel DDL, adaptive workers)
-- **MySQL 5.7+** -- Native engine with bulk load optimizations
-- **MariaDB 10.3+** -- Full parity with MySQL engine
+- **MySQL 5.7+** -- Native engine with bulk load optimizations and dump/restore speed flags
+- **MariaDB 10.3+** -- Full parity with MySQL engine plus Galera cluster support
 
 TUI shows database type indicator and adapts features automatically.
 
@@ -187,6 +191,40 @@ dbbackup backup single mydb \
 # Health check only (auto-detected)
 dbbackup backup single mydb --db-type mariadb --galera-health-check
 ```
+
+### MySQL/MariaDB Performance Tuning (v6.43.0+)
+
+All flags default to optimal values. Override only when needed:
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--mysql-quick` | true | Row-by-row fetch from server (constant memory) |
+| `--mysql-extended-insert` | true | Multi-row INSERT statements (5-20× faster import) |
+| `--mysql-order-by-primary` | false | Sort rows by primary key (better InnoDB import locality) |
+| `--mysql-disable-keys` | true | DISABLE KEYS around data load (MyISAM/Aria) |
+| `--mysql-net-buffer-length` | 1048576 | Network buffer size (1MB, max mysqldump allows) |
+| `--mysql-max-packet` | 256M | max-allowed-packet for dump and restore |
+| `--mysql-fast-restore` | true | SET fk_checks=0, unique_checks=0 before restore |
+| `--mysql-batch-size` | 5000 | Rows per extended INSERT in native engine |
+
+```bash
+# MariaDB backup with maximum speed (all defaults already optimal)
+dbbackup backup single mydb --db-type mariadb --user root
+
+# With PK-sorted rows for InnoDB-heavy databases
+dbbackup backup single mydb --db-type mariadb --mysql-order-by-primary
+
+# Disable speed optimizations for conservative backup
+dbbackup backup single mydb --db-type mysql \
+    --mysql-quick=false \
+    --mysql-extended-insert=false \
+    --mysql-fast-restore=false
+
+# Tune native engine batch size for very wide tables
+dbbackup backup single mydb --db-type mariadb --mysql-batch-size=2000
+```
+
+All settings persist to `.dbbackup.conf` under `[performance]`.
 
 ### Quality Assurance
 
@@ -1431,6 +1469,9 @@ The following optimizations are applied automatically and degrade gracefully on 
 | Content-Addressed Dedup | Up to 60% less storage | Bloom filter + SHA-256 eliminates duplicate BLOBs across tables |
 | Split Backup Mode | 2–5× faster BLOB restore | Schema/data/BLOBs in separate files for parallel phase restore |
 | Prepared Statement Cache | 5–10% faster init | Reuses server-side prepared statements for metadata queries |
+| MySQL `--quick` + `--extended-insert` | 2–5× faster dump | Row-by-row transfer + multi-row INSERTs reduce overhead |
+| MySQL `--init-command` fast restore | 2–5× faster import | Disables FK/unique checks and binary logging during bulk load |
+| MySQL 5000-row batch INSERTs | 20–40% faster native | Larger INSERT batches reduce per-statement overhead |
 
 **Expected combined impact by workload:**
 

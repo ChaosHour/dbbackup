@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.44.1] - 2026-02-16 — Documentation Update
+
+### Changed
+
+- **README.md** — Updated for v6.44.0 features: version badge, Table of Contents, feature list, commands table, global flags, and two new documentation sections (Restore Verification with usage examples and example output, Backup Status Dashboard with color-coding reference).
+
 ## [6.44.0] - 2026-02-16 — Automated Restore Verification & Backup Status Dashboard
 
 ### Added

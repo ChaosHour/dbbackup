@@ -200,6 +200,11 @@ func init() {
 		cmd.Flags().Bool("no-verify", false, "Skip automatic backup verification after creation")
 	}
 
+	// Restore verification flag for all backup commands (v6.44.0+)
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
+		cmd.Flags().Bool("verify-restore", false, "After backup, restore into temp DB and compare row counts")
+	}
+
 	// Large Object vacuum flag for PG backup commands (optional pre-backup maintenance)
 	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd, sampleCmd} {
 		cmd.Flags().Bool("lo-vacuum", false, "Clean up orphaned PostgreSQL large objects before backup (PG only)")
@@ -265,6 +270,12 @@ func init() {
 			if c.Flags().Changed("no-verify") {
 				noVerify, _ := c.Flags().GetBool("no-verify")
 				cfg.VerifyAfterBackup = !noVerify
+			}
+
+			// Handle --verify-restore flag (v6.44.0+: automated restore verification)
+			if c.Flags().Changed("verify-restore") {
+				vr, _ := c.Flags().GetBool("verify-restore")
+				cfg.VerifyRestore = vr
 			}
 
 			// Handle --compression-algorithm flag

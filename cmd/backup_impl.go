@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"dbbackup/internal/notify"
 	"dbbackup/internal/security"
 	"dbbackup/internal/validation"
+	"dbbackup/internal/verify"
 )
 
 // runClusterBackup performs a full cluster backup
@@ -150,6 +152,24 @@ func runClusterBackup(ctx context.Context) error {
 			return fmt.Errorf("backup completed successfully but encryption failed. Unencrypted backup remains in %s: %w", cfg.BackupDir, err)
 		}
 		log.Info("Cluster backup encrypted successfully")
+	}
+
+	// Automated restore verification for cluster (v6.44.0+)
+	if cfg.VerifyRestore {
+		log.Info("Running restore verification for cluster databases...")
+		databases, listErr := db.ListDatabases(ctx)
+		if listErr != nil {
+			log.Warn("Could not list databases for verification", "error", listErr)
+		} else {
+			for _, dbName := range databases {
+				// Skip system databases
+				if dbName == "template0" || dbName == "template1" || dbName == "postgres" ||
+					dbName == "information_schema" || dbName == "performance_schema" || dbName == "mysql" || dbName == "sys" {
+					continue
+				}
+				runPostBackupVerifyRestore(ctx, db, dbName)
+			}
+		}
 	}
 
 	// Audit log: backup success
@@ -332,6 +352,12 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 			// Continue with tool-based backup below
 		} else {
 			// Native engine succeeded or no fallback configured
+			if err == nil {
+				// Run post-backup restore verification if enabled
+				if cfg.VerifyRestore {
+					runPostBackupVerifyRestore(ctx, db, databaseName)
+				}
+			}
 			return err // Return success (nil) or failure
 		}
 	}
@@ -407,6 +433,11 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 			return fmt.Errorf("backup succeeded but encryption failed: %w", err)
 		}
 		log.Info("Backup encrypted successfully")
+	}
+
+	// Automated restore verification (v6.44.0+)
+	if cfg.VerifyRestore {
+		runPostBackupVerifyRestore(ctx, db, databaseName)
 	}
 
 	// Audit log: backup success
@@ -878,4 +909,89 @@ func runPreBackupLOVacuum(ctx context.Context, db database.Database) {
 			"cleaned", result.CleanedLOs,
 			"duration", result.Duration)
 	}
+}
+
+// runPostBackupVerifyRestore performs automated restore verification after a successful backup.
+// It finds the latest backup file for the given database, creates a temp database,
+// restores the backup into it, compares table/row counts, and drops the temp database.
+// Errors are logged but do not abort the backup (verification is advisory).
+func runPostBackupVerifyRestore(ctx context.Context, db database.Database, databaseName string) {
+	log.Info("Starting automated restore verification", "database", databaseName)
+
+	// Find the latest backup file by scanning .meta.json files
+	backupPath := findLatestBackupByMeta(cfg.BackupDir, databaseName)
+	if backupPath == "" {
+		// Fallback to the legacy finder
+		var err error
+		backupPath, err = findLatestBackup(cfg.BackupDir, databaseName)
+		if err != nil {
+			log.Warn("Restore verification skipped — could not find backup file", "database", databaseName, "error", err)
+			return
+		}
+	}
+
+	result, err := verify.VerifyRestore(ctx, cfg, log, db, backupPath, databaseName)
+	if err != nil {
+		log.Warn("Restore verification failed", "database", databaseName, "error", err)
+		return
+	}
+
+	// Print the verification report
+	verify.PrintResult(result, cfg.NoColor)
+
+	if result.Error != "" {
+		log.Warn("Restore verification completed with errors", "database", databaseName, "error", result.Error)
+	} else if result.AllMatch {
+		log.Info("Restore verification PASSED", "database", databaseName, "tables", len(result.Tables))
+	} else {
+		log.Warn("Restore verification FAILED — row count mismatches detected", "database", databaseName)
+	}
+}
+
+// findLatestBackupByMeta scans .meta.json files to find the latest backup for a database.
+// Returns empty string if not found (caller should fall back to findLatestBackup).
+func findLatestBackupByMeta(backupDir, databaseName string) string {
+	entries, err := os.ReadDir(backupDir)
+	if err != nil {
+		return ""
+	}
+
+	var latestPath string
+	var latestTime time.Time
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".meta.json") {
+			continue
+		}
+
+		metaPath := filepath.Join(backupDir, entry.Name())
+		data, err := os.ReadFile(metaPath)
+		if err != nil {
+			continue
+		}
+
+		var meta struct {
+			Database   string    `json:"database"`
+			BackupFile string    `json:"backup_file"`
+			Timestamp  time.Time `json:"timestamp"`
+		}
+		if err := json.Unmarshal(data, &meta); err != nil {
+			continue
+		}
+
+		if meta.Database == databaseName && meta.Timestamp.After(latestTime) {
+			// Resolve backup file path (could be relative to backup dir)
+			backupFile := meta.BackupFile
+			if !filepath.IsAbs(backupFile) {
+				backupFile = filepath.Join(backupDir, backupFile)
+			}
+			// Check that the backup file actually exists
+			if _, err := os.Stat(backupFile); err == nil {
+				latestTime = meta.Timestamp
+				latestPath = backupFile
+			}
+		}
+	}
+
+	return latestPath
 }

@@ -164,6 +164,10 @@ native Go engine, eliminating the need for pg_dump.
 	Connection pool size (0 = auto-detect)
 
 .PP
+\fB--verify-restore\fP[=false]
+	After backup, restore into temp DB and compare row counts
+
+.PP
 \fB--workers\fP=0
 	Number of parallel workers (0 = auto-detect)
 

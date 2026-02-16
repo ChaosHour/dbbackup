@@ -75,6 +75,9 @@ type LocalConfig struct {
 	LOVacuum        bool // Run orphaned LO cleanup before backup
 	LOVacuumTimeout int  // Timeout seconds (0 = 300 default)
 
+	// Restore verification
+	VerifyRestore bool // Automated restore verification after backup
+
 	// Safety settings
 	SkipPreflightChecks bool // Skip pre-restore safety checks (dangerous)
 
@@ -325,6 +328,8 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				if v, err := strconv.Atoi(value); err == nil {
 					cfg.LOVacuumTimeout = v
 				}
+			case "verify_restore":
+				cfg.VerifyRestore = value == "true" || value == "1"
 			case "mysql_quick_dump":
 				cfg.MySQLQuickDump = value == "true" || value == "1"
 			case "mysql_extended_insert":
@@ -534,6 +539,9 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 	}
 	if cfg.LOVacuumTimeout > 0 {
 		sb.WriteString(fmt.Sprintf("lo_vacuum_timeout = %d\n", cfg.LOVacuumTimeout))
+	}
+	if cfg.VerifyRestore {
+		sb.WriteString(fmt.Sprintf("verify_restore = %t\n", cfg.VerifyRestore))
 	}
 	// MySQL/MariaDB performance settings (only write non-defaults)
 	if !cfg.MySQLQuickDump {
@@ -778,6 +786,9 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.LOVacuumTimeout > 0 {
 		cfg.LOVacuumTimeout = local.LOVacuumTimeout
 	}
+	if local.VerifyRestore {
+		cfg.VerifyRestore = true
+	}
 	// MySQL/MariaDB performance settings (these are opt-out, so apply explicit false too)
 	if local.MySQLQuickDump {
 		cfg.MySQLQuickDump = true
@@ -918,6 +929,7 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		WALArchiveDir:          cfg.WALArchiveDir,
 		LOVacuum:               cfg.LOVacuum,
 		LOVacuumTimeout:        cfg.LOVacuumTimeout,
+		VerifyRestore:          cfg.VerifyRestore,
 		MySQLQuickDump:         cfg.MySQLQuickDump,
 		MySQLExtendedInsert:    cfg.MySQLExtendedInsert,
 		MySQLOrderByPrimary:    cfg.MySQLOrderByPrimary,

@@ -127,6 +127,7 @@ type Config struct {
 
 	// Backup verification (HIGH priority - #9)
 	VerifyAfterBackup bool // Automatically verify backup integrity after creation (default: true)
+	VerifyRestore     bool // Automated restore verification: create temp DB, restore, compare row counts (default: false)
 
 	// Security options (MEDIUM priority)
 	RetentionDays  int  // Backup retention in days (0 = disabled)

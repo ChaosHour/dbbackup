@@ -5,6 +5,21 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.44.0] - 2026-02-16 — Automated Restore Verification & Backup Status Dashboard
+
+### Added
+
+- **Automated restore verification (`--verify-restore`)** — After backup completes, automatically creates a temporary database (`_dbbackup_verify_<timestamp>`), restores the backup into it, and compares every table's row count against the source database. Prints a color-coded verification report with TABLE, SOURCE ROWS, RESTORED ROWS, and STATUS columns. The temporary database is always cleaned up, even on failure. Works with both the native Go engine and tool-based (pg_dump/mysqldump) backups. Available on `backup single`, `backup cluster`, and `backup sample` commands.
+- **Backup status dashboard (`dbbackup status`)** — The `status` command now displays a rich dashboard showing all databases found in the backup directory. For each database: name, last backup timestamp, age, size, encryption status, and a color-coded health indicator (green OK <24h, yellow AGING <7d, red STALE >7d). Includes a summary line with total backup count and per-status counts. Scans `.meta.json` metadata files for accurate information.
+- **Config persistence for `verify_restore`** — The `--verify-restore` setting is saved to `.dbbackup.conf` and automatically applied on subsequent runs.
+- **QA test suite Phase 17: Verify-Restore & Dashboard** — New `--with-verify` scope flag (also enabled by `--comprehensive`). Tests cover CLI flag registration, baseline backup without verification, full backup-restore-verify cycle, temp DB cleanup, report formatting, status dashboard rendering, empty directory handling, and config persistence. ~20 test points across 8 sections.
+
+### Changed
+
+- **`internal/verify` package** — New package containing `VerifyRestore()` (temp DB lifecycle, restore, compare), `PrintResult()` (color-coded terminal report), and supporting types (`Result`, `TableResult`).
+- **`cmd/backup_impl.go`** — Post-backup verification hooks injected at both the native engine return path and tool-based backup completion path, plus cluster-level loop for multi-database verification.
+- **`cmd/status.go`** — Completely rewritten with `displayBackupDashboard()`, `scanBackupDirectory()`, and helper formatters for a DBA-friendly overview.
+
 ## [6.43.0] - 2026-02-16 — MySQL/MariaDB Dump & Restore Speed Optimizations
 
 ### Added

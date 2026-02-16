@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.43.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.44.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -31,6 +31,8 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 - [Backup Catalog](#backup-catalog)
 - [Cost Analysis](#cost-analysis)
 - [Health Check](#health-check)
+- [Restore Verification](#restore-verification)
+- [Backup Status Dashboard](#backup-status-dashboard)
 - [DR Drill Testing](#dr-drill-testing)
 - [Compliance Reports](#compliance-reports)
 - [RTO/RPO Analysis](#rtorpo-analysis)
@@ -129,6 +131,8 @@ See [docs/tui-features.md](docs/tui-features.md) for full details.
 - **Retention Simulator**: Preview retention policy effects before applying
 - **Cross-Region Sync**: Sync backups between cloud regions for disaster recovery
 - **Encryption Key Rotation**: Secure key management with rotation support
+- **Automated Restore Verification**: `--verify-restore` creates temp DB, restores, compares every table's row count, prints color-coded report, always cleans up
+- **Backup Status Dashboard**: `dbbackup status` shows per-database health table with age, size, encryption, and color-coded staleness indicators
 
 ### Performance Features
 
@@ -590,7 +594,7 @@ dbbackup backup single mydb --dry-run
 | **Verification** | |
 | `verify-backup` | Verify backup integrity (updates catalog for Prometheus metrics) |
 | `verify-locks` | Check PostgreSQL lock settings and get restore guidance |
-| `verify-restore` | Systematic verification for large database restores |
+| `verify-restore` | Systematic verification for large database restores (also `--verify-restore` flag on backup) |
 | **PITR** | |
 | `pitr enable` | Enable PostgreSQL PITR (WAL archiving) |
 | `pitr disable` | Disable PostgreSQL PITR |
@@ -634,7 +638,7 @@ dbbackup backup single mydb --dry-run
 | `compression analyze` | Analyze database for optimal compression |
 | `retention-simulator` | Simulate retention policy effects |
 | **Infrastructure** | |
-| `status` | Check connection status |
+| `status` | Check connection status + backup dashboard (age, size, encryption, health) |
 | `preflight` | Run pre-backup checks |
 | `health` | Check backup system health |
 | `list` | List databases and backups |
@@ -696,6 +700,7 @@ dbbackup backup single mydb --dry-run
 | `--cloud` | Cloud storage URI | - |
 | `--encrypt` | Enable encryption | false |
 | `--dry-run, -n` | Run preflight checks only | false |
+| `--verify-restore` | After backup, restore to temp DB and compare row counts | false |
 | `--debug` | Enable debug logging (activates DEBUG log level) | false |
 | `--debug-locks` | Enable detailed lock debugging | false |
 | `--save-debug-log` | Save error report to file on failure | - |
@@ -1176,6 +1181,92 @@ dbbackup health --skip-db
 - `0` = healthy (all checks passed)
 - `1` = warning (some checks need attention)
 - `2` = critical (immediate action required)
+
+## Restore Verification
+
+Automated post-backup verification creates a temporary database, restores the backup, and compares every table's row count against the source:
+
+```bash
+# Backup with automatic restore verification
+dbbackup backup single mydb --verify-restore
+
+# Also works with cluster and sample backups
+dbbackup backup cluster --verify-restore
+dbbackup backup sample mydb --verify-restore --ratio 10
+
+# Persist the setting (always verify)
+dbbackup backup single mydb --verify-restore
+# Next run will auto-verify from .dbbackup.conf
+```
+
+**What happens:**
+1. Backup completes normally
+2. Creates temporary database `_dbbackup_verify_<timestamp>`
+3. Restores the backup into the temp database
+4. Compares every table's row count (source vs. restored)
+5. Prints color-coded verification report
+6. Drops the temporary database (always, even on failure)
+
+**Example output:**
+```
+╔═══════════════════════════════════════════════════════════╗
+║              Restore Verification Report                  ║
+╠═══════════════════════════════════════════════════════════╣
+║ Database: mydb → _dbbackup_verify_20260216_123456         ║
+╠════════════════════╦══════════╦══════════╦════════════════╣
+║ TABLE              ║ SOURCE   ║ RESTORED ║ STATUS         ║
+╠════════════════════╬══════════╬══════════╬════════════════╣
+║ public.users       ║   50,000 ║   50,000 ║ ✓ PASS         ║
+║ public.orders      ║   25,000 ║   25,000 ║ ✓ PASS         ║
+║ public.products    ║    1,200 ║    1,200 ║ ✓ PASS         ║
+║ public.sessions    ║   30,000 ║   30,000 ║ ✓ PASS         ║
+╠════════════════════╬══════════╬══════════╬════════════════╣
+║ TOTAL ROWS         ║  106,200 ║  106,200 ║ ALL PASS       ║
+╚════════════════════╩══════════╩══════════╩════════════════╝
+  Duration: 4.2s
+```
+
+**Notes:**
+- Works with PostgreSQL, MySQL, and MariaDB
+- Compatible with both native Go engine and tool-based (pg_dump/mysqldump) backups
+- Temp database is always cleaned up, even if verification fails
+- Setting persists to `.dbbackup.conf` as `verify_restore = true`
+
+## Backup Status Dashboard
+
+The `status` command displays a rich overview of all backups in the backup directory:
+
+```bash
+# Show backup dashboard
+dbbackup status
+
+# With explicit backup directory
+dbbackup status --backup-dir /mnt/backups
+```
+
+**Example output:**
+```
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                        Backup Status Dashboard                           ║
+╠══════════════════╦═══════════════════╦════════╦════════╦═════╦═══════════╣
+║ DATABASE         ║ LAST BACKUP       ║ AGE    ║ SIZE   ║ ENC ║ STATUS    ║
+╠══════════════════╬═══════════════════╬════════╬════════╬═════╬═══════════╣
+║ production_db    ║ 2026-02-16 08:00  ║ 4h     ║ 245 MB ║ Yes ║ ✓ OK      ║
+║ analytics_db     ║ 2026-02-16 08:00  ║ 4h     ║ 1.2 GB ║ Yes ║ ✓ OK      ║
+║ users_db         ║ 2026-02-14 08:00  ║ 2d     ║ 89 MB  ║ No  ║ ⚠ AGING   ║
+║ legacy_db        ║ 2026-02-01 03:00  ║ 15d    ║ 456 MB ║ No  ║ ✗ STALE   ║
+╚══════════════════╩═══════════════════╩════════╩════════╩═════╩═══════════╝
+
+  Total Backups: 4
+  Summary: 2 OK | 1 AGING | 1 STALE
+```
+
+**Color coding:**
+- **Green (OK)**: Last backup within 24 hours
+- **Yellow (AGING)**: Last backup 1–7 days old
+- **Red (STALE)**: Last backup older than 7 days
+
+The dashboard scans `.meta.json` metadata files for accurate backup information including timestamps, file sizes, and encryption status.
 
 ## DR Drill Testing
 

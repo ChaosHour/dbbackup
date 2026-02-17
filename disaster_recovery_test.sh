@@ -89,7 +89,7 @@ BACKUP_END=$(date +%s)
 BACKUP_DURATION=$((BACKUP_END - BACKUP_START))
 
 # Find the most recent cluster backup
-BACKUP_FILE=$(ls -t "$BACKUP_DIR"/cluster_*.tar.gz | head -1)
+BACKUP_FILE=$(ls -t "$BACKUP_DIR"/cluster_*.tar.{gz,zst} | head -1)
 BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
 
 echo ""

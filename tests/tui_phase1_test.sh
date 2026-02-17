@@ -310,7 +310,7 @@ test_preflight_valid() {
 
     # Find the archive
     local archive
-    archive=$(find "$BACKUP_DIR" -name "*.tar.gz" -o -name "*.sql.gz" -o -name "*.sql" -o -name "*.dump" 2>/dev/null | head -1)
+    archive=$(find "$BACKUP_DIR" -name "*.tar.gz" -o -name "*.sql.gz" -o -name "*.tar.zst" -o -name "*.sql.zst" -o -name "*.sql" -o -name "*.dump" 2>/dev/null | head -1)
 
     if [[ -z "$archive" ]]; then
         skip "Preflight valid archive" "no backup created"

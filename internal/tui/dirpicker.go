@@ -220,8 +220,33 @@ func (dp *DirectoryPicker) View() string {
 	content.WriteString(dp.styles.Header.Render(header))
 	content.WriteString("\n\n")
 
-	// Items list
-	for i, item := range dp.items {
+	// Items list — render only a visible window for performance with large directories
+	const maxVisible = 20
+	startIdx := 0
+	endIdx := len(dp.items)
+	if endIdx > maxVisible {
+		// Center the window on the cursor
+		startIdx = dp.cursor - maxVisible/2
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		endIdx = startIdx + maxVisible
+		if endIdx > len(dp.items) {
+			endIdx = len(dp.items)
+			startIdx = endIdx - maxVisible
+			if startIdx < 0 {
+				startIdx = 0
+			}
+		}
+	}
+
+	if startIdx > 0 {
+		content.WriteString(dp.styles.Help.Render(fmt.Sprintf("  ↑ %d more items above", startIdx)))
+		content.WriteString("\n")
+	}
+
+	for i := startIdx; i < endIdx; i++ {
+		item := dp.items[i]
 		var prefix string
 		if item.Name == ".." {
 			prefix = "[UP] "
@@ -239,6 +264,11 @@ func (dp *DirectoryPicker) View() string {
 		} else {
 			content.WriteString(dp.styles.Item.Render(line))
 		}
+		content.WriteString("\n")
+	}
+
+	if endIdx < len(dp.items) {
+		content.WriteString(dp.styles.Help.Render(fmt.Sprintf("  ↓ %d more items below", len(dp.items)-endIdx)))
 		content.WriteString("\n")
 	}
 

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/logger"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -469,17 +470,22 @@ func (r *CustomFormatReader) readDataBlock(entry *TOCEntry) ([]byte, error) {
 		defer gz.Close()
 		return io.ReadAll(gz)
 
+	case CompressZstd:
+		decomp, err := compression.NewDecompressorWithAlgorithm(bytes.NewReader(compData), compression.AlgorithmZstd)
+		if err != nil {
+			return nil, fmt.Errorf("zstd reader: %w", err)
+		}
+		defer decomp.Close()
+		return io.ReadAll(decomp.Reader)
+
+	case CompressLZ4:
+		return nil, fmt.Errorf("LZ4 decompression not yet implemented for custom format data blocks")
+
 	case CompressNone:
 		return compData, nil
 
 	default:
-		// Try gzip as fallback
-		gz, err := gzip.NewReader(bytes.NewReader(compData))
-		if err != nil {
-			return compData, nil // Assume uncompressed
-		}
-		defer gz.Close()
-		return io.ReadAll(gz)
+		return nil, fmt.Errorf("unsupported compression type %d in archive header", r.header.Compression)
 	}
 }
 

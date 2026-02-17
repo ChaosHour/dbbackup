@@ -1343,10 +1343,23 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 		return fmt.Errorf("failed to create pipe: %w", err)
 	}
 
+	// Drain stderr to prevent pipe buffer deadlock on large schemas
+	stderrPipe, err := dumpCmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe: %w", err)
+	}
+
 	// Start mysqldump
 	if err := dumpCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start mysqldump: %w", err)
 	}
+
+	// Drain stderr in background goroutine to avoid pipe buffer deadlock
+	stderrDone := make(chan []byte, 1)
+	go func() {
+		data, _ := io.ReadAll(stderrPipe)
+		stderrDone <- data
+	}()
 
 	// Copy mysqldump output through compressor in a goroutine
 	copyDone := make(chan error, 1)
@@ -1407,6 +1420,9 @@ func (e *Engine) executeMySQLToFile(ctx context.Context, cmdArgs []string, outpu
 	if err != nil {
 		return fmt.Errorf("failed to create pipe: %w", err)
 	}
+
+	// Drain stderr to prevent pipe buffer deadlock on large schemas
+	dumpCmd.Stderr = io.Discard
 
 	if err := dumpCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start mysqldump: %w", err)

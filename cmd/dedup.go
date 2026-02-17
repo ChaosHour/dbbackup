@@ -1154,6 +1154,13 @@ func runDedupBackupDB(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start %s: %w", dumpCmd, err)
 	}
 
+	// Drain stderr concurrently to prevent pipe buffer deadlock
+	stderrDone := make(chan []byte, 1)
+	go func() {
+		data, _ := io.ReadAll(stderr)
+		stderrDone <- data
+	}()
+
 	// Hash while chunking using TeeReader
 	h := sha256.New()
 	reader := io.TeeReader(stdout, h)
@@ -1201,8 +1208,8 @@ func runDedupBackupDB(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Read any stderr
-	stderrBytes, _ := io.ReadAll(stderr)
+	// Collect stderr from background goroutine
+	stderrBytes := <-stderrDone
 
 	// Wait for command to complete
 	if err := dumpExec.Wait(); err != nil {

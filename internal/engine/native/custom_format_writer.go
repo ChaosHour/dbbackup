@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/logger"
 )
 
@@ -417,23 +418,26 @@ func (w *CustomFormatWriter) compressTableData(ctx context.Context, output *byte
 		if err := gz.Close(); err != nil {
 			return rawLen, 0, rowCount, fmt.Errorf("gzip close: %w", err)
 		}
+	case CompressZstd:
+		comp, err := compression.NewCompressor(output, compression.AlgorithmZstd, w.compLevel)
+		if err != nil {
+			return rawLen, 0, rowCount, fmt.Errorf("create zstd writer: %w", err)
+		}
+		if _, err := comp.Write(rawBuf.Bytes()); err != nil {
+			comp.Close()
+			return rawLen, 0, rowCount, fmt.Errorf("zstd write: %w", err)
+		}
+		if err := comp.Close(); err != nil {
+			return rawLen, 0, rowCount, fmt.Errorf("zstd close: %w", err)
+		}
+	case CompressLZ4:
+		return rawLen, 0, rowCount, fmt.Errorf("LZ4 compression not yet implemented for custom format data blocks")
 	case CompressNone:
 		if _, err := output.Write(rawBuf.Bytes()); err != nil {
 			return rawLen, 0, rowCount, err
 		}
 	default:
-		// Fallback to gzip for unsupported compression
-		gz, err := gzip.NewWriterLevel(output, w.compLevel)
-		if err != nil {
-			return rawLen, 0, rowCount, err
-		}
-		if _, err := gz.Write(rawBuf.Bytes()); err != nil {
-			gz.Close()
-			return rawLen, 0, rowCount, err
-		}
-		if err := gz.Close(); err != nil {
-			return rawLen, 0, rowCount, err
-		}
+		return rawLen, 0, rowCount, fmt.Errorf("unsupported compression type %d for data block", w.compression)
 	}
 
 	compLen := int64(output.Len())

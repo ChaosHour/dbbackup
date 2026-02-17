@@ -1642,12 +1642,12 @@ func (e *Engine) previewRestore(archivePath, targetDB string, format ArchiveForm
 	switch format {
 	case FormatPostgreSQLDump:
 		fmt.Printf("  1. Execute: pg_restore -d %s %s\n", targetDB, archivePath)
-	case FormatPostgreSQLDumpGz:
+	case FormatPostgreSQLDumpGz, FormatPostgreSQLDumpZst:
 		fmt.Printf("  1. Decompress: %s\n", archivePath)
 		fmt.Printf("  2. Execute: pg_restore -d %s\n", targetDB)
-	case FormatPostgreSQLSQL, FormatPostgreSQLSQLGz:
+	case FormatPostgreSQLSQL, FormatPostgreSQLSQLGz, FormatPostgreSQLSQLZst:
 		fmt.Printf("  1. Execute: psql -d %s -f %s\n", targetDB, archivePath)
-	case FormatMySQLSQL, FormatMySQLSQLGz:
+	case FormatMySQLSQL, FormatMySQLSQLGz, FormatMySQLSQLZst:
 		fmt.Printf("  1. Execute: mysql %s < %s\n", targetDB, archivePath)
 	}
 

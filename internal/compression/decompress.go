@@ -28,7 +28,13 @@ const (
 	AlgorithmZstd Algorithm = "zstd"
 )
 
-// DetectAlgorithm determines the compression algorithm from a file path
+// Magic bytes for format detection
+var (
+	magicGzip = []byte{0x1f, 0x8b}
+	magicZstd = []byte{0x28, 0xB5, 0x2F, 0xFD}
+)
+
+// DetectAlgorithm determines the compression algorithm from a file path (extension-based).
 func DetectAlgorithm(filePath string) Algorithm {
 	lower := strings.ToLower(filePath)
 	switch {
@@ -39,6 +45,39 @@ func DetectAlgorithm(filePath string) Algorithm {
 	default:
 		return AlgorithmNone
 	}
+}
+
+// DetectAlgorithmFromReader peeks at the first 4 bytes to detect compression
+// by magic bytes. The returned io.Reader replays the peeked bytes so no data
+// is lost. Returns AlgorithmNone if the stream is not recognized.
+func DetectAlgorithmFromReader(r io.Reader) (Algorithm, io.Reader) {
+	br := bufio.NewReaderSize(r, 4)
+	peeked, err := br.Peek(4)
+	if err != nil || len(peeked) < 2 {
+		return AlgorithmNone, br
+	}
+	if peeked[0] == magicGzip[0] && peeked[1] == magicGzip[1] {
+		return AlgorithmGzip, br
+	}
+	if len(peeked) >= 4 &&
+		peeked[0] == magicZstd[0] && peeked[1] == magicZstd[1] &&
+		peeked[2] == magicZstd[2] && peeked[3] == magicZstd[3] {
+		return AlgorithmZstd, br
+	}
+	return AlgorithmNone, br
+}
+
+// DetectAlgorithmFromBytes detects compression algorithm from raw bytes (magic bytes).
+func DetectAlgorithmFromBytes(data []byte) Algorithm {
+	if len(data) >= 2 && data[0] == magicGzip[0] && data[1] == magicGzip[1] {
+		return AlgorithmGzip
+	}
+	if len(data) >= 4 &&
+		data[0] == magicZstd[0] && data[1] == magicZstd[1] &&
+		data[2] == magicZstd[2] && data[3] == magicZstd[3] {
+		return AlgorithmZstd
+	}
+	return AlgorithmNone
 }
 
 // ParseAlgorithm parses a string into an Algorithm.

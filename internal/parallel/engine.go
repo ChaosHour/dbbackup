@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
 
 	"github.com/klauspost/pgzip"
@@ -387,7 +388,8 @@ func (e *Engine) backupTable(ctx context.Context, table *Table) *TableResult {
 	// Wrap with compression if needed
 	var writer io.WriteCloser = file
 	var sw *fs.SafeWriter
-	if e.config.Compression == "gzip" {
+	switch e.config.Compression {
+	case "gzip":
 		// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
 		sw = fs.NewSafeWriter(file)
 		gzWriter, err := newGzipWriter(sw)
@@ -401,6 +403,16 @@ func (e *Engine) backupTable(ctx context.Context, table *Table) *TableResult {
 			sw.Shutdown()
 		}()
 		writer = gzWriter
+	case "zstd":
+		algo, _ := compression.ParseAlgorithm("zstd")
+		comp, err := compression.NewCompressor(file, algo, 3)
+		if err != nil {
+			result.Error = fmt.Errorf("failed to create zstd writer: %w", err)
+			result.Duration = time.Since(start)
+			return result
+		}
+		defer comp.Close()
+		writer = comp
 	}
 
 	// Dump table

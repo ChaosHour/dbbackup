@@ -729,6 +729,11 @@ func (c *LargeRestoreChecker) detectBackupFormat(path string) string {
 		return "gzip"
 	}
 
+	// zstd magic: 28 B5 2F FD
+	if n >= 4 && magic[0] == 0x28 && magic[1] == 0xB5 && magic[2] == 0x2F && magic[3] == 0xFD {
+		return "zstd"
+	}
+
 	// pg_dump custom format magic: PGDMP
 	if n >= 5 && string(magic[:5]) == "PGDMP" {
 		return "pg_dump_custom"

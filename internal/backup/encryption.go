@@ -114,6 +114,11 @@ func IsBackupEncrypted(backupPath string) bool {
 		return false // Gzip compressed - not encrypted
 	}
 
+	// Zstd magic: 28 B5 2F FD
+	if len(header) >= 4 && header[0] == 0x28 && header[1] == 0xB5 && header[2] == 0x2F && header[3] == 0xFD {
+		return false // Zstd compressed - not encrypted
+	}
+
 	// PGDMP magic (PostgreSQL custom format)
 	if len(header) >= 5 && string(header[:5]) == "PGDMP" {
 		return false // PostgreSQL custom dump - not encrypted

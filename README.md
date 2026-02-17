@@ -4,7 +4,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.44.1-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.45.0-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -33,6 +33,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 - [Health Check](#health-check)
 - [Restore Verification](#restore-verification)
 - [Backup Status Dashboard](#backup-status-dashboard)
+- [Percona XtraBackup / MariaBackup](#percona-xtrabackup--mariabackup)
 - [DR Drill Testing](#dr-drill-testing)
 - [Compliance Reports](#compliance-reports)
 - [RTO/RPO Analysis](#rtorpo-analysis)
@@ -83,6 +84,7 @@ See [docs/tui-features.md](docs/tui-features.md) for full details.
 
 **Major enterprise features for production DBAs:**
 
+- **Percona XtraBackup / MariaBackup**: Physical hot backup engine for MySQL/MariaDB — full and incremental backups, streaming output, AES encryption, Galera cluster support, automatic binary detection
 - **pg_basebackup Integration**: Physical backup via streaming replication for 100GB+ databases
 - **WAL Archiving Manager**: pg_receivewal integration with replication slot management for true PITR
 - **Table-Level Backup**: Selective backup by table pattern, schema, or row count
@@ -172,8 +174,8 @@ dbbackup restore single dump.sql.gz \
 ### Multi-Database Support
 
 - **PostgreSQL 10+** -- Fully optimized (UNLOGGED tables, parallel DDL, adaptive workers)
-- **MySQL 5.7+** -- Native engine with bulk load optimizations and dump/restore speed flags
-- **MariaDB 10.3+** -- Full parity with MySQL engine plus Galera cluster support
+- **MySQL 5.7+** -- Native engine with bulk load optimizations and dump/restore speed flags; Percona XtraBackup physical backup support
+- **MariaDB 10.3+** -- Full parity with MySQL engine plus Galera cluster support; MariaBackup physical backup support
 
 TUI shows database type indicator and adapts features automatically.
 
@@ -229,6 +231,67 @@ dbbackup backup single mydb --db-type mariadb --mysql-batch-size=2000
 ```
 
 All settings persist to `.dbbackup.conf` under `[performance]`.
+
+### Percona XtraBackup / MariaBackup (v6.45.0+)
+
+Physical hot backup engine for MySQL and MariaDB using Percona XtraBackup or MariaBackup. Produces consistent full or incremental backups without locking tables (InnoDB).
+
+**Key capabilities:**
+- **Auto-detection**: Automatically selects `xtrabackup` (Percona Server / MySQL) or `mariabackup` (MariaDB) based on detected database flavor
+- **Full & incremental backups**: LSN-based incremental with checkpoint parsing
+- **Streaming output**: xbstream or tar format for pipe-to-cloud workflows
+- **AES encryption**: 128/192/256-bit encryption with key file support
+- **Compression**: Built-in qpress/LZ4 compression with configurable thread count
+- **Galera cluster support**: `--xtrabackup-galera-info` captures wsrep position
+- **Replica-safe**: `--xtrabackup-slave-info` and `--xtrabackup-safe-slave` for replica backups
+- **Progress monitoring**: Real-time progress parsing from xtrabackup output
+- **Engine selector integration**: Automatically scored and recommended when xtrabackup/mariabackup is available
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--xtrabackup` | false | Enable XtraBackup engine |
+| `--xtrabackup-parallel` | 1 | Parallel copy threads |
+| `--xtrabackup-use-memory` | 128M | Memory for --prepare phase |
+| `--xtrabackup-throttle` | 0 | I/O throttle (pairs/sec, 0=unlimited) |
+| `--xtrabackup-no-lock` | false | Skip FTWRL (InnoDB only) |
+| `--xtrabackup-slave-info` | false | Record replica position |
+| `--xtrabackup-safe-slave` | false | Stop replica SQL thread during backup |
+| `--xtrabackup-galera-info` | false | Record Galera wsrep position |
+| `--xtrabackup-stream-format` | "" | Stream format (xbstream or tar) |
+| `--xtrabackup-compress` | false | Enable built-in compression |
+| `--xtrabackup-compress-threads` | 1 | Compression threads |
+| `--xtrabackup-encrypt` | "" | Encryption algorithm (AES128/AES192/AES256) |
+| `--xtrabackup-encrypt-key-file` | "" | Encryption key file path |
+| `--xtrabackup-incr-basedir` | "" | Base directory for incremental backup |
+| `--xtrabackup-incr-lsn` | "" | LSN for incremental backup |
+| `--xtrabackup-extra-args` | "" | Additional xtrabackup arguments |
+
+```bash
+# Full physical backup with Percona XtraBackup
+dbbackup backup single mydb --db-type mysql --xtrabackup
+
+# Incremental backup based on previous LSN
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+    --xtrabackup-incr-lsn="12345678"
+
+# MariaDB with compression and parallel threads
+dbbackup backup single mydb --db-type mariadb --xtrabackup \
+    --xtrabackup-parallel=4 --xtrabackup-compress --xtrabackup-compress-threads=4
+
+# Streaming to cloud storage
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+    --xtrabackup-stream-format=xbstream --cloud s3://bucket/backups/
+
+# Galera cluster node backup
+dbbackup backup single mydb --db-type mariadb --xtrabackup \
+    --xtrabackup-galera-info --xtrabackup-no-lock
+
+# Encrypted backup
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+    --xtrabackup-encrypt=AES256 --xtrabackup-encrypt-key-file=/path/to/keyfile
+```
+
+See [docs/ENGINES.md](docs/ENGINES.md) for full XtraBackup engine documentation.
 
 ### Quality Assurance
 
@@ -1758,6 +1821,8 @@ See [docs/testing/phase1-manual-tests.md](docs/testing/phase1-manual-tests.md) f
 **External Tools (optional, used as fallback):**
 - PostgreSQL: psql, pg_dump, pg_dumpall, pg_restore
 - MySQL/MariaDB: mysql, mysqldump
+- Percona XtraBackup: xtrabackup 8.0+ (for MySQL/Percona Server physical backups)
+- MariaBackup: mariabackup 10.3+ (for MariaDB physical backups)
 
 ## Documentation
 
@@ -1773,7 +1838,7 @@ See [docs/testing/phase1-manual-tests.md](docs/testing/phase1-manual-tests.md) f
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — Common issues & solutions
 
 **Database Engines:**
-- [docs/ENGINES.md](docs/ENGINES.md) — Database engine configuration
+- [docs/ENGINES.md](docs/ENGINES.md) — Database engine configuration (includes XtraBackup/MariaBackup)
 - [docs/PITR.md](docs/PITR.md) — Point-in-Time Recovery (PostgreSQL)
 - [docs/MYSQL_PITR.md](docs/MYSQL_PITR.md) — Point-in-Time Recovery (MySQL/MariaDB)
 

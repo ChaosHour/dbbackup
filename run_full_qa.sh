@@ -84,7 +84,7 @@ EMAIL_FROM="build@uuxo.net"
 EMAIL_TO="build@uuxo.net"
 EMAIL_SMTP="${QA_EMAIL_SMTP:-smtps://mail.alternate-coding.com:465}"
 EMAIL_USER="${QA_EMAIL_USER:-build@uuxo.net}"
-EMAIL_PASS="${QA_EMAIL_PASS:?Set QA_EMAIL_PASS env var}"
+EMAIL_PASS="${QA_EMAIL_PASS:-}"
 
 # Database sizes (GB) — set by profile (default: medium)
 PG_LARGE_SIZE=5        # Large PG test database
@@ -3832,6 +3832,11 @@ EOF
 send_email_report() {
     if ! $EMAIL_ENABLED; then
         log_info "Email notification disabled (set EMAIL_ENABLED=true to enable)"
+        return 0
+    fi
+
+    if [[ -z "${EMAIL_PASS}" ]]; then
+        log_warn "QA_EMAIL_PASS not set — skipping email notification"
         return 0
     fi
 

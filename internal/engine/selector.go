@@ -37,9 +37,10 @@ type SelectorConfig struct {
 	ForcedEngine string
 
 	// Feature flags
-	PreferClone    bool // Prefer clone over snapshot when both available
-	PreferSnapshot bool // Prefer snapshot over clone
-	AllowMysqldump bool // Fall back to mysqldump if nothing else available
+	PreferClone      bool // Prefer clone over snapshot when both available
+	PreferSnapshot   bool // Prefer snapshot over clone
+	PreferXtraBackup bool // Prefer xtrabackup when available
+	AllowMysqldump   bool // Fall back to mysqldump if nothing else available
 }
 
 // DatabaseInfo contains gathered database information
@@ -213,6 +214,56 @@ func (s *Selector) scoreEngines(info *DatabaseInfo) map[string]EngineScore {
 		}
 
 		scores["snapshot"] = EngineScore{Score: score, Reason: reason}
+	}
+
+	// XtraBackup / MariaBackup scoring
+	{
+		score := 0
+		reason := ""
+
+		// Check if xtrabackup or mariabackup binary is available
+		xtraAvail := false
+		if _, err := exec.LookPath("xtrabackup"); err == nil {
+			xtraAvail = true
+		} else if _, err := exec.LookPath("mariabackup"); err == nil {
+			xtraAvail = true
+		} else if _, err := exec.LookPath("mariadb-backup"); err == nil {
+			xtraAvail = true
+		}
+
+		if xtraAvail {
+			score = 48
+			reason = "xtrabackup available for physical hot backup"
+
+			// Bonus for Percona Server (native match)
+			if info.Flavor == "percona" {
+				score += 20
+				reason = "Percona Server detected, xtrabackup is optimal"
+			}
+
+			// Bonus for large databases (physical backup advantage)
+			if info.TotalDataSize >= s.config.CloneMinSize {
+				score += 15
+				if info.Flavor == "percona" {
+					reason = "Percona Server + large database: xtrabackup ideal"
+				} else {
+					reason = "large database: xtrabackup physical backup recommended"
+				}
+			}
+
+			// Bonus for MariaDB (mariabackup is the standard tool)
+			if info.Flavor == "mariadb" {
+				score += 10
+				reason = "MariaDB detected, mariabackup is the standard physical backup tool"
+			}
+
+			// Bonus if user prefers xtrabackup
+			if s.config.PreferXtraBackup {
+				score += 10
+			}
+
+			scores["xtrabackup"] = EngineScore{Score: score, Reason: reason}
+		}
 	}
 
 	// Binlog streaming scoring (continuous backup)

@@ -178,6 +178,24 @@ type Config struct {
 	GaleraPreferNode     string // Preferred node name for backup (empty = current node)
 	GaleraHealthCheck    bool   // Verify node health before backup (default: true)
 
+	// Percona XtraBackup / MariaBackup options
+	UseXtraBackup             bool     // Use xtrabackup/mariabackup for physical hot backup
+	XtraBackupParallel        int      // Parallel copy threads (--parallel, default: 4)
+	XtraBackupUseMemory       string   // Memory for --prepare (e.g., "1G")
+	XtraBackupThrottle        int      // IO operations per second limit (--throttle, 0 = unlimited)
+	XtraBackupNoLock          bool     // Use --no-lock (InnoDB-only, skip FTWRL)
+	XtraBackupSlaveInfo       bool     // Record slave replication coordinates (--slave-info)
+	XtraBackupSafeSlave       bool     // Wait for slave SQL thread (--safe-slave-backup)
+	XtraBackupGaleraInfo      bool     // Record Galera cluster position (--galera-info)
+	XtraBackupStreamFormat    string   // Streaming format: "xbstream", "tar" (empty = no streaming)
+	XtraBackupCompress        string   // Internal compression: "quicklz", "lz4", "zstd" (empty = none)
+	XtraBackupCompressThreads int      // Threads for internal compression (--compress-threads)
+	XtraBackupEncrypt         string   // Encryption: "AES128", "AES192", "AES256"
+	XtraBackupEncryptKeyFile  string   // Encryption key file path
+	XtraBackupIncrBasedir     string   // Base directory for incremental backup
+	XtraBackupIncrLSN         string   // LSN for incremental backup
+	XtraBackupExtraArgs       []string // Additional CLI arguments
+
 	// pg_basebackup options (physical backup)
 	PhysicalBackup     bool   // Use pg_basebackup for physical backup
 	PhysicalFormat     string // "plain" or "tar" (default: tar)

@@ -10,6 +10,7 @@ DBBackup now includes a modular backup engine system with multiple strategies:
 |--------|----------|---------------|-------------|
 | `mysqldump` | Small databases, cross-version | All | Moderate |
 | `clone` | Physical backup | 8.0.17+ | Fast |
+| `xtrabackup` | Physical hot backup (Percona/MySQL/MariaDB) | All InnoDB | Very Fast |
 | `snapshot` | Instant backup | Any (with LVM/ZFS/Btrfs) | Instant |
 | `streaming` | Direct cloud upload | All | High throughput |
 
@@ -70,6 +71,77 @@ Features:
 - Progress monitoring via performance_schema
 - Automatic consistency
 - Faster than mysqldump for large databases
+
+### XtraBackup Engine (Percona XtraBackup / MariaBackup)
+
+Uses Percona XtraBackup (or MariaBackup for MariaDB) for physical hot backups.
+This is a non-blocking physical backup tool for InnoDB databases that supports
+full, incremental, and streaming backups.
+
+```bash
+# Full physical backup with xtrabackup
+dbbackup backup single mydb --db-type mysql --xtrabackup
+
+# Incremental backup
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+  --xtrabackup-incremental-basedir /backups/base
+
+# High-performance backup with parallel threads
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+  --xtrabackup-parallel 8 --xtrabackup-use-memory 2G
+
+# Backup a replica with replication coordinates
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+  --xtrabackup-slave-info --xtrabackup-safe-slave
+
+# Galera cluster backup
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+  --xtrabackup-galera-info
+
+# InnoDB-only backup (skip FTWRL)
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+  --xtrabackup-no-lock
+
+# Streaming backup with xbstream
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+  --xtrabackup-stream xbstream
+
+# Backup with xtrabackup-native encryption
+dbbackup backup single mydb --db-type mysql --xtrabackup \
+  --xtrabackup-encrypt AES256 --xtrabackup-encrypt-key-file /etc/keys/backup.key
+```
+
+Prerequisites:
+- `xtrabackup` binary (Percona XtraBackup 8.x) or `mariabackup` for MariaDB
+- InnoDB storage engine (MyISAM tables require brief lock)
+- RELOAD, LOCK TABLES, PROCESS, REPLICATION CLIENT privileges
+
+Features:
+- **Non-blocking**: Hot backup without locking InnoDB tables
+- **Incremental**: Delta backups based on LSN (Log Sequence Number)
+- **Streaming**: Direct streaming via xbstream or tar format
+- **Parallel**: Multi-threaded copy and compression
+- **Encryption**: Native AES-128/192/256 encryption
+- **Auto-detection**: Automatically detects Percona Server vs MySQL vs MariaDB and selects the appropriate binary
+- **Galera support**: Records Galera cluster position for SST
+- **Replica support**: Records replication coordinates (GTID, binlog position)
+- **Prepare phase**: Automatic crash-recovery --prepare for consistent backups
+
+XtraBackup CLI Flags:
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--xtrabackup` | false | Enable XtraBackup engine |
+| `--xtrabackup-parallel` | 4 | Parallel copy threads |
+| `--xtrabackup-use-memory` | 1G | Memory for --prepare phase |
+| `--xtrabackup-throttle` | 0 | IO throttle (ops/sec, 0=unlimited) |
+| `--xtrabackup-no-lock` | false | Skip FTWRL (InnoDB-only) |
+| `--xtrabackup-slave-info` | false | Record replica coordinates |
+| `--xtrabackup-safe-slave` | false | Wait for replica SQL thread |
+| `--xtrabackup-galera-info` | false | Record Galera position |
+| `--xtrabackup-stream` | "" | Stream format (xbstream/tar) |
+| `--xtrabackup-encrypt` | "" | Encryption (AES128/AES192/AES256) |
+| `--xtrabackup-incremental-basedir` | "" | Base dir for incremental |
+| `--xtrabackup-incremental-lsn` | "" | LSN for incremental |
 
 ### Snapshot Engine
 

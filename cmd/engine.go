@@ -16,10 +16,11 @@ var engineCmd = &cobra.Command{
 	Long: `Commands for managing and selecting backup engines.
 
 Available engines:
-  - mysqldump: Traditional mysqldump backup (all MySQL versions)
-  - clone:     MySQL Clone Plugin (MySQL 8.0.17+)
-  - snapshot:  Filesystem snapshot (LVM/ZFS/Btrfs)
-  - streaming: Direct cloud streaming backup`,
+  - mysqldump:   Traditional mysqldump backup (all MySQL versions)
+  - clone:       MySQL Clone Plugin (MySQL 8.0.17+)
+  - xtrabackup:  Percona XtraBackup / MariaBackup (physical hot backup)
+  - snapshot:    Filesystem snapshot (LVM/ZFS/Btrfs)
+  - streaming:   Direct cloud streaming backup`,
 }
 
 var engineListCmd = &cobra.Command{

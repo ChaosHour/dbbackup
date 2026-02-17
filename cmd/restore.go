@@ -746,6 +746,14 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Safety check: refuse to restore into an existing database without --force or --clean
+	if !restoreForce && !restoreClean && targetDB != "" {
+		checkCtx := context.Background()
+		if dbExists, err := safety.CheckDatabaseExists(checkCtx, targetDB); err == nil && dbExists {
+			return fmt.Errorf("target database '%s' already exists. Use --force to overwrite, --clean to drop and recreate, or choose a different --target", targetDB)
+		}
+	}
+
 	// Create database instance
 	db, err := database.New(cfg, log)
 	if err != nil {

@@ -5,6 +5,19 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.45.0] - 2026-02-17 — Percona XtraBackup / MariaBackup Engine Integration
+
+### Added
+
+- **Percona XtraBackup engine (`internal/engine/xtrabackup.go`)** — Full physical backup engine supporting both `xtrabackup` (Percona Server / MySQL) and `mariabackup` (MariaDB). Implements `BackupEngine` and `StreamingEngine` interfaces. Features: full and incremental backups, streaming output (xbstream/tar), `--prepare` phase for consistent restores, compression, AES encryption (128/192/256), binlog position and GTID capture, LSN checkpoint parsing, progress monitoring, Galera cluster and replica support.
+- **16 new CLI flags for XtraBackup** — `--xtrabackup`, `--xtrabackup-parallel`, `--xtrabackup-use-memory`, `--xtrabackup-throttle`, `--xtrabackup-no-lock`, `--xtrabackup-slave-info`, `--xtrabackup-safe-slave`, `--xtrabackup-galera-info`, `--xtrabackup-stream-format`, `--xtrabackup-compress`, `--xtrabackup-compress-threads`, `--xtrabackup-encrypt`, `--xtrabackup-encrypt-key-file`, `--xtrabackup-incr-basedir`, `--xtrabackup-incr-lsn`, `--xtrabackup-extra-args`. Available on `backup single`, `backup cluster`, and `backup sample` commands.
+- **XtraBackup engine selector scoring** — Automatic engine selection scores XtraBackup based on binary availability (+48), Percona Server flavor (+20), large databases (+15), MariaDB (+10), and user preference (+10). Added `PreferXtraBackup` selector config option.
+- **16 new config fields** — `UseXtraBackup`, `XtraBackupParallel`, `XtraBackupUseMemory`, `XtraBackupThrottle`, `XtraBackupNoLock`, `XtraBackupSlaveInfo`, `XtraBackupSafeSlave`, `XtraBackupGaleraInfo`, `XtraBackupStreamFormat`, `XtraBackupCompress`, `XtraBackupCompressThreads`, `XtraBackupEncrypt`, `XtraBackupEncryptKeyFile`, `XtraBackupIncrBasedir`, `XtraBackupIncrLSN`, `XtraBackupExtraArgs` in `internal/config/config.go`.
+- **XtraBackup dispatch in backup pipeline** — `runXtraBackup()` function in `cmd/backup_impl.go` builds engine config from global settings, checks binary availability, runs backup, and handles audit/notifications. Integrated into `runSingleBackup()` with automatic fallback to tool-based backup.
+- **Comprehensive test suite (`internal/engine/xtrabackup_test.go`)** — 19 unit tests covering engine metadata, capabilities, default/custom configuration, argument building (full, incremental, streaming, encryption, Galera, extra args), availability checking, binlog info parsing, checkpoint parsing, progress line parsing, registry integration, and compress/extract round-trip.
+- **XtraBackup documentation (`docs/ENGINES.md`)** — Full engine documentation including overview table entry, usage examples, prerequisites, feature list, and CLI flags reference table.
+- **QA test integration (`run_full_qa.sh`)** — New `--with-xtrabackup` scope flag, `test_xtrabackup_engine()` function with binary detection, MariaDB/MySQL full backup tests, `--no-lock` test, parallel backup test, and unit test execution.
+
 ## [6.44.1] - 2026-02-16 — Documentation Update
 
 ### Changed

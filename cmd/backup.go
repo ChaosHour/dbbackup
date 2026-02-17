@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"dbbackup/internal/cloud"
 
@@ -320,6 +321,59 @@ func init() {
 				cfg.MySQLBatchSize, _ = c.Flags().GetInt("mysql-batch-size")
 			}
 
+			// Handle Percona XtraBackup flags
+			if c.Flags().Changed("xtrabackup") {
+				cfg.UseXtraBackup, _ = c.Flags().GetBool("xtrabackup")
+			}
+			if c.Flags().Changed("xtrabackup-parallel") {
+				cfg.XtraBackupParallel, _ = c.Flags().GetInt("xtrabackup-parallel")
+			}
+			if c.Flags().Changed("xtrabackup-use-memory") {
+				cfg.XtraBackupUseMemory, _ = c.Flags().GetString("xtrabackup-use-memory")
+			}
+			if c.Flags().Changed("xtrabackup-throttle") {
+				cfg.XtraBackupThrottle, _ = c.Flags().GetInt("xtrabackup-throttle")
+			}
+			if c.Flags().Changed("xtrabackup-no-lock") {
+				cfg.XtraBackupNoLock, _ = c.Flags().GetBool("xtrabackup-no-lock")
+			}
+			if c.Flags().Changed("xtrabackup-slave-info") {
+				cfg.XtraBackupSlaveInfo, _ = c.Flags().GetBool("xtrabackup-slave-info")
+			}
+			if c.Flags().Changed("xtrabackup-safe-slave") {
+				cfg.XtraBackupSafeSlave, _ = c.Flags().GetBool("xtrabackup-safe-slave")
+			}
+			if c.Flags().Changed("xtrabackup-galera-info") {
+				cfg.XtraBackupGaleraInfo, _ = c.Flags().GetBool("xtrabackup-galera-info")
+			}
+			if c.Flags().Changed("xtrabackup-stream") {
+				cfg.XtraBackupStreamFormat, _ = c.Flags().GetString("xtrabackup-stream")
+			}
+			if c.Flags().Changed("xtrabackup-compress") {
+				cfg.XtraBackupCompress, _ = c.Flags().GetString("xtrabackup-compress")
+			}
+			if c.Flags().Changed("xtrabackup-compress-threads") {
+				cfg.XtraBackupCompressThreads, _ = c.Flags().GetInt("xtrabackup-compress-threads")
+			}
+			if c.Flags().Changed("xtrabackup-encrypt") {
+				cfg.XtraBackupEncrypt, _ = c.Flags().GetString("xtrabackup-encrypt")
+			}
+			if c.Flags().Changed("xtrabackup-encrypt-key-file") {
+				cfg.XtraBackupEncryptKeyFile, _ = c.Flags().GetString("xtrabackup-encrypt-key-file")
+			}
+			if c.Flags().Changed("xtrabackup-incremental-basedir") {
+				cfg.XtraBackupIncrBasedir, _ = c.Flags().GetString("xtrabackup-incremental-basedir")
+			}
+			if c.Flags().Changed("xtrabackup-incremental-lsn") {
+				cfg.XtraBackupIncrLSN, _ = c.Flags().GetString("xtrabackup-incremental-lsn")
+			}
+			if c.Flags().Changed("xtrabackup-extra-args") {
+				extraArgs, _ := c.Flags().GetString("xtrabackup-extra-args")
+				if extraArgs != "" {
+					cfg.XtraBackupExtraArgs = strings.Fields(extraArgs)
+				}
+			}
+
 			return nil
 		}
 	}
@@ -379,6 +433,26 @@ func init() {
 		cmd.Flags().String("mysql-max-packet", "256M", "max-allowed-packet for dump & restore (MySQL/MariaDB)")
 		cmd.Flags().Bool("mysql-fast-restore", true, "SET fk_checks=0, unique_checks=0 before restore (MySQL/MariaDB)")
 		cmd.Flags().Int("mysql-batch-size", 5000, "Rows per extended INSERT in native engine (MySQL/MariaDB)")
+	}
+
+	// Percona XtraBackup / MariaBackup flags for single and cluster backup
+	for _, cmd := range []*cobra.Command{clusterCmd, singleCmd} {
+		cmd.Flags().Bool("xtrabackup", false, "Use Percona XtraBackup / MariaBackup for physical hot backup")
+		cmd.Flags().Int("xtrabackup-parallel", 4, "Parallel copy threads for xtrabackup (--parallel)")
+		cmd.Flags().String("xtrabackup-use-memory", "1G", "Memory for xtrabackup --prepare (e.g., '1G', '512M')")
+		cmd.Flags().Int("xtrabackup-throttle", 0, "Throttle IO operations per second (0 = unlimited)")
+		cmd.Flags().Bool("xtrabackup-no-lock", false, "Use --no-lock (InnoDB-only tables, skip FTWRL)")
+		cmd.Flags().Bool("xtrabackup-slave-info", false, "Record slave replication coordinates (--slave-info)")
+		cmd.Flags().Bool("xtrabackup-safe-slave", false, "Wait for slave SQL thread to catch up (--safe-slave-backup)")
+		cmd.Flags().Bool("xtrabackup-galera-info", false, "Record Galera cluster position (--galera-info)")
+		cmd.Flags().String("xtrabackup-stream", "", "Streaming format: xbstream or tar (empty = no streaming)")
+		cmd.Flags().String("xtrabackup-compress", "", "XtraBackup internal compression: quicklz, lz4, zstd (empty = no internal compression)")
+		cmd.Flags().Int("xtrabackup-compress-threads", 0, "Threads for xtrabackup internal compression")
+		cmd.Flags().String("xtrabackup-encrypt", "", "XtraBackup encryption: AES128, AES192, AES256")
+		cmd.Flags().String("xtrabackup-encrypt-key-file", "", "File containing encryption key for xtrabackup")
+		cmd.Flags().String("xtrabackup-incremental-basedir", "", "Base directory for incremental xtrabackup")
+		cmd.Flags().String("xtrabackup-incremental-lsn", "", "LSN for incremental xtrabackup (instead of basedir)")
+		cmd.Flags().String("xtrabackup-extra-args", "", "Additional xtrabackup CLI arguments (space-separated)")
 	}
 }
 

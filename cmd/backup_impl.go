@@ -336,6 +336,24 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		runPreBackupLOVacuum(ctx, db)
 	}
 
+	// Check if XtraBackup engine should be used (MySQL/MariaDB physical backup)
+	if cfg.UseXtraBackup && cfg.IsMySQL() {
+		log.Info("Using Percona XtraBackup for physical backup", "database", databaseName)
+		err = runXtraBackup(ctx, db, databaseName, backupType, backupStartTime, user)
+		if err == nil {
+			if cfg.VerifyRestore {
+				runPostBackupVerifyRestore(ctx, db, databaseName)
+			}
+			return nil
+		}
+		if cfg.FallbackToTools {
+			log.Warn("XtraBackup failed, falling back to tool-based backup", "error", err)
+			// Continue with tool-based backup below
+		} else {
+			return err
+		}
+	}
+
 	// Check if native engine should be used
 	if cfg.UseNativeEngine {
 		log.Info("Using native engine for backup", "database", databaseName)
@@ -994,4 +1012,135 @@ func findLatestBackupByMeta(backupDir, databaseName string) string {
 	}
 
 	return latestPath
+}
+
+// runXtraBackup executes backup using Percona XtraBackup / MariaBackup engine
+func runXtraBackup(ctx context.Context, db database.Database, databaseName, backupType string, backupStartTime time.Time, user string) error {
+	// Get underlying *sql.DB from the MySQL database connection
+	var sqlDB *sql.DB
+	if myDB, ok := db.(*database.MySQL); ok {
+		sqlDB = myDB.GetConn()
+	}
+
+	// Build XtraBackup config from global cfg
+	xtraCfg := &engine.XtraBackupConfig{
+		Host:               cfg.Host,
+		Port:               cfg.Port,
+		User:               cfg.User,
+		Password:           cfg.Password,
+		Parallel:           cfg.XtraBackupParallel,
+		UseMemory:          cfg.XtraBackupUseMemory,
+		ThrottleIOPS:       cfg.XtraBackupThrottle,
+		NoLock:             cfg.XtraBackupNoLock,
+		SlaveInfo:          cfg.XtraBackupSlaveInfo,
+		SafeSlave:          cfg.XtraBackupSafeSlave,
+		GaleraInfo:         cfg.XtraBackupGaleraInfo,
+		Compress:           true,
+		CompressFormat:     cfg.CompressionAlgorithm,
+		CompressLevel:      cfg.CompressionLevel,
+		EncryptionMethod:   cfg.XtraBackupEncrypt,
+		EncryptionKeyFile:  cfg.XtraBackupEncryptKeyFile,
+		IncrementalBasedir: cfg.XtraBackupIncrBasedir,
+		IncrementalLSN:     cfg.XtraBackupIncrLSN,
+		ExtraArgs:          cfg.XtraBackupExtraArgs,
+	}
+
+	if cfg.XtraBackupStreamFormat != "" {
+		xtraCfg.UseMBStream = true
+		xtraCfg.StreamFormat = cfg.XtraBackupStreamFormat
+	}
+
+	if cfg.XtraBackupParallel == 0 {
+		xtraCfg.Parallel = 4 // sensible default
+	}
+	if cfg.XtraBackupUseMemory == "" {
+		xtraCfg.UseMemory = "1G"
+	}
+
+	// Create the engine
+	xtraEngine := engine.NewXtraBackupEngine(sqlDB, xtraCfg, log)
+
+	// Register in default registry for engine list visibility
+	engine.Register(xtraEngine)
+
+	// Check availability
+	avail, err := xtraEngine.CheckAvailability(ctx)
+	if err != nil {
+		return fmt.Errorf("xtrabackup availability check failed: %w", err)
+	}
+	if !avail.Available {
+		return fmt.Errorf("xtrabackup not available: %s", avail.Reason)
+	}
+
+	log.Info("XtraBackup engine available",
+		"binary", avail.Info["binary"],
+		"tool_version", avail.Info["tool_version"],
+		"db_version", avail.Info["db_version"],
+		"flavor", avail.Info["flavor"])
+
+	if len(avail.Warnings) > 0 {
+		for _, w := range avail.Warnings {
+			log.Warn("XtraBackup warning: " + w)
+		}
+	}
+
+	// Notify
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventBackupStarted, notify.SeverityInfo, "XtraBackup physical backup started").
+			WithDatabase(databaseName).
+			WithDetail("engine", "xtrabackup").
+			WithDetail("binary", avail.Info["binary"]))
+	}
+
+	// Build backup options
+	backupOpts := &engine.BackupOptions{
+		Database:  databaseName,
+		OutputDir: cfg.BackupDir,
+		Compress:  true,
+	}
+
+	if cfg.CompressionAlgorithm != "" {
+		backupOpts.CompressFormat = cfg.CompressionAlgorithm
+	}
+	if cfg.CompressionLevel > 0 {
+		backupOpts.CompressLevel = cfg.CompressionLevel
+	}
+	if xtraCfg.Parallel > 0 {
+		backupOpts.Parallel = xtraCfg.Parallel
+	}
+
+	// Run the backup
+	result, err := xtraEngine.Backup(ctx, backupOpts)
+	if err != nil {
+		auditLogger.LogBackupFailed(user, databaseName, err)
+		if notifyManager != nil {
+			notifyManager.Notify(notify.NewEvent(notify.EventBackupFailed, notify.SeverityError, "XtraBackup physical backup failed").
+				WithDatabase(databaseName).
+				WithError(err).
+				WithDuration(time.Since(backupStartTime)))
+		}
+		return fmt.Errorf("xtrabackup backup failed: %w", err)
+	}
+
+	// Audit log
+	auditLogger.LogBackupComplete(user, databaseName, cfg.BackupDir, result.TotalSize)
+
+	// Notify success
+	if notifyManager != nil {
+		notifyManager.Notify(notify.NewEvent(notify.EventBackupCompleted, notify.SeveritySuccess, "XtraBackup physical backup completed").
+			WithDatabase(databaseName).
+			WithDuration(result.Duration).
+			WithDetail("engine", "xtrabackup").
+			WithDetail("size", fmt.Sprintf("%d", result.TotalSize)).
+			WithDetail("binlog_file", result.BinlogFile).
+			WithDetail("gtid", result.GTIDExecuted))
+	}
+
+	log.Info("XtraBackup backup successful",
+		"database", databaseName,
+		"duration", result.Duration,
+		"size", result.TotalSize,
+		"files", len(result.Files))
+
+	return nil
 }

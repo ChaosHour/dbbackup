@@ -27,9 +27,10 @@ LDFLAGS="-w -s -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X mai
 OUT_DIR="bins"
 
 # ── Target platforms ──
-# Format: GOOS/GOARCH[:suffix]
+# Format: GOOS/GOARCH[:suffix[:GOAMD64]]
 TARGETS=(
     "linux/amd64"
+    "linux/amd64:_v3:v3"
     "linux/arm64"
     "linux/arm:_armv7"
     "darwin/amd64"
@@ -57,17 +58,21 @@ for i in "${!TARGETS[@]}"; do
     entry="${TARGETS[$i]}"
     n=$((i + 1))
 
-    # Parse GOOS/GOARCH[:suffix]
-    platform="${entry%%:*}"
-    suffix=""
-    [[ "$entry" == *:* ]] && suffix="${entry#*:}"
+    # Parse GOOS/GOARCH[:suffix[:GOAMD64]]
+    IFS=':' read -r platform suffix goamd64 <<< "$entry"
     GOOS="${platform%%/*}"
     GOARCH="${platform##*/}"
 
     bin_name="${APP_NAME}_${GOOS}_${GOARCH}${suffix}"
-    echo -ne "  [${n}/${total}] ${BOLD}${platform}${suffix}${NC} ... "
+    label="${platform}${suffix}"
+    [[ -n "$goamd64" ]] && label+="  (GOAMD64=${goamd64})"
+    echo -ne "  [${n}/${total}] ${BOLD}${label}${NC} ... "
 
-    if CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+    # Set GOAMD64 for AVX2-optimized builds
+    build_env=(CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH")
+    [[ -n "$goamd64" ]] && build_env+=(GOAMD64="$goamd64")
+
+    if env "${build_env[@]}" \
         go build -trimpath -ldflags "$LDFLAGS" -o "${OUT_DIR}/${bin_name}" . 2>/dev/null; then
         # File size
         sz=$(stat -c%s "${OUT_DIR}/${bin_name}" 2>/dev/null || stat -f%z "${OUT_DIR}/${bin_name}" 2>/dev/null || echo 0)

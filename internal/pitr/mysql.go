@@ -17,9 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
-
-	"github.com/klauspost/pgzip"
 )
 
 // MySQLPITR implements PITRProvider for MySQL and MariaDB
@@ -405,7 +404,13 @@ func (m *MySQLPITR) CreateBackup(ctx context.Context, opts BackupOptions) (*PITR
 	timestamp := time.Now().Format("20060102_150405")
 	backupName := fmt.Sprintf("mysql_pitr_%s.sql", timestamp)
 	if opts.Compression {
-		backupName += ".gz"
+		algo := compression.AlgorithmGzip
+		if opts.CompressionAlgo != "" {
+			if parsed, err := compression.ParseAlgorithm(opts.CompressionAlgo); err == nil {
+				algo = parsed
+			}
+		}
+		backupName += compression.FileExtension(algo)
 	}
 	backupPath := filepath.Join(opts.OutputPath, backupName)
 
@@ -431,12 +436,25 @@ func (m *MySQLPITR) CreateBackup(ctx context.Context, opts BackupOptions) (*PITR
 	var writer io.WriteCloser = outFile
 
 	if opts.Compression {
-		// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+		// Determine algorithm from config or default to gzip
+		algo := compression.AlgorithmGzip
+		if opts.CompressionAlgo != "" {
+			parsed, err := compression.ParseAlgorithm(opts.CompressionAlgo)
+			if err == nil {
+				algo = parsed
+			}
+		}
+		// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 		sw := fs.NewSafeWriter(outFile)
-		gzWriter := NewGzipWriter(sw, opts.CompressionLvl)
-		writer = gzWriter
+		comp, err := compression.NewCompressor(sw, algo, opts.CompressionLvl)
+		if err != nil {
+			sw.Shutdown()
+			os.Remove(backupPath)
+			return nil, fmt.Errorf("creating compressor: %w", err)
+		}
+		writer = comp
 		defer func() {
-			gzWriter.Close()
+			comp.Close()
 			sw.Shutdown()
 		}()
 	}
@@ -611,14 +629,14 @@ func (m *MySQLPITR) restoreBaseBackup(ctx context.Context, backup *PITRBackupInf
 
 	input = backupFile
 
-	// Handle compressed backups
-	if backup.Compressed || strings.HasSuffix(backup.BackupFile, ".gz") {
-		gzReader, err := NewGzipReader(backupFile)
+	// Handle compressed backups (gzip and zstd)
+	if backup.Compressed || compression.IsCompressed(backup.BackupFile) {
+		decomp, err := compression.NewDecompressor(backupFile, backup.BackupFile)
 		if err != nil {
-			return fmt.Errorf("creating gzip reader: %w", err)
+			return fmt.Errorf("creating decompression reader: %w", err)
 		}
-		defer gzReader.Close()
-		input = gzReader
+		defer decomp.Close()
+		input = decomp.Reader
 	}
 
 	// Run mysql
@@ -832,48 +850,6 @@ func (m *MySQLPITR) PurgeBinlogs(ctx context.Context) error {
 	return nil
 }
 
-// GzipWriter is a helper for gzip compression
-type GzipWriter struct {
-	w *pgzip.Writer
-}
-
-func NewGzipWriter(w io.Writer, level int) *GzipWriter {
-	if level <= 0 {
-		level = pgzip.DefaultCompression
-	}
-	gw, _ := pgzip.NewWriterLevel(w, level)
-	return &GzipWriter{w: gw}
-}
-
-func (g *GzipWriter) Write(p []byte) (int, error) {
-	return g.w.Write(p)
-}
-
-func (g *GzipWriter) Close() error {
-	return g.w.Close()
-}
-
-// GzipReader is a helper for gzip decompression
-type GzipReader struct {
-	r *pgzip.Reader
-}
-
-func NewGzipReader(r io.Reader) (*GzipReader, error) {
-	gr, err := pgzip.NewReader(r)
-	if err != nil {
-		return nil, err
-	}
-	return &GzipReader{r: gr}, nil
-}
-
-func (g *GzipReader) Read(p []byte) (int, error) {
-	return g.r.Read(p)
-}
-
-func (g *GzipReader) Close() error {
-	return g.r.Close()
-}
-
 // ExtractBinlogPositionFromDump extracts the binlog position from a mysqldump file
 func ExtractBinlogPositionFromDump(dumpPath string) (*BinlogPosition, error) {
 	file, err := os.Open(dumpPath)
@@ -883,13 +859,13 @@ func ExtractBinlogPositionFromDump(dumpPath string) (*BinlogPosition, error) {
 	defer file.Close()
 
 	var reader io.Reader = file
-	if strings.HasSuffix(dumpPath, ".gz") {
-		gzReader, err := pgzip.NewReader(file)
+	if compression.IsCompressed(dumpPath) {
+		decomp, err := compression.NewDecompressor(file, dumpPath)
 		if err != nil {
-			return nil, fmt.Errorf("creating gzip reader: %w", err)
+			return nil, fmt.Errorf("creating decompression reader: %w", err)
 		}
-		defer gzReader.Close()
-		reader = gzReader
+		defer decomp.Close()
+		reader = decomp.Reader
 	}
 
 	// Look for CHANGE MASTER TO or -- CHANGE MASTER TO comment

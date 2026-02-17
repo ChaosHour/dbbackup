@@ -7,25 +7,38 @@ import (
 	"os"
 	"path/filepath"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
-
-	"github.com/klauspost/pgzip"
 )
 
 // Compressor handles WAL file compression
 type Compressor struct {
-	log logger.Logger
+	log  logger.Logger
+	algo compression.Algorithm
 }
 
-// NewCompressor creates a new WAL compressor
+// NewCompressor creates a new WAL compressor (defaults to gzip)
 func NewCompressor(log logger.Logger) *Compressor {
 	return &Compressor{
-		log: log,
+		log:  log,
+		algo: compression.AlgorithmGzip,
 	}
 }
 
-// CompressWALFile compresses a WAL file using parallel gzip (pgzip)
+// NewCompressorWithAlgo creates a new WAL compressor with specified algorithm
+func NewCompressorWithAlgo(log logger.Logger, algo string) *Compressor {
+	parsed, err := compression.ParseAlgorithm(algo)
+	if err != nil {
+		parsed = compression.AlgorithmGzip
+	}
+	return &Compressor{
+		log:  log,
+		algo: parsed,
+	}
+}
+
+// CompressWALFile compresses a WAL file
 // Returns the path to the compressed file and the compressed size
 func (c *Compressor) CompressWALFile(sourcePath, destPath string, level int) (int64, error) {
 	return c.CompressWALFileContext(context.Background(), sourcePath, destPath, level)
@@ -33,7 +46,7 @@ func (c *Compressor) CompressWALFile(sourcePath, destPath string, level int) (in
 
 // CompressWALFileContext compresses a WAL file with context for cancellation support
 func (c *Compressor) CompressWALFileContext(ctx context.Context, sourcePath, destPath string, level int) (int64, error) {
-	c.log.Debug("Compressing WAL file", "source", sourcePath, "dest", destPath, "level", level)
+	c.log.Debug("Compressing WAL file", "source", sourcePath, "dest", destPath, "level", level, "algorithm", string(c.algo))
 
 	// Open source file
 	srcFile, err := os.Open(sourcePath)
@@ -56,26 +69,26 @@ func (c *Compressor) CompressWALFileContext(ctx context.Context, sourcePath, des
 	}
 	defer dstFile.Close()
 
-	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(dstFile)
 	defer sw.Shutdown()
 
-	// Create parallel gzip writer for faster compression
-	gzWriter, err := pgzip.NewWriterLevel(sw, level)
+	// Create compressor (supports gzip and zstd)
+	comp, err := compression.NewCompressor(sw, c.algo, level)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create gzip writer: %w", err)
+		return 0, fmt.Errorf("failed to create compressor: %w", err)
 	}
-	defer gzWriter.Close()
+	defer comp.Close()
 
 	// Copy and compress with context support
-	_, err = fs.CopyWithContext(ctx, gzWriter, srcFile)
+	_, err = fs.CopyWithContext(ctx, comp, srcFile)
 	if err != nil {
 		return 0, fmt.Errorf("compression failed: %w", err)
 	}
 
-	// Close gzip writer to flush buffers
-	if err := gzWriter.Close(); err != nil {
-		return 0, fmt.Errorf("failed to close gzip writer: %w", err)
+	// Close compressor to flush buffers
+	if err := comp.Close(); err != nil {
+		return 0, fmt.Errorf("failed to close compressor: %w", err)
 	}
 
 	// Sync to disk
@@ -100,12 +113,12 @@ func (c *Compressor) CompressWALFileContext(ctx context.Context, sourcePath, des
 	return compressedSize, nil
 }
 
-// DecompressWALFile decompresses a gzipped WAL file
+// DecompressWALFile decompresses a compressed WAL file (gzip or zstd)
 func (c *Compressor) DecompressWALFile(sourcePath, destPath string) (int64, error) {
 	return c.DecompressWALFileContext(context.Background(), sourcePath, destPath)
 }
 
-// DecompressWALFileContext decompresses a gzipped WAL file with context for cancellation
+// DecompressWALFileContext decompresses a compressed WAL file with context for cancellation
 func (c *Compressor) DecompressWALFileContext(ctx context.Context, sourcePath, destPath string) (int64, error) {
 	c.log.Debug("Decompressing WAL file", "source", sourcePath, "dest", destPath)
 
@@ -116,12 +129,12 @@ func (c *Compressor) DecompressWALFileContext(ctx context.Context, sourcePath, d
 	}
 	defer srcFile.Close()
 
-	// Create parallel gzip reader for faster decompression
-	gzReader, err := pgzip.NewReader(srcFile)
+	// Create decompression reader (auto-detects gzip/zstd from file extension)
+	decomp, err := compression.NewDecompressor(srcFile, sourcePath)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create gzip reader (file may be corrupted): %w", err)
+		return 0, fmt.Errorf("failed to create decompression reader (file may be corrupted): %w", err)
 	}
-	defer gzReader.Close()
+	defer decomp.Close()
 
 	// Create destination file
 	dstFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
@@ -131,7 +144,7 @@ func (c *Compressor) DecompressWALFileContext(ctx context.Context, sourcePath, d
 	defer dstFile.Close()
 
 	// Decompress with context support
-	written, err := fs.CopyWithContext(ctx, dstFile, gzReader)
+	written, err := fs.CopyWithContext(ctx, dstFile, decomp.Reader)
 	if err != nil {
 		os.Remove(destPath) // Clean up partial file
 		return 0, fmt.Errorf("decompression failed: %w", err)
@@ -149,7 +162,7 @@ func (c *Compressor) DecompressWALFileContext(ctx context.Context, sourcePath, d
 // CompressAndArchive compresses a WAL file and archives it in one operation
 func (c *Compressor) CompressAndArchive(walPath, archiveDir string, level int) (archivePath string, compressedSize int64, err error) {
 	walFileName := filepath.Base(walPath)
-	compressedFileName := walFileName + ".gz"
+	compressedFileName := walFileName + compression.FileExtension(c.algo)
 	archivePath = filepath.Join(archiveDir, compressedFileName)
 
 	// Ensure archive directory exists
@@ -195,15 +208,15 @@ func (c *Compressor) VerifyCompressedFile(compressedPath string) error {
 	}
 	defer file.Close()
 
-	gzReader, err := pgzip.NewReader(file)
+	decomp, err := compression.NewDecompressor(file, compressedPath)
 	if err != nil {
-		return fmt.Errorf("invalid gzip format: %w", err)
+		return fmt.Errorf("invalid compressed format: %w", err)
 	}
-	defer gzReader.Close()
+	defer decomp.Close()
 
 	// Read first few bytes to verify decompression works
 	buf := make([]byte, 1024)
-	_, err = gzReader.Read(buf)
+	_, err = decomp.Reader.Read(buf)
 	if err != nil && err != io.EOF {
 		return fmt.Errorf("decompression verification failed: %w", err)
 	}

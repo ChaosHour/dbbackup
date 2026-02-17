@@ -49,8 +49,12 @@ func ListDatabasesFromExtractedDir(ctx context.Context, extractedDir string, log
 		// Extract database name from filename
 		dbName := filename
 		dbName = strings.TrimSuffix(dbName, ".dump.gz")
+		dbName = strings.TrimSuffix(dbName, ".dump.zst")
+		dbName = strings.TrimSuffix(dbName, ".dump.zstd")
 		dbName = strings.TrimSuffix(dbName, ".dump")
 		dbName = strings.TrimSuffix(dbName, ".sql.gz")
+		dbName = strings.TrimSuffix(dbName, ".sql.zst")
+		dbName = strings.TrimSuffix(dbName, ".sql.zstd")
 		dbName = strings.TrimSuffix(dbName, ".sql")
 
 		info, err := entry.Info()
@@ -141,8 +145,12 @@ func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.
 			// Extract database name from filename (remove .dump, .dump.gz, .sql, .sql.gz)
 			dbName := filename
 			dbName = strings.TrimSuffix(dbName, ".dump.gz")
+			dbName = strings.TrimSuffix(dbName, ".dump.zst")
+			dbName = strings.TrimSuffix(dbName, ".dump.zstd")
 			dbName = strings.TrimSuffix(dbName, ".dump")
 			dbName = strings.TrimSuffix(dbName, ".sql.gz")
+			dbName = strings.TrimSuffix(dbName, ".sql.zst")
+			dbName = strings.TrimSuffix(dbName, ".sql.zstd")
 			dbName = strings.TrimSuffix(dbName, ".sql")
 
 			databases = append(databases, DatabaseInfo{
@@ -429,8 +437,12 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 			// Extract database name
 			dbName := filename
 			dbName = strings.TrimSuffix(dbName, ".dump.gz")
+			dbName = strings.TrimSuffix(dbName, ".dump.zst")
+			dbName = strings.TrimSuffix(dbName, ".dump.zstd")
 			dbName = strings.TrimSuffix(dbName, ".dump")
 			dbName = strings.TrimSuffix(dbName, ".sql.gz")
+			dbName = strings.TrimSuffix(dbName, ".sql.zst")
+			dbName = strings.TrimSuffix(dbName, ".sql.zstd")
 			dbName = strings.TrimSuffix(dbName, ".sql")
 
 			if targetDBs[dbName] {

@@ -363,7 +363,10 @@ func (e *CloneEngine) Backup(ctx context.Context, opts *BackupOptions) (*BackupR
 	}
 
 	if opts.Compress || e.config.Compress {
-		meta.Compression = "gzip"
+		meta.Compression = e.config.CompressFormat
+		if meta.Compression == "" {
+			meta.Compression = "gzip"
+		}
 	}
 
 	if err := meta.Save(); err != nil {

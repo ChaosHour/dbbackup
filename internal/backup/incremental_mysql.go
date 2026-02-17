@@ -12,8 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/klauspost/pgzip"
-
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
@@ -199,10 +198,15 @@ func (e *MySQLIncrementalEngine) CreateIncrementalBackup(ctx context.Context, co
 		return fmt.Errorf("failed to load base backup info: %w", err)
 	}
 
-	// Generate output filename: dbname_incr_TIMESTAMP.tar.gz
+	// Generate output filename with appropriate compression extension
 	timestamp := time.Now().Format("20060102_150405")
+	algo := compression.DetectAlgorithm(config.BaseBackupPath)
+	if algo == compression.AlgorithmNone {
+		algo = compression.AlgorithmGzip // default
+	}
+	ext := ".tar" + compression.FileExtension(algo)
 	outputFile := filepath.Join(filepath.Dir(config.BaseBackupPath),
-		fmt.Sprintf("%s_incr_%s.tar.gz", baseInfo.Database, timestamp))
+		fmt.Sprintf("%s_incr_%s%s", baseInfo.Database, timestamp, ext))
 
 	e.log.Info("Creating incremental archive", "output", outputFile)
 
@@ -241,7 +245,7 @@ func (e *MySQLIncrementalEngine) CreateIncrementalBackup(ctx context.Context, co
 		BackupFile:   outputFile,
 		SizeBytes:    stat.Size(),
 		SHA256:       checksum,
-		Compression:  "gzip",
+		Compression:  string(algo),
 		BackupType:   "incremental",
 		BaseBackup:   filepath.Base(config.BaseBackupPath),
 		Incremental: &metadata.IncrementalMetadata{
@@ -376,19 +380,23 @@ func (e *MySQLIncrementalEngine) createTarGz(ctx context.Context, outputFile str
 	}
 	defer outFile.Close()
 
-	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(outFile)
 	defer sw.Shutdown()
 
-	// Create parallel gzip writer for faster compression
-	gzWriter, err := pgzip.NewWriterLevel(sw, config.CompressionLevel)
-	if err != nil {
-		return fmt.Errorf("failed to create gzip writer: %w", err)
+	// Create compressor based on output file extension (supports gzip and zstd)
+	algo := compression.DetectAlgorithm(outputFile)
+	if algo == compression.AlgorithmNone {
+		algo = compression.AlgorithmGzip // default
 	}
-	defer gzWriter.Close()
+	comp, err := compression.NewCompressor(sw, algo, config.CompressionLevel)
+	if err != nil {
+		return fmt.Errorf("failed to create compressor: %w", err)
+	}
+	defer comp.Close()
 
 	// Create tar writer
-	tarWriter := tar.NewWriter(gzWriter)
+	tarWriter := tar.NewWriter(comp)
 	defer tarWriter.Close()
 
 	// Add each changed file to archive
@@ -456,7 +464,7 @@ func (e *MySQLIncrementalEngine) addFileToTar(tarWriter *tar.Writer, changedFile
 	return nil
 }
 
-// extractTarGz extracts a tar.gz archive to the specified directory
+// extractTarGz extracts a compressed tar archive to the specified directory
 // Files are extracted with their original permissions and timestamps
 func (e *MySQLIncrementalEngine) extractTarGz(ctx context.Context, archivePath, targetDir string) error {
 	// Open archive file
@@ -466,15 +474,15 @@ func (e *MySQLIncrementalEngine) extractTarGz(ctx context.Context, archivePath, 
 	}
 	defer archiveFile.Close()
 
-	// Create parallel gzip reader for faster decompression
-	gzReader, err := pgzip.NewReader(archiveFile)
+	// Create decompression reader (supports gzip and zstd based on file extension)
+	decomp, err := compression.NewDecompressor(archiveFile, archivePath)
 	if err != nil {
-		return fmt.Errorf("failed to create gzip reader: %w", err)
+		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
-	defer gzReader.Close()
+	defer decomp.Close()
 
 	// Create tar reader
-	tarReader := tar.NewReader(gzReader)
+	tarReader := tar.NewReader(decomp.Reader)
 
 	// Extract each file
 	fileCount := 0

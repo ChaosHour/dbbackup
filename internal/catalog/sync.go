@@ -39,8 +39,10 @@ func (c *SQLiteCatalog) SyncFromDirectory(ctx context.Context, dir string) (*Syn
 		filepath.Join(dir, "*.sql.zst"),
 		filepath.Join(dir, "*.dump"),
 		filepath.Join(dir, "*.dump.gz"),
+		filepath.Join(dir, "*.dump.zst"),
 		filepath.Join(dir, "*", "*.sql"),
 		filepath.Join(dir, "*", "*.sql.gz"),
+		filepath.Join(dir, "*", "*.sql.zst"),
 	}
 	metaSet := make(map[string]bool)
 	for _, m := range matches {

@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/dedup"
 
-	"github.com/klauspost/pgzip"
 	"github.com/spf13/cobra"
 )
 
@@ -286,21 +286,23 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 
 	// Check for compressed input and warn/handle
 	var reader io.Reader = file
-	isGzipped := strings.HasSuffix(strings.ToLower(inputPath), ".gz")
-	if isGzipped && !dedupDecompress {
-		fmt.Printf("Warning: Input appears to be gzip compressed (.gz)\n")
+	isCompressed := compression.IsCompressed(inputPath)
+	if isCompressed && !dedupDecompress {
+		algo := compression.DetectAlgorithm(inputPath)
+		fmt.Printf("Warning: Input appears to be %s compressed\n", algo)
 		fmt.Printf("  Compressed data typically has poor dedup ratios (<10%%).\n")
 		fmt.Printf("  Consider using --decompress-input for better deduplication.\n\n")
 	}
 
-	if isGzipped && dedupDecompress {
-		fmt.Printf("Auto-decompressing gzip input for better dedup ratio...\n")
-		gzReader, err := pgzip.NewReader(file)
+	if isCompressed && dedupDecompress {
+		algo := compression.DetectAlgorithm(inputPath)
+		fmt.Printf("Auto-decompressing %s input for better dedup ratio...\n", algo)
+		decomp, err := compression.NewDecompressor(file, inputPath)
 		if err != nil {
-			return fmt.Errorf("failed to decompress gzip input: %w", err)
+			return fmt.Errorf("failed to decompress input: %w", err)
 		}
-		defer gzReader.Close()
-		reader = gzReader
+		defer decomp.Close()
+		reader = decomp.Reader
 	}
 
 	// Setup dedup storage
@@ -342,7 +344,7 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 		base := filepath.Base(inputPath)
 		ext := filepath.Ext(base)
 		// Remove .gz extension if decompressing
-		if isGzipped && dedupDecompress {
+		if isCompressed && dedupDecompress {
 			base = strings.TrimSuffix(base, ext)
 			ext = filepath.Ext(base)
 		}
@@ -351,7 +353,7 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Creating deduplicated backup: %s\n", manifestID)
 	fmt.Printf("Input: %s (%s)\n", inputPath, formatBytes(info.Size()))
-	if isGzipped && dedupDecompress {
+	if isCompressed && dedupDecompress {
 		fmt.Printf("Mode: Decompressing before chunking\n")
 	}
 	fmt.Printf("Store: %s\n", basePath)
@@ -363,8 +365,8 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 	h := sha256.New()
 	var chunkReader io.Reader
 
-	if isGzipped && dedupDecompress {
-		// Can't seek on gzip stream - hash will be computed inline
+	if isCompressed && dedupDecompress {
+		// Can't seek on compressed stream - hash will be computed inline
 		chunkReader = io.TeeReader(reader, h)
 	} else {
 		// Regular file - hash first, then reset and chunk
@@ -449,7 +451,7 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 		Encrypted:    dedupEncrypt,
 		Compressed:   dedupCompress,
 		SHA256:       fileHash,
-		Decompressed: isGzipped && dedupDecompress, // Track if we decompressed
+		Decompressed: isCompressed && dedupDecompress, // Track if we decompressed
 	}
 
 	if err := manifestStore.Save(manifest); err != nil {

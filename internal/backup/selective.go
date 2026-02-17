@@ -10,7 +10,6 @@ package backup
 
 import (
 	"bufio"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -357,11 +356,16 @@ func (t *TableBackup) BackupTable(ctx context.Context, schema, table string, w i
 	}
 
 	var writer io.Writer = w
-	var gzWriter *gzip.Writer
+	var compCloser2 io.Closer
 	if t.config.Compress {
-		gzWriter, _ = gzip.NewWriterLevel(w, t.config.CompressLevel)
-		writer = gzWriter
-		defer gzWriter.Close()
+		algo := compression.AlgorithmGzip // default for stream output
+		comp, err := compression.NewCompressor(w, algo, t.config.CompressLevel)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create compressor: %w", err)
+		}
+		writer = comp
+		compCloser2 = comp
+		defer compCloser2.Close()
 	}
 
 	result := &TableBackupResult{
@@ -519,12 +523,19 @@ func (t *TableBackup) BackupToFile(ctx context.Context, outputPath string) error
 	defer file.Close()
 
 	var writer io.Writer = file
-	var gzWriter *gzip.Writer
-	if t.config.Compress || strings.HasSuffix(outputPath, ".gz") ||
-		strings.HasSuffix(outputPath, ".zst") || strings.HasSuffix(outputPath, ".zstd") {
-		gzWriter, _ = gzip.NewWriterLevel(file, t.config.CompressLevel)
-		writer = gzWriter
-		defer gzWriter.Close()
+	var compCloser io.Closer
+	if t.config.Compress || compression.IsCompressed(outputPath) {
+		algo := compression.DetectAlgorithm(outputPath)
+		if algo == compression.AlgorithmNone {
+			algo = compression.AlgorithmGzip // default
+		}
+		comp, err := compression.NewCompressor(file, algo, t.config.CompressLevel)
+		if err != nil {
+			return fmt.Errorf("failed to create compressor: %w", err)
+		}
+		writer = comp
+		compCloser = comp
+		defer compCloser.Close()
 	}
 
 	bufWriter := bufio.NewWriterSize(writer, 1024*1024)

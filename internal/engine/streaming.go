@@ -211,9 +211,10 @@ type DirectBackupConfig struct {
 	WorkerCount int
 
 	// Options
-	Compression   bool
-	Encryption    string
-	EncryptionKey string
+	Compression          bool
+	CompressionAlgorithm string // "gzip" or "zstd" (default: "gzip")
+	Encryption           string
+	EncryptionKey        string
 }
 
 // Backup performs a direct backup to cloud
@@ -281,9 +282,13 @@ func (d *DirectCloudBackupEngine) Backup(ctx context.Context, cfg DirectBackupCo
 	}
 
 	// Build backup options
+	compFmt := cfg.CompressionAlgorithm
+	if compFmt == "" {
+		compFmt = "gzip"
+	}
 	opts := &BackupOptions{
 		Compress:       cfg.Compression,
-		CompressFormat: "gzip",
+		CompressFormat: compFmt,
 		EngineOptions: map[string]interface{}{
 			"encryption_key": cfg.EncryptionKey,
 		},

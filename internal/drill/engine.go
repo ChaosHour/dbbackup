@@ -9,11 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/database"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
-
-	"github.com/klauspost/pgzip"
 )
 
 // Engine executes DR drills
@@ -241,14 +240,15 @@ func (e *Engine) buildContainerConfig(config *DrillConfig) *ContainerConfig {
 	}
 }
 
-// decompressWithPgzip decompresses a .gz file using in-process pgzip
-func (e *Engine) decompressWithPgzip(srcPath string) (string, error) {
-	if !strings.HasSuffix(srcPath, ".gz") {
+// decompressBackup decompresses a .gz or .zst file using the compression package
+func (e *Engine) decompressBackup(srcPath string) (string, error) {
+	if !compression.IsCompressed(srcPath) {
 		return srcPath, nil // Not compressed
 	}
 
-	dstPath := strings.TrimSuffix(srcPath, ".gz")
-	e.log.Info("Decompressing with pgzip", "src", srcPath, "dst", dstPath)
+	dstPath := compression.StripExtension(srcPath)
+	algo := compression.DetectAlgorithm(srcPath)
+	e.log.Info("Decompressing backup", "src", srcPath, "dst", dstPath, "algorithm", string(algo))
 
 	srcFile, err := os.Open(srcPath)
 	if err != nil {
@@ -256,11 +256,11 @@ func (e *Engine) decompressWithPgzip(srcPath string) (string, error) {
 	}
 	defer srcFile.Close()
 
-	gz, err := pgzip.NewReader(srcFile)
+	decomp, err := compression.NewDecompressor(srcFile, srcPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create pgzip reader: %w", err)
+		return "", fmt.Errorf("failed to create decompressor: %w", err)
 	}
-	defer gz.Close()
+	defer decomp.Close()
 
 	dstFile, err := os.Create(dstPath)
 	if err != nil {
@@ -268,9 +268,9 @@ func (e *Engine) decompressWithPgzip(srcPath string) (string, error) {
 	}
 	defer dstFile.Close()
 
-	// Use context.Background() since decompressWithPgzip doesn't take context
+	// Use context.Background() since decompressBackup doesn't take context
 	// The parent restoreBackup function handles context cancellation
-	if _, err := fs.CopyWithContext(context.Background(), dstFile, gz); err != nil {
+	if _, err := fs.CopyWithContext(context.Background(), dstFile, decomp.Reader); err != nil {
 		os.Remove(dstPath)
 		return "", fmt.Errorf("decompression failed: %w", err)
 	}
@@ -282,10 +282,10 @@ func (e *Engine) decompressWithPgzip(srcPath string) (string, error) {
 func (e *Engine) restoreBackup(ctx context.Context, config *DrillConfig, containerID string, containerConfig *ContainerConfig) error {
 	backupPath := config.BackupPath
 
-	// Decompress on host with pgzip before copying to container
-	if strings.HasSuffix(backupPath, ".gz") {
-		e.log.Info("[DECOMPRESS] Decompressing backup with pgzip on host...")
-		decompressedPath, err := e.decompressWithPgzip(backupPath)
+	// Decompress on host before copying to container
+	if compression.IsCompressed(backupPath) {
+		e.log.Info("[DECOMPRESS] Decompressing backup on host...")
+		decompressedPath, err := e.decompressBackup(backupPath)
 		if err != nil {
 			return fmt.Errorf("failed to decompress backup: %w", err)
 		}

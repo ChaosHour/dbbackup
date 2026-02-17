@@ -117,6 +117,8 @@ func (dp *DirectoryPicker) loadItems() {
 			if strings.HasSuffix(entry.Name(), ".sql") ||
 				strings.HasSuffix(entry.Name(), ".dump") ||
 				strings.HasSuffix(entry.Name(), ".gz") ||
+				strings.HasSuffix(entry.Name(), ".zst") ||
+				strings.HasSuffix(entry.Name(), ".zstd") ||
 				strings.HasSuffix(entry.Name(), ".tar") {
 				files = append(files, item)
 			}

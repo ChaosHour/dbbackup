@@ -519,7 +519,7 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				if c.BackupOutputFormat == "plain" {
 					return "Plain (.sql)"
 				}
-				return "Compressed (.tar.gz/.sql.gz)"
+				return "Compressed (.tar.gz/.sql.gz or .tar.zst/.sql.zst)"
 			},
 			Update: func(c *config.Config, v string) error {
 				// Toggle between compressed and plain
@@ -1057,7 +1057,7 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				return nil
 			},
 			Type:        "string",
-			Description: fmt.Sprintf("Filename prefix for MySQL backups (default: %s). Example: %s_shop_20260212_0645.sql.gz",
+			Description: fmt.Sprintf("Filename prefix for MySQL backups (default: %s). Example: %s_shop_20260212_0645.sql.gz/.sql.zst",
 				config.DefaultBackupPrefix("mysql"), config.DefaultBackupPrefix("mysql")),
 		},
 		{
@@ -1078,7 +1078,7 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 				return nil
 			},
 			Type:        "string",
-			Description: fmt.Sprintf("Filename prefix for MariaDB backups (default: %s). Example: %s_shop_20260212_0645.sql.gz",
+			Description: fmt.Sprintf("Filename prefix for MariaDB backups (default: %s). Example: %s_shop_20260212_0645.sql.gz/.sql.zst",
 				config.DefaultBackupPrefix("mariadb"), config.DefaultBackupPrefix("mariadb")),
 		},
 		// ─── BLOB Optimization Settings (Page 3) ────────────────────────────

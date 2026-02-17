@@ -13,10 +13,9 @@ import (
 	"time"
 
 	"dbbackup/internal/cleanup"
+	"dbbackup/internal/compression"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
-
-	"github.com/klauspost/pgzip"
 )
 
 // RestoreErrorReport contains comprehensive information about a restore failure
@@ -261,14 +260,14 @@ func (ec *ErrorCollector) getSurroundingLines(lineNum int, context int) []string
 	}
 	defer file.Close()
 
-	// Handle compressed files
-	if strings.HasSuffix(ec.archivePath, ".gz") {
-		gz, err := pgzip.NewReader(file)
+	// Handle compressed files (gzip and zstd)
+	if compression.IsCompressed(ec.archivePath) {
+		decomp, err := compression.NewDecompressor(file, ec.archivePath)
 		if err != nil {
 			return nil
 		}
-		defer gz.Close()
-		reader = gz
+		defer decomp.Close()
+		reader = decomp.Reader
 	} else {
 		reader = file
 	}

@@ -1047,22 +1047,26 @@ func (d *Diagnoser) tryFastPathWithMetadata(ctx context.Context, filePath string
 		return false
 	}
 
-	// Quick header check - verify it's actually a gzip file (first 2 bytes)
+	// Quick header check - verify it's actually a compressed archive
 	file, err := os.Open(filePath)
 	if err != nil {
 		return false
 	}
 	defer file.Close()
 
-	header := make([]byte, 2)
-	if _, err := file.Read(header); err != nil {
+	header := make([]byte, 4)
+	n, err := file.Read(header)
+	if err != nil || n < 2 {
 		return false
 	}
 	// Gzip magic number: 0x1f 0x8b
-	if header[0] != 0x1f || header[1] != 0x8b {
+	isGzip := header[0] == 0x1f && header[1] == 0x8b
+	// Zstd magic number: 0x28 0xB5 0x2F 0xFD
+	isZstd := n >= 4 && header[0] == 0x28 && header[1] == 0xB5 && header[2] == 0x2F && header[3] == 0xFD
+	if !isGzip && !isZstd {
 		result.IsValid = false
 		result.IsCorrupted = true
-		result.Errors = append(result.Errors, "File is not a valid gzip archive")
+		result.Errors = append(result.Errors, "File is not a valid gzip or zstd archive")
 		return true // We handled it, don't fall through to slow path
 	}
 

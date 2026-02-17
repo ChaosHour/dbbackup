@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
 )
@@ -158,10 +159,15 @@ func (e *PostgresIncrementalEngine) CreateIncrementalBackup(ctx context.Context,
 		return fmt.Errorf("failed to load base backup info: %w", err)
 	}
 
-	// Generate output filename: dbname_incr_TIMESTAMP.tar.gz
+	// Generate output filename with appropriate compression extension
 	timestamp := time.Now().Format("20060102_150405")
+	algo := compression.DetectAlgorithm(config.BaseBackupPath)
+	if algo == compression.AlgorithmNone {
+		algo = compression.AlgorithmGzip // default
+	}
+	ext := ".tar" + compression.FileExtension(algo)
 	outputFile := filepath.Join(filepath.Dir(config.BaseBackupPath),
-		fmt.Sprintf("%s_incr_%s.tar.gz", baseInfo.Database, timestamp))
+		fmt.Sprintf("%s_incr_%s%s", baseInfo.Database, timestamp, ext))
 
 	e.log.Info("Creating incremental archive", "output", outputFile)
 
@@ -200,7 +206,7 @@ func (e *PostgresIncrementalEngine) CreateIncrementalBackup(ctx context.Context,
 		BackupFile:   outputFile,
 		SizeBytes:    stat.Size(),
 		SHA256:       checksum,
-		Compression:  "gzip",
+		Compression:  string(algo),
 		BackupType:   "incremental",
 		BaseBackup:   filepath.Base(config.BaseBackupPath),
 		Incremental: &metadata.IncrementalMetadata{

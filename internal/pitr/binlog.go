@@ -17,9 +17,8 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
-
-	"github.com/klauspost/pgzip"
 )
 
 // BinlogPosition represents a MySQL binary log position
@@ -161,6 +160,7 @@ type BinlogManager struct {
 	binlogDir       string
 	archiveDir      string
 	compression     bool
+	compressionAlgo string
 	encryption      bool
 	encryptionKey   []byte
 	serverType      DatabaseType // mysql or mariadb
@@ -168,21 +168,23 @@ type BinlogManager struct {
 
 // BinlogManagerConfig holds configuration for BinlogManager
 type BinlogManagerConfig struct {
-	BinlogDir     string
-	ArchiveDir    string
-	Compression   bool
-	Encryption    bool
-	EncryptionKey []byte
+	BinlogDir       string
+	ArchiveDir      string
+	Compression     bool
+	CompressionAlgo string // "gzip" or "zstd" (default: "gzip")
+	Encryption      bool
+	EncryptionKey   []byte
 }
 
 // NewBinlogManager creates a new BinlogManager
 func NewBinlogManager(config BinlogManagerConfig) (*BinlogManager, error) {
 	m := &BinlogManager{
-		binlogDir:     config.BinlogDir,
-		archiveDir:    config.ArchiveDir,
-		compression:   config.Compression,
-		encryption:    config.Encryption,
-		encryptionKey: config.EncryptionKey,
+		binlogDir:       config.BinlogDir,
+		archiveDir:      config.ArchiveDir,
+		compression:     config.Compression,
+		compressionAlgo: config.CompressionAlgo,
+		encryption:      config.Encryption,
+		encryptionKey:   config.EncryptionKey,
 	}
 
 	// Find mysqlbinlog executable
@@ -417,7 +419,8 @@ func (m *BinlogManager) ArchiveBinlog(ctx context.Context, binlog *BinlogFile) (
 
 	archiveName := binlog.Name
 	if m.compression {
-		archiveName += ".gz"
+		algo, _ := compression.ParseAlgorithm(m.compressionAlgo)
+		archiveName += compression.FileExtension(algo)
 	}
 	archivePath := filepath.Join(m.archiveDir, archiveName)
 
@@ -441,17 +444,21 @@ func (m *BinlogManager) ArchiveBinlog(ctx context.Context, binlog *BinlogFile) (
 	defer dst.Close()
 
 	var writer io.Writer = dst
-	var gzWriter *pgzip.Writer
+	var comp *compression.Compressor
 	var sw *fs.SafeWriter
 
 	if m.compression {
-		// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+		algo, _ := compression.ParseAlgorithm(m.compressionAlgo)
+		// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 		sw = fs.NewSafeWriter(dst)
-		gzWriter = pgzip.NewWriter(sw)
-		writer = gzWriter
+		comp, err = compression.NewCompressor(sw, algo, 0)
+		if err != nil {
+			return nil, fmt.Errorf("creating compressor: %w", err)
+		}
+		writer = comp
 		defer func() {
-			if gzWriter != nil {
-				gzWriter.Close()
+			if comp != nil {
+				comp.Close()
 			}
 			if sw != nil {
 				sw.Shutdown()
@@ -471,11 +478,11 @@ func (m *BinlogManager) ArchiveBinlog(ctx context.Context, binlog *BinlogFile) (
 		return nil, fmt.Errorf("copying binlog: %w", err)
 	}
 
-	// Close gzip writer to flush
-	if gzWriter != nil {
-		if err := gzWriter.Close(); err != nil {
+	// Close compressor to flush
+	if comp != nil {
+		if err := comp.Close(); err != nil {
 			os.Remove(archivePath)
-			return nil, fmt.Errorf("closing gzip writer: %w", err)
+			return nil, fmt.Errorf("closing compressor: %w", err)
 		}
 	}
 
@@ -538,6 +545,12 @@ func (m *BinlogManager) ListArchivedBinlogs(ctx context.Context) ([]BinlogArchiv
 		compressed := false
 		if strings.HasSuffix(originalName, ".gz") {
 			originalName = strings.TrimSuffix(originalName, ".gz")
+			compressed = true
+		} else if strings.HasSuffix(originalName, ".zst") {
+			originalName = strings.TrimSuffix(originalName, ".zst")
+			compressed = true
+		} else if strings.HasSuffix(originalName, ".zstd") {
+			originalName = strings.TrimSuffix(originalName, ".zstd")
 			compressed = true
 		}
 

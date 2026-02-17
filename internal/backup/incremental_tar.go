@@ -7,12 +7,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/klauspost/pgzip"
-
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
 )
 
-// createTarGz creates a tar.gz archive with the specified changed files
+// createTarGz creates a compressed tar archive with the specified changed files
 func (e *PostgresIncrementalEngine) createTarGz(ctx context.Context, outputFile string, changedFiles []ChangedFile, config *IncrementalBackupConfig) error {
 	// Create output file with secure permissions (0600)
 	outFile, err := fs.SecureCreate(outputFile)
@@ -21,19 +20,23 @@ func (e *PostgresIncrementalEngine) createTarGz(ctx context.Context, outputFile 
 	}
 	defer outFile.Close()
 
-	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(outFile)
 	defer sw.Shutdown()
 
-	// Create parallel gzip writer for faster compression
-	gzWriter, err := pgzip.NewWriterLevel(sw, config.CompressionLevel)
-	if err != nil {
-		return fmt.Errorf("failed to create gzip writer: %w", err)
+	// Create compressor based on output file extension (supports gzip and zstd)
+	algo := compression.DetectAlgorithm(outputFile)
+	if algo == compression.AlgorithmNone {
+		algo = compression.AlgorithmGzip // default
 	}
-	defer gzWriter.Close()
+	comp, err := compression.NewCompressor(sw, algo, config.CompressionLevel)
+	if err != nil {
+		return fmt.Errorf("failed to create compressor: %w", err)
+	}
+	defer comp.Close()
 
 	// Create tar writer
-	tarWriter := tar.NewWriter(gzWriter)
+	tarWriter := tar.NewWriter(comp)
 	defer tarWriter.Close()
 
 	// Add each changed file to archive

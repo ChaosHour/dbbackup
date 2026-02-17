@@ -1677,9 +1677,9 @@ func (e *Engine) RestoreSingleFromCluster(ctx context.Context, clusterArchivePat
 		return fmt.Errorf("archive not found: %s", clusterArchivePath)
 	}
 
-	// Verify it's a cluster archive
+	// Verify it's a cluster archive (supports both .tar.gz and .tar.zst)
 	format := DetectArchiveFormat(clusterArchivePath)
-	if format != FormatClusterTarGz {
+	if format != FormatClusterTarGz && format != FormatClusterTarZst {
 		operation.Fail("Not a cluster archive")
 		return fmt.Errorf("not a cluster archive: %s (format: %s)", clusterArchivePath, format)
 	}

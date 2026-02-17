@@ -240,11 +240,11 @@ func (m ArchiveBrowserModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				// For restore-cluster mode: check if format can be used for cluster restore
-				// - .tar.gz: dbbackup cluster format (works with pg_restore)
-				// - .sql/.sql.gz: pg_dumpall format (works with native engine or psql)
+				// - .tar.gz/.tar.zst: dbbackup cluster format (works with pg_restore)
+				// - .sql/.sql.gz/.sql.zst: pg_dumpall format (works with native engine or psql)
 				if m.mode == "restore-cluster" && !selected.Format.CanBeClusterRestore() {
 					m.message = errorStyle.Render(fmt.Sprintf("⚠️  %s cannot be used for cluster restore.", selected.Name)) +
-						"\n\n   Supported formats: .tar.gz (dbbackup), .sql, .sql.gz (pg_dumpall)"
+						"\n\n   Supported formats: .tar.gz/.tar.zst (dbbackup), .sql, .sql.gz/.sql.zst (pg_dumpall)"
 					return m, nil
 				}
 

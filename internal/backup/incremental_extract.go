@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/klauspost/pgzip"
+	"dbbackup/internal/compression"
 )
 
 // extractTarGz extracts a tar.gz archive to the specified directory
@@ -21,15 +21,15 @@ func (e *PostgresIncrementalEngine) extractTarGz(ctx context.Context, archivePat
 	}
 	defer archiveFile.Close()
 
-	// Create parallel gzip reader for faster decompression
-	gzReader, err := pgzip.NewReader(archiveFile)
+	// Create decompression reader (supports gzip and zstd based on file extension)
+	decomp, err := compression.NewDecompressor(archiveFile, archivePath)
 	if err != nil {
-		return fmt.Errorf("failed to create gzip reader: %w", err)
+		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
-	defer gzReader.Close()
+	defer decomp.Close()
 
 	// Create tar reader
-	tarReader := tar.NewReader(gzReader)
+	tarReader := tar.NewReader(decomp.Reader)
 
 	// Extract each file
 	fileCount := 0

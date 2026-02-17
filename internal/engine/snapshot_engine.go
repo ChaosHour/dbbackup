@@ -12,11 +12,10 @@ import (
 
 	"dbbackup/internal/engine/snapshot"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
-
-	"github.com/klauspost/pgzip"
 )
 
 // SnapshotEngine implements BackupEngine using filesystem snapshots
@@ -130,7 +129,12 @@ func (e *SnapshotEngine) Backup(ctx context.Context, opts *BackupOptions) (*Back
 	timestamp := time.Now().Format("20060102_150405")
 	outputFile := opts.OutputFile
 	if outputFile == "" {
-		ext := ".tar.gz"
+		// Use extension based on configured compression algorithm
+		algo := compression.DetectAlgorithm(opts.OutputFile)
+		if algo == compression.AlgorithmNone {
+			algo = compression.AlgorithmGzip // default
+		}
+		ext := ".tar" + compression.FileExtension(algo)
 		outputFile = filepath.Join(opts.OutputDir, fmt.Sprintf("snapshot_%s_%s%s", opts.Database, timestamp, ext))
 	}
 
@@ -235,7 +239,7 @@ func (e *SnapshotEngine) Backup(ctx context.Context, opts *BackupOptions) (*Back
 		SizeBytes:    size,
 		SHA256:       checksum,
 		BackupType:   "full",
-		Compression:  "gzip",
+		Compression:  string(compression.DetectAlgorithm(outputFile)),
 		ExtraInfo:    make(map[string]string),
 	}
 	meta.ExtraInfo["backup_engine"] = "snapshot"
@@ -298,24 +302,27 @@ func (e *SnapshotEngine) streamSnapshot(ctx context.Context, sourcePath, destFil
 	// Wrap in counting writer for progress
 	countWriter := &countingWriter{w: outFile}
 
-	// Wrap in SafeWriter to prevent pgzip goroutine panics on early close
+	// Wrap in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(countWriter)
 	defer sw.Shutdown()
 
-	// Create parallel gzip writer for faster compression
-	level := pgzip.DefaultCompression
-	if e.config.Threads > 1 {
-		// pgzip already uses parallel compression
-		level = pgzip.BestSpeed // Faster for parallel streaming
+	// Detect compression algorithm from output file extension
+	algo := compression.DetectAlgorithm(destFile)
+	if algo == compression.AlgorithmNone {
+		algo = compression.AlgorithmGzip // default
 	}
-	gzWriter, err := pgzip.NewWriterLevel(sw, level)
+	level := 6 // default
+	if e.config.Threads > 1 {
+		level = 1 // fastest for parallel streaming
+	}
+	comp, err := compression.NewCompressor(sw, algo, level)
 	if err != nil {
 		return 0, err
 	}
-	defer gzWriter.Close()
+	defer comp.Close()
 
 	// Create tar writer
-	tarWriter := tar.NewWriter(gzWriter)
+	tarWriter := tar.NewWriter(comp)
 	defer tarWriter.Close()
 
 	// Count files for progress
@@ -400,9 +407,9 @@ func (e *SnapshotEngine) streamSnapshot(ctx context.Context, sourcePath, destFil
 		return 0, err
 	}
 
-	// Close tar and gzip to flush
+	// Close tar and compressor to flush
 	tarWriter.Close()
-	gzWriter.Close()
+	comp.Close()
 
 	return countWriter.count, nil
 }
@@ -453,15 +460,15 @@ func (e *SnapshotEngine) Restore(ctx context.Context, opts *RestoreOptions) erro
 	}
 	defer file.Close()
 
-	// Create parallel gzip reader for faster decompression
-	gzReader, err := pgzip.NewReader(file)
+	// Create decompression reader (supports gzip and zstd based on file extension)
+	decomp, err := compression.NewDecompressor(file, opts.SourcePath)
 	if err != nil {
-		return fmt.Errorf("failed to create gzip reader: %w", err)
+		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
-	defer gzReader.Close()
+	defer decomp.Close()
 
 	// Create tar reader
-	tarReader := tar.NewReader(gzReader)
+	tarReader := tar.NewReader(decomp.Reader)
 
 	// Extract files
 	for {

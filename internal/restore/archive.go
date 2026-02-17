@@ -13,12 +13,11 @@ import (
 	"sync"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
-
-	"github.com/klauspost/pgzip"
 )
 
-// extractArchive extracts a tar.gz archive to the destination directory
+// extractArchive extracts a compressed tar archive to the destination directory
 // Uses progress reporting if a callback is set, otherwise uses fast shell extraction
 func (e *Engine) extractArchive(ctx context.Context, archivePath, destDir string) error {
 	// If progress callback is set, use Go's archive/tar for progress tracking
@@ -53,22 +52,22 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 		desc:      "Extracting archive",
 	}
 
-	// Create parallel gzip reader for faster decompression
-	gzReader, err := pgzip.NewReader(progressReader)
+	// Create decompression reader (supports gzip and zstd based on file extension)
+	decomp, err := compression.NewDecompressor(progressReader, archivePath)
 	if err != nil {
 		file.Close()
-		return fmt.Errorf("failed to create gzip reader: %w", err)
+		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
 
 	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
 	// pgzip spawns internal read-ahead goroutines that block on file.Read()
-	// If context is cancelled, we MUST close both gzReader and file to unblock them
+	// If context is cancelled, we MUST close both decompressor and file to unblock them
 	// Use sync.Once to prevent race between context watcher and defer
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			gzReader.Close() // Close gzip reader first (stops read-ahead goroutines)
-			file.Close()     // Then close underlying file (unblocks any pending reads)
+			decomp.Close() // Close decompressor first (stops read-ahead goroutines)
+			file.Close()   // Then close underlying file (unblocks any pending reads)
 		})
 	}
 	defer cleanupResources()
@@ -87,7 +86,7 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 	defer close(ctxWatcherDone)
 
 	// Create tar reader
-	tarReader := tar.NewReader(gzReader)
+	tarReader := tar.NewReader(decomp.Reader)
 
 	// Extract files
 	for {

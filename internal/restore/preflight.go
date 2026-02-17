@@ -15,8 +15,9 @@ import (
 
 	"dbbackup/internal/cleanup"
 
+	"dbbackup/internal/compression"
+
 	"github.com/dustin/go-humanize"
-	"github.com/klauspost/pgzip"
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
@@ -350,8 +351,14 @@ func (e *Engine) analyzeArchive(ctx context.Context, dumpsDir string, entries []
 
 		result.Archive.TotalDatabases++
 		dumpFile := filepath.Join(dumpsDir, entry.Name())
-		dbName := strings.TrimSuffix(entry.Name(), ".dump")
+		dbName := strings.TrimSuffix(entry.Name(), ".dump.gz")
+		dbName = strings.TrimSuffix(dbName, ".dump.zst")
+		dbName = strings.TrimSuffix(dbName, ".dump.zstd")
+		dbName = strings.TrimSuffix(dbName, ".dump")
 		dbName = strings.TrimSuffix(dbName, ".sql.gz")
+		dbName = strings.TrimSuffix(dbName, ".sql.zst")
+		dbName = strings.TrimSuffix(dbName, ".sql.zstd")
+		dbName = strings.TrimSuffix(dbName, ".sql")
 
 		// For custom format dumps, use pg_restore -l to count BLOBs
 		if strings.HasSuffix(entry.Name(), ".dump") {
@@ -412,19 +419,19 @@ func (e *Engine) estimateBlobsInSQL(sqlFile string) int {
 	}
 	defer f.Close()
 
-	// Create pgzip reader for parallel decompression
-	gzReader, err := pgzip.NewReader(f)
+	// Create decompression reader (supports gzip and zstd)
+	decomp, err := compression.NewDecompressor(f, sqlFile)
 	if err != nil {
-		e.log.Debug("Cannot create pgzip reader", "file", sqlFile, "error", err)
+		e.log.Debug("Cannot create decompression reader", "file", sqlFile, "error", err)
 		return 0
 	}
-	defer gzReader.Close()
+	defer decomp.Close()
 
 	// Scan for lo_create patterns
 	// We use a regex to match both "lo_create" and "SELECT lo_create" patterns
 	loCreatePattern := regexp.MustCompile(`lo_create`)
 
-	scanner := bufio.NewScanner(gzReader)
+	scanner := bufio.NewScanner(decomp.Reader)
 	// Use larger buffer for potentially long lines
 	buf := make([]byte, 0, 256*1024)
 	scanner.Buffer(buf, 10*1024*1024)

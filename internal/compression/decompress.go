@@ -171,6 +171,11 @@ func (c *Compressor) Close() error {
 	return nil
 }
 
+// Write implements io.Writer, delegating to the underlying compression writer
+func (c *Compressor) Write(p []byte) (int, error) {
+	return c.Writer.Write(p)
+}
+
 // NewCompressor creates a compression writer based on algorithm and level.
 // Level semantics:
 //   - gzip: 1 (fastest) to 9 (best), default 6

@@ -78,14 +78,15 @@ type LogPosition interface {
 
 // BackupOptions holds options for creating a PITR backup
 type BackupOptions struct {
-	Database       string // Database name (empty for all)
-	OutputPath     string // Where to save the backup
-	Compression    bool
-	CompressionLvl int
-	Encryption     bool
-	EncryptionKey  []byte
-	FlushLogs      bool // Flush logs before backup (mysql)
-	SingleTxn      bool // Single transaction mode
+	Database        string // Database name (empty for all)
+	OutputPath      string // Where to save the backup
+	Compression     bool
+	CompressionLvl  int
+	CompressionAlgo string // "gzip" or "zstd" (default: "gzip")
+	Encryption      bool
+	EncryptionKey   []byte
+	FlushLogs       bool // Flush logs before backup (mysql)
+	SingleTxn       bool // Single transaction mode
 }
 
 // PITRBackupInfo contains metadata about a PITR-capable backup

@@ -758,7 +758,7 @@ func RunInteractiveMenu(cfg *config.Config, log logger.Logger) error {
 		}
 		fmt.Fprintln(os.Stderr, "[WARN] Non-interactive terminal detected (screen/tmux backgrounded?)")
 		fmt.Fprintln(os.Stderr, "[WARN] TUI output may be scrambled. Use CLI commands for background operations:")
-		fmt.Fprintln(os.Stderr, "       dbbackup restore cluster <archive.tar.gz> --confirm")
+		fmt.Fprintln(os.Stderr, "       dbbackup restore cluster <archive.tar.gz|.tar.zst> --confirm")
 	}
 
 	m := NewMenuModel(cfg, log)

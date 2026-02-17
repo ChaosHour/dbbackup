@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"dbbackup/internal/compression"
@@ -1126,8 +1127,15 @@ func runDedupBackupDB(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Command: %s %s\n", dumpCmd, strings.Join(dumpArgs, " "))
 	fmt.Printf("Store: %s\n", basePath)
 
-	// Start the dump command
-	dumpExec := exec.Command(dumpCmd, dumpArgs...)
+	// Start the dump command with context for proper cancellation
+	ctx := cmd.Context()
+	dumpExec := exec.CommandContext(ctx, dumpCmd, dumpArgs...)
+
+	// Set up process group for clean termination of child processes
+	dumpExec.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+		Pgid:    0,
+	}
 
 	// Set password via environment (security: avoid process list exposure)
 	dumpExec.Env = os.Environ()

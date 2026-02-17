@@ -1395,7 +1395,12 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 		return fmt.Errorf("failed to close compression writer: %w", err)
 	}
 
+	// Collect stderr — log on failure for diagnostics
+	stderrData := <-stderrDone
 	if dumpErr != nil {
+		if len(stderrData) > 0 {
+			e.log.Warn("mysqldump stderr", "output", string(stderrData))
+		}
 		return fmt.Errorf("mysqldump failed: %w", dumpErr)
 	}
 

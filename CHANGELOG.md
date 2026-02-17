@@ -5,6 +5,33 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.48.0] - 2026-02-17 — Comprehensive Zstd Compression Support
+
+### Fixed
+
+- **TUI cluster backups invisible after zstd auto-selection** — CPU auto-optimization selected zstd compression but `.tar.zst` cluster archives returned `FormatUnknown`, making them invisible in the TUI restore browser. Added `FormatClusterTarZst` format constant and updated all format detection methods.
+- **"invalid archive extension: .zst" on restore** — Security gate (`ValidateArchivePath`) rejected `.zst`/`.zstd` file extensions. Added them to the valid extensions list alongside `.gz`, `.dump`, `.sql`, `.tar`.
+- **Cluster backup verification fails with zstd** — `createArchive()` always used pgzip (gzip) compressor but the output file was named `.tar.zst` when zstd was configured, producing corrupt archives with mismatched compression.
+- **All extraction functions hardcoded to pgzip** — `ListDatabasesInCluster`, `ExtractDatabaseFromCluster`, `ExtractMultipleDatabasesFromCluster`, and all safety validation functions now use `compression.NewDecompressor` which auto-detects gzip or zstd from the file extension.
+- **Engine backup files always named `.tar.gz` even when zstd configured** — XtraBackup, Clone, mysqldump, and native backup engines now use `compressedTarExt()`/`compressedSQLExt()` helpers to produce `.tar.zst` or `.sql.zst` filenames when zstd is the configured algorithm.
+- **Engine restore paths rejected `.tar.zst` files** — pg_basebackup, XtraBackup, Clone, PITR, native restore, and parallel restore now accept `.tar.zst`/`.tar.zstd` archives for extraction and decompression.
+
+### Changed
+
+- **26 files updated across the entire backup/restore/TUI pipeline** — Propagated `.zst` support from the compression library through security gates, format detection, TUI display, CLI commands, restore engine, extraction, diagnostics, and all database engine implementations.
+- **`internal/fs/extract.go`** — New `ExtractTarCompressed()` function for generic tar+any-compression extraction with directory traversal protection. `ListTarGzHeadersFast` shell path now uses `zstd -dc` pipe for `.tar.zst` archives; Go fallback uses `compression.NewDecompressor`.
+- **`internal/restore/diagnose.go`** — All diagnostic functions (`diagnosePgDumpGz`, `diagnoseSQLScript`, `QuickValidateClusterArchive`, archive file filters) now use `compression.NewDecompressor` instead of hardcoded pgzip, supporting both gzip and zstd archives.
+- **`internal/engine/mysqldump.go`** — Backup writes and restore reads use `compression.NewCompressor`/`NewDecompressor` with algorithm auto-detection from filename.
+- **`internal/engine/xtrabackup.go`** — `compressBackup()` and `extractBackup()` use the compression package; backup filenames respect `CompressFormat` config.
+- **`internal/engine/clone.go`** — `compressClone()` and `extractClone()` use the compression package; clone filenames respect `CompressFormat` config.
+- **`internal/engine/pg_basebackup.go`** — `restoreTar()` uses `--use-compress-program=zstd` for `.tar.zst` files; `Restore()` accepts `.tar.zst`/`.tar.zstd`.
+- **`internal/pitr/restore.go`** — New `extractTarCompressedBackup()` method for `.tar.zst` base backup extraction via `fs.ExtractTarCompressed`.
+- **`internal/engine/engine.go`** — New `compressedTarExt()` and `compressedSQLExt()` helpers mapping compression format to file extension.
+- **`cmd/native_backup.go`** — Uses `compression.NewCompressor` with algorithm detection; extension follows `CompressionAlgorithm` config; metadata `Compression` field reflects actual algorithm.
+- **`cmd/native_restore.go`** — New `isZstdFile()` helper; decompression uses `compression.NewDecompressor`.
+- **`cmd/parallel_restore.go`** — Format detection and `isCluster` check recognize `.tar.zst` archives.
+- **`internal/backup/selective.go`** — `RestoreTable` and `BackupTables` support `.zst`/`.zstd` file extensions.
+
 ## [6.47.0] - 2026-02-17 — TUI CPU Optimization Panel
 
 ### Added

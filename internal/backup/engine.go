@@ -1659,23 +1659,120 @@ func (e *Engine) backupMySQLGlobals(ctx context.Context, tempDir string) error {
 // createArchive creates a compressed tar archive using parallel gzip compression
 // Uses in-process pgzip for 2-4x faster compression on multi-core systems
 func (e *Engine) createArchive(ctx context.Context, sourceDir, outputFile string) error {
+	algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
 	e.log.Debug("Creating archive with parallel compression",
 		"source", sourceDir,
 		"output", outputFile,
+		"algorithm", algo,
 		"compression", e.cfg.CompressionLevel)
 
-	// Use in-process parallel compression with pgzip
-	err := fs.CreateTarGzParallel(ctx, sourceDir, outputFile, e.cfg.CompressionLevel, func(progress fs.CreateProgress) {
-		// Optional: log progress for large archives
-		if progress.FilesCount%100 == 0 && progress.FilesCount > 0 {
-			e.log.Debug("Archive progress", "files", progress.FilesCount, "bytes", progress.BytesWritten)
+	// When using gzip (default), delegate to the optimized pgzip path
+	// which has safeWriter protection for pgzip goroutine lifecycle.
+	// For zstd (or any other algorithm), use the generic compressor path.
+	if algo == comp.AlgorithmGzip || algo == comp.AlgorithmNone {
+		err := fs.CreateTarGzParallel(ctx, sourceDir, outputFile, e.cfg.CompressionLevel, func(progress fs.CreateProgress) {
+			if progress.FilesCount%100 == 0 && progress.FilesCount > 0 {
+				e.log.Debug("Archive progress", "files", progress.FilesCount, "bytes", progress.BytesWritten)
+			}
+		})
+		if err != nil {
+			return fmt.Errorf("parallel archive creation failed: %w", err)
 		}
-	})
-
-	if err != nil {
-		return fmt.Errorf("parallel archive creation failed: %w", err)
+		return nil
 	}
 
+	// Generic path: create tar archive with the configured compression algorithm
+	// (currently zstd, but extensible to future algorithms)
+	return e.createTarCompressed(ctx, sourceDir, outputFile, algo, e.cfg.CompressionLevel)
+}
+
+// createTarCompressed creates a tar archive with an arbitrary compression algorithm.
+// Used for zstd and future algorithms; gzip uses the optimized pgzip path above.
+func (e *Engine) createTarCompressed(ctx context.Context, sourceDir, outputFile string, algo comp.Algorithm, level int) error {
+	outFile, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("cannot create archive: %w", err)
+	}
+	defer outFile.Close()
+
+	// Use buffered writer for better I/O performance
+	bufWriter := bufio.NewWriterSize(outFile, 4*1024*1024) // 4MB buffer
+
+	compWriter, err := comp.NewCompressor(bufWriter, algo, level)
+	if err != nil {
+		os.Remove(outputFile)
+		return fmt.Errorf("cannot create %s compressor: %w", algo, err)
+	}
+
+	tarWriter := tar.NewWriter(compWriter.Writer)
+
+	archiveErr := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		if err != nil {
+			return err
+		}
+
+		relPath, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return err
+		}
+		if relPath == "." {
+			return nil
+		}
+
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return fmt.Errorf("cannot create header for %s: %w", relPath, err)
+		}
+		header.Name = relPath
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			link, err := os.Readlink(path)
+			if err != nil {
+				return fmt.Errorf("cannot read symlink %s: %w", path, err)
+			}
+			header.Linkname = link
+		}
+
+		if err := tarWriter.WriteHeader(header); err != nil {
+			return fmt.Errorf("cannot write header for %s: %w", relPath, err)
+		}
+
+		if info.Mode().IsRegular() {
+			file, err := os.Open(path)
+			if err != nil {
+				return fmt.Errorf("cannot open %s: %w", path, err)
+			}
+			defer file.Close()
+			if _, err := io.Copy(tarWriter, file); err != nil {
+				return fmt.Errorf("cannot write %s: %w", path, err)
+			}
+		}
+		return nil
+	})
+
+	if archiveErr != nil {
+		tarWriter.Close()
+		compWriter.Close()
+		outFile.Close()
+		os.Remove(outputFile)
+		return archiveErr
+	}
+
+	// Close in order: tar → compressor → buffer → file
+	if err := tarWriter.Close(); err != nil {
+		return fmt.Errorf("cannot close tar writer: %w", err)
+	}
+	if err := compWriter.Close(); err != nil {
+		return fmt.Errorf("cannot close %s compressor: %w", algo, err)
+	}
+	if err := bufWriter.Flush(); err != nil {
+		return fmt.Errorf("cannot flush buffer: %w", err)
+	}
 	return nil
 }
 

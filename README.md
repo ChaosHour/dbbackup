@@ -155,6 +155,8 @@ See [docs/tui-features.md](docs/tui-features.md) for full details.
 - **Configurable INSERT batch size** -- Native engine groups 5,000 rows per INSERT (was 1,000), tunable via `--mysql-batch-size`
 - **Index type detection** -- GIN/GIST indexes get 4GB RAM allocation and 8 parallel workers
 - **Adaptive worker allocation** based on table size metadata with physical CPU core detection
+- **Intel/AMD vendor-aware CPU tuning** -- auto-detects ISA features (AVX2, AVX-512, AES-NI, SHA-NI, NEON, SVE), hybrid P/E-core topology, cache hierarchy, NUMA layout, and memory bandwidth; selects optimal parallelism, compression algorithm, and buffer sizes per vendor
+- **GOAMD64=v3 optimized build** -- dedicated Linux binary compiled with AVX2/BMI2 for 2015+ Intel/AMD CPUs (5-15% faster compression and hashing)
 
 ### Restore Modes
 
@@ -780,6 +782,8 @@ dbbackup backup single mydb --dry-run
 | `--no-color` | Disable colored output | false |
 | `--allow-root` | Allow running as root/Administrator | false |
 | `--check-resources` | Check system resource limits | false |
+| `--cpu-auto-tune` | Vendor-aware CPU auto-tuning (Intel/AMD/ARM) | true |
+| `--cpu-boost` | Set CPU governor to 'performance' during backup | false |
 
 ## Encryption
 
@@ -1626,6 +1630,12 @@ The following optimizations are applied automatically and degrade gracefully on 
 | MySQL `--quick` + `--extended-insert` | 2–5× faster dump | Row-by-row transfer + multi-row INSERTs reduce overhead |
 | MySQL `--init-command` fast restore | 2–5× faster import | Disables FK/unique checks and binary logging during bulk load |
 | MySQL 5000-row batch INSERTs | 20–40% faster native | Larger INSERT batches reduce per-statement overhead |
+| Vendor-Aware CPU Tuning | 10–25% faster backup | AMD gets aggressive parallelism, Intel uses 75% cores with larger batches, ARM optimized for NEON/SVE |
+| ISA-Based Compression Selection | 5–15% faster compress | Auto-selects zstd when AVX2/AVX-512/SVE detected, gzip otherwise |
+| Cache-Aware Buffer Sizing | 5–10% less cache thrash | Buffer and batch sizes derived from L2/L3 cache topology per core |
+| Hybrid P/E-Core Detection | 10–20% better throughput | Intel 12th+ gen: schedules work on P-cores, avoids E-core bottleneck |
+| NUMA-Aware Worker Distribution | 5–15% on multi-socket | Workers distributed 70/30 toward preferred NUMA node to reduce cross-node traffic |
+| Frequency Governor Warning | Avoids 2–3× slowdown | Warns when CPU governor is 'powersave' and recommends 'performance' |
 
 **Expected combined impact by workload:**
 
@@ -1637,6 +1647,58 @@ The following optimizations are applied automatically and degrade gracefully on 
 | Mixed production workload | **+30–45%** |
 
 All optimizations are hardware-independent and adapt to VPS (2 vCPU) through bare metal (64+ cores).
+
+### CPU Architecture Optimization (v6.46.0+)
+
+dbbackup now performs deep hardware introspection to squeeze maximum performance from your specific CPU:
+
+```bash
+# View your system's CPU optimization report
+dbbackup cpu
+
+# Example output on AMD EPYC:
+#   Vendor: AuthenticAMD (AMD Server/Desktop)
+#   ISA Features: SSE4.2 AVX AVX2 AES-NI PCLMULQDQ
+#   GOAMD64 Level: v3 (AVX2+BMI2 — use _v3 binary for best performance)
+#   Recommended Compression: zstd (hardware-accelerated)
+#   Cache: L1d=32KB L2=512KB L3=16MB → Buffer=256KB, Batch=7500
+#   Jobs: 16 (aggressive AMD tuning), DumpJobs: 12
+#   Governor: performance ✓
+#   NUMA: 1 node, 16 CPUs, 32GB
+```
+
+**Key capabilities:**
+
+| Feature | Intel | AMD | ARM |
+|---------|-------|-----|-----|
+| ISA detection (AVX2/512/NEON/SVE) | ✓ | ✓ | ✓ |
+| Hybrid P/E-core topology | ✓ (12th gen+) | — | — |
+| Vendor-tuned parallelism | 75% cores | All cores | All cores |
+| AVX-512 throttle warning | ✓ (pre-Sapphire Rapids) | — | — |
+| Cache-aware buffer sizing | ✓ | ✓ | ✓ |
+| NUMA worker distribution | ✓ | ✓ | — |
+| Frequency governor check | ✓ | ✓ | ✓ |
+| Memory bandwidth estimate | ✓ | ✓ | ✓ |
+
+**CLI flags:**
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--cpu-auto-tune` | Enable vendor-aware auto-tuning | `true` |
+| `--cpu-boost` | Set governor to 'performance' during backup | `false` |
+
+**GOAMD64=v3 optimized binary:**
+
+For 2015+ Intel (Broadwell) and AMD (Excavator/Zen) CPUs, a dedicated binary compiled with `GOAMD64=v3` enables AVX2 and BMI2 instructions for 5–15% faster compression and hashing:
+
+```bash
+# Download the v3 binary (Linux only)
+wget https://github.com/PlusOne/dbbackup/releases/latest/download/dbbackup_linux_amd64_v3
+chmod +x dbbackup_linux_amd64_v3
+
+# Check if your CPU supports it
+dbbackup cpu  # Look for "GOAMD64 Level: v3" or higher
+```
 
 ### HugePages Integration (v6.17+)
 

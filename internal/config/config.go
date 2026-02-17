@@ -63,6 +63,11 @@ type Config struct {
 	CPUInfo     *cpu.CPUInfo
 	MemoryInfo  *cpu.MemoryInfo // System memory information
 
+	// CPU optimization (v6.46.0+)
+	CPUOptimizations *cpu.OptimizationSummary // Full optimization data (features, NUMA, cache, etc.)
+	CPUAutoTune      bool                     // Auto-tune jobs/compression from hardware detection (default: true)
+	CPUBoostGovernor bool                     // Temporarily set CPU governor to 'performance' during backup (default: false)
+
 	// I/O Governor for BLOB operations
 	IOGovernor string // "auto", "noop", "deadline", "mq-deadline", "bfq"
 
@@ -373,9 +378,11 @@ func New() *Config {
 		LargeDBMode:          getEnvBool("LARGE_DB_MODE", false),
 
 		// CPU and memory detection
-		CPUDetector: cpuDetector,
-		CPUInfo:     cpuInfo,
-		MemoryInfo:  memInfo,
+		CPUDetector:  cpuDetector,
+		CPUInfo:      cpuInfo,
+		MemoryInfo:   memInfo,
+		CPUAutoTune:  getEnvBool("CPU_AUTO_TUNE", true),
+		CPUBoostGovernor: getEnvBool("CPU_BOOST_GOVERNOR", false),
 
 		// Sample backup defaults
 		SampleStrategy: getEnvString("SAMPLE_STRATEGY", "ratio"),
@@ -745,17 +752,54 @@ func (c *Config) OptimizeForCPU() error {
 		c.CPUInfo = info
 	}
 
+	// Run full optimisation detection if not yet done
+	if c.CPUOptimizations == nil {
+		c.CPUOptimizations = cpu.DetectOptimizations(c.CPUInfo)
+	}
+
 	if c.AutoDetectCores {
-		// Optimize jobs based on workload type
+		// --- legacy path: simple workload-based job sizing ---
 		if jobs, err := c.CPUDetector.CalculateOptimalJobs(c.CPUWorkloadType, c.MaxCores); err == nil {
 			c.Jobs = jobs
 		}
-
-		// Optimize dump jobs (more conservative for database dumps)
 		if dumpJobs, err := c.CPUDetector.CalculateOptimalJobs("cpu-intensive", c.MaxCores/2); err == nil {
 			c.DumpJobs = dumpJobs
 			if c.DumpJobs > 8 {
-				c.DumpJobs = 8 // Conservative limit for dumps
+				c.DumpJobs = 8
+			}
+		}
+
+		// --- v6.46.0 vendor-aware tuning layer ---
+		if c.CPUAutoTune && c.CPUOptimizations != nil && c.CPUOptimizations.Tuning != nil {
+			t := c.CPUOptimizations.Tuning
+
+			// Override job counts with vendor-tuned values (respects P/E split)
+			if t.RecommendedJobs > 0 {
+				c.Jobs = t.RecommendedJobs
+				if c.MaxCores > 0 && c.Jobs > c.MaxCores {
+					c.Jobs = c.MaxCores
+				}
+			}
+			if t.RecommendedDump > 0 {
+				c.DumpJobs = t.RecommendedDump
+				if c.DumpJobs > 8 {
+					c.DumpJobs = 8
+				}
+			}
+
+			// Auto-select compression algorithm from ISA features
+			if c.CompressionAlgorithm == "gzip" && t.CompressionAlgo == "zstd" {
+				c.CompressionAlgorithm = "zstd"
+			}
+
+			// Cache-aware batch size for native engine
+			if t.BatchSizeHint > 0 && c.MySQLBatchSize == 5000 {
+				c.MySQLBatchSize = t.BatchSizeHint
+			}
+
+			// Cache-aware buffer sizing
+			if t.StreamBufferKB > 0 && c.BufferSize == 262144 {
+				c.BufferSize = t.StreamBufferKB * 1024
 			}
 		}
 	}

@@ -248,6 +248,7 @@ if [ "$FAST_MODE" = true ]; then
     # Build all platforms in parallel
     PLATFORMS=(
         "linux/amd64"
+        "linux/amd64/v3"
         "linux/arm64"
         "linux/arm/7"
         "darwin/amd64"
@@ -270,13 +271,18 @@ if [ "$FAST_MODE" = true ]; then
         GOARM=$(echo "$platform" | cut -d/ -f3)
         
         OUTPUT="bin/dbbackup_${GOOS}_${GOARCH}"
-        if [ -n "$GOARM" ]; then
+        if [ -n "$GOARM" ] && [ "$GOARM" = "7" ]; then
             OUTPUT="bin/dbbackup_${GOOS}_arm_armv${GOARM}"
+        elif [ -n "$GOARM" ] && [ "$GOARM" = "v3" ]; then
+            # GOAMD64=v3 optimized build
+            OUTPUT="bin/dbbackup_${GOOS}_${GOARCH}_v3"
         fi
         
         (
-            if [ -n "$GOARM" ]; then
+            if [ -n "$GOARM" ] && [ "$GOARM" = "7" ]; then
                 GOOS=$GOOS GOARCH=arm GOARM=$GOARM go build -trimpath -ldflags "$LDFLAGS" -o "$OUTPUT" . 2>/dev/null
+            elif [ -n "$GOARM" ] && [ "$GOARM" = "v3" ]; then
+                GOOS=$GOOS GOARCH=$GOARCH GOAMD64=v3 go build -trimpath -ldflags "$LDFLAGS" -o "$OUTPUT" . 2>/dev/null
             else
                 GOOS=$GOOS GOARCH=$GOARCH go build -trimpath -ldflags "$LDFLAGS" -o "$OUTPUT" . 2>/dev/null
             fi
@@ -371,6 +377,7 @@ else
 | Platform | Architecture | Binary |
 |----------|--------------|--------|
 | Linux | x86_64 (Intel/AMD) | \`dbbackup_linux_amd64\` |
+| Linux | x86_64 AVX2-optimized (2015+ CPU) | \`dbbackup_linux_amd64_v3\` |
 | Linux | ARM64 | \`dbbackup_linux_arm64\` |
 | Linux | ARMv7 | \`dbbackup_linux_arm_armv7\` |
 | macOS | Intel | \`dbbackup_darwin_amd64\` |
@@ -394,6 +401,7 @@ sudo mv dbbackup_darwin_arm64 /usr/local/bin/dbbackup
         --title "${TAG}: ${RELEASE_MSG}" \
         --notes "$NOTES" \
         bin/dbbackup_linux_amd64 \
+        bin/dbbackup_linux_amd64_v3 \
         bin/dbbackup_linux_arm64 \
         bin/dbbackup_linux_arm_armv7 \
         bin/dbbackup_darwin_amd64 \

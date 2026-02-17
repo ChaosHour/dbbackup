@@ -199,6 +199,8 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	rootCmd.PersistentFlags().IntVar(&cfg.MaxCores, "max-cores", cfg.MaxCores, "Maximum CPU cores to use")
 	rootCmd.PersistentFlags().BoolVar(&cfg.AutoDetectCores, "auto-detect-cores", cfg.AutoDetectCores, "Auto-detect CPU cores")
 	rootCmd.PersistentFlags().StringVar(&cfg.CPUWorkloadType, "cpu-workload", cfg.CPUWorkloadType, "CPU workload type (cpu-intensive|io-intensive|balanced)")
+	rootCmd.PersistentFlags().BoolVar(&cfg.CPUAutoTune, "cpu-auto-tune", cfg.CPUAutoTune, "Vendor-aware auto-tuning (Intel/AMD/ARM parallelism, compression, buffer sizes)")
+	rootCmd.PersistentFlags().BoolVar(&cfg.CPUBoostGovernor, "cpu-boost", cfg.CPUBoostGovernor, "Set CPU governor to 'performance' during backup (requires root)")
 	rootCmd.PersistentFlags().StringVar(&cfg.SSLMode, "ssl-mode", cfg.SSLMode, "SSL mode for connections")
 	rootCmd.PersistentFlags().BoolVar(&cfg.Insecure, "insecure", cfg.Insecure, "Disable SSL (shortcut for --ssl-mode=disable)")
 	rootCmd.PersistentFlags().IntVar(&cfg.CompressionLevel, "compression", cfg.CompressionLevel, "Compression level (0-9)")

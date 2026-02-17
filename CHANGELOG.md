@@ -5,6 +5,28 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.46.0] - 2026-02-17 — Intel/AMD CPU Architecture Optimization
+
+### Added
+
+- **CPU ISA feature detection (`internal/cpu/optimization.go`)** — Detects x86 (SSE4.2, AVX, AVX2, AVX-512, AVX-512VBMI, AES-NI, PCLMULQDQ, SHA-NI) and ARM (NEON, SVE, CRC32) instruction set features by parsing `/proc/cpuinfo` flags. Used to auto-select compression algorithms and validate GOAMD64 build level.
+- **Intel P/E-core hybrid topology detection** — Reads per-CPU max frequency from `/sys/devices/system/cpu/*/cpufreq/` to identify Intel 12th gen+ hybrid architectures. Classifies cores as Performance (P) or Efficiency (E) based on frequency spread (>15% gap). `EffectiveCoresForWork()` returns P-core count for accurate job sizing.
+- **Cache-aware buffer and batch sizing** — Reads L1d/L2/L3 cache sizes from `/sys/devices/system/cpu/cpu0/cache/`. Calculates optimal buffer size (L3/cores/4, capped 256KB–16MB) and batch size (3,000–20,000 rows) to minimize cache thrashing.
+- **Vendor-aware parallelism tuning** — AMD: aggressive parallelism (all cores, large batches, zstd). Intel: conservative (75% cores, larger batches, AVX-512 throttle awareness). ARM/Apple: balanced with NEON/SVE-aware compression selection. Intel Sapphire Rapids+ exempted from AVX-512 throttle warning.
+- **CPU frequency governor detection** — Reads `/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor`. Warns when `powersave` or `ondemand` governor detected; recommends `performance` for backup workloads. `--cpu-boost` flag can temporarily set governor.
+- **NUMA topology detection** — Reads `/sys/devices/system/node/` for node count, per-node CPU lists, and memory sizes. `NUMARecommendedWorkerDistribution()` biases 70% of workers toward the preferred NUMA node.
+- **Memory bandwidth estimation** — Parses `dmidecode` output for DIMM speed, channel count, and technology (DDR4/DDR5). Estimates theoretical and effective bandwidth in GB/s.
+- **GOAMD64=v3 optimized build** — `build_all.sh` and `release.sh` now produce `dbbackup_linux_amd64_v3` compiled with `GOAMD64=v3` (AVX2+BMI2) for 5–15% faster compression/hashing on 2015+ Intel/AMD CPUs.
+- **Enhanced `dbbackup cpu` command** — Now displays full optimization report: vendor class, ISA features, GOAMD64 level, recommended compression, cache topology, optimal buffer/batch sizes, tuned job counts, governor status, NUMA layout, and memory bandwidth.
+- **2 new CLI flags** — `--cpu-auto-tune` (vendor-aware auto-tuning, default: true), `--cpu-boost` (set governor to 'performance' during backup, default: false).
+- **3 new config fields** — `CPUOptimizations`, `CPUAutoTune`, `CPUBoostGovernor` in `internal/config/config.go`. `OptimizeForCPU()` enhanced to apply vendor-tuned jobs, ISA-based compression, and cache-aware buffer sizes.
+- **Comprehensive test suite (`internal/cpu/optimization_test.go`)** — 30+ tests covering feature detection, compression recommendation, GOAMD64 level calculation, hybrid topology, cache topology, batch sizing, vendor classification, vendor tuning (Intel/AMD/ARM/Sapphire Rapids), governor detection, NUMA parsing, worker distribution, memory bandwidth, live system integration, and benchmarks.
+
+### Changed
+
+- **`internal/config/config.go`** — `OptimizeForCPU()` now calls `cpu.DetectOptimizations()` and applies vendor-tuned `Jobs`/`DumpJobs`, auto-selects zstd compression when AVX2 available, and derives cache-aware `BatchSize` and `BufferSizeKB`.
+- **`cmd/cpu.go`** — Fully rewritten to display deep hardware report with ISA features, vendor tuning, cache hierarchy, and optimization recommendations.
+
 ## [6.45.0] - 2026-02-17 — Percona XtraBackup / MariaBackup Engine Integration
 
 ### Added

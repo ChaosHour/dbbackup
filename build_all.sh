@@ -34,13 +34,15 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # Platform configurations - Linux & macOS only
-# Format: "GOOS/GOARCH:binary_suffix:description"
+# Format: "GOOS/GOARCH:binary_suffix:description:GOAMD64"
+# GOAMD64: empty = default (v1), "v3" = AVX2-optimized (2015+ CPUs)
 PLATFORMS=(
-    "linux/amd64::Linux 64-bit (Intel/AMD)"
-    "linux/arm64::Linux 64-bit (ARM)"
-    "linux/arm:_armv7:Linux 32-bit (ARMv7)"
-    "darwin/amd64::macOS 64-bit (Intel)"
-    "darwin/arm64::macOS 64-bit (Apple Silicon)"
+    "linux/amd64::Linux 64-bit (Intel/AMD):"
+    "linux/amd64:_v3:Linux 64-bit AVX2-optimized (2015+ Intel/AMD):v3"
+    "linux/arm64::Linux 64-bit (ARM):"
+    "linux/arm:_armv7:Linux 32-bit (ARMv7):"
+    "darwin/amd64::macOS 64-bit (Intel):"
+    "darwin/arm64::macOS 64-bit (Apple Silicon):"
 )
 
 echo -e "${BOLD}${BLUE}🔨 Cross-Platform Build Script for ${APP_NAME}${NC}"
@@ -69,17 +71,22 @@ for platform_config in "${PLATFORMS[@]}"; do
     current=$((current + 1))
     
     # Parse platform configuration
-    IFS=':' read -r platform suffix description <<< "$platform_config"
+    IFS=':' read -r platform suffix description goamd64 <<< "$platform_config"
     IFS='/' read -r GOOS GOARCH <<< "$platform"
     
     # Generate binary name
     binary_name="${APP_NAME}_${GOOS}_${GOARCH}${suffix}"
     
-    echo -e "${YELLOW}[$current/$total_platforms]${NC} Building for ${BOLD}$description${NC} (${platform})"
+    echo -e "${YELLOW}[$current/$total_platforms]${NC} Building for ${BOLD}$description${NC} (${platform}${goamd64:+ GOAMD64=$goamd64})"
     
     # Set environment and build (using export for better compatibility)
     # CGO_ENABLED=0 creates static binaries without glibc dependency
     export CGO_ENABLED=0 GOOS GOARCH
+    if [ -n "$goamd64" ]; then
+        export GOAMD64="$goamd64"
+    else
+        unset GOAMD64 2>/dev/null || true
+    fi
     if go build -trimpath -ldflags "$LDFLAGS" -o "${BIN_DIR}/${binary_name}" . 2>/dev/null; then
         # Get file size
         if [[ "$OSTYPE" == "darwin"* ]]; then

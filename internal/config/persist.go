@@ -114,6 +114,13 @@ type LocalConfig struct {
 	BLOBStreamCount     int
 	Deduplicate         bool
 	DedupExpectedBLOBs  int
+
+	// CPU optimization settings (v6.46.0+)
+	CPUAutoTune        bool
+	CPUBoostGovernor   bool
+	CPUAutoCompression bool
+	CPUAutoCacheBuffer bool
+	CPUAutoNUMA        bool
 }
 
 // ConfigSearchPaths returns all paths where config files are searched, in order of priority
@@ -415,6 +422,19 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 					cfg.DedupExpectedBLOBs = eb
 				}
 			}
+		case "cpu_optimization":
+			switch key {
+			case "auto_tune":
+				cfg.CPUAutoTune = value == "true" || value == "1"
+			case "boost_governor":
+				cfg.CPUBoostGovernor = value == "true" || value == "1"
+			case "auto_compression":
+				cfg.CPUAutoCompression = value == "true" || value == "1"
+			case "auto_cache_buffer":
+				cfg.CPUAutoCacheBuffer = value == "true" || value == "1"
+			case "auto_numa":
+				cfg.CPUAutoNUMA = value == "true" || value == "1"
+			}
 		}
 	}
 
@@ -630,6 +650,17 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 		if cfg.DedupExpectedBLOBs > 0 {
 			sb.WriteString(fmt.Sprintf("expected_blobs = %d\n", cfg.DedupExpectedBLOBs))
 		}
+		sb.WriteString("\n")
+	}
+
+	// CPU optimization section (v6.46.0+) - only write if any non-default
+	if !cfg.CPUAutoTune || cfg.CPUBoostGovernor || !cfg.CPUAutoCompression || !cfg.CPUAutoCacheBuffer || !cfg.CPUAutoNUMA {
+		sb.WriteString("[cpu_optimization]\n")
+		sb.WriteString(fmt.Sprintf("auto_tune = %t\n", cfg.CPUAutoTune))
+		sb.WriteString(fmt.Sprintf("boost_governor = %t\n", cfg.CPUBoostGovernor))
+		sb.WriteString(fmt.Sprintf("auto_compression = %t\n", cfg.CPUAutoCompression))
+		sb.WriteString(fmt.Sprintf("auto_cache_buffer = %t\n", cfg.CPUAutoCacheBuffer))
+		sb.WriteString(fmt.Sprintf("auto_numa = %t\n", cfg.CPUAutoNUMA))
 		sb.WriteString("\n")
 	}
 
@@ -881,6 +912,15 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.DedupExpectedBLOBs > 0 {
 		cfg.DedupExpectedBLOBs = local.DedupExpectedBLOBs
 	}
+
+	// CPU optimization settings (v6.46.0+)
+	// These are opt-out booleans (default true), so we must apply both true and false explicitly
+	// The [cpu_optimization] section is only written when any differs from default
+	cfg.CPUAutoTune = local.CPUAutoTune
+	cfg.CPUBoostGovernor = local.CPUBoostGovernor
+	cfg.CPUAutoCompression = local.CPUAutoCompression
+	cfg.CPUAutoCacheBuffer = local.CPUAutoCacheBuffer
+	cfg.CPUAutoNUMA = local.CPUAutoNUMA
 }
 
 // ConfigFromConfig creates a LocalConfig from a Config
@@ -958,5 +998,10 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		BLOBStreamCount:         cfg.BLOBStreamCount,
 		Deduplicate:             cfg.Deduplicate,
 		DedupExpectedBLOBs:      cfg.DedupExpectedBLOBs,
+		CPUAutoTune:             cfg.CPUAutoTune,
+		CPUBoostGovernor:        cfg.CPUBoostGovernor,
+		CPUAutoCompression:      cfg.CPUAutoCompression,
+		CPUAutoCacheBuffer:      cfg.CPUAutoCacheBuffer,
+		CPUAutoNUMA:             cfg.CPUAutoNUMA,
 	}
 }

@@ -1635,6 +1635,11 @@ func (m SettingsModel) saveSettings() (tea.Model, tea.Cmd) {
 			PrefixPostgres:      m.config.PrefixPostgres,
 			PrefixMySQL:         m.config.PrefixMySQL,
 			PrefixMariaDB:       m.config.PrefixMariaDB,
+			CPUAutoTune:         m.config.CPUAutoTune,
+			CPUBoostGovernor:    m.config.CPUBoostGovernor,
+			CPUAutoCompression:  m.config.CPUAutoCompression,
+			CPUAutoCacheBuffer:  m.config.CPUAutoCacheBuffer,
+			CPUAutoNUMA:         m.config.CPUAutoNUMA,
 		}
 		if err := config.SaveLocalConfig(localCfg); err != nil {
 			m.message = errorStyle.Render(fmt.Sprintf("[FAIL] Failed to save config: %s", err.Error()))

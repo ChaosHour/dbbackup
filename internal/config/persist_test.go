@@ -105,6 +105,11 @@ func TestConfigSaveLoad(t *testing.T) {
 		BLOBStreamCount:     8,
 		Deduplicate:         true,
 		DedupExpectedBLOBs:  50000,
+		CPUAutoTune:         false,
+		CPUBoostGovernor:    true,
+		CPUAutoCompression:  false,
+		CPUAutoCacheBuffer:  false,
+		CPUAutoNUMA:         false,
 	}
 
 	// Save to specific path
@@ -203,6 +208,11 @@ func TestConfigSaveLoad(t *testing.T) {
 		{"BLOBStreamCount", loaded.BLOBStreamCount, original.BLOBStreamCount},
 		{"Deduplicate", loaded.Deduplicate, original.Deduplicate},
 		{"DedupExpectedBLOBs", loaded.DedupExpectedBLOBs, original.DedupExpectedBLOBs},
+		{"CPUAutoTune", loaded.CPUAutoTune, original.CPUAutoTune},
+		{"CPUBoostGovernor", loaded.CPUBoostGovernor, original.CPUBoostGovernor},
+		{"CPUAutoCompression", loaded.CPUAutoCompression, original.CPUAutoCompression},
+		{"CPUAutoCacheBuffer", loaded.CPUAutoCacheBuffer, original.CPUAutoCacheBuffer},
+		{"CPUAutoNUMA", loaded.CPUAutoNUMA, original.CPUAutoNUMA},
 	}
 
 	failed := 0
@@ -290,6 +300,11 @@ func TestConfigFullRoundTrip(t *testing.T) {
 		BLOBStreamCount:         4,
 		Deduplicate:             true,
 		DedupExpectedBLOBs:      100000,
+		CPUAutoTune:             false,
+		CPUBoostGovernor:        true,
+		CPUAutoCompression:      false,
+		CPUAutoCacheBuffer:      false,
+		CPUAutoNUMA:             false,
 	}
 
 	// Step 2: Convert to LocalConfig
@@ -375,6 +390,11 @@ func TestConfigFullRoundTrip(t *testing.T) {
 		{"BLOBStreamCount", dst.BLOBStreamCount, src.BLOBStreamCount},
 		{"Deduplicate", dst.Deduplicate, src.Deduplicate},
 		{"DedupExpectedBLOBs", dst.DedupExpectedBLOBs, src.DedupExpectedBLOBs},
+		{"CPUAutoTune", dst.CPUAutoTune, src.CPUAutoTune},
+		{"CPUBoostGovernor", dst.CPUBoostGovernor, src.CPUBoostGovernor},
+		{"CPUAutoCompression", dst.CPUAutoCompression, src.CPUAutoCompression},
+		{"CPUAutoCacheBuffer", dst.CPUAutoCacheBuffer, src.CPUAutoCacheBuffer},
+		{"CPUAutoNUMA", dst.CPUAutoNUMA, src.CPUAutoNUMA},
 	}
 
 	failed := 0

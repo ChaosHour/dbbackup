@@ -64,9 +64,12 @@ type Config struct {
 	MemoryInfo  *cpu.MemoryInfo // System memory information
 
 	// CPU optimization (v6.46.0+)
-	CPUOptimizations *cpu.OptimizationSummary // Full optimization data (features, NUMA, cache, etc.)
-	CPUAutoTune      bool                     // Auto-tune jobs/compression from hardware detection (default: true)
-	CPUBoostGovernor bool                     // Temporarily set CPU governor to 'performance' during backup (default: false)
+	CPUOptimizations    *cpu.OptimizationSummary // Full optimization data (features, NUMA, cache, etc.)
+	CPUAutoTune         bool                     // Auto-tune jobs/compression from hardware detection (default: true)
+	CPUBoostGovernor    bool                     // Temporarily set CPU governor to 'performance' during backup (default: false)
+	CPUAutoCompression  bool                     // Auto-select compression algo from ISA features (default: true)
+	CPUAutoCacheBuffer  bool                     // Cache-aware buffer and batch sizing (default: true)
+	CPUAutoNUMA         bool                     // NUMA-aware worker distribution (default: true)
 
 	// I/O Governor for BLOB operations
 	IOGovernor string // "auto", "noop", "deadline", "mq-deadline", "bfq"
@@ -381,8 +384,11 @@ func New() *Config {
 		CPUDetector:  cpuDetector,
 		CPUInfo:      cpuInfo,
 		MemoryInfo:   memInfo,
-		CPUAutoTune:  getEnvBool("CPU_AUTO_TUNE", true),
-		CPUBoostGovernor: getEnvBool("CPU_BOOST_GOVERNOR", false),
+		CPUAutoTune:        getEnvBool("CPU_AUTO_TUNE", true),
+		CPUBoostGovernor:   getEnvBool("CPU_BOOST_GOVERNOR", false),
+		CPUAutoCompression: getEnvBool("CPU_AUTO_COMPRESSION", true),
+		CPUAutoCacheBuffer: getEnvBool("CPU_AUTO_CACHE_BUFFER", true),
+		CPUAutoNUMA:        getEnvBool("CPU_AUTO_NUMA", true),
 
 		// Sample backup defaults
 		SampleStrategy: getEnvString("SAMPLE_STRATEGY", "ratio"),
@@ -788,17 +794,17 @@ func (c *Config) OptimizeForCPU() error {
 			}
 
 			// Auto-select compression algorithm from ISA features
-			if c.CompressionAlgorithm == "gzip" && t.CompressionAlgo == "zstd" {
+			if c.CPUAutoCompression && c.CompressionAlgorithm == "gzip" && t.CompressionAlgo == "zstd" {
 				c.CompressionAlgorithm = "zstd"
 			}
 
 			// Cache-aware batch size for native engine
-			if t.BatchSizeHint > 0 && c.MySQLBatchSize == 5000 {
+			if c.CPUAutoCacheBuffer && t.BatchSizeHint > 0 && c.MySQLBatchSize == 5000 {
 				c.MySQLBatchSize = t.BatchSizeHint
 			}
 
 			// Cache-aware buffer sizing
-			if t.StreamBufferKB > 0 && c.BufferSize == 262144 {
+			if c.CPUAutoCacheBuffer && t.StreamBufferKB > 0 && c.BufferSize == 262144 {
 				c.BufferSize = t.StreamBufferKB * 1024
 			}
 		}

@@ -1700,6 +1700,15 @@ chmod +x dbbackup_linux_amd64_v3
 dbbackup cpu  # Look for "GOAMD64 Level: v3" or higher
 ```
 
+**TUI Configuration Panel (v6.47.0+):**
+
+The interactive TUI (`dbbackup interactive`) now includes a dedicated **CPU Optimization** panel where you can:
+
+- View detected hardware (vendor, ISA features, cache, NUMA, governor)
+- Toggle individual auto-tune subsystems on/off (vendor tuning, ISA compression, cache-aware buffers, NUMA, governor boost)
+- Override detected values (jobs, dump jobs, batch size, buffer KB, compression)
+- Save settings to `.dbbackup.conf` or reset all to auto-detected defaults
+
 ### HugePages Integration (v6.17+)
 
 On Linux systems with HugePages configured, dbbackup automatically detects and recommends optimal `shared_buffers` settings for PostgreSQL. HugePages reduce TLB misses and can provide a **30–50% improvement** in shared-buffer-heavy workloads.

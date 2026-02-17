@@ -5,6 +5,23 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.47.0] - 2026-02-17 — TUI CPU Optimization Panel
+
+### Added
+
+- **TUI CPU Optimization panel** — New interactive panel in the TUI main menu ("CPU Optimization") providing full hardware visibility and per-subsystem toggle control. Displays detected vendor, ISA features, GOAMD64 level, cache topology, hybrid P/E-core layout, NUMA nodes, frequency governor status, memory bandwidth, and vendor-tuned parameters. Five toggles: Auto-tune, ISA-based compression, Cache-aware buffer sizing, NUMA-aware workers, CPU governor boost. Five parameter overrides: Jobs, Dump jobs, Batch size, Buffer KB, Compression algorithm. Save to `.dbbackup.conf` and Reset to auto actions.
+- **3 new per-subsystem config fields** — `CPUAutoCompression`, `CPUAutoCacheBuffer`, `CPUAutoNUMA` (all default: `true`). Allow fine-grained control over which CPU auto-tuning features are active. Persisted in `[cpu_optimization]` section of `.dbbackup.conf`.
+- **Config persistence for CPU tuning** — `[cpu_optimization]` INI section with `auto_tune`, `boost_governor`, `auto_compression`, `auto_cache_buffer`, `auto_numa` keys. Full save/load/round-trip support in `LocalConfig`, `SaveLocalConfig`, `LoadLocalConfig`, `ApplyLocalConfig`, and `ConfigFromConfig`.
+- **14 TUI panel tests (`internal/tui/cpu_optimization_test.go`)** — Tests for model creation, toggle behavior, override editing, save/reset logic, view rendering, ISA flag formatting, ANSI stripping, and detection message handling.
+- **5 new config persistence fields** — Round-trip test coverage expanded from 58 to 63 fields.
+
+### Changed
+
+- **`internal/config/config.go`** — Added `CPUAutoCompression`, `CPUAutoCacheBuffer`, `CPUAutoNUMA` fields with env var defaults. `OptimizeForCPU()` now respects per-subsystem toggles for compression selection and cache-aware buffer sizing.
+- **`internal/config/persist.go`** — `LocalConfig` struct, `SaveLocalConfigToPath`, `LoadLocalConfigFromPath`, `ApplyLocalConfig`, and `ConfigFromConfig` all extended with CPU optimization fields.
+- **`internal/tui/menu.go`** — Added "CPU Optimization" menu item at index 12, `handleCPUOptimization()` handler, and updated all subsequent menu indices (13-19).
+- **`internal/tui/settings.go`** — `saveSettings()` now includes CPU optimization fields in the `LocalConfig` struct for persistence.
+
 ## [6.46.0] - 2026-02-17 — Intel/AMD CPU Architecture Optimization
 
 ### Added

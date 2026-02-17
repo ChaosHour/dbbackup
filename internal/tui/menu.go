@@ -131,6 +131,7 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
 			"View Backup Chain",
 			"--------------------------------",
 			"System Resource Profile",
+			"CPU Optimization",
 			"Tools",
 			"View Active Operations",
 			"Show Operation History",
@@ -296,19 +297,21 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case 11: // System Resource Profile
 				return m.handleProfile()
-			case 12: // Tools
+			case 12: // CPU Optimization
+				return m.handleCPUOptimization()
+			case 13: // Tools
 				return m.handleTools()
-			case 13: // View Active Operations
+			case 14: // View Active Operations
 				return m.handleViewOperations()
-			case 14: // Show Operation History
+			case 15: // Show Operation History
 				return m.handleOperationHistory()
-			case 15: // Database Status
+			case 16: // Database Status
 				return m.handleStatus()
-			case 16: // Settings
+			case 17: // Settings
 				return m.handleSettings()
-			case 17: // Clear History
+			case 18: // Clear History
 				return m.handleClearHistory()
-			case 18: // Quit
+			case 19: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -418,19 +421,21 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Do nothing
 			case 11: // System Resource Profile
 				return m.handleProfile()
-			case 12: // Tools
+			case 12: // CPU Optimization
+				return m.handleCPUOptimization()
+			case 13: // Tools
 				return m.handleTools()
-			case 13: // View Active Operations
+			case 14: // View Active Operations
 				return m.handleViewOperations()
-			case 14: // Show Operation History
+			case 15: // Show Operation History
 				return m.handleOperationHistory()
-			case 15: // Database Status
+			case 16: // Database Status
 				return m.handleStatus()
-			case 16: // Settings
+			case 17: // Settings
 				return m.handleSettings()
-			case 17: // Clear History
+			case 18: // Clear History
 				return m.handleClearHistory()
-			case 18: // Quit
+			case 19: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -639,6 +644,12 @@ func (m *MenuModel) handleTools() (tea.Model, tea.Cmd) {
 func (m *MenuModel) handleProfile() (tea.Model, tea.Cmd) {
 	profile := NewProfileModel(m.config, m.logger, m)
 	return profile, profile.Init()
+}
+
+// handleCPUOptimization opens the CPU optimization panel
+func (m *MenuModel) handleCPUOptimization() (tea.Model, tea.Cmd) {
+	cpuOpt := NewCPUOptModel(m.config, m.logger, m)
+	return cpuOpt, cpuOpt.Init()
 }
 
 // handleClearHistory deletes metadata/info files from the backup directory

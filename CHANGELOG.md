@@ -5,6 +5,25 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.49.0] - 2026-02-17 — Zstd Integrity Guard & Stability Hardening
+
+### Added
+
+- **Pre-flight stream integrity verification for restore pipeline** — New `VerifyStream()` performs a full decompression pass before any destructive database operations (DROP TABLE / DROP DATABASE), catching truncated archives, CRC mismatches, corrupt magic bytes, and trailing data. All three restore entry points (`RestoreSingle`, `RestoreCluster`, `RestoreSingleFromCluster`) now ABORT safely if the compressed stream is corrupt, preventing data loss.
+- **Quick header validation (`VerifyStreamQuick`)** — Header-only check that validates magic bytes and frame header structure without full decompression. Suitable for fast TUI archive browsing and catalog scans.
+- **`ValidatingReader` wrapper** — Inline decompression wrapper that tracks bytes read and detects trailing data on `Close()`, available for future streaming restore paths.
+- **9 integrity test functions** — Full coverage for valid/truncated/corrupt gzip and zstd streams, quick header validation, `ValidatingReader` read-through, and CRC flag verification.
+
+### Fixed
+
+- **Zstd encoder missing frame checksum** — `WithEncoderCRC(true)` was not set on the zstd encoder, so all backups lacked the xxHash64 frame checksum that enables CRC validation on restore. Now enabled by default for all new backups.
+- **39 zstd integration gaps across 27 files** — Comprehensive audit found and fixed missing `.zst` support in custom format writer/reader, parallel engine, backup encryption detection, restore dry-run preview, large-restore verification, and diagnostic functions.
+- **Cross-component consistency audit (8 findings, 10 files)** — Silent gzip fallback in custom format writer/reader when zstd configured (data corruption risk), missing zstd compression in parallel engine, undetected zstd magic in encryption and verification modules, TUI directory picker O(n) rendering replaced with 20-item sliding window, stderr pipe drain races in backup engine and dedup command.
+- **Dedup command process leak on context cancellation** — `exec.Command` replaced with `exec.CommandContext` + `SysProcAttr{Setpgid: true}` so child processes are properly killed via process group signal when the parent context is cancelled.
+- **mysqldump stderr silently discarded on failure** — `executeMySQLWithCompression` now collects and logs stderr output when mysqldump exits non-zero, providing actionable error messages instead of opaque "exit status 1".
+- **QA test scripts failed to find zstd backup files** — 35 glob patterns and 7 find commands in `run_full_qa.sh`, `disaster_recovery_test.sh`, and `tests/tui_phase1_test.sh` updated to match both `.gz` and `.zst` files.
+- **QA suite abort on missing email password** — `run_full_qa.sh` no longer aborts when `QA_EMAIL_PASS` is unset; email notifications are opt-in (`EMAIL_ENABLED=false` default) with a guard in `send_email_report()`.
+
 ## [6.48.0] - 2026-02-17 — Comprehensive Zstd Compression Support
 
 ### Fixed

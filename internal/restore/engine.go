@@ -144,6 +144,27 @@ func (e *Engine) RestoreSingle(ctx context.Context, archivePath, targetDB string
 	format := DetectArchiveFormat(archivePath)
 	e.log.Info("Detected archive format", "format", format, "path", archivePath)
 
+	// Pre-flight integrity check for compressed archives
+	// This validates the entire stream BEFORE any destructive operations (DROP/CREATE)
+	if format.IsCompressed() {
+		e.log.Info("Verifying compressed archive integrity (pre-flight check)...")
+		verifyResult, verifyErr := comp.VerifyStream(archivePath)
+		if verifyErr != nil {
+			operation.Fail(fmt.Sprintf("Archive integrity check failed: %v", verifyErr))
+			return fmt.Errorf("archive integrity check failed: %w", verifyErr)
+		}
+		if !verifyResult.Valid {
+			operation.Fail(fmt.Sprintf("Archive is corrupt: %v", verifyResult.Error))
+			return fmt.Errorf("ABORT: archive integrity check failed — %w (compressed: %d bytes, decompressed: %d bytes before failure). "+
+				"Refusing to restore corrupt archive to prevent data loss",
+				verifyResult.Error, verifyResult.BytesCompressed, verifyResult.BytesDecompressed)
+		}
+		e.log.Info("[OK] Archive integrity verified",
+			"algorithm", string(verifyResult.Algorithm),
+			"compressed", verifyResult.BytesCompressed,
+			"decompressed", verifyResult.BytesDecompressed)
+	}
+
 	// Check version compatibility for PostgreSQL dumps
 	if format == FormatPostgreSQLDump || format == FormatPostgreSQLDumpGz {
 		if compatResult, err := e.CheckRestoreVersionCompatibility(ctx, archivePath); err == nil && compatResult != nil {
@@ -1723,6 +1744,25 @@ func (e *Engine) RestoreSingleFromCluster(ctx context.Context, clusterArchivePat
 	extractedFormat := DetectArchiveFormat(extractedPath)
 	e.log.Info("Restoring extracted database", "format", extractedFormat, "target", targetDB)
 
+	// ── Pre-flight integrity check on extracted file ──
+	if extractedFormat.IsCompressed() {
+		e.log.Info("Running pre-flight integrity check on extracted database file", "path", extractedPath)
+		vr, verr := comp.VerifyStream(extractedPath)
+		if verr != nil {
+			operation.Fail(fmt.Sprintf("Integrity check error: %v", verr))
+			return fmt.Errorf("ABORT restore-from-cluster: integrity check failed for extracted file %s: %w", filepath.Base(extractedPath), verr)
+		}
+		if !vr.Valid {
+			operation.Fail(fmt.Sprintf("Corrupt extracted file: %v", vr.Error))
+			return fmt.Errorf("ABORT restore-from-cluster: extracted file %s is corrupt (%s, %d compressed bytes, %d decompressed bytes): %v",
+				filepath.Base(extractedPath), vr.Algorithm, vr.BytesCompressed, vr.BytesDecompressed, vr.Error)
+		}
+		e.log.Info("Extracted file integrity verified",
+			"algorithm", vr.Algorithm,
+			"compressed", vr.BytesCompressed,
+			"decompressed", vr.BytesDecompressed)
+	}
+
 	// Restore based on format
 	var restoreErr error
 	switch extractedFormat {
@@ -1810,6 +1850,27 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	if !format.CanBeClusterRestore() {
 		operation.Fail("Invalid cluster archive format")
 		return fmt.Errorf("not a valid cluster restore format: %s (detected format: %s). Supported: .tar.gz, .tar.zst, plain directory, .sql, .sql.gz, .sql.zst", archivePath, format)
+	}
+
+	// Pre-flight integrity check for compressed cluster archives
+	// Cluster restores DROP entire databases — we must verify BEFORE destruction
+	if format.IsCompressed() {
+		e.log.Info("Verifying cluster archive integrity (pre-flight check)...")
+		verifyResult, verifyErr := comp.VerifyStream(archivePath)
+		if verifyErr != nil {
+			operation.Fail(fmt.Sprintf("Archive integrity check failed: %v", verifyErr))
+			return fmt.Errorf("cluster archive integrity check failed: %w", verifyErr)
+		}
+		if !verifyResult.Valid {
+			operation.Fail(fmt.Sprintf("Cluster archive is corrupt: %v", verifyResult.Error))
+			return fmt.Errorf("ABORT: cluster archive integrity check failed — %w (compressed: %d bytes, decompressed: %d bytes before failure). "+
+				"Refusing to restore corrupt cluster archive to prevent data loss",
+				verifyResult.Error, verifyResult.BytesCompressed, verifyResult.BytesDecompressed)
+		}
+		e.log.Info("[OK] Cluster archive integrity verified",
+			"algorithm", string(verifyResult.Algorithm),
+			"compressed", verifyResult.BytesCompressed,
+			"decompressed", verifyResult.BytesDecompressed)
 	}
 
 	// For SQL-based cluster restores, use a different restore path

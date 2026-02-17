@@ -272,7 +272,8 @@ func newZstdCompressor(writer io.Writer, level int) (*Compressor, error) {
 	enc, err := zstd.NewWriter(writer,
 		zstd.WithEncoderLevel(encLevel),
 		zstd.WithEncoderConcurrency(runtime.NumCPU()),
-		zstd.WithWindowSize(4<<20), // 4MB window for streaming
+		zstd.WithEncoderCRC(true),     // Enable xxHash64 frame checksum for integrity verification
+		zstd.WithWindowSize(4<<20),    // 4MB window for streaming
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create zstd writer: %w", err)

@@ -220,13 +220,15 @@ func (ro *RestoreOrchestrator) extractBaseBackup(ctx context.Context, opts *Rest
 	// Check format
 	if strings.HasSuffix(backupPath, ".tar.gz") || strings.HasSuffix(backupPath, ".tgz") {
 		return ro.extractTarGzBackup(ctx, backupPath, opts.TargetDataDir)
+	} else if strings.HasSuffix(backupPath, ".tar.zst") || strings.HasSuffix(backupPath, ".tar.zstd") {
+		return ro.extractTarCompressedBackup(ctx, backupPath, opts.TargetDataDir)
 	} else if strings.HasSuffix(backupPath, ".tar") {
 		return ro.extractTarBackup(ctx, backupPath, opts.TargetDataDir)
 	} else if stat, err := os.Stat(backupPath); err == nil && stat.IsDir() {
 		return ro.copyDirectoryBackup(ctx, backupPath, opts.TargetDataDir)
 	}
 
-	return fmt.Errorf("unsupported backup format: %s (expected .tar.gz, .tar, or directory)", backupPath)
+	return fmt.Errorf("unsupported backup format: %s (expected .tar.gz, .tar.zst, .tar, or directory)", backupPath)
 }
 
 // extractTarGzBackup extracts a .tar.gz backup using parallel gzip (pgzip)
@@ -242,6 +244,19 @@ func (ro *RestoreOrchestrator) extractTarGzBackup(ctx context.Context, source, d
 	})
 	if err != nil {
 		return fmt.Errorf("tar extraction failed: %w", err)
+	}
+
+	ro.log.Info("[OK] Base backup extracted successfully")
+	return nil
+}
+
+// extractTarCompressedBackup extracts a .tar.zst backup using the compression package
+func (ro *RestoreOrchestrator) extractTarCompressedBackup(ctx context.Context, source, dest string) error {
+	ro.log.Info("Extracting tar.zst backup (zstd decompression)...")
+
+	err := fs.ExtractTarCompressed(ctx, source, dest)
+	if err != nil {
+		return fmt.Errorf("tar.zst extraction failed: %w", err)
 	}
 
 	ro.log.Info("[OK] Base backup extracted successfully")

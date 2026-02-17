@@ -106,7 +106,7 @@ func runDiff(cmd *cobra.Command, args []string) error {
 // resolveBackupArg resolves various backup reference formats
 func resolveBackupArg(arg string) (string, error) {
 	// If it looks like a file path, use it directly
-	if strings.Contains(arg, "/") || strings.HasSuffix(arg, ".gz") || strings.HasSuffix(arg, ".dump") {
+	if strings.Contains(arg, "/") || strings.HasSuffix(arg, ".gz") || strings.HasSuffix(arg, ".dump") || strings.HasSuffix(arg, ".zst") {
 		if _, err := os.Stat(arg); err == nil {
 			return arg, nil
 		}

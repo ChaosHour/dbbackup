@@ -232,8 +232,10 @@ type backupFile struct {
 // isBackupFile checks if a file is a backup file based on extension
 func isBackupFile(filename string) bool {
 	ext := strings.ToLower(filepath.Ext(filename))
-	return ext == ".dump" || ext == ".sql" || ext == ".tar" || ext == ".gz" ||
-		strings.HasSuffix(filename, ".tar.gz") || strings.HasSuffix(filename, ".dump.gz")
+	return ext == ".dump" || ext == ".sql" || ext == ".tar" || ext == ".gz" || ext == ".zst" || ext == ".zstd" ||
+		strings.HasSuffix(filename, ".tar.gz") || strings.HasSuffix(filename, ".dump.gz") ||
+		strings.HasSuffix(filename, ".tar.zst") || strings.HasSuffix(filename, ".dump.zst") ||
+		strings.HasSuffix(filename, ".sql.zst")
 }
 
 // getBackupType determines backup type from filename
@@ -242,9 +244,9 @@ func getBackupType(filename string) string {
 		return "Cluster Backup"
 	} else if strings.Contains(filename, "sample") {
 		return "Sample Backup"
-	} else if strings.HasSuffix(filename, ".dump") || strings.HasSuffix(filename, ".dump.gz") {
+	} else if strings.HasSuffix(filename, ".dump") || strings.HasSuffix(filename, ".dump.gz") || strings.HasSuffix(filename, ".dump.zst") {
 		return "Single Database"
-	} else if strings.HasSuffix(filename, ".sql") {
+	} else if strings.HasSuffix(filename, ".sql") || strings.HasSuffix(filename, ".sql.gz") || strings.HasSuffix(filename, ".sql.zst") {
 		return "SQL Script"
 	}
 	return "Unknown"
@@ -421,14 +423,20 @@ func checkSystemResources() error {
 
 func detectArchiveType(filename string) string {
 	switch {
+	case strings.HasSuffix(filename, ".dump.zst"):
+		return "Single Database (.dump.zst)"
 	case strings.HasSuffix(filename, ".dump.gz"):
 		return "Single Database (.dump.gz)"
 	case strings.HasSuffix(filename, ".dump"):
 		return "Single Database (.dump)"
+	case strings.HasSuffix(filename, ".sql.zst"):
+		return "SQL Script (.sql.zst)"
 	case strings.HasSuffix(filename, ".sql.gz"):
 		return "SQL Script (.sql.gz)"
 	case strings.HasSuffix(filename, ".sql"):
 		return "SQL Script (.sql)"
+	case strings.HasSuffix(filename, ".tar.zst"):
+		return "Cluster Backup (.tar.zst)"
 	case strings.HasSuffix(filename, ".tar.gz"):
 		return "Cluster Backup (.tar.gz)"
 	case strings.HasSuffix(filename, ".tar"):

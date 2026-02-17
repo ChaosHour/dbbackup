@@ -366,7 +366,7 @@ func (e *Engine) analyzeArchive(ctx context.Context, dumpsDir string, entries []
 		}
 
 		// For SQL format, try to estimate from file content (sample check)
-		if strings.HasSuffix(entry.Name(), ".sql.gz") {
+		if strings.HasSuffix(entry.Name(), ".sql.gz") || strings.HasSuffix(entry.Name(), ".sql.zst") {
 			// Check for lo_create patterns in compressed SQL
 			blobCount := e.estimateBlobsInSQL(dumpFile)
 			if blobCount > 0 {

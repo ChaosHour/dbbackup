@@ -16,12 +16,11 @@ import (
 	"time"
 
 	"dbbackup/internal/checks"
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
-
-	"github.com/klauspost/pgzip"
 )
 
 // XtraBackupEngine implements BackupEngine using Percona XtraBackup.
@@ -378,7 +377,8 @@ func (e *XtraBackupEngine) Backup(ctx context.Context, opts *BackupOptions) (*Ba
 	if opts.Compress || e.config.Compress {
 		e.log.Info("Compressing backup directory...")
 		timestamp := time.Now().Format("20060102_150405")
-		tarFile := filepath.Join(opts.OutputDir, fmt.Sprintf("xtrabackup_%s_%s.tar.gz", opts.Database, timestamp))
+		tarFile := filepath.Join(opts.OutputDir, fmt.Sprintf("xtrabackup_%s_%s%s", opts.Database, timestamp,
+			compressedTarExt(e.config.CompressFormat)))
 
 		if err := e.compressBackup(ctx, targetDir, tarFile, opts.ProgressFunc); err != nil {
 			return nil, fmt.Errorf("failed to compress backup: %w", err)
@@ -493,7 +493,8 @@ func (e *XtraBackupEngine) Restore(ctx context.Context, opts *RestoreOptions) er
 	sourcePath := opts.SourcePath
 
 	// If source is compressed, extract first
-	if strings.HasSuffix(sourcePath, ".tar.gz") || strings.HasSuffix(sourcePath, ".tgz") {
+	if strings.HasSuffix(sourcePath, ".tar.gz") || strings.HasSuffix(sourcePath, ".tgz") ||
+		strings.HasSuffix(sourcePath, ".tar.zst") || strings.HasSuffix(sourcePath, ".tar.zstd") {
 		extractDir := filepath.Join(filepath.Dir(sourcePath), "xtrabackup_extract_"+time.Now().Format("20060102_150405"))
 		e.log.Info("Extracting compressed backup", "source", sourcePath, "target", extractDir)
 
@@ -922,7 +923,7 @@ func (e *XtraBackupEngine) parseCheckpoints(targetDir string) map[string]string 
 	return info
 }
 
-// compressBackup compresses the backup directory to tar.gz
+// compressBackup compresses the backup directory to tar.gz or tar.zst
 func (e *XtraBackupEngine) compressBackup(ctx context.Context, sourceDir, targetFile string, progressFunc ProgressFunc) error {
 	outFile, err := os.Create(targetFile)
 	if err != nil {
@@ -930,21 +931,22 @@ func (e *XtraBackupEngine) compressBackup(ctx context.Context, sourceDir, target
 	}
 	defer outFile.Close()
 
-	// Wrap in SafeWriter to prevent pgzip goroutine panics on early close
+	// Wrap in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(outFile)
 	defer sw.Shutdown()
 
 	level := e.config.CompressLevel
 	if level == 0 {
-		level = pgzip.DefaultCompression
+		level = 6 // default
 	}
-	gzWriter, err := pgzip.NewWriterLevel(sw, level)
+	algo := compression.DetectAlgorithm(targetFile)
+	comp, err := compression.NewCompressor(sw, algo, level)
 	if err != nil {
 		return err
 	}
-	defer gzWriter.Close()
+	defer comp.Close()
 
-	tarWriter := tar.NewWriter(gzWriter)
+	tarWriter := tar.NewWriter(comp.Writer)
 	defer tarWriter.Close()
 
 	return filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
@@ -990,7 +992,7 @@ func (e *XtraBackupEngine) compressBackup(ctx context.Context, sourceDir, target
 	})
 }
 
-// extractBackup extracts a compressed backup
+// extractBackup extracts a compressed backup (gzip or zstd)
 func (e *XtraBackupEngine) extractBackup(ctx context.Context, sourceFile, targetDir string) error {
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return err
@@ -1002,13 +1004,13 @@ func (e *XtraBackupEngine) extractBackup(ctx context.Context, sourceFile, target
 	}
 	defer file.Close()
 
-	gzReader, err := pgzip.NewReader(file)
+	decomp, err := compression.NewDecompressor(file, sourceFile)
 	if err != nil {
 		return err
 	}
-	defer gzReader.Close()
+	defer decomp.Close()
 
-	tarReader := tar.NewReader(gzReader)
+	tarReader := tar.NewReader(decomp.Reader)
 
 	for {
 		header, err := tarReader.Next()

@@ -450,12 +450,18 @@ func (m ArchiveBrowserModel) filterArchives(archives []ArchiveInfo) []ArchiveInf
 
 // stripFileExtensions removes common backup file extensions from a name
 func stripFileExtensions(name string) string {
-	// Remove extensions (handle double extensions like .sql.gz.sql.gz)
+	// Remove extensions (handle double extensions like .sql.gz, .sql.zst)
 	for {
 		oldName := name
 		name = strings.TrimSuffix(name, ".tar.gz")
+		name = strings.TrimSuffix(name, ".tar.zst")
+		name = strings.TrimSuffix(name, ".tar.zstd")
 		name = strings.TrimSuffix(name, ".dump.gz")
+		name = strings.TrimSuffix(name, ".dump.zst")
+		name = strings.TrimSuffix(name, ".dump.zstd")
 		name = strings.TrimSuffix(name, ".sql.gz")
+		name = strings.TrimSuffix(name, ".sql.zst")
+		name = strings.TrimSuffix(name, ".sql.zstd")
 		name = strings.TrimSuffix(name, ".dump")
 		name = strings.TrimSuffix(name, ".sql")
 		// If no change, we're done

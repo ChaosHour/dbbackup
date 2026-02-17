@@ -1122,11 +1122,14 @@ func runCatalogGenerate(cmd *cobra.Command, args []string) error {
 
 			// Check if it's a supported archive format
 			if !strings.HasSuffix(archivePath, ".tar.gz") &&
+				!strings.HasSuffix(archivePath, ".tar.zst") &&
 				!strings.HasSuffix(archivePath, ".tgz") &&
 				!strings.HasSuffix(archivePath, ".dump") &&
 				!strings.HasSuffix(archivePath, ".dump.gz") &&
+				!strings.HasSuffix(archivePath, ".dump.zst") &&
 				!strings.HasSuffix(archivePath, ".sql") &&
-				!strings.HasSuffix(archivePath, ".sql.gz") {
+				!strings.HasSuffix(archivePath, ".sql.gz") &&
+				!strings.HasSuffix(archivePath, ".sql.zst") {
 				if verbose {
 					fmt.Printf("  ⏭️  Skipping unsupported format: %s\n", filepath.Base(archivePath))
 				}

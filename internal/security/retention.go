@@ -150,10 +150,13 @@ func (rp *RetentionPolicy) scanBackupArchives(backupDir string) ([]ArchiveInfo, 
 
 // isBackupArchive checks if filename is a backup archive
 func isBackupArchive(name string) bool {
-	return (filepath.Ext(name) == ".dump" ||
-		filepath.Ext(name) == ".sql" ||
-		filepath.Ext(name) == ".gz" ||
-		filepath.Ext(name) == ".tar") &&
+	ext := filepath.Ext(name)
+	return (ext == ".dump" ||
+		ext == ".sql" ||
+		ext == ".gz" ||
+		ext == ".tar" ||
+		ext == ".zst" ||
+		ext == ".zstd") &&
 		name != ".sha256" &&
 		name != ".meta"
 }

@@ -301,8 +301,8 @@ func validateMetaFile(archivePath, metaPath string) []string {
 func findArchives(dir string) []string {
 	var archives []string
 	patterns := []string{
-		"*.tar.gz", "*.sql.gz", "*.sql.lz4", "*.sql.zst",
-		"*.dump", "*.dump.gz", "*.sql", "*.backup",
+		"*.tar.gz", "*.tar.zst", "*.sql.gz", "*.sql.lz4", "*.sql.zst",
+		"*.dump", "*.dump.gz", "*.dump.zst", "*.sql", "*.backup",
 	}
 
 	for _, pattern := range patterns {

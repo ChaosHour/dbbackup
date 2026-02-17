@@ -9,13 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/database"
 	"dbbackup/internal/engine/native"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/notify"
-
-	"github.com/klauspost/pgzip"
 )
 
 // Native backup configuration flags
@@ -107,7 +106,12 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 	extension := ".sql"
 	// Note: compression is handled by the engine if configured
 	if cfg.CompressionLevel > 0 {
-		extension = ".sql.gz"
+		switch strings.ToLower(cfg.CompressionAlgorithm) {
+		case "zstd":
+			extension = ".sql.zst"
+		default:
+			extension = ".sql.gz"
+		}
 	}
 
 	outputFile := filepath.Join(cfg.BackupDir, fmt.Sprintf("%s_%s_native%s",
@@ -125,21 +129,22 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 	}
 	defer file.Close()
 
-	// Wrap with compression if enabled (use pgzip for parallel compression)
+	// Wrap with compression if enabled
 	var writer io.Writer = file
 	var sw *fs.SafeWriter
 	if cfg.CompressionLevel > 0 {
-		// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+		// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 		sw = fs.NewSafeWriter(file)
-		gzWriter, err := pgzip.NewWriterLevel(sw, cfg.CompressionLevel)
+		algo := compression.DetectAlgorithm(outputFile)
+		comp, err := compression.NewCompressor(sw, algo, cfg.CompressionLevel)
 		if err != nil {
-			return fmt.Errorf("failed to create gzip writer: %w", err)
+			return fmt.Errorf("failed to create compressor: %w", err)
 		}
 		defer func() {
-			gzWriter.Close()
+			comp.Close()
 			sw.Shutdown()
 		}()
-		writer = gzWriter
+		writer = comp.Writer
 	}
 
 	log.Info("Starting native backup",
@@ -199,7 +204,7 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 		BackupFile:   filepath.Base(outputFile),
 		SizeBytes:    actualSize,
 		SHA256:       sha256sum,
-		Compression:  "gzip",
+		Compression:  cfg.CompressionAlgorithm,
 		BackupType:   backupType,
 		Duration:     backupDuration.Seconds(),
 		ExtraInfo: map[string]string{

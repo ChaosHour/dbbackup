@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -175,9 +176,12 @@ func runParallelRestoreBenchmark(cmd *cobra.Command, args []string) error {
 	format := "unknown"
 	if ext == ".dump" || ext == ".pgdump" {
 		format = "PostgreSQL custom format"
-	} else if ext == ".sql" || ext == ".gz" && filepath.Ext(parallelRestoreFile[:len(parallelRestoreFile)-3]) == ".sql" {
+	} else if ext == ".sql" || ext == ".gz" && filepath.Ext(parallelRestoreFile[:len(parallelRestoreFile)-3]) == ".sql" ||
+		ext == ".zst" && filepath.Ext(parallelRestoreFile[:len(parallelRestoreFile)-4]) == ".sql" {
 		format = "SQL format"
-	} else if ext == ".tar" || ext == ".tgz" {
+	} else if ext == ".tar" || ext == ".tgz" ||
+		(ext == ".gz" && strings.HasSuffix(parallelRestoreFile, ".tar.gz")) ||
+		(ext == ".zst" && strings.HasSuffix(parallelRestoreFile, ".tar.zst")) {
 		format = "Cluster backup"
 	}
 
@@ -317,7 +321,9 @@ func runParallelRestoreSimulate(cmd *cobra.Command, args []string) error {
 
 	// Detect backup type
 	ext := filepath.Ext(parallelRestoreFile)
-	isCluster := ext == ".tar" || ext == ".tgz"
+	isCluster := ext == ".tar" || ext == ".tgz" ||
+		(ext == ".gz" && strings.HasSuffix(parallelRestoreFile, ".tar.gz")) ||
+		(ext == ".zst" && strings.HasSuffix(parallelRestoreFile, ".tar.zst"))
 
 	if isCluster {
 		fmt.Println("[CLUSTER RESTORE PLAN]")

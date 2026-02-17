@@ -15,6 +15,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"dbbackup/internal/compression"
+
 	"github.com/klauspost/pgzip"
 )
 
@@ -467,8 +469,9 @@ func ListTarGzHeadersFast(ctx context.Context, archivePath string, maxEntries in
 	return listTarGzHeadersGo(ctx, archivePath, maxEntries)
 }
 
-// listTarGzHeadersShell uses a shell pipeline to list tar.gz contents.
-// Uses: tar tzf <file> | head -<n>
+// listTarGzHeadersShell uses a shell pipeline to list tar.gz or tar.zst contents.
+// Uses: tar tzf <file> | head -<n>  (for gzip)
+//       zstd -dc <file> | tar t | head -<n>  (for zstd)
 // When head exits after N lines, SIGPIPE kills tar instantly — no need to
 // decompress the entire archive. This makes it O(header_count) not O(archive_size).
 func listTarGzHeadersShell(ctx context.Context, archivePath string, maxEntries int) ([]string, error) {
@@ -478,16 +481,33 @@ func listTarGzHeadersShell(ctx context.Context, archivePath string, maxEntries i
 		return nil, fmt.Errorf("tar not found: %w", err)
 	}
 
-	// Build command: tar tzf <file>
-	// tar handles gzip decompression internally and SIGPIPE kills it when head exits
+	// Detect if this is a zstd archive
+	isZstd := strings.HasSuffix(archivePath, ".tar.zst") || strings.HasSuffix(archivePath, ".tar.zstd")
+
 	var cmd *exec.Cmd
-	if maxEntries > 0 {
-		// Use head to limit output — SIGPIPE stops tar immediately
-		cmd = exec.CommandContext(ctx, "sh", "-c",
-			fmt.Sprintf("%s tzf %s 2>/dev/null | head -n %d",
-				tarPath, shellQuote(archivePath), maxEntries))
+	if isZstd {
+		// For zstd: try tar --zstd first, then fall back to zstd pipe
+		if maxEntries > 0 {
+			// Try zstdcat pipe which works on all systems
+			cmd = exec.CommandContext(ctx, "sh", "-c",
+				fmt.Sprintf("zstd -dcq %s 2>/dev/null | %s t 2>/dev/null | head -n %d",
+					shellQuote(archivePath), tarPath, maxEntries))
+		} else {
+			cmd = exec.CommandContext(ctx, "sh", "-c",
+				fmt.Sprintf("zstd -dcq %s 2>/dev/null | %s t 2>/dev/null",
+					shellQuote(archivePath), tarPath))
+		}
 	} else {
-		cmd = exec.CommandContext(ctx, tarPath, "tzf", archivePath)
+		// Build command: tar tzf <file>
+		// tar handles gzip decompression internally and SIGPIPE kills it when head exits
+		if maxEntries > 0 {
+			// Use head to limit output — SIGPIPE stops tar immediately
+			cmd = exec.CommandContext(ctx, "sh", "-c",
+				fmt.Sprintf("%s tzf %s 2>/dev/null | head -n %d",
+					tarPath, shellQuote(archivePath), maxEntries))
+		} else {
+			cmd = exec.CommandContext(ctx, tarPath, "tzf", archivePath)
+		}
 	}
 
 	output, err := cmd.Output()
@@ -521,7 +541,7 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-// listTarGzHeadersGo lists tar headers using pure Go pgzip decompression.
+// listTarGzHeadersGo lists tar headers using pure Go decompression (gzip or zstd).
 // This is the fallback when shell tools aren't available. It's slow for large
 // archives because it must decompress file bodies to skip to the next header.
 func listTarGzHeadersGo(ctx context.Context, archivePath string, maxEntries int) ([]string, error) {
@@ -530,21 +550,21 @@ func listTarGzHeadersGo(ctx context.Context, archivePath string, maxEntries int)
 		return nil, fmt.Errorf("cannot open archive: %w", err)
 	}
 
-	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	// Wrap file in safeReader to prevent decompressor goroutine panics on early close
 	sr := &safeReader{r: file}
 
-	gzReader, err := pgzip.NewReaderN(sr, 1<<20, runtime.NumCPU())
+	decompReader, err := compression.NewDecompressor(sr, archivePath)
 	if err != nil {
 		file.Close()
-		return nil, fmt.Errorf("cannot create gzip reader: %w", err)
+		return nil, fmt.Errorf("cannot create decompressor: %w", err)
 	}
 
-	// Context-watcher: kill pgzip goroutines when we're done or cancelled
+	// Context-watcher: kill decompressor goroutines when we're done or cancelled
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
-			sr.shutdown() // Signal safeReader first so pgzip goroutines get EOF
-			gzReader.Close()
+			sr.shutdown() // Signal safeReader first so decompressor goroutines get EOF
+			decompReader.Close()
 			file.Close()
 		})
 	}
@@ -574,7 +594,7 @@ func listTarGzHeadersGo(ctx context.Context, archivePath string, maxEntries int)
 		}
 
 		// Read 512-byte tar header block
-		_, err := io.ReadFull(gzReader, headerBuf)
+		_, err := io.ReadFull(decompReader.Reader, headerBuf)
 		if err != nil {
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return files, nil
@@ -609,7 +629,7 @@ func listTarGzHeadersGo(ctx context.Context, archivePath string, maxEntries int)
 				return files, nil
 			}
 			// Skip past the file body in the decompressed stream
-			skipped, err := io.CopyN(io.Discard, gzReader, paddedSize)
+			skipped, err := io.CopyN(io.Discard, decompReader.Reader, paddedSize)
 			if err != nil {
 				if ctx.Err() != nil {
 					return files, ctx.Err()
@@ -687,6 +707,72 @@ func parseTarSize(header []byte) int64 {
 func ExtractTarGzFast(ctx context.Context, archivePath, destDir string, progressCb ProgressCallback) error {
 	// Always use parallel Go implementation - it's faster and more portable
 	return ExtractTarGzParallel(ctx, archivePath, destDir, progressCb)
+}
+
+// ExtractTarCompressed extracts a tar archive compressed with any supported algorithm.
+// Auto-detects compression from file extension (gzip, zstd, or none).
+// For gzip, prefer ExtractTarGzParallel which uses optimized parallel pgzip.
+func ExtractTarCompressed(ctx context.Context, archivePath, destDir string) error {
+	file, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("cannot open archive: %w", err)
+	}
+	defer file.Close()
+
+	decompReader, err := compression.NewDecompressor(file, archivePath)
+	if err != nil {
+		return fmt.Errorf("cannot create decompressor: %w", err)
+	}
+	defer decompReader.Close()
+
+	tarReader := tar.NewReader(decompReader.Reader)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("error reading tar: %w", err)
+		}
+
+		targetPath := filepath.Join(destDir, header.Name)
+
+		// Security: prevent directory traversal
+		if !strings.HasPrefix(filepath.Clean(targetPath), filepath.Clean(destDir)) {
+			continue
+		}
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return fmt.Errorf("cannot create directory %s: %w", header.Name, err)
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return fmt.Errorf("cannot create parent directory: %w", err)
+			}
+			outFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return fmt.Errorf("cannot create file %s: %w", header.Name, err)
+			}
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				outFile.Close()
+				return fmt.Errorf("cannot write file %s: %w", header.Name, err)
+			}
+			outFile.Close()
+		}
+	}
+	return nil
 }
 
 // CreateProgress reports archive creation progress

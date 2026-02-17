@@ -26,6 +26,7 @@ const (
 	FormatMySQLSQLGz        ArchiveFormat = "MySQL SQL Compressed (.sql.gz)"
 	FormatMySQLSQLZst       ArchiveFormat = "MySQL SQL Compressed (.sql.zst)"
 	FormatClusterTarGz      ArchiveFormat = "Cluster Archive (.tar.gz)"
+	FormatClusterTarZst     ArchiveFormat = "Cluster Archive (.tar.zst)"
 	FormatClusterDir        ArchiveFormat = "Cluster Directory (plain)"
 	FormatUnknown           ArchiveFormat = "Unknown"
 )
@@ -61,6 +62,11 @@ func DetectArchiveFormat(filename string) ArchiveFormat {
 		// All .tar.gz files are treated as cluster backups
 		// since that's the format used for cluster archives
 		return FormatClusterTarGz
+	}
+
+	// Check for zstd-compressed cluster archives
+	if strings.HasSuffix(lower, ".tar.zst") || strings.HasSuffix(lower, ".tar.zstd") {
+		return FormatClusterTarZst
 	}
 
 	// For .dump files, assume PostgreSQL custom format based on extension
@@ -230,14 +236,16 @@ func (f ArchiveFormat) IsCompressed() bool {
 		f == FormatPostgreSQLSQLZst ||
 		f == FormatMySQLSQLGz ||
 		f == FormatMySQLSQLZst ||
-		f == FormatClusterTarGz
+		f == FormatClusterTarGz ||
+		f == FormatClusterTarZst
 }
 
 // IsZstd returns true if the archive uses zstd compression
 func (f ArchiveFormat) IsZstd() bool {
 	return f == FormatPostgreSQLDumpZst ||
 		f == FormatPostgreSQLSQLZst ||
-		f == FormatMySQLSQLZst
+		f == FormatMySQLSQLZst ||
+		f == FormatClusterTarZst
 }
 
 // CompressionAlgorithm returns the compression algorithm used by this format
@@ -252,18 +260,20 @@ func (f ArchiveFormat) CompressionAlgorithm() compression.Algorithm {
 	}
 }
 
-// IsClusterBackup returns true if the archive is a cluster backup (.tar.gz or plain directory)
+// IsClusterBackup returns true if the archive is a cluster backup (.tar.gz, .tar.zst, or plain directory)
 func (f ArchiveFormat) IsClusterBackup() bool {
-	return f == FormatClusterTarGz || f == FormatClusterDir
+	return f == FormatClusterTarGz || f == FormatClusterTarZst || f == FormatClusterDir
 }
 
 // CanBeClusterRestore returns true if the format can be used for cluster restore
 // This includes .tar.gz (dbbackup format), plain directories, and .sql/.sql.gz (pg_dumpall format for native engine)
 func (f ArchiveFormat) CanBeClusterRestore() bool {
 	return f == FormatClusterTarGz ||
+		f == FormatClusterTarZst ||
 		f == FormatClusterDir ||
 		f == FormatPostgreSQLSQL ||
 		f == FormatPostgreSQLSQLGz ||
+		f == FormatPostgreSQLSQLZst ||
 		f == FormatMySQLSQL ||
 		f == FormatMySQLSQLGz ||
 		f == FormatMySQLSQLZst
@@ -278,6 +288,7 @@ func (f ArchiveFormat) IsPostgreSQL() bool {
 		f == FormatPostgreSQLSQLGz ||
 		f == FormatPostgreSQLSQLZst ||
 		f == FormatClusterTarGz ||
+		f == FormatClusterTarZst ||
 		f == FormatClusterDir
 }
 
@@ -309,6 +320,8 @@ func (f ArchiveFormat) String() string {
 		return "MySQL SQL (zstd)"
 	case FormatClusterTarGz:
 		return "Cluster Archive (tar.gz)"
+	case FormatClusterTarZst:
+		return "Cluster Archive (tar.zst)"
 	case FormatClusterDir:
 		return "Cluster Directory (plain)"
 	default:

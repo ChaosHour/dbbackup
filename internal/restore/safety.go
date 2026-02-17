@@ -9,13 +9,12 @@ import (
 	"strings"
 
 	"dbbackup/internal/cleanup"
+	"dbbackup/internal/compression"
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
-
-	"github.com/klauspost/pgzip"
 )
 
 // Safety provides pre-restore validation and safety checks
@@ -60,13 +59,13 @@ func (s *Safety) ValidateArchive(archivePath string) error {
 	switch format {
 	case FormatPostgreSQLDump:
 		return s.validatePgDump(archivePath)
-	case FormatPostgreSQLDumpGz:
+	case FormatPostgreSQLDumpGz, FormatPostgreSQLDumpZst:
 		return s.validatePgDumpGz(archivePath)
 	case FormatPostgreSQLSQL, FormatMySQLSQL:
 		return s.validateSQLScript(archivePath)
-	case FormatPostgreSQLSQLGz, FormatMySQLSQLGz:
+	case FormatPostgreSQLSQLGz, FormatMySQLSQLGz, FormatPostgreSQLSQLZst, FormatMySQLSQLZst:
 		return s.validateSQLScriptGz(archivePath)
-	case FormatClusterTarGz:
+	case FormatClusterTarGz, FormatClusterTarZst:
 		return s.validateTarGz(archivePath)
 	}
 
@@ -114,22 +113,22 @@ func (s *Safety) validatePgDumpGz(path string) error {
 	}
 	defer file.Close()
 
-	// Open gzip reader
-	gz, err := pgzip.NewReader(file)
+	// Auto-detect decompressor from file extension
+	decomp, err := compression.NewDecompressor(file, path)
 	if err != nil {
-		return fmt.Errorf("not a valid gzip file: %w", err)
+		return fmt.Errorf("not a valid compressed file: %w", err)
 	}
-	defer gz.Close()
+	defer decomp.Close()
 
 	// Read first 512 bytes
 	buffer := make([]byte, 512)
-	n, err := gz.Read(buffer)
+	n, err := decomp.Reader.Read(buffer)
 	if err != nil && err != io.EOF {
-		return fmt.Errorf("cannot read gzip contents: %w", err)
+		return fmt.Errorf("cannot read compressed contents: %w", err)
 	}
 
 	if n < 5 {
-		return fmt.Errorf("gzip archive too small")
+		return fmt.Errorf("compressed archive too small")
 	}
 
 	// Check for PGDMP signature
@@ -175,16 +174,17 @@ func (s *Safety) validateSQLScriptGz(path string) error {
 	}
 	defer file.Close()
 
-	gz, err := pgzip.NewReader(file)
+	// Auto-detect decompressor from file extension
+	decomp, err := compression.NewDecompressor(file, path)
 	if err != nil {
-		return fmt.Errorf("not a valid gzip file: %w", err)
+		return fmt.Errorf("not a valid compressed file: %w", err)
 	}
-	defer gz.Close()
+	defer decomp.Close()
 
 	buffer := make([]byte, 1024)
-	n, err := gz.Read(buffer)
+	n, err := decomp.Reader.Read(buffer)
 	if err != nil && err != io.EOF {
-		return fmt.Errorf("cannot read gzip contents: %w", err)
+		return fmt.Errorf("cannot read compressed contents: %w", err)
 	}
 
 	content := strings.ToLower(string(buffer[:n]))
@@ -195,7 +195,7 @@ func (s *Safety) validateSQLScriptGz(path string) error {
 	return fmt.Errorf("does not appear to contain SQL content")
 }
 
-// validateTarGz validates tar.gz archive with fast stream-based checks
+// validateTarGz validates tar.gz/tar.zst archive with fast stream-based checks
 func (s *Safety) validateTarGz(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
@@ -203,29 +203,16 @@ func (s *Safety) validateTarGz(path string) error {
 	}
 	defer file.Close()
 
-	// Check gzip magic number
-	buffer := make([]byte, 3)
-	n, err := file.Read(buffer)
-	if err != nil || n < 3 {
-		return fmt.Errorf("cannot read file header")
-	}
-
-	if buffer[0] != 0x1f || buffer[1] != 0x8b {
-		return fmt.Errorf("not a valid gzip file")
-	}
-
-	// Quick tar structure validation (stream-based, no full extraction)
-	// Reset to start and decompress first few KB to check tar header
-	file.Seek(0, 0)
-	gzReader, err := pgzip.NewReader(file)
+	// Auto-detect decompressor from file extension
+	decomp, err := compression.NewDecompressor(file, path)
 	if err != nil {
-		return fmt.Errorf("gzip corruption detected: %w", err)
+		return fmt.Errorf("compressed archive corruption detected: %w", err)
 	}
-	defer gzReader.Close()
+	defer decomp.Close()
 
 	// Read first tar header to verify it's a valid tar archive
 	headerBuf := make([]byte, 512) // Tar header is 512 bytes
-	n, err = gzReader.Read(headerBuf)
+	n, err := decomp.Reader.Read(headerBuf)
 	if err != nil && err != io.EOF {
 		return fmt.Errorf("failed to read tar header: %w", err)
 	}
@@ -243,7 +230,7 @@ func (s *Safety) validateTarGz(path string) error {
 	}
 
 	s.log.Debug("Cluster archive validation passed (stream-based check)")
-	return nil // Valid gzip + tar structure
+	return nil // Valid compressed + tar structure
 }
 
 // containsSQLKeywords checks if content contains SQL keywords
@@ -285,21 +272,32 @@ func (s *Safety) ValidateAndExtractCluster(ctx context.Context, archivePath stri
 	}
 
 	// Extract using parallel gzip (2-4x faster on multi-core systems)
+	// Detect compression algorithm from file extension
+	algo := compression.DetectAlgorithm(archivePath)
+	method := "parallel-gzip"
+	if algo == compression.AlgorithmZstd {
+		method = "zstd"
+	}
+
 	s.log.Info("Pre-extracting cluster archive for validation and restore",
 		"archive", archivePath,
 		"dest", tempDir,
-		"method", "parallel-gzip")
+		"method", method)
 
-	// Use Go's parallel extraction instead of shelling out to tar
-	// This uses pgzip for multi-core decompression
-	err = fs.ExtractTarGzParallel(ctx, archivePath, tempDir, func(progress fs.ExtractProgress) {
-		if progress.TotalBytes > 0 {
-			pct := float64(progress.BytesRead) / float64(progress.TotalBytes) * 100
-			s.log.Debug("Extraction progress",
-				"file", progress.CurrentFile,
-				"percent", fmt.Sprintf("%.1f%%", pct))
-		}
-	})
+	// For gzip archives, use optimized parallel extraction (pgzip)
+	// For zstd or other algorithms, use generic tar+compression extraction
+	if algo == compression.AlgorithmGzip || algo == compression.AlgorithmNone {
+		err = fs.ExtractTarGzParallel(ctx, archivePath, tempDir, func(progress fs.ExtractProgress) {
+			if progress.TotalBytes > 0 {
+				pct := float64(progress.BytesRead) / float64(progress.TotalBytes) * 100
+				s.log.Debug("Extraction progress",
+					"file", progress.CurrentFile,
+					"percent", fmt.Sprintf("%.1f%%", pct))
+			}
+		})
+	} else {
+		err = fs.ExtractTarCompressed(ctx, archivePath, tempDir)
+	}
 	if err != nil {
 		os.RemoveAll(tempDir) // Cleanup on failure
 		return "", fmt.Errorf("extraction failed: %w", err)

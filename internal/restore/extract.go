@@ -11,11 +11,10 @@ import (
 	"strings"
 	"sync"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/progress"
-
-	"github.com/klauspost/pgzip"
 )
 
 // DatabaseInfo represents metadata about a database in a cluster backup
@@ -87,10 +86,11 @@ func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.
 		return nil, fmt.Errorf("cannot open archive: %w", err)
 	}
 
-	gz, err := pgzip.NewReader(file)
+	// Use compression package to auto-detect algorithm from file extension
+	decompReader, err := compression.NewDecompressor(file, archivePath)
 	if err != nil {
 		file.Close()
-		return nil, fmt.Errorf("not a valid gzip archive: %w", err)
+		return nil, fmt.Errorf("not a valid compressed archive: %w", err)
 	}
 
 	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
@@ -99,7 +99,7 @@ func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			gz.Close()
+			decompReader.Close()
 			file.Close()
 		})
 	}
@@ -116,7 +116,7 @@ func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.
 	}()
 	defer close(ctxWatcherDone)
 
-	tarReader := tar.NewReader(gz)
+	tarReader := tar.NewReader(decompReader.Reader)
 	databases := make([]DatabaseInfo, 0)
 
 	for {
@@ -179,10 +179,11 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 	}
 	archiveSize := stat.Size()
 
-	gz, err := pgzip.NewReader(file)
+	// Use compression package to auto-detect algorithm from file extension
+	decompReader, err := compression.NewDecompressor(file, archivePath)
 	if err != nil {
 		file.Close()
-		return "", fmt.Errorf("not a valid gzip archive: %w", err)
+		return "", fmt.Errorf("not a valid compressed archive: %w", err)
 	}
 
 	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
@@ -190,7 +191,7 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			gz.Close()
+			decompReader.Close()
 			file.Close()
 		})
 	}
@@ -207,7 +208,7 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 	}()
 	defer close(ctxWatcherDone)
 
-	tarReader := tar.NewReader(gz)
+	tarReader := tar.NewReader(decompReader.Reader)
 
 	// Create output directory if needed
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -324,10 +325,11 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 	}
 	archiveSize := stat.Size()
 
-	gz, err := pgzip.NewReader(file)
+	// Use compression package to auto-detect algorithm from file extension
+	decompReader, err := compression.NewDecompressor(file, archivePath)
 	if err != nil {
 		file.Close()
-		return nil, fmt.Errorf("not a valid gzip archive: %w", err)
+		return nil, fmt.Errorf("not a valid compressed archive: %w", err)
 	}
 
 	// CRITICAL FIX: Track cleanup state to prevent goroutine leaks
@@ -335,7 +337,7 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			gz.Close()
+			decompReader.Close()
 			file.Close()
 		})
 	}
@@ -352,7 +354,7 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 	}()
 	defer close(ctxWatcherDone)
 
-	tarReader := tar.NewReader(gz)
+	tarReader := tar.NewReader(decompReader.Reader)
 
 	// Create output directory if needed
 	if err := os.MkdirAll(outputDir, 0755); err != nil {

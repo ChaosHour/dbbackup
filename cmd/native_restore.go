@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"dbbackup/internal/cleanup"
+	"dbbackup/internal/compression"
 	"dbbackup/internal/database"
 	"dbbackup/internal/engine/native"
 	"dbbackup/internal/notify"
-
-	"github.com/klauspost/pgzip"
 )
 
 // runNativeRestore executes restore using native Go engines
@@ -93,15 +92,15 @@ func runNativeRestore(ctx context.Context, db database.Database, archivePath, ta
 	}
 	defer file.Close()
 
-	// Detect if file is gzip compressed
+	// Detect if file is compressed (gzip or zstd)
 	var reader io.Reader = file
-	if isGzipFile(archivePath) {
-		gzReader, err := pgzip.NewReader(file)
+	if isGzipFile(archivePath) || isZstdFile(archivePath) {
+		decomp, err := compression.NewDecompressor(file, archivePath)
 		if err != nil {
-			return fmt.Errorf("failed to create gzip reader: %w", err)
+			return fmt.Errorf("failed to create decompressor: %w", err)
 		}
-		defer gzReader.Close()
-		reader = gzReader
+		defer decomp.Close()
+		reader = decomp.Reader
 	}
 
 	log.Info("Starting native restore",
@@ -221,6 +220,11 @@ func ensureTargetDatabaseExists(ctx context.Context, targetDB, dbType string) er
 // isGzipFile checks if file has gzip extension
 func isGzipFile(path string) bool {
 	return len(path) > 3 && path[len(path)-3:] == ".gz"
+}
+
+// isZstdFile checks if file has zstd extension
+func isZstdFile(path string) bool {
+	return strings.HasSuffix(path, ".zst") || strings.HasSuffix(path, ".zstd")
 }
 
 // nativeTargetHasTables checks whether the target database already contains

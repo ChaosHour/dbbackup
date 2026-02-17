@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -240,4 +241,26 @@ func Register(engine BackupEngine) {
 // Get retrieves an engine from the default registry
 func Get(name string) (BackupEngine, error) {
 	return DefaultRegistry.Get(name)
+}
+
+// compressedTarExt returns the appropriate tar extension for a compression format.
+// E.g., "zstd" -> ".tar.zst", "gzip" -> ".tar.gz", "" -> ".tar.gz" (default)
+func compressedTarExt(format string) string {
+	switch strings.ToLower(format) {
+	case "zstd":
+		return ".tar.zst"
+	default:
+		return ".tar.gz"
+	}
+}
+
+// compressedSQLExt returns the appropriate SQL extension for a compression format.
+// E.g., "zstd" -> ".sql.zst", "gzip" -> ".sql.gz", "" -> ".sql.gz" (default)
+func compressedSQLExt(format string) string {
+	switch strings.ToLower(format) {
+	case "zstd":
+		return ".sql.zst"
+	default:
+		return ".sql.gz"
+	}
 }

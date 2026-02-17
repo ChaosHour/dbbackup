@@ -1726,12 +1726,12 @@ func (e *Engine) RestoreSingleFromCluster(ctx context.Context, clusterArchivePat
 	// Restore based on format
 	var restoreErr error
 	switch extractedFormat {
-	case FormatPostgreSQLDump, FormatPostgreSQLDumpGz:
-		restoreErr = e.restorePostgreSQLDump(ctx, extractedPath, targetDB, extractedFormat == FormatPostgreSQLDumpGz, cleanFirst)
-	case FormatPostgreSQLSQL, FormatPostgreSQLSQLGz:
-		restoreErr = e.restorePostgreSQLSQL(ctx, extractedPath, targetDB, extractedFormat == FormatPostgreSQLSQLGz)
-	case FormatMySQLSQL, FormatMySQLSQLGz:
-		restoreErr = e.restoreMySQLSQL(ctx, extractedPath, targetDB, extractedFormat == FormatMySQLSQLGz)
+	case FormatPostgreSQLDump, FormatPostgreSQLDumpGz, FormatPostgreSQLDumpZst:
+		restoreErr = e.restorePostgreSQLDump(ctx, extractedPath, targetDB, extractedFormat.IsCompressed(), cleanFirst)
+	case FormatPostgreSQLSQL, FormatPostgreSQLSQLGz, FormatPostgreSQLSQLZst:
+		restoreErr = e.restorePostgreSQLSQL(ctx, extractedPath, targetDB, extractedFormat.IsCompressed())
+	case FormatMySQLSQL, FormatMySQLSQLGz, FormatMySQLSQLZst:
+		restoreErr = e.restoreMySQLSQL(ctx, extractedPath, targetDB, extractedFormat.IsCompressed())
 	default:
 		operation.Fail("Unsupported extracted format")
 		return fmt.Errorf("unsupported extracted format: %s", extractedFormat)
@@ -1809,11 +1809,11 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 
 	if !format.CanBeClusterRestore() {
 		operation.Fail("Invalid cluster archive format")
-		return fmt.Errorf("not a valid cluster restore format: %s (detected format: %s). Supported: .tar.gz, plain directory, .sql, .sql.gz", archivePath, format)
+		return fmt.Errorf("not a valid cluster restore format: %s (detected format: %s). Supported: .tar.gz, .tar.zst, plain directory, .sql, .sql.gz, .sql.zst", archivePath, format)
 	}
 
 	// For SQL-based cluster restores, use a different restore path
-	if format == FormatPostgreSQLSQL || format == FormatPostgreSQLSQLGz {
+	if format == FormatPostgreSQLSQL || format == FormatPostgreSQLSQLGz || format == FormatPostgreSQLSQLZst {
 		return e.restoreClusterFromSQL(ctx, archivePath, operation)
 	}
 
@@ -2059,7 +2059,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			continue
 		}
 		dumpFile := filepath.Join(dumpsDir, entry.Name())
-		if strings.HasSuffix(dumpFile, ".sql.gz") {
+		if strings.HasSuffix(dumpFile, ".sql.gz") || strings.HasSuffix(dumpFile, ".sql.zst") {
 			result, err := diagnoser.DiagnoseFile(ctx, dumpFile)
 			if err != nil {
 				e.log.Warn("Could not validate dump file", "file", entry.Name(), "error", err)
@@ -2312,7 +2312,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 	hasCustomFormat := false
 	for _, entry := range entries {
 		if !entry.IsDir() {
-			if strings.HasSuffix(entry.Name(), ".sql.gz") {
+			if strings.HasSuffix(entry.Name(), ".sql.gz") || strings.HasSuffix(entry.Name(), ".sql.zst") {
 				hasSQLFormat = true
 			} else if strings.HasSuffix(entry.Name(), ".dump") {
 				hasCustomFormat = true
@@ -2445,7 +2445,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 				e.log.Warn("Context cancelled - skipping database restore", "file", filename)
 				atomic.AddInt32(&failCount, 1)
 				restoreErrorsMu.Lock()
-				restoreErrors = multierror.Append(restoreErrors, fmt.Errorf("%s: restore skipped (context cancelled)", strings.TrimSuffix(strings.TrimSuffix(filename, ".dump"), ".sql.gz")))
+				restoreErrors = multierror.Append(restoreErrors, fmt.Errorf("%s: restore skipped (context cancelled)", strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(filename, ".dump"), ".sql.gz"), ".sql.zst")))
 				restoreErrorsMu.Unlock()
 				return
 			}
@@ -3138,8 +3138,8 @@ func (e *Engine) generateMetadataFromExtracted(archivePath, extractedDir string)
 				DatabaseType: "postgres",
 				BackupFile:   "dumps/" + name,
 			})
-		} else if strings.HasSuffix(name, ".sql.gz") && !strings.Contains(name, "globals") {
-			dbName := strings.TrimSuffix(name, ".sql.gz")
+		} else if (strings.HasSuffix(name, ".sql.gz") || strings.HasSuffix(name, ".sql.zst")) && !strings.Contains(name, "globals") {
+			dbName := strings.TrimSuffix(strings.TrimSuffix(name, ".sql.gz"), ".sql.zst")
 			databases = append(databases, metadata.BackupMetadata{
 				Database:     dbName,
 				DatabaseType: "postgres",
@@ -3228,7 +3228,7 @@ func (e *Engine) detectLargeObjectsInDumps(dumpsDir string, entries []os.DirEntr
 		dumpFile := filepath.Join(dumpsDir, entry.Name())
 
 		// Skip compressed SQL files (can't easily check without decompressing)
-		if strings.HasSuffix(dumpFile, ".sql.gz") {
+		if strings.HasSuffix(dumpFile, ".sql.gz") || strings.HasSuffix(dumpFile, ".sql.zst") {
 			continue
 		}
 

@@ -686,7 +686,8 @@ func findLatestBackup(backupDir, databaseName string) (string, error) {
 
 		// Match database backup files
 		if strings.HasPrefix(name, prefix) && (strings.HasSuffix(name, ".dump") ||
-			strings.HasSuffix(name, ".dump.gz") || strings.HasSuffix(name, ".sql.gz")) {
+			strings.HasSuffix(name, ".dump.gz") || strings.HasSuffix(name, ".sql.gz") ||
+			strings.HasSuffix(name, ".dump.zst") || strings.HasSuffix(name, ".sql.zst")) {
 			info, err := entry.Info()
 			if err != nil {
 				continue
@@ -727,8 +728,9 @@ func findLatestClusterBackup(backupDir string) (string, error) {
 			continue
 		}
 
-		// Match cluster backup files
-		if strings.HasPrefix(name, "cluster_") && strings.HasSuffix(name, ".tar.gz") {
+		// Match cluster backup files (both "cluster_*" and "prefix_cluster_*" naming)
+		if (strings.Contains(name, "_cluster_") || strings.HasPrefix(name, "cluster_")) &&
+			(strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".tar.zst")) {
 			info, err := entry.Info()
 			if err != nil {
 				continue

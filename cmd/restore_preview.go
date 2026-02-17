@@ -314,6 +314,8 @@ func extractDatabaseName(archivePath string, result *restore.DiagnoseResult) str
 
 	// Fall back to filename parsing
 	baseName := filepath.Base(archivePath)
+	baseName = strings.TrimSuffix(baseName, ".zst")
+	baseName = strings.TrimSuffix(baseName, ".zstd")
 	baseName = strings.TrimSuffix(baseName, ".gz")
 	baseName = strings.TrimSuffix(baseName, ".dump")
 	baseName = strings.TrimSuffix(baseName, ".sql")

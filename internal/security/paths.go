@@ -48,7 +48,7 @@ func ValidateArchivePath(path string) (string, error) {
 
 	// Must have a valid archive extension
 	ext := strings.ToLower(filepath.Ext(cleaned))
-	validExtensions := []string{".dump", ".sql", ".gz", ".tar"}
+	validExtensions := []string{".dump", ".sql", ".gz", ".tar", ".zst", ".zstd"}
 
 	valid := false
 	for _, validExt := range validExtensions {
@@ -59,7 +59,7 @@ func ValidateArchivePath(path string) (string, error) {
 	}
 
 	if !valid {
-		return "", fmt.Errorf("invalid archive extension: %s (must be .dump, .sql, .gz, or .tar)", ext)
+		return "", fmt.Errorf("invalid archive extension: %s (must be .dump, .sql, .gz, .zst, or .tar)", ext)
 	}
 
 	// Convert to absolute path

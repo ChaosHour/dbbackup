@@ -528,7 +528,8 @@ func (e *PgBasebackupEngine) Restore(ctx context.Context, opts *RestoreOptions) 
 	if sourceInfo.IsDir() {
 		// Plain format - copy directory
 		return e.restorePlain(ctx, opts.SourcePath, opts.TargetDir)
-	} else if strings.HasSuffix(opts.SourcePath, ".tar") || strings.HasSuffix(opts.SourcePath, ".tar.gz") {
+	} else if strings.HasSuffix(opts.SourcePath, ".tar") || strings.HasSuffix(opts.SourcePath, ".tar.gz") ||
+		strings.HasSuffix(opts.SourcePath, ".tar.zst") || strings.HasSuffix(opts.SourcePath, ".tar.zstd") {
 		// Tar format - extract
 		return e.restoreTar(ctx, opts.SourcePath, opts.TargetDir)
 	}
@@ -553,6 +554,9 @@ func (e *PgBasebackupEngine) restoreTar(ctx context.Context, source, target stri
 	// Handle compression
 	if strings.HasSuffix(source, ".gz") {
 		args = []string{"-xzf", source, "-C", target}
+	} else if strings.HasSuffix(source, ".zst") || strings.HasSuffix(source, ".zstd") {
+		// Use zstd decompression via pipe
+		args = []string{"--use-compress-program=zstd", "-xf", source, "-C", target}
 	}
 
 	cmd := exec.CommandContext(ctx, "tar", args...)

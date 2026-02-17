@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/logger"
 
 	"github.com/jackc/pgx/v5"
@@ -519,7 +520,8 @@ func (t *TableBackup) BackupToFile(ctx context.Context, outputPath string) error
 
 	var writer io.Writer = file
 	var gzWriter *gzip.Writer
-	if t.config.Compress || strings.HasSuffix(outputPath, ".gz") {
+	if t.config.Compress || strings.HasSuffix(outputPath, ".gz") ||
+		strings.HasSuffix(outputPath, ".zst") || strings.HasSuffix(outputPath, ".zstd") {
 		gzWriter, _ = gzip.NewWriterLevel(file, t.config.CompressLevel)
 		writer = gzWriter
 		defer gzWriter.Close()
@@ -560,13 +562,13 @@ func (t *TableBackup) RestoreTable(ctx context.Context, inputPath string, target
 	defer file.Close()
 
 	var reader io.Reader = file
-	if strings.HasSuffix(inputPath, ".gz") {
-		gzReader, err := gzip.NewReader(file)
+	if strings.HasSuffix(inputPath, ".gz") || strings.HasSuffix(inputPath, ".zst") || strings.HasSuffix(inputPath, ".zstd") {
+		decomp, err := compression.NewDecompressor(file, inputPath)
 		if err != nil {
-			return fmt.Errorf("failed to create gzip reader: %w", err)
+			return fmt.Errorf("failed to create decompressor: %w", err)
 		}
-		defer gzReader.Close()
-		reader = gzReader
+		defer decomp.Close()
+		reader = decomp.Reader
 	}
 
 	// Parse backup file and extract target table

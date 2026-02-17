@@ -14,12 +14,11 @@ import (
 	"time"
 
 	"dbbackup/internal/checks"
+	"dbbackup/internal/compression"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
-
-	"github.com/klauspost/pgzip"
 )
 
 // CloneEngine implements BackupEngine using MySQL Clone Plugin (8.0.17+)
@@ -301,7 +300,8 @@ func (e *CloneEngine) Backup(ctx context.Context, opts *BackupOptions) (*BackupR
 	if opts.Compress || e.config.Compress {
 		e.log.Info("Compressing clone directory...")
 		timestamp := time.Now().Format("20060102_150405")
-		tarFile := filepath.Join(opts.OutputDir, fmt.Sprintf("clone_%s_%s.tar.gz", opts.Database, timestamp))
+		tarFile := filepath.Join(opts.OutputDir, fmt.Sprintf("clone_%s_%s%s", opts.Database, timestamp,
+			compressedTarExt(e.config.CompressFormat)))
 
 		if err := e.compressClone(ctx, cloneDir, tarFile, opts.ProgressFunc); err != nil {
 			return nil, fmt.Errorf("failed to compress clone: %w", err)
@@ -601,7 +601,7 @@ func (e *CloneEngine) validatePrerequisites(ctx context.Context) ([]string, erro
 	return warnings, nil
 }
 
-// compressClone compresses clone directory to tar.gz
+// compressClone compresses clone directory to tar.gz or tar.zst
 func (e *CloneEngine) compressClone(ctx context.Context, sourceDir, targetFile string, progressFunc ProgressFunc) error {
 	// Create output file
 	outFile, err := os.Create(targetFile)
@@ -610,23 +610,24 @@ func (e *CloneEngine) compressClone(ctx context.Context, sourceDir, targetFile s
 	}
 	defer outFile.Close()
 
-	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+	// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(outFile)
 	defer sw.Shutdown()
 
-	// Create parallel gzip writer for faster compression
+	// Create compressor (gzip or zstd based on filename)
 	level := e.config.CompressLevel
 	if level == 0 {
-		level = pgzip.DefaultCompression
+		level = 6 // default
 	}
-	gzWriter, err := pgzip.NewWriterLevel(sw, level)
+	algo := compression.DetectAlgorithm(targetFile)
+	comp, err := compression.NewCompressor(sw, algo, level)
 	if err != nil {
 		return err
 	}
-	defer gzWriter.Close()
+	defer comp.Close()
 
 	// Create tar writer
-	tarWriter := tar.NewWriter(gzWriter)
+	tarWriter := tar.NewWriter(comp.Writer)
 	defer tarWriter.Close()
 
 	// Walk directory and add files
@@ -683,8 +684,9 @@ func (e *CloneEngine) Restore(ctx context.Context, opts *RestoreOptions) error {
 	e.log.Info("Clone restore", "source", opts.SourcePath, "target", opts.TargetDir)
 
 	// Check if source is compressed
-	if strings.HasSuffix(opts.SourcePath, ".tar.gz") {
-		// Extract tar.gz
+	if strings.HasSuffix(opts.SourcePath, ".tar.gz") || strings.HasSuffix(opts.SourcePath, ".tar.zst") ||
+		strings.HasSuffix(opts.SourcePath, ".tar.zstd") {
+		// Extract tar archive
 		return e.extractClone(ctx, opts.SourcePath, opts.TargetDir)
 	}
 
@@ -692,7 +694,7 @@ func (e *CloneEngine) Restore(ctx context.Context, opts *RestoreOptions) error {
 	return copyDir(opts.SourcePath, opts.TargetDir)
 }
 
-// extractClone extracts a compressed clone backup
+// extractClone extracts a compressed clone backup (gzip or zstd)
 func (e *CloneEngine) extractClone(ctx context.Context, sourceFile, targetDir string) error {
 	// Open source file
 	file, err := os.Open(sourceFile)
@@ -701,15 +703,15 @@ func (e *CloneEngine) extractClone(ctx context.Context, sourceFile, targetDir st
 	}
 	defer file.Close()
 
-	// Create parallel gzip reader for faster decompression
-	gzReader, err := pgzip.NewReader(file)
+	// Create decompressor (auto-detects gzip or zstd from filename)
+	decomp, err := compression.NewDecompressor(file, sourceFile)
 	if err != nil {
 		return err
 	}
-	defer gzReader.Close()
+	defer decomp.Close()
 
 	// Create tar reader
-	tarReader := tar.NewReader(gzReader)
+	tarReader := tar.NewReader(decomp.Reader)
 
 	// Extract files
 	for {

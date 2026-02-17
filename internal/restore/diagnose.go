@@ -16,11 +16,10 @@ import (
 	"time"
 
 	"dbbackup/internal/cleanup"
+	"dbbackup/internal/compression"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
-
-	"github.com/klauspost/pgzip"
 )
 
 // DiagnoseResult contains the results of a dump file diagnosis
@@ -120,13 +119,13 @@ func (d *Diagnoser) DiagnoseFile(ctx context.Context, filePath string) (*Diagnos
 	switch result.Format {
 	case FormatPostgreSQLDump:
 		d.diagnosePgDump(ctx, filePath, result)
-	case FormatPostgreSQLDumpGz:
+	case FormatPostgreSQLDumpGz, FormatPostgreSQLDumpZst:
 		d.diagnosePgDumpGz(filePath, result)
 	case FormatPostgreSQLSQL:
 		d.diagnoseSQLScript(filePath, false, result)
-	case FormatPostgreSQLSQLGz:
+	case FormatPostgreSQLSQLGz, FormatPostgreSQLSQLZst, FormatMySQLSQLGz, FormatMySQLSQLZst:
 		d.diagnoseSQLScript(filePath, true, result)
-	case FormatClusterTarGz:
+	case FormatClusterTarGz, FormatClusterTarZst:
 		d.diagnoseClusterArchive(ctx, filePath, result)
 	default:
 		result.Warnings = append(result.Warnings, "Unknown format - limited diagnosis available")
@@ -185,15 +184,15 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 	}
 	defer file.Close()
 
-	// Verify gzip integrity
-	gz, err := pgzip.NewReader(file)
+	// Verify compressed archive integrity using auto-detected decompressor
+	gz, err := compression.NewDecompressor(file, filePath)
 	if err != nil {
 		result.IsValid = false
 		result.IsCorrupted = true
 		result.Details.GzipValid = false
 		result.Details.GzipError = err.Error()
 		result.Errors = append(result.Errors,
-			fmt.Sprintf("Invalid gzip format: %v", err),
+			fmt.Sprintf("Invalid compressed format: %v", err),
 			"The file may be truncated or corrupted during transfer")
 		return
 	}
@@ -201,7 +200,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 
 	// Read and check header
 	header := make([]byte, 512)
-	n, err := gz.Read(header)
+	n, err := gz.Reader.Read(header)
 	if err != nil && err != io.EOF {
 		result.IsValid = false
 		result.Errors = append(result.Errors, fmt.Sprintf("Cannot read decompressed header: %v", err))
@@ -237,21 +236,21 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 		return
 	}
 
-	// Verify full gzip stream integrity by reading to end
+	// Verify full compressed stream integrity by reading to end
 	file.Seek(0, 0)
-	gz, err = pgzip.NewReader(file)
+	gz, err = compression.NewDecompressor(file, filePath)
 	if err != nil {
 		result.IsValid = false
 		result.IsCorrupted = true
 		result.Errors = append(result.Errors,
-			fmt.Sprintf("Cannot create gzip reader for integrity check: %v", err))
+			fmt.Sprintf("Cannot create decompressor for integrity check: %v", err))
 		return
 	}
 
 	var totalRead int64
 	buf := make([]byte, 32*1024)
 	for {
-		n, err := gz.Read(buf)
+		n, err := gz.Reader.Read(buf)
 		totalRead += int64(n)
 		if err == io.EOF {
 			break
@@ -261,7 +260,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 			result.IsTruncated = true
 			result.Details.ExpandedSize = totalRead
 			result.Errors = append(result.Errors,
-				fmt.Sprintf("Gzip stream truncated after %d bytes: %v", totalRead, err),
+				fmt.Sprintf("Compressed stream truncated after %d bytes: %v", totalRead, err),
 				"The backup file appears to be incomplete",
 				"Check if backup process completed successfully")
 			gz.Close()
@@ -280,7 +279,6 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *DiagnoseResult) {
 	var reader io.Reader
 	var file *os.File
-	var gz *pgzip.Reader
 	var err error
 
 	file, err = os.Open(filePath)
@@ -292,18 +290,18 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 	defer file.Close()
 
 	if compressed {
-		gz, err = pgzip.NewReader(file)
-		if err != nil {
+		decomp, derr := compression.NewDecompressor(file, filePath)
+		if derr != nil {
 			result.IsValid = false
 			result.IsCorrupted = true
 			result.Details.GzipValid = false
-			result.Details.GzipError = err.Error()
-			result.Errors = append(result.Errors, fmt.Sprintf("Invalid gzip format: %v", err))
+			result.Details.GzipError = derr.Error()
+			result.Errors = append(result.Errors, fmt.Sprintf("Invalid compressed format: %v", derr))
 			return
 		}
 		result.Details.GzipValid = true
-		reader = gz
-		defer gz.Close()
+		reader = decomp.Reader
+		defer decomp.Close()
 	} else {
 		reader = file
 	}
@@ -494,7 +492,8 @@ func (d *Diagnoser) diagnoseClusterArchive(ctx context.Context, filePath string,
 	// Filter to only dump/metadata files
 	var files []string
 	for _, f := range allFiles {
-		if strings.HasSuffix(f, ".dump") || strings.HasSuffix(f, ".sql.gz") ||
+		if strings.HasSuffix(f, ".dump") || strings.HasSuffix(f, ".dump.zst") ||
+			strings.HasSuffix(f, ".sql.gz") || strings.HasSuffix(f, ".sql.zst") ||
 			strings.HasSuffix(f, ".sql") || strings.HasSuffix(f, ".json") ||
 			strings.Contains(f, "globals") || strings.Contains(f, "manifest") ||
 			strings.Contains(f, "metadata") {
@@ -509,7 +508,8 @@ func (d *Diagnoser) diagnoseClusterArchive(ctx context.Context, filePath string,
 	hasMetadata := false
 
 	for _, f := range files {
-		if strings.HasSuffix(f, ".dump") || strings.HasSuffix(f, ".sql.gz") {
+		if strings.HasSuffix(f, ".dump") || strings.HasSuffix(f, ".dump.zst") ||
+			strings.HasSuffix(f, ".sql.gz") || strings.HasSuffix(f, ".sql.zst") {
 			dumpFiles = append(dumpFiles, f)
 		}
 		if strings.Contains(f, "globals.sql") {
@@ -703,8 +703,9 @@ func (d *Diagnoser) DiagnoseClusterDumps(ctx context.Context, archivePath, tempD
 	// Filter to relevant files only
 	var files []string
 	for _, f := range allFiles {
-		if strings.HasSuffix(f, ".dump") || strings.HasSuffix(f, ".sql") ||
-			strings.HasSuffix(f, ".sql.gz") || strings.HasSuffix(f, ".json") ||
+		if strings.HasSuffix(f, ".dump") || strings.HasSuffix(f, ".dump.zst") ||
+			strings.HasSuffix(f, ".sql") || strings.HasSuffix(f, ".sql.gz") ||
+			strings.HasSuffix(f, ".sql.zst") || strings.HasSuffix(f, ".json") ||
 			strings.Contains(f, "globals") || strings.Contains(f, "manifest") ||
 			strings.Contains(f, "metadata") || strings.HasSuffix(f, "/") {
 			files = append(files, f)
@@ -781,7 +782,8 @@ func (d *Diagnoser) DiagnoseClusterDumps(ctx context.Context, archivePath, tempD
 		// Still report what files we found in the listing
 		var dumpFiles []string
 		for _, f := range files {
-			if strings.HasSuffix(f, ".dump") || strings.HasSuffix(f, ".sql.gz") {
+			if strings.HasSuffix(f, ".dump") || strings.HasSuffix(f, ".dump.zst") ||
+				strings.HasSuffix(f, ".sql.gz") || strings.HasSuffix(f, ".sql.zst") {
 				dumpFiles = append(dumpFiles, filepath.Base(f))
 			}
 		}
@@ -814,7 +816,8 @@ func (d *Diagnoser) DiagnoseClusterDumps(ctx context.Context, archivePath, tempD
 		}
 
 		name := entry.Name()
-		if !strings.HasSuffix(name, ".dump") && !strings.HasSuffix(name, ".sql.gz") &&
+		if !strings.HasSuffix(name, ".dump") && !strings.HasSuffix(name, ".dump.zst") &&
+			!strings.HasSuffix(name, ".sql.gz") && !strings.HasSuffix(name, ".sql.zst") &&
 			!strings.HasSuffix(name, ".sql") {
 			continue
 		}
@@ -1114,23 +1117,19 @@ func (d *Diagnoser) QuickValidateClusterArchive(filePath string) error {
 	}
 	defer file.Close()
 
-	// Check gzip magic bytes
-	magic := make([]byte, 2)
-	if _, err := io.ReadFull(file, magic); err != nil {
-		return fmt.Errorf("cannot read header: %w", err)
-	}
-	if magic[0] != 0x1f || magic[1] != 0x8b {
-		return fmt.Errorf("not a gzip file (magic: %x %x)", magic[0], magic[1])
+	// Detect compression algorithm from file content
+	algo := compression.DetectAlgorithm(filePath)
+	if algo == "" {
+		return fmt.Errorf("not a compressed archive")
 	}
 
-	// Reset and decompress just enough to read first tar entry
-	file.Seek(0, 0)
-	gz, err := pgzip.NewReader(file)
+	// Create decompressor (supports gzip and zstd)
+	gz, err := compression.NewDecompressor(file, filePath)
 	if err != nil {
-		return fmt.Errorf("invalid gzip stream: %w", err)
+		return fmt.Errorf("invalid compressed stream: %w", err)
 	}
 
-	// Context-watcher: close pgzip reader after validation to prevent goroutine leak
+	// Context-watcher: close reader after validation to prevent goroutine leak
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
@@ -1139,7 +1138,7 @@ func (d *Diagnoser) QuickValidateClusterArchive(filePath string) error {
 	}
 	defer cleanup()
 
-	tr := tar.NewReader(gz)
+	tr := tar.NewReader(gz.Reader)
 	// Read first entry — this only decompresses the first ~1KB of the archive
 	hdr, err := tr.Next()
 	if err != nil {
@@ -1148,7 +1147,9 @@ func (d *Diagnoser) QuickValidateClusterArchive(filePath string) error {
 
 	// Verify it looks like a cluster archive (directory entry or .dump file)
 	if hdr.Typeflag == tar.TypeDir || strings.HasSuffix(hdr.Name, ".dump") ||
-		strings.HasSuffix(hdr.Name, ".sql.gz") || strings.HasSuffix(hdr.Name, ".sql") {
+		strings.HasSuffix(hdr.Name, ".dump.zst") ||
+		strings.HasSuffix(hdr.Name, ".sql.gz") || strings.HasSuffix(hdr.Name, ".sql.zst") ||
+		strings.HasSuffix(hdr.Name, ".sql") {
 		return nil // Looks valid
 	}
 
@@ -1187,18 +1188,33 @@ func (d *Diagnoser) tryGenerateMetadata(ctx context.Context, filePath string, re
 		return false
 	}
 
-	// Extract database names from .dump and .sql.gz files
+	// Extract database names from .dump, .dump.zst, .sql.gz, and .sql.zst files
 	var databases []metadata.BackupMetadata
 	for _, f := range files {
+		base := filepath.Base(f)
 		if strings.HasSuffix(f, ".dump") {
-			dbName := strings.TrimSuffix(filepath.Base(f), ".dump")
+			dbName := strings.TrimSuffix(base, ".dump")
+			databases = append(databases, metadata.BackupMetadata{
+				Database:     dbName,
+				DatabaseType: "postgres",
+				BackupFile:   f,
+			})
+		} else if strings.HasSuffix(f, ".dump.zst") {
+			dbName := strings.TrimSuffix(base, ".dump.zst")
 			databases = append(databases, metadata.BackupMetadata{
 				Database:     dbName,
 				DatabaseType: "postgres",
 				BackupFile:   f,
 			})
 		} else if strings.HasSuffix(f, ".sql.gz") && !strings.Contains(f, "globals") {
-			dbName := strings.TrimSuffix(filepath.Base(f), ".sql.gz")
+			dbName := strings.TrimSuffix(base, ".sql.gz")
+			databases = append(databases, metadata.BackupMetadata{
+				Database:     dbName,
+				DatabaseType: "postgres",
+				BackupFile:   f,
+			})
+		} else if strings.HasSuffix(f, ".sql.zst") && !strings.Contains(f, "globals") {
+			dbName := strings.TrimSuffix(base, ".sql.zst")
 			databases = append(databases, metadata.BackupMetadata{
 				Database:     dbName,
 				DatabaseType: "postgres",
@@ -1209,7 +1225,7 @@ func (d *Diagnoser) tryGenerateMetadata(ctx context.Context, filePath string, re
 
 	if len(databases) == 0 {
 		if d.log != nil {
-			d.log.Debug("No .dump/.sql.gz files found in first 100 entries of archive")
+			d.log.Debug("No .dump/.dump.zst/.sql.gz/.sql.zst files found in first 100 entries of archive")
 		}
 		return false
 	}

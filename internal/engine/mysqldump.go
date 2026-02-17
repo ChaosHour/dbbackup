@@ -13,12 +13,11 @@ import (
 	"strings"
 	"time"
 
+	"dbbackup/internal/compression"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/fs"
 	"dbbackup/internal/metadata"
 	"dbbackup/internal/security"
-
-	"github.com/klauspost/pgzip"
 )
 
 // MySQLDumpEngine implements BackupEngine using mysqldump
@@ -135,7 +134,12 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 		timestamp := time.Now().Format("20060102_150405")
 		ext := ".sql"
 		if opts.Compress {
-			ext = ".sql.gz"
+			switch strings.ToLower(opts.CompressFormat) {
+			case "zstd":
+				ext = ".sql.zst"
+			default:
+				ext = ".sql.gz"
+			}
 		}
 		outputFile = filepath.Join(opts.OutputDir, fmt.Sprintf("db_%s_%s%s", opts.Database, timestamp, ext))
 	}
@@ -186,24 +190,25 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 
 	// Setup writer (with optional compression)
 	var writer io.Writer = outFile
-	var gzWriter *pgzip.Writer
+	var compressor *compression.Compressor
 	var sw *fs.SafeWriter
 	if opts.Compress {
 		level := opts.CompressLevel
 		if level == 0 {
-			level = pgzip.DefaultCompression
+			level = 6 // default
 		}
-		// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
+		algo := compression.DetectAlgorithm(outputFile)
+		// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 		sw = fs.NewSafeWriter(outFile)
-		gzWriter, err = pgzip.NewWriterLevel(sw, level)
+		compressor, err = compression.NewCompressor(sw, algo, level)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create gzip writer: %w", err)
+			return nil, fmt.Errorf("failed to create compressor: %w", err)
 		}
 		defer func() {
-			gzWriter.Close()
+			compressor.Close()
 			sw.Shutdown()
 		}()
-		writer = gzWriter
+		writer = compressor.Writer
 	}
 
 	// Copy data with progress reporting
@@ -237,9 +242,9 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 		}
 	}
 
-	// Close gzip writer before checking command status
-	if gzWriter != nil {
-		gzWriter.Close()
+	// Close compressor before checking command status
+	if compressor != nil {
+		compressor.Close()
 	}
 
 	// Wait for command with proper context handling
@@ -383,13 +388,13 @@ func (e *MySQLDumpEngine) Restore(ctx context.Context, opts *RestoreOptions) err
 
 	// Setup reader (with optional decompression)
 	var reader io.Reader = inFile
-	if strings.HasSuffix(opts.SourcePath, ".gz") {
-		gzReader, err := pgzip.NewReader(inFile)
+	if strings.HasSuffix(opts.SourcePath, ".gz") || strings.HasSuffix(opts.SourcePath, ".zst") || strings.HasSuffix(opts.SourcePath, ".zstd") {
+		decomp, err := compression.NewDecompressor(inFile, opts.SourcePath)
 		if err != nil {
-			return fmt.Errorf("failed to create gzip reader: %w", err)
+			return fmt.Errorf("failed to create decompressor: %w", err)
 		}
-		defer gzReader.Close()
-		reader = gzReader
+		defer decomp.Close()
+		reader = decomp.Reader
 	}
 
 	cmd.Stdin = reader
@@ -451,11 +456,17 @@ func (e *MySQLDumpEngine) BackupToWriter(ctx context.Context, w io.Writer, opts 
 
 	// Copy with optional compression
 	var writer io.Writer = w
-	var gzWriter *pgzip.Writer
+	var streamComp *compression.Compressor
 	if opts.Compress {
-		gzWriter = pgzip.NewWriter(w)
-		defer gzWriter.Close()
-		writer = gzWriter
+		algo := compression.AlgorithmGzip
+		if strings.ToLower(opts.CompressFormat) == "zstd" {
+			algo = compression.AlgorithmZstd
+		}
+		streamComp, _ = compression.NewCompressor(w, algo, 0)
+		if streamComp != nil {
+			defer streamComp.Close()
+			writer = streamComp.Writer
+		}
 	}
 
 	bytesWritten, err := io.Copy(writer, stdout)
@@ -464,8 +475,8 @@ func (e *MySQLDumpEngine) BackupToWriter(ctx context.Context, w io.Writer, opts 
 		return nil, err
 	}
 
-	if gzWriter != nil {
-		gzWriter.Close()
+	if streamComp != nil {
+		streamComp.Close()
 	}
 
 	// Wait for command with proper context handling

@@ -2,35 +2,31 @@
 .TH "DBBACKUP" "1" "Feb 2026" "dbbackup" "Database Backup Tool"
 
 .SH NAME
-dbbackup - Multi-database backup and restore tool
+dbbackup-benchmark-history - Show past benchmark results from the catalog
 
 
 .SH SYNOPSIS
-\fBdbbackup [flags]\fP
+\fBdbbackup benchmark history [flags]\fP
 
 
 .SH DESCRIPTION
-A comprehensive database backup and restore solution supporting both PostgreSQL and MySQL.
-
-.PP
-Features:
-- CPU-aware parallel processing
-- Multiple backup modes (cluster, single database, sample)
-- Interactive UI and CLI modes
-- Archive verification and restore
-- Progress indicators and timing summaries
-- Robust error handling and logging
-
-.PP
-Database Support:
-- PostgreSQL (via pg_dump/pg_restore)
-- MySQL (via mysqldump/mysql)
-
-.PP
-For help with specific commands, use: dbbackup [command] --help
+Show past benchmark results from the catalog
 
 
 .SH OPTIONS
+\fB--catalog-db\fP=""
+	Catalog DB path
+
+.PP
+\fB-h\fP, \fB--help\fP[=false]
+	help for history
+
+.PP
+\fB--last\fP=20
+	Number of recent results to show
+
+
+.SH OPTIONS INHERITED FROM PARENT COMMANDS
 \fB--allow-root\fP[=false]
 	Allow running as root/Administrator
 
@@ -89,10 +85,6 @@ For help with specific commands, use: dbbackup [command] --help
 .PP
 \fB--fallback-tools\fP[=true]
 	Fallback to external tools if native engine fails
-
-.PP
-\fB-h\fP, \fB--help\fP[=false]
-	help for dbbackup
 
 .PP
 \fB--host\fP="localhost"
@@ -164,7 +156,7 @@ For help with specific commands, use: dbbackup [command] --help
 
 
 .SH SEE ALSO
-\fBdbbackup-backup(1)\fP, \fBdbbackup-benchmark(1)\fP, \fBdbbackup-binlog(1)\fP, \fBdbbackup-blob(1)\fP, \fBdbbackup-catalog(1)\fP, \fBdbbackup-chain(1)\fP, \fBdbbackup-cleanup(1)\fP, \fBdbbackup-cloud(1)\fP, \fBdbbackup-completion(1)\fP, \fBdbbackup-compression(1)\fP, \fBdbbackup-cost(1)\fP, \fBdbbackup-cpu(1)\fP, \fBdbbackup-dedup(1)\fP, \fBdbbackup-diagnose(1)\fP, \fBdbbackup-diff(1)\fP, \fBdbbackup-drill(1)\fP, \fBdbbackup-encryption(1)\fP, \fBdbbackup-engine(1)\fP, \fBdbbackup-estimate(1)\fP, \fBdbbackup-forecast(1)\fP, \fBdbbackup-health(1)\fP, \fBdbbackup-install(1)\fP, \fBdbbackup-interactive(1)\fP, \fBdbbackup-list(1)\fP, \fBdbbackup-man(1)\fP, \fBdbbackup-metrics(1)\fP, \fBdbbackup-migrate(1)\fP, \fBdbbackup-notify(1)\fP, \fBdbbackup-parallel-restore(1)\fP, \fBdbbackup-pitr(1)\fP, \fBdbbackup-preflight(1)\fP, \fBdbbackup-profile(1)\fP, \fBdbbackup-progress-webhooks(1)\fP, \fBdbbackup-report(1)\fP, \fBdbbackup-restore(1)\fP, \fBdbbackup-restore(1)\fP, \fBdbbackup-restore-benchmark(1)\fP, \fBdbbackup-retention-simulator(1)\fP, \fBdbbackup-rto(1)\fP, \fBdbbackup-schedule(1)\fP, \fBdbbackup-status(1)\fP, \fBdbbackup-uninstall(1)\fP, \fBdbbackup-validate(1)\fP, \fBdbbackup-verify(1)\fP, \fBdbbackup-verify-backup(1)\fP, \fBdbbackup-verify-locks(1)\fP, \fBdbbackup-verify-restore(1)\fP, \fBdbbackup-version(1)\fP, \fBdbbackup-wal(1)\fP
+\fBdbbackup-benchmark(1)\fP
 
 
 .SH HISTORY

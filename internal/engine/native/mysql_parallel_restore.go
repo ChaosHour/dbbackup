@@ -537,7 +537,7 @@ func (e *MySQLParallelRestoreEngine) fallbackInsert(ctx context.Context, db *sql
 	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
 
 	var rows []string
-	batchSize := 500
+	batchSize := 5000
 
 	for scanner.Scan() {
 		if ctx.Err() != nil {

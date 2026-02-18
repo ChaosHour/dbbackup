@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TUI health check fails when config has stale database name** — The connection health check on the main menu only overrode the database to `"postgres"` when it was empty, but `ApplyLocalConfig()` could set it to a non-existent database (e.g., `qa_pg_small` from a prior session). Fixed to always use the admin database (`postgres` for PostgreSQL, `mysql` for MySQL) for health checks.
 - **TUI benchmark and database listing views fail with stale database** — Multiple TUI views (`benchmark.go`, `dbselector.go`, `status.go`, `health.go`) connected to PostgreSQL using whatever database was in the config. If that database didn't exist, the views would show errors. Fixed all views to use the admin database (`postgres`) when connecting for listing/status purposes.
 - **TUI benchmark progress bar panic** — `strings.Repeat` called with a negative count when the indeterminate progress bar position approached the bar width, causing `runtime error: negative Repeat count`. Added bounds clamping for both position and remaining-space calculations.
+- **MariaDB/MySQL parallel restore fallback INSERT batch too small** — The fallback path (used when `LOAD DATA LOCAL INFILE` is unavailable) used a batch size of 500 rows per INSERT, 10x smaller than the main engine's 5000-row batch. Increased to 5000 to match, yielding 5–10x faster throughput on the fallback code path.
 
 ### Changed
 

@@ -28,7 +28,7 @@ type ToolsMenu struct {
 // NewToolsMenu creates a new tools submenu
 func NewToolsMenu(cfg *config.Config, log logger.Logger, parent tea.Model, ctx context.Context) *ToolsMenu {
 	return &ToolsMenu{
-		choices: []string{
+choices: []string{
 			"Compression Advisor",
 			"Blob Statistics",
 			"Blob Extract (externalize LOBs)",
@@ -42,6 +42,8 @@ func NewToolsMenu(cfg *config.Config, log logger.Logger, parent tea.Model, ctx c
 			"Verify Backup Integrity",
 			"Catalog Sync",
 			"Generate Archive Metadata",
+			"--------------------------------",
+			"Benchmark Database",
 			"--------------------------------",
 			"Back to Main Menu",
 		},
@@ -111,7 +113,9 @@ func (t *ToolsMenu) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return t.handleCatalogSync()
 			case 12: // Generate Archive Metadata
 				return t.handleGenerateMetadata()
-			case 14: // Back to Main Menu
+			case 14: // Benchmark Database
+				return t.handleBenchmark()
+			case 16: // Back to Main Menu
 				return t.parent, nil
 			}
 		}
@@ -218,5 +222,11 @@ func (t *ToolsMenu) handleKillConnections() (tea.Model, tea.Cmd) {
 // handleDropDatabase opens the drop database confirmation
 func (t *ToolsMenu) handleDropDatabase() (tea.Model, tea.Cmd) {
 	view := NewDropDatabaseView(t.config, t.logger, t, t.ctx)
+	return view, view.Init()
+}
+
+// handleBenchmark opens the benchmark view
+func (t *ToolsMenu) handleBenchmark() (tea.Model, tea.Cmd) {
+	view := NewBenchmarkView(t.config, t.logger, t, t.ctx)
 	return view, view.Init()
 }

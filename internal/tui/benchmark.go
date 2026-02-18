@@ -732,12 +732,19 @@ func (v *BenchmarkView) viewRunning() string {
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 		b.WriteString(benchGreenStyle.Render(fmt.Sprintf("  [%s]", bar)))
 	} else {
-		// Indeterminate progress
+		// Indeterminate progress — bouncing block
 		pos := int(v.elapsed.Milliseconds()/200) % barWidth
-		bar := strings.Repeat("░", pos) + "███" + strings.Repeat("░", barWidth-pos-3)
-		if len(bar) > barWidth {
-			bar = bar[:barWidth]
+		trailing := barWidth - pos - 3
+		if trailing < 0 {
+			trailing = 0
 		}
+		if pos > barWidth-3 {
+			pos = barWidth - 3
+		}
+		if pos < 0 {
+			pos = 0
+		}
+		bar := strings.Repeat("░", pos) + "███" + strings.Repeat("░", trailing)
 		b.WriteString(benchYellowStyle.Render(fmt.Sprintf("  [%s]", bar)))
 	}
 	b.WriteString("\n\n")

@@ -40,6 +40,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 - [Systemd Integration](#systemd-integration)
 - [Prometheus Metrics](#prometheus-metrics)
 - [Configuration](#configuration)
+- [Benchmarking](#benchmarking)
 - [Performance](#performance)
 - [Requirements](#requirements)
 - [Documentation](#documentation)
@@ -727,6 +728,11 @@ dbbackup backup single mydb --dry-run
 | `drill cleanup` | Cleanup DR drill containers |
 | `migrate single` | Migrate single database to target server |
 | `migrate cluster` | Migrate entire cluster to target server |
+| **Benchmarking** | |
+| `benchmark run` | Benchmark a single database (backup + restore + verify) |
+| `benchmark matrix` | Cross-engine comparison across all databases |
+| `benchmark history` | Show past benchmark results from the catalog |
+| `benchmark show` | Display the full report for a specific run |
 | **Operations** | |
 | `cleanup` | Remove old backups (supports GFS retention) |
 | `install` | Install as systemd service |
@@ -1612,6 +1618,91 @@ Workload types:
 - `io-intensive` — Lower parallelism to avoid I/O contention
 
 See [docs/PERFORMANCE_TUNING.md](docs/PERFORMANCE_TUNING.md) for advanced tuning.
+
+## Benchmarking
+
+Built-in benchmark framework for measuring backup, restore, and verify performance with statistical rigor. Runs multiple iterations and reports min/avg/median/p95/stddev, throughput in MB/s, peak RSS, and compression ratios. Results are saved to the catalog DB and to JSON/Markdown files.
+
+### Quick Start
+
+```bash
+# Benchmark PostgreSQL with 3 iterations
+dbbackup benchmark run --db-type postgres --database mydb --iterations 3
+
+# Benchmark MySQL with zstd compression
+dbbackup benchmark run --db-type mysql --database mydb --compression zstd
+
+# Cross-engine comparison (auto-detects qa_*/bench_* databases)
+dbbackup benchmark matrix --iterations 2
+
+# View past results
+dbbackup benchmark history --last 10
+
+# Drill into a specific run (JSON output)
+dbbackup benchmark show <run-id> --json
+```
+
+### Bash Wrappers
+
+Convenience scripts in `scripts/`:
+
+```bash
+./scripts/bench_postgres.sh mydb 3      # PostgreSQL, 3 iterations
+./scripts/bench_mysql.sh mydb 3         # MySQL
+./scripts/bench_mariadb.sh mydb 3       # MariaDB
+./scripts/bench_all.sh 2                # Cross-engine matrix
+```
+
+Environment variables: `BENCH_HOST`, `BENCH_PORT`, `BENCH_USER`, `BENCH_WORKERS`, `BENCH_COMP`, `BENCH_SOCKET`.
+
+### Makefile Targets
+
+```bash
+make bench                           # Full cross-engine matrix
+make bench-pg BENCH_DB=mydb          # PostgreSQL only
+make bench-mysql BENCH_DB=mydb       # MySQL only
+make bench-maria BENCH_DB=mydb       # MariaDB only
+make bench-history                   # View past results
+```
+
+### Sample Output
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║                    BENCHMARK RESULTS                        ║
+╠══════════════════════════════════════════════════════════════╣
+║  Engine:     postgres                                       ║
+║  Database:   mydb                                           ║
+║  DB Size:    5319.0 MB                                      ║
+║  Iterations: 3                                              ║
+╠══════════════════════════════════════════════════════════════╣
+║  Phase     Min       Avg       Median    P95       MB/s     ║
+║  backup     40.12s    42.47s    42.19s    44.80s   125.3    ║
+║  restore   148.50s   152.66s   151.90s   156.20s    34.8   ║
+║  verify      4.20s     4.55s     4.50s     4.90s     —     ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+Results are persisted to:
+- **Catalog DB** (`~/.config/dbbackup/catalog.db`) — queryable via `benchmark history` / `benchmark show`
+- **JSON** (`reports/<run_id>.json`) — machine-readable, includes per-iteration detail and peak RSS
+- **Markdown** (`reports/<run_id>.md`) — human-readable summary table
+
+### Benchmark Flags
+
+| Flag | Description | Default |
+|------|-------------|--------|
+| `--iterations` | Number of benchmark iterations | 3 |
+| `--workers` | Parallel workers | auto (CPU count) |
+| `--compression` | Compression algorithm (gzip/zstd/none) | gzip |
+| `--compression-level` | Compression level (0-9) | 6 |
+| `--profile` | Resource profile | balanced |
+| `--verify` | Run verify phase after backup | true |
+| `--clean` | Remove backups between iterations | true |
+| `--dump-format` | PostgreSQL dump format (custom/plain/directory) | — |
+| `--native` | Use native Go engine | true |
+| `--json` | Print JSON to stdout | false |
+| `--catalog-db` | Custom catalog DB path | auto |
 
 ### Automatic Performance Optimizations (v6.1+)
 

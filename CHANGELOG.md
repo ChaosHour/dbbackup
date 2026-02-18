@@ -5,6 +5,29 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.0] - 2026-02-18 — Benchmark Framework & Parallel Backup OOM Fix
+
+### Added
+
+- **`dbbackup benchmark` command** — New top-level command with four subcommands for structured, multi-iteration performance measurement across all database engines:
+  - `benchmark run` — Benchmark a single database (backup → restore → verify) with N iterations. Reports min/avg/median/p95/stddev timing, throughput (MB/s), peak RSS (via GNU `time -v`), and compression ratios.
+  - `benchmark matrix` — Cross-engine comparison that auto-detects `qa_*`/`bench_*` databases across PostgreSQL, MySQL, and MariaDB, runs benchmarks for each, and produces a side-by-side comparison table.
+  - `benchmark history` — List past benchmark results from the catalog DB.
+  - `benchmark show` — Display the full report for a specific run (console or JSON output).
+- **`internal/benchmark` package** — Standalone benchmark engine with `Runner` (orchestrates iterations via subprocess execution), `Store` (SQLite persistence in catalog DB), statistical aggregation (min/avg/median/p95/stddev), system info collection, and report generation (JSON, Markdown, console box-drawing).
+- **`benchmark_results` table in catalog DB** — New SQLite table stores benchmark results alongside regular backup entries, with indexed columns for engine, database, and timestamp, plus full JSON report for drill-down.
+- **Bash wrapper scripts** — `scripts/bench_postgres.sh`, `scripts/bench_mysql.sh`, `scripts/bench_mariadb.sh`, `scripts/bench_all.sh` for quick ad-hoc benchmarking with environment variable configuration.
+- **Makefile benchmark targets** — `make bench` (full matrix), `make bench-pg`, `make bench-mysql`, `make bench-maria`, `make bench-history`.
+
+### Fixed
+
+- **OOM crash on parallel PostgreSQL backup of large databases** — The parallel backup path in `backupPlainFormat()` buffered each table's entire `COPY TO` output in an in-memory `bytes.Buffer`. For databases 21GB+, concurrent goroutines collectively exhausted all available memory (crash trace: `runtime: out of memory` attempting 12 GiB `sysMapOS` allocation). Replaced with per-table temp files backed by 1 MiB buffered writers; temp files are streamed to output in order after all workers finish, then cleaned up. Memory usage is now bounded regardless of database size.
+
+### Removed
+
+- **`release/dbbackup-dashboard.json`** — Removed tracked duplicate of `grafana/dbbackup-dashboard.json`.
+- **Binary blobs purged from git history** — 22 compiled binaries (totaling ~1.2 GB) across `bin/`, `bins/`, `release/v6.1.0/`, and root-level executables removed from all commits via `git filter-repo`. Repository size reduced from 2.1 GB to 13 MB.
+
 ## [6.49.0] - 2026-02-17 — Zstd Integrity Guard & Stability Hardening
 
 ### Added

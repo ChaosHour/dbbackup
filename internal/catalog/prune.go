@@ -49,7 +49,7 @@ func (c *SQLiteCatalog) PruneAdvanced(ctx context.Context, config *PruneConfig) 
 
 	if config.OlderThan != nil {
 		query += " AND created_at < ?"
-		args = append(args, config.OlderThan.Unix())
+		args = append(args, config.OlderThan.Format(time.RFC3339Nano))
 	}
 
 	query += " ORDER BY created_at ASC"
@@ -67,12 +67,13 @@ func (c *SQLiteCatalog) PruneAdvanced(ctx context.Context, config *PruneConfig) 
 		var id int64
 		var database, backupPath, status string
 		var sizeBytes int64
-		var createdAt int64
+		var createdAtStr string
 
-		if err := rows.Scan(&id, &database, &backupPath, &sizeBytes, &createdAt, &status); err != nil {
+		if err := rows.Scan(&id, &database, &backupPath, &sizeBytes, &createdAtStr, &status); err != nil {
 			return nil, fmt.Errorf("scan failed: %w", err)
 		}
 
+		createdAt := parseTimeString(createdAtStr)
 		result.TotalChecked++
 
 		shouldRemove := false
@@ -87,7 +88,7 @@ func (c *SQLiteCatalog) PruneAdvanced(ctx context.Context, config *PruneConfig) 
 		}
 
 		// Check if older than cutoff (already filtered in query, but double-check)
-		if config.OlderThan != nil && time.Unix(createdAt, 0).Before(*config.OlderThan) {
+		if config.OlderThan != nil && createdAt.Before(*config.OlderThan) {
 			if !shouldRemove {
 				shouldRemove = true
 				reason = fmt.Sprintf("older than %s", config.OlderThan.Format("2006-01-02"))
@@ -105,11 +106,10 @@ func (c *SQLiteCatalog) PruneAdvanced(ctx context.Context, config *PruneConfig) 
 		if shouldRemove {
 			idsToRemove = append(idsToRemove, id)
 			spaceToFree += sizeBytes
-			createdTime := time.Unix(createdAt, 0)
 			detail := fmt.Sprintf("%s - %s (created %s) - %s",
 				database,
 				backupPath,
-				createdTime.Format("2006-01-02"),
+				createdAt.Format("2006-01-02"),
 				reason)
 			result.Details = append(result.Details, detail)
 		}

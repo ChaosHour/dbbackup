@@ -264,12 +264,12 @@ func (c *SQLiteCatalog) listCompletedBackups(ctx context.Context, database strin
 	var entries []*Entry
 	for rows.Next() {
 		var e Entry
-		var createdAt int64
+		var createdAtStr string
 		var status string
-		if err := rows.Scan(&e.ID, &e.Database, &e.BackupPath, &e.BackupType, &e.SizeBytes, &createdAt, &status); err != nil {
+		if err := rows.Scan(&e.ID, &e.Database, &e.BackupPath, &e.BackupType, &e.SizeBytes, &createdAtStr, &status); err != nil {
 			return nil, err
 		}
-		e.CreatedAt = time.Unix(createdAt, 0)
+		e.CreatedAt = parseTimeString(createdAtStr)
 		e.Status = BackupStatus(status)
 		entries = append(entries, &e)
 	}

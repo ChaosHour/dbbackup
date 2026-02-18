@@ -8,11 +8,49 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // Pure Go SQLite driver (no CGO required)
 )
+
+// timeFormats lists all timestamp formats we may encounter in catalog DBs.
+// Order matters: most specific first.
+var timeFormats = []string{
+	time.RFC3339Nano,
+	time.RFC3339,
+	"2006-01-02T15:04:05Z",
+	"2006-01-02 15:04:05.999999999 -0700 MST",
+	"2006-01-02 15:04:05.999999999 -0700 -0700",
+	"2006-01-02 15:04:05.999999999-07:00",
+	"2006-01-02 15:04:05-07:00",
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05",
+}
+
+// dupOffsetRe matches Go's time.String() output with duplicated numeric offset
+// like "+0100 +0100" or "-0500 -0500" and keeps only the first.
+var dupOffsetRe = regexp.MustCompile(`([+-]\d{4}) [+-]\d{4}$`)
+
+// parseTimeString attempts to parse a timestamp string stored in SQLite using
+// multiple known formats. Returns zero time if all fail.
+func parseTimeString(s string) time.Time {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}
+	}
+
+	// Normalise duplicated offsets: "2026-01-08 11:37:00.002 +0100 +0100" → keep first offset
+	s = dupOffsetRe.ReplaceAllString(s, "$1")
+
+	for _, fmt := range timeFormats {
+		if t, err := time.Parse(fmt, s); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
 
 // SQLiteCatalog implements Catalog interface with SQLite storage
 type SQLiteCatalog struct {
@@ -131,7 +169,7 @@ func (c *SQLiteCatalog) Add(ctx context.Context, entry *Entry) error {
 	`,
 		entry.Database, entry.DatabaseType, entry.Host, entry.Port,
 		entry.BackupPath, entry.BackupType, entry.SizeBytes, entry.SHA256,
-		entry.Compression, entry.Encrypted, entry.CreatedAt, entry.Duration,
+		entry.Compression, entry.Encrypted, entry.CreatedAt.Format(time.RFC3339Nano), entry.Duration,
 		entry.Status, entry.CloudLocation, entry.RetentionPolicy,
 		string(tagsJSON), string(metaJSON),
 	)
@@ -211,13 +249,14 @@ func (c *SQLiteCatalog) GetByPath(ctx context.Context, path string) (*Entry, err
 func (c *SQLiteCatalog) scanEntry(row *sql.Row) (*Entry, error) {
 	var entry Entry
 	var tagsJSON, metaJSON sql.NullString
-	var verifiedAt, drillTestedAt sql.NullTime
+	var createdAtStr string
+	var verifiedAt, drillTestedAt sql.NullString
 	var verifyValid, drillSuccess sql.NullBool
 
 	err := row.Scan(
 		&entry.ID, &entry.Database, &entry.DatabaseType, &entry.Host, &entry.Port,
 		&entry.BackupPath, &entry.BackupType, &entry.SizeBytes, &entry.SHA256,
-		&entry.Compression, &entry.Encrypted, &entry.CreatedAt, &entry.Duration,
+		&entry.Compression, &entry.Encrypted, &createdAtStr, &entry.Duration,
 		&entry.Status, &verifiedAt, &verifyValid, &drillTestedAt, &drillSuccess,
 		&entry.CloudLocation, &entry.RetentionPolicy, &tagsJSON, &metaJSON,
 	)
@@ -228,14 +267,22 @@ func (c *SQLiteCatalog) scanEntry(row *sql.Row) (*Entry, error) {
 		return nil, fmt.Errorf("failed to scan entry: %w", err)
 	}
 
-	if verifiedAt.Valid {
-		entry.VerifiedAt = &verifiedAt.Time
+	entry.CreatedAt = parseTimeString(createdAtStr)
+
+	if verifiedAt.Valid && verifiedAt.String != "" {
+		t := parseTimeString(verifiedAt.String)
+		if !t.IsZero() {
+			entry.VerifiedAt = &t
+		}
 	}
 	if verifyValid.Valid {
 		entry.VerifyValid = &verifyValid.Bool
 	}
-	if drillTestedAt.Valid {
-		entry.DrillTestedAt = &drillTestedAt.Time
+	if drillTestedAt.Valid && drillTestedAt.String != "" {
+		t := parseTimeString(drillTestedAt.String)
+		if !t.IsZero() {
+			entry.DrillTestedAt = &t
+		}
 	}
 	if drillSuccess.Valid {
 		entry.DrillSuccess = &drillSuccess.Bool
@@ -296,13 +343,14 @@ func (c *SQLiteCatalog) scanEntries(rows *sql.Rows) ([]*Entry, error) {
 	for rows.Next() {
 		var entry Entry
 		var tagsJSON, metaJSON sql.NullString
-		var verifiedAt, drillTestedAt sql.NullTime
+		var createdAtStr string
+		var verifiedAt, drillTestedAt sql.NullString
 		var verifyValid, drillSuccess sql.NullBool
 
 		err := rows.Scan(
 			&entry.ID, &entry.Database, &entry.DatabaseType, &entry.Host, &entry.Port,
 			&entry.BackupPath, &entry.BackupType, &entry.SizeBytes, &entry.SHA256,
-			&entry.Compression, &entry.Encrypted, &entry.CreatedAt, &entry.Duration,
+			&entry.Compression, &entry.Encrypted, &createdAtStr, &entry.Duration,
 			&entry.Status, &verifiedAt, &verifyValid, &drillTestedAt, &drillSuccess,
 			&entry.CloudLocation, &entry.RetentionPolicy, &tagsJSON, &metaJSON,
 		)
@@ -310,14 +358,22 @@ func (c *SQLiteCatalog) scanEntries(rows *sql.Rows) ([]*Entry, error) {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 
-		if verifiedAt.Valid {
-			entry.VerifiedAt = &verifiedAt.Time
+		entry.CreatedAt = parseTimeString(createdAtStr)
+
+		if verifiedAt.Valid && verifiedAt.String != "" {
+			t := parseTimeString(verifiedAt.String)
+			if !t.IsZero() {
+				entry.VerifiedAt = &t
+			}
 		}
 		if verifyValid.Valid {
 			entry.VerifyValid = &verifyValid.Bool
 		}
-		if drillTestedAt.Valid {
-			entry.DrillTestedAt = &drillTestedAt.Time
+		if drillTestedAt.Valid && drillTestedAt.String != "" {
+			t := parseTimeString(drillTestedAt.String)
+			if !t.IsZero() {
+				entry.DrillTestedAt = &t
+			}
 		}
 		if drillSuccess.Valid {
 			entry.DrillSuccess = &drillSuccess.Bool

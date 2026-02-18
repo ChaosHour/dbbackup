@@ -149,7 +149,32 @@ docker:
 all-platforms:
 	@echo "🌍 Building for all platforms..."
 	./build_all.sh
+## bench: Run benchmark suite against all detected databases
+bench: build
+	@echo "Running cross-engine benchmark matrix..."
+	bin/dbbackup benchmark matrix --iterations 3 --verify --allow-root
 
+## bench-pg: Benchmark PostgreSQL only
+bench-pg: build
+	@echo "Running PostgreSQL benchmark..."
+	@if [ -z "$(BENCH_DB)" ]; then echo "Usage: make bench-pg BENCH_DB=mydb"; exit 1; fi
+	bin/dbbackup benchmark run --db-type postgres --database $(BENCH_DB) --iterations 3 --verify --allow-root
+
+## bench-mysql: Benchmark MySQL only
+bench-mysql: build
+	@echo "Running MySQL benchmark..."
+	@if [ -z "$(BENCH_DB)" ]; then echo "Usage: make bench-mysql BENCH_DB=mydb"; exit 1; fi
+	bin/dbbackup benchmark run --db-type mysql --database $(BENCH_DB) --iterations 3 --verify --allow-root
+
+## bench-maria: Benchmark MariaDB only
+bench-maria: build
+	@echo "Running MariaDB benchmark..."
+	@if [ -z "$(BENCH_DB)" ]; then echo "Usage: make bench-maria BENCH_DB=mydb"; exit 1; fi
+	bin/dbbackup benchmark run --db-type mariadb --database $(BENCH_DB) --iterations 3 --verify --allow-root
+
+## bench-history: Show benchmark history
+bench-history:
+	@bin/dbbackup benchmark history --last 20
 ## help: Show this help
 help:
 	@echo "dbbackup Makefile"

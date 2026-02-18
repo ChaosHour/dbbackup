@@ -2,7 +2,6 @@ package native
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -347,15 +346,17 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 		if workers > 1 && len(dataObjects) > 1 {
 			// ═══════════════════════════════════════════════════════════════
 			// PARALLEL BACKUP: concurrent COPY TO with ordered output
+			// Uses temp files instead of memory buffers to avoid OOM on
+			// large databases (e.g. 21GB+).
 			// ═══════════════════════════════════════════════════════════════
 			e.log.Info("Starting parallel backup",
 				"tables", len(dataObjects), "workers", workers)
 
 			type tableResult struct {
-				index int
-				buf   *bytes.Buffer
-				bytes int64
-				err   error
+				index    int
+				tmpFile  string // path to temp file holding COPY output
+				bytes    int64
+				err      error
 			}
 
 			results := make([]tableResult, len(dataObjects))
@@ -370,15 +371,30 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 					semaphore <- struct{}{} // acquire
 					defer func() { <-semaphore }() // release
 
-					buf := &bytes.Buffer{}
+					// Use a temp file instead of bytes.Buffer to keep
+					// memory usage bounded for large tables.
+					tmpf, ferr := os.CreateTemp("", "dbbackup-tbl-*.sql")
+					if ferr != nil {
+						results[idx] = tableResult{index: idx, err: fmt.Errorf("create temp file: %w", ferr)}
+						return
+					}
+					tmpPath := tmpf.Name()
+					bw := bufio.NewWriterSize(tmpf, 1<<20) // 1 MiB buffered writer
 
 					// Write per-table header
 					header := fmt.Sprintf("\n--\n-- Data for table %s.%s\n--\n\n",
 						e.quoteIdentifier(dobj.Schema), e.quoteIdentifier(dobj.Name))
-					buf.WriteString(header)
+					bw.WriteString(header)
 
-					bytesWritten, err := e.copyTableData(ctx, buf, dobj.Schema, dobj.Name)
-					results[idx] = tableResult{index: idx, buf: buf, bytes: bytesWritten, err: err}
+					bytesWritten, copyErr := e.copyTableData(ctx, bw, dobj.Schema, dobj.Name)
+
+					// Flush and close regardless of error
+					if flushErr := bw.Flush(); flushErr != nil && copyErr == nil {
+						copyErr = flushErr
+					}
+					tmpf.Close()
+
+					results[idx] = tableResult{index: idx, tmpFile: tmpPath, bytes: bytesWritten, err: copyErr}
 
 					n := atomic.AddInt64(&tablesCompleted, 1)
 					e.log.Debug("Table backup complete",
@@ -389,16 +405,29 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 
 			wg.Wait()
 
-			// Write results in order to maintain deterministic output
+			// Write results in order to maintain deterministic output,
+			// streaming from temp files so memory stays low.
 			for i, tr := range results {
+				// Always clean up temp file
+				if tr.tmpFile != "" {
+					defer os.Remove(tr.tmpFile)
+				}
 				if tr.err != nil {
 					e.log.Warn("Failed to copy table data",
 						"table", dataObjects[i].Name, "error", tr.err)
 					continue
 				}
-				if _, err := w.Write(tr.buf.Bytes()); err != nil {
+				f, ferr := os.Open(tr.tmpFile)
+				if ferr != nil {
+					e.log.Warn("Failed to open temp file",
+						"table", dataObjects[i].Name, "error", ferr)
+					continue
+				}
+				if _, err := io.Copy(w, f); err != nil {
+					f.Close()
 					return nil, err
 				}
+				f.Close()
 				result.BytesProcessed += tr.bytes
 				result.ObjectsProcessed++
 			}

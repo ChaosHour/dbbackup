@@ -18,11 +18,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`benchmark_results` table in catalog DB** — New SQLite table stores benchmark results alongside regular backup entries, with indexed columns for engine, database, and timestamp, plus full JSON report for drill-down.
 - **Bash wrapper scripts** — `scripts/bench_postgres.sh`, `scripts/bench_mysql.sh`, `scripts/bench_mariadb.sh`, `scripts/bench_all.sh` for quick ad-hoc benchmarking with environment variable configuration.
 - **Makefile benchmark targets** — `make bench` (full matrix), `make bench-pg`, `make bench-mysql`, `make bench-maria`, `make bench-history`.
-- **TUI Benchmark view** — New interactive benchmark screen in the Tools submenu (`interactive` → Tools → Benchmark Database) with five screens: configuration wizard (database picker, iterations, compression, workers, verify toggle), real-time progress with spinner and progress bar, results table (min/avg/median/p95/MB/s per phase), scrollable history browser, and per-iteration detail drill-down. Reuses the benchmark engine via subprocess and reads results from the catalog DB.
+- **TUI Benchmark view** — New interactive benchmark screen accessible from the main TUI menu (`interactive` → Benchmark Database) with five screens: configuration wizard (database picker, iterations, compression, workers, verify toggle), real-time progress with spinner and progress bar, results table (min/avg/median/p95/MB/s per phase), scrollable history browser, and per-iteration detail drill-down. Reuses the benchmark engine via subprocess and reads results from the catalog DB.
 
 ### Fixed
 
 - **OOM crash on parallel PostgreSQL backup of large databases** — The parallel backup path in `backupPlainFormat()` buffered each table's entire `COPY TO` output in an in-memory `bytes.Buffer`. For databases 21GB+, concurrent goroutines collectively exhausted all available memory (crash trace: `runtime: out of memory` attempting 12 GiB `sysMapOS` allocation). Replaced with per-table temp files backed by 1 MiB buffered writers; temp files are streamed to output in order after all workers finish, then cleaned up. Memory usage is now bounded regardless of database size.
+- **PostgreSQL connection failure on TUI startup** — When `.pgpass` contained a password for localhost, `buildPgxDSN()` skipped the Unix socket path and fell back to TCP. On systems where `localhost` resolves to `::1` (IPv6), this hit scram-sha-256 authentication with the wrong password, causing "[FAIL] Disconnected" in the TUI. Fixed by always preferring Unix socket for localhost connections regardless of whether a password is available.
+- **TUI benchmark progress bar panic** — `strings.Repeat` called with a negative count when the indeterminate progress bar position approached the bar width, causing `runtime error: negative Repeat count`. Added bounds clamping for both position and remaining-space calculations.
+
+### Changed
+
+- **Benchmark moved to main TUI menu** — "Benchmark Database" promoted from the Tools submenu to the main menu (after "View Backup Chain") for better discoverability.
 
 ### Removed
 

@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.1] - 2026-02-18 — Catalog Timestamp Fix
+
+### Fixed
+
+- **Catalog timestamp parsing failure crashing exporter** — SQLite stored `created_at` via Go's `time.String()` format (e.g. `2026-01-08 11:37:00 +0100 +0100`), which the SQL driver could not scan back into `time.Time`. This caused `dbbackup-exporter` to fail with `unsupported Scan, storing driver.Value type string into type *time.Time` on any host with existing catalog entries. Fixed by writing RFC3339Nano on insert and parsing with a multi-format fallback on read, supporting all legacy timestamp formats. Also fixed `gfs.go` and `prune.go` which incorrectly scanned `created_at` as `int64`.
+
 ## [6.50.0] - 2026-02-18 — Benchmark Framework & Parallel Backup OOM Fix
 
 ### Added

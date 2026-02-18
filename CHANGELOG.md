@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.2] - 2026-02-18 — Zstd Cluster Diagnose Fix
+
+### Fixed
+
+- **TUI cluster backup diagnosis fails with "gzip: invalid header" on `.tar.zst` archives** — `ListTarGzContents`, `ListTarGzHeaders`, `ExtractTarGzParallel`, and `EstimateCompressionRatio` in `internal/fs/extract.go` were hardcoded to use pgzip (gzip-only) decompression. When the TUI or CLI created a cluster backup with zstd compression (`.tar.zst`), the diagnose view tried to open it with a gzip reader, producing `cannot create gzip reader: gzip: invalid header` and marking the archive as CORRUPTED. Replaced all four functions with `compression.NewDecompressor` which auto-detects gzip or zstd from the file extension. Also updated `DiagnoseClusterDumps` in `internal/restore/diagnose.go` to use `ExtractTarCompressed` instead of `ExtractTarGzParallel` for extraction.
+
 ## [6.50.1] - 2026-02-18 — Catalog Timestamp Fix
 
 ### Fixed

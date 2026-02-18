@@ -737,11 +737,11 @@ func (d *Diagnoser) DiagnoseClusterDumps(ctx context.Context, archivePath, tempD
 		d.log.Info("Archive listing successful", "files", len(files))
 	}
 
-	// Try full extraction using parallel gzip (2-4x faster on multi-core)
+	// Try full extraction using compression-aware extractor (supports gzip and zstd)
 	extractCtx, extractCancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer extractCancel()
 
-	err = fs.ExtractTarGzParallel(extractCtx, archivePath, tempDir, nil)
+	err = fs.ExtractTarCompressed(extractCtx, archivePath, tempDir)
 	if err != nil {
 		// Extraction failed
 		errResult := &DiagnoseResult{

@@ -158,9 +158,9 @@ type ExtractProgress struct {
 // ProgressCallback is called during extraction
 type ProgressCallback func(progress ExtractProgress)
 
-// ExtractTarGzParallel extracts a tar.gz archive using parallel gzip decompression
-// This is 2-4x faster than standard gzip on multi-core systems
-// Uses pgzip which decompresses in parallel using multiple goroutines
+// ExtractTarGzParallel extracts a tar.gz or tar.zst archive using parallel decompression
+// This is 2-4x faster than standard decompression on multi-core systems
+// Supports both gzip (pgzip) and zstd compression, auto-detected from file extension
 func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, progressCb ProgressCallback) error {
 	// Open the archive
 	file, err := os.Open(archivePath)
@@ -176,23 +176,23 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 	}
 	totalSize := stat.Size()
 
-	// Create parallel gzip reader
+	// Create decompressor (supports gzip and zstd based on file extension)
 	// Uses all available CPU cores for decompression
-	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	// Wrap file in safeReader to prevent decompressor goroutine panics on early close
 	sr := &safeReader{r: file}
-	gzReader, err := pgzip.NewReaderN(sr, 1<<20, runtime.NumCPU()) // 1MB blocks
+	decomp, err := compression.NewDecompressor(sr, archivePath)
 	if err != nil {
 		file.Close()
-		return fmt.Errorf("cannot create gzip reader: %w", err)
+		return fmt.Errorf("cannot create decompressor: %w", err)
 	}
 
-	// Context-watcher: immediately close pgzip reader when context is cancelled
-	// This prevents pgzip read-ahead goroutines from hanging forever on file.Read()
+	// Context-watcher: immediately close decompressor when context is cancelled
+	// This prevents read-ahead goroutines from hanging forever on file.Read()
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
 			sr.shutdown()
-			gzReader.Close()
+			decomp.Close()
 			file.Close()
 		})
 	}
@@ -206,7 +206,7 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 	}()
 
 	// Create tar reader
-	tarReader := tar.NewReader(gzReader)
+	tarReader := tar.NewReader(decomp.Reader)
 
 	// Track progress
 	var bytesRead int64
@@ -318,22 +318,22 @@ func ListTarGzContents(ctx context.Context, archivePath string) ([]string, error
 		return nil, fmt.Errorf("cannot open archive: %w", err)
 	}
 
-	// Create parallel gzip reader
-	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	// Create decompressor (supports gzip and zstd based on file extension)
+	// Wrap file in safeReader to prevent decompressor goroutine panics on early close
 	sr := &safeReader{r: file}
-	gzReader, err := pgzip.NewReaderN(sr, 1<<20, runtime.NumCPU())
+	decomp, err := compression.NewDecompressor(sr, archivePath)
 	if err != nil {
 		file.Close()
-		return nil, fmt.Errorf("cannot create gzip reader: %w", err)
+		return nil, fmt.Errorf("cannot create decompressor: %w", err)
 	}
 
-	// Context-watcher: immediately close pgzip reader when context is cancelled
-	// This prevents pgzip read-ahead goroutines from hanging forever on file.Read()
+	// Context-watcher: immediately close decompressor when context is cancelled
+	// This prevents read-ahead goroutines from hanging forever on file.Read()
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
 			sr.shutdown()
-			gzReader.Close()
+			decomp.Close()
 			file.Close()
 		})
 	}
@@ -347,7 +347,7 @@ func ListTarGzContents(ctx context.Context, archivePath string) ([]string, error
 	}()
 
 	// Create tar reader
-	tarReader := tar.NewReader(gzReader)
+	tarReader := tar.NewReader(decomp.Reader)
 
 	var files []string
 	for {
@@ -389,21 +389,21 @@ func ListTarGzHeaders(ctx context.Context, archivePath string, maxEntries int) (
 		return nil, fmt.Errorf("cannot open archive: %w", err)
 	}
 
-	// Create parallel gzip reader
-	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	// Create decompressor (supports gzip and zstd based on file extension)
+	// Wrap file in safeReader to prevent decompressor goroutine panics on early close
 	sr := &safeReader{r: file}
-	gzReader, err := pgzip.NewReaderN(sr, 1<<20, runtime.NumCPU())
+	decomp, err := compression.NewDecompressor(sr, archivePath)
 	if err != nil {
 		file.Close()
-		return nil, fmt.Errorf("cannot create gzip reader: %w", err)
+		return nil, fmt.Errorf("cannot create decompressor: %w", err)
 	}
 
-	// Context-watcher: immediately close pgzip reader when context is cancelled
+	// Context-watcher: immediately close decompressor when context is cancelled
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
 			sr.shutdown()
-			gzReader.Close()
+			decomp.Close()
 			file.Close()
 		})
 	}
@@ -417,7 +417,7 @@ func ListTarGzHeaders(ctx context.Context, archivePath string, maxEntries int) (
 	}()
 
 	// Create tar reader
-	tarReader := tar.NewReader(gzReader)
+	tarReader := tar.NewReader(decomp.Reader)
 
 	var files []string
 	for {
@@ -942,20 +942,20 @@ func EstimateCompressionRatio(archivePath string) (float64, error) {
 	compressedSize := stat.Size()
 
 	// Read first 1MB and measure decompression ratio
-	// Wrap file in safeReader to prevent pgzip goroutine panics on early close
+	// Wrap file in safeReader to prevent decompressor goroutine panics on early close
 	sr := &safeReader{r: file}
-	gzReader, err := pgzip.NewReader(sr)
+	decomp, err := compression.NewDecompressor(sr, archivePath)
 	if err != nil {
 		return 3.0, err
 	}
 	defer func() {
 		sr.shutdown()
-		gzReader.Close()
+		decomp.Close()
 	}()
 
 	// Read up to 1MB of decompressed data
 	buf := make([]byte, 1<<20)
-	n, _ := io.ReadFull(gzReader, buf)
+	n, _ := io.ReadFull(decomp.Reader, buf)
 
 	if n < 1024 {
 		return 3.0, nil // Not enough data, use default

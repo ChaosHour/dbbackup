@@ -205,7 +205,15 @@ func (m *HealthViewModel) checkDatabaseConnectivity() TUIHealthCheck {
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 
-	db, err := database.New(m.config, m.logger)
+	// Use admin database to avoid failures from stale database names in config.
+	connCfg := *m.config
+	if connCfg.IsPostgreSQL() {
+		connCfg.Database = "postgres"
+	} else if connCfg.IsMySQL() && connCfg.Database == "" {
+		connCfg.Database = "mysql"
+	}
+
+	db, err := database.New(&connCfg, m.logger)
 	if err != nil {
 		check.Status = HealthStatusCritical
 		check.Message = "Failed to create DB client"
@@ -674,7 +682,13 @@ func (m *HealthViewModel) checkGaleraCluster() TUIHealthCheck {
 	ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 	defer cancel()
 
-	db, err := database.New(m.config, m.logger)
+	// Use admin database to avoid failures from stale database names in config.
+	galeraCfg := *m.config
+	if galeraCfg.IsMySQL() && galeraCfg.Database == "" {
+		galeraCfg.Database = "mysql"
+	}
+
+	db, err := database.New(&galeraCfg, m.logger)
 	if err != nil {
 		check.Status = HealthStatusWarning
 		check.Message = "Cannot create DB client"

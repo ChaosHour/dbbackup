@@ -181,7 +181,17 @@ func (v *BenchmarkView) fetchDatabases() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		dbClient, err := database.New(cfg, log)
+
+		// Use admin database for the connection to avoid failures when
+		// the configured database no longer exists (stale config).
+		connCfg := *cfg
+		if connCfg.IsPostgreSQL() {
+			connCfg.Database = "postgres"
+		} else if connCfg.IsMySQL() && connCfg.Database == "" {
+			connCfg.Database = "mysql"
+		}
+
+		dbClient, err := database.New(&connCfg, log)
 		if err != nil {
 			return benchDBListMsg{err: fmt.Errorf("database client: %w", err)}
 		}

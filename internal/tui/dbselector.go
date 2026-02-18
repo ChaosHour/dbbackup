@@ -57,7 +57,16 @@ func fetchDatabases(cfg *config.Config, log logger.Logger) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		dbClient, err := database.New(cfg, log)
+		// Use admin database for connection to avoid failures when
+		// the configured database no longer exists (stale config).
+		connCfg := *cfg
+		if connCfg.IsPostgreSQL() {
+			connCfg.Database = "postgres"
+		} else if connCfg.IsMySQL() && connCfg.Database == "" {
+			connCfg.Database = "mysql"
+		}
+
+		dbClient, err := database.New(&connCfg, log)
 		if err != nil {
 			return databaseListMsg{databases: nil, err: fmt.Errorf("failed to create database client: %w", err)}
 		}

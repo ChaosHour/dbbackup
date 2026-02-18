@@ -183,11 +183,14 @@ func (m *MenuModel) checkConnectionHealth() tea.Cmd {
 			"os_user", os.Getenv("USER"),
 		)
 
-		// Use admin database for health checks to avoid failures from
-		// non-existent user databases (e.g., after switching engine types).
+		// Always use admin database for health checks to avoid failures from
+		// non-existent user databases (e.g., stale database name from config file
+		// that was dropped, or after switching engine types).
 		healthCfg := *cfg
-		if healthCfg.IsPostgreSQL() && healthCfg.Database == "" {
+		if healthCfg.IsPostgreSQL() {
 			healthCfg.Database = "postgres"
+		} else if healthCfg.IsMySQL() && healthCfg.Database == "" {
+			healthCfg.Database = "mysql"
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

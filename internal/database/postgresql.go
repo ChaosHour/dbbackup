@@ -626,8 +626,12 @@ func (p *PostgreSQL) buildPgxDSN() string {
 		return dsn
 	}
 
-	// Try Unix socket first for localhost without password
-	if p.cfg.Host == "localhost" && p.cfg.Password == "" {
+	// Try Unix socket first for localhost connections.
+	// Always prefer socket over TCP for localhost — it avoids DNS resolution
+	// issues (localhost may resolve to ::1 IPv6 which can have different
+	// pg_hba.conf rules than 127.0.0.1) and is faster than TCP loopback.
+	// If no socket is found, fall through to TCP.
+	if p.cfg.Host == "localhost" || p.cfg.Host == "" {
 		socketDirs := []string{
 			"/var/run/postgresql",
 			"/tmp",

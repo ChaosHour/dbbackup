@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`benchmark_results` table in catalog DB** — New SQLite table stores benchmark results alongside regular backup entries, with indexed columns for engine, database, and timestamp, plus full JSON report for drill-down.
 - **Bash wrapper scripts** — `scripts/bench_postgres.sh`, `scripts/bench_mysql.sh`, `scripts/bench_mariadb.sh`, `scripts/bench_all.sh` for quick ad-hoc benchmarking with environment variable configuration.
 - **Makefile benchmark targets** — `make bench` (full matrix), `make bench-pg`, `make bench-mysql`, `make bench-maria`, `make bench-history`.
+- **TUI Benchmark view** — New interactive benchmark screen in the Tools submenu (`interactive` → Tools → Benchmark Database) with five screens: configuration wizard (database picker, iterations, compression, workers, verify toggle), real-time progress with spinner and progress bar, results table (min/avg/median/p95/MB/s per phase), scrollable history browser, and per-iteration detail drill-down. Reuses the benchmark engine via subprocess and reads results from the catalog DB.
 
 ### Fixed
 

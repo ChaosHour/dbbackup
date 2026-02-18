@@ -129,6 +129,7 @@ func NewMenuModel(cfg *config.Config, log logger.Logger) *MenuModel {
 			"List & Manage Backups",
 			"View Backup Schedule",
 			"View Backup Chain",
+			"Benchmark Database",
 			"--------------------------------",
 			"System Resource Profile",
 			"CPU Optimization",
@@ -293,25 +294,27 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleSchedule()
 			case 9: // View Backup Chain
 				return m.handleChain()
-			case 10: // Separator - skip
+			case 10: // Benchmark Database
+				return m.handleBenchmark()
+			case 11: // Separator - skip
 				return m, nil
-			case 11: // System Resource Profile
+			case 12: // System Resource Profile
 				return m.handleProfile()
-			case 12: // CPU Optimization
+			case 13: // CPU Optimization
 				return m.handleCPUOptimization()
-			case 13: // Tools
+			case 14: // Tools
 				return m.handleTools()
-			case 14: // View Active Operations
+			case 15: // View Active Operations
 				return m.handleViewOperations()
-			case 15: // Show Operation History
+			case 16: // Show Operation History
 				return m.handleOperationHistory()
-			case 16: // Database Status
+			case 17: // Database Status
 				return m.handleStatus()
-			case 17: // Settings
+			case 18: // Settings
 				return m.handleSettings()
-			case 18: // Clear History
+			case 19: // Clear History
 				return m.handleClearHistory()
-			case 19: // Quit
+			case 20: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -417,25 +420,27 @@ func (m *MenuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleSchedule()
 			case 9: // View Backup Chain
 				return m.handleChain()
-			case 10: // Separator
+			case 10: // Benchmark Database
+				return m.handleBenchmark()
+			case 11: // Separator
 				// Do nothing
-			case 11: // System Resource Profile
+			case 12: // System Resource Profile
 				return m.handleProfile()
-			case 12: // CPU Optimization
+			case 13: // CPU Optimization
 				return m.handleCPUOptimization()
-			case 13: // Tools
+			case 14: // Tools
 				return m.handleTools()
-			case 14: // View Active Operations
+			case 15: // View Active Operations
 				return m.handleViewOperations()
-			case 15: // Show Operation History
+			case 16: // Show Operation History
 				return m.handleOperationHistory()
-			case 16: // Database Status
+			case 17: // Database Status
 				return m.handleStatus()
-			case 17: // Settings
+			case 18: // Settings
 				return m.handleSettings()
-			case 18: // Clear History
+			case 19: // Clear History
 				return m.handleClearHistory()
-			case 19: // Quit
+			case 20: // Quit
 				if m.cancel != nil {
 					m.cancel()
 				}
@@ -650,6 +655,12 @@ func (m *MenuModel) handleProfile() (tea.Model, tea.Cmd) {
 func (m *MenuModel) handleCPUOptimization() (tea.Model, tea.Cmd) {
 	cpuOpt := NewCPUOptModel(m.config, m.logger, m)
 	return cpuOpt, cpuOpt.Init()
+}
+
+// handleBenchmark opens the benchmark view
+func (m *MenuModel) handleBenchmark() (tea.Model, tea.Cmd) {
+	view := NewBenchmarkView(m.config, m.logger, m, m.ctx)
+	return view, view.Init()
 }
 
 // handleClearHistory deletes metadata/info files from the backup directory

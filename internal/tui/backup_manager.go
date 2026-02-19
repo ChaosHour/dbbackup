@@ -366,7 +366,7 @@ func verifyArchiveCmd(archive ArchiveInfo) tea.Cmd {
 		var issues []string
 
 		// 1. Run the same archive integrity check as restore
-		safety := restore.NewSafety(nil, nil) // Doesn't need config/log for validation
+		safety := restore.NewSafety(nil, logger.NewNullLogger()) // Doesn't need config for validation
 		if err := safety.ValidateArchive(archive.Path); err != nil {
 			return verifyResultMsg{
 				archive: archive.Name,

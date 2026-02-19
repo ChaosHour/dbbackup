@@ -5,6 +5,14 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.3] - 2026-02-19 — TUI Verify Panic & Benchmark Auth Fix
+
+### Fixed
+
+- **TUI Verify panic: nil pointer dereference in archive validation** — Pressing `v` (Verify) in the Backup Manager triggered `runtime error: invalid memory address or nil pointer dereference` at `safety.go:232`. The `verifyArchiveCmd` created a `Safety` instance with `NewSafety(nil, nil)`, passing `nil` for the logger. When `validateTarGz` called `s.log.Debug()`, it crashed. Fixed by passing `logger.NewNullLogger()` instead of `nil`.
+- **TUI Benchmark prompts for PostgreSQL password on localhost** — The benchmark subprocess and all PostgreSQL CLI commands (`psql`, `pg_dump`) were called with `-h localhost`, forcing TCP connections. On systems where peer auth is configured for Unix sockets but `pg_hba.conf` requires `scram-sha-256` for TCP (especially over IPv6 `::1`), this caused password prompts or auth failures. Added `pgEffectiveHost()` helper in `internal/benchmark/benchmark.go` that auto-detects the Unix socket directory (`/var/run/postgresql`) when host is `localhost` and no password is set. Applied to `baseArgs()`, `ensureDB()`, `dropDB()`, and `measureDBSize()`.
+- **TUI Benchmark subprocess passed deprecated `--password` flag** — The benchmark TUI passed passwords via the `--password` CLI flag, which was deprecated and would error. Changed to pass passwords via the `PGPASSWORD` environment variable instead.
+
 ## [6.50.2] - 2026-02-18 — Zstd Cluster Diagnose Fix
 
 ### Fixed

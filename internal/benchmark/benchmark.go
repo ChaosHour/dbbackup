@@ -244,7 +244,7 @@ func (r *Runner) baseArgs() []string {
 	args := []string{
 		"--allow-root",
 		"-d", t.Engine,
-		"--host", t.Host,
+		"--host", pgEffectiveHost(t),
 		"--port", fmt.Sprintf("%d", t.Port),
 		"--user", t.User,
 		"--database", t.Database,
@@ -390,7 +390,7 @@ func (r *Runner) ensureDB(ctx context.Context, dbName string) {
 	switch t.Engine {
 	case "postgres":
 		cmd := exec.CommandContext(ctx, "psql",
-			"-h", t.Host, "-p", fmt.Sprintf("%d", t.Port), "-U", t.User,
+			"-h", pgEffectiveHost(t), "-p", fmt.Sprintf("%d", t.Port), "-U", t.User,
 			"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %q; CREATE DATABASE %q;", dbName, dbName))
 		cmd.Env = append(os.Environ(), passwordEnv(t)...)
 		cmd.Run()
@@ -412,7 +412,7 @@ func (r *Runner) dropDB(ctx context.Context, dbName string) {
 	switch t.Engine {
 	case "postgres":
 		cmd := exec.CommandContext(ctx, "psql",
-			"-h", t.Host, "-p", fmt.Sprintf("%d", t.Port), "-U", t.User,
+			"-h", pgEffectiveHost(t), "-p", fmt.Sprintf("%d", t.Port), "-U", t.User,
 			"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %q;", dbName))
 		cmd.Env = append(os.Environ(), passwordEnv(t)...)
 		cmd.Run()
@@ -437,7 +437,7 @@ func (r *Runner) measureDBSize(ctx context.Context) (int64, error) {
 	case "postgres":
 		query = fmt.Sprintf("SELECT pg_database_size('%s')", t.Database)
 		cmd := exec.CommandContext(ctx, "psql",
-			"-h", t.Host, "-p", fmt.Sprintf("%d", t.Port), "-U", t.User,
+			"-h", pgEffectiveHost(t), "-p", fmt.Sprintf("%d", t.Port), "-U", t.User,
 			"-d", t.Database, "-tAc", query)
 		cmd.Env = append(os.Environ(), passwordEnv(t)...)
 		out, err := cmd.Output()
@@ -731,6 +731,30 @@ func passwordEnv(t DBTarget) []string {
 		}
 	}
 	return nil
+}
+
+// pgEffectiveHost returns the host argument for PostgreSQL CLI tools.
+// When the target is localhost with no password and a Unix socket exists,
+// it returns the socket directory so that peer/trust auth is used instead
+// of TCP (which may require a password depending on pg_hba.conf).
+func pgEffectiveHost(t DBTarget) string {
+	if t.Engine != "postgres" {
+		return t.Host
+	}
+	if t.Password != "" {
+		return t.Host
+	}
+	if t.Host != "localhost" && t.Host != "127.0.0.1" && t.Host != "" {
+		return t.Host
+	}
+	// Look for a Unix socket
+	for _, dir := range []string{"/var/run/postgresql", "/tmp", "/var/lib/pgsql"} {
+		sock := fmt.Sprintf("%s/.s.PGSQL.%d", dir, t.Port)
+		if _, err := os.Stat(sock); err == nil {
+			return dir
+		}
+	}
+	return t.Host
 }
 
 func parsePeakRSS(output string) int64 {

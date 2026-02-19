@@ -468,11 +468,25 @@ func (v *BenchmarkView) startBenchmark() (tea.Model, tea.Cmd) {
 	v.currentPhase = "starting"
 
 	// Build args for subprocess
+	// Resolve effective host: prefer Unix socket for localhost when no password
+	effectiveHost := v.config.Host
+	if v.config.IsPostgreSQL() && v.config.Password == "" {
+		if effectiveHost == "localhost" || effectiveHost == "127.0.0.1" || effectiveHost == "" {
+			for _, dir := range []string{"/var/run/postgresql", "/tmp", "/var/lib/pgsql"} {
+				sock := fmt.Sprintf("%s/.s.PGSQL.%d", dir, v.config.Port)
+				if _, err := os.Stat(sock); err == nil {
+					effectiveHost = dir
+					break
+				}
+			}
+		}
+	}
+
 	args := []string{
 		"benchmark", "run",
 		"--db-type", v.config.DatabaseType,
 		"--database", dbName,
-		"--host", v.config.Host,
+		"--host", effectiveHost,
 		"--port", fmt.Sprintf("%d", v.config.Port),
 		"--user", v.config.User,
 		"--iterations", fmt.Sprintf("%d", v.iterations),
@@ -486,12 +500,10 @@ func (v *BenchmarkView) startBenchmark() (tea.Model, tea.Cmd) {
 	if !v.verify {
 		args = append(args, "--verify=false")
 	}
-	if v.config.Password != "" {
-		args = append(args, "--password", v.config.Password)
-	}
 
 	ctx := v.ctx
 	log := v.logger
+	password := v.config.Password
 
 	return v, func() tea.Msg {
 		bin, err := os.Executable()
@@ -500,7 +512,12 @@ func (v *BenchmarkView) startBenchmark() (tea.Model, tea.Cmd) {
 		}
 
 		cmd := exec.CommandContext(ctx, bin, args...)
-		cmd.Env = append(os.Environ(), "BENCHMARK_TUI=1")
+		env := append(os.Environ(), "BENCHMARK_TUI=1")
+		// Pass password via environment variable (not CLI flag)
+		if password != "" {
+			env = append(env, "PGPASSWORD="+password)
+		}
+		cmd.Env = env
 
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {

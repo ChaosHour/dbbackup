@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.4] - 2026-02-19 — CPU Optimization Config Persistence Fix
+
+### Fixed
+
+- **CPU optimization settings lost on restart** — Saving CPU optimization settings in the TUI (Save → quit → restart) silently reverted all toggles to disabled. The `[cpu_optimization]` config section was conditionally written only when values differed from defaults, but on load a missing section produced Go zero-value bools (all `false`), and `ApplyLocalConfig` unconditionally overwrote the `config.New()` defaults (`true`) with `false`. Fixed by: (1) always writing the `[cpu_optimization]` section, (2) tracking a `CPUOptPresent` flag during config parsing, (3) guarding `ApplyLocalConfig` to only apply CPU settings when the section was explicitly present, preserving defaults for older config files.
+
 ## [6.50.3] - 2026-02-19 — TUI Verify Panic & Benchmark Auth Fix
 
 ### Fixed

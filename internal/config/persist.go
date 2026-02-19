@@ -121,6 +121,7 @@ type LocalConfig struct {
 	CPUAutoCompression bool
 	CPUAutoCacheBuffer bool
 	CPUAutoNUMA        bool
+	CPUOptPresent      bool // true if [cpu_optimization] section was found in config file
 }
 
 // ConfigSearchPaths returns all paths where config files are searched, in order of priority
@@ -423,6 +424,7 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				}
 			}
 		case "cpu_optimization":
+			cfg.CPUOptPresent = true
 			switch key {
 			case "auto_tune":
 				cfg.CPUAutoTune = value == "true" || value == "1"
@@ -653,16 +655,14 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 		sb.WriteString("\n")
 	}
 
-	// CPU optimization section (v6.46.0+) - only write if any non-default
-	if !cfg.CPUAutoTune || cfg.CPUBoostGovernor || !cfg.CPUAutoCompression || !cfg.CPUAutoCacheBuffer || !cfg.CPUAutoNUMA {
-		sb.WriteString("[cpu_optimization]\n")
-		sb.WriteString(fmt.Sprintf("auto_tune = %t\n", cfg.CPUAutoTune))
-		sb.WriteString(fmt.Sprintf("boost_governor = %t\n", cfg.CPUBoostGovernor))
-		sb.WriteString(fmt.Sprintf("auto_compression = %t\n", cfg.CPUAutoCompression))
-		sb.WriteString(fmt.Sprintf("auto_cache_buffer = %t\n", cfg.CPUAutoCacheBuffer))
-		sb.WriteString(fmt.Sprintf("auto_numa = %t\n", cfg.CPUAutoNUMA))
-		sb.WriteString("\n")
-	}
+	// CPU optimization section (v6.46.0+) - always write to ensure round-trip persistence
+	sb.WriteString("[cpu_optimization]\n")
+	sb.WriteString(fmt.Sprintf("auto_tune = %t\n", cfg.CPUAutoTune))
+	sb.WriteString(fmt.Sprintf("boost_governor = %t\n", cfg.CPUBoostGovernor))
+	sb.WriteString(fmt.Sprintf("auto_compression = %t\n", cfg.CPUAutoCompression))
+	sb.WriteString(fmt.Sprintf("auto_cache_buffer = %t\n", cfg.CPUAutoCacheBuffer))
+	sb.WriteString(fmt.Sprintf("auto_numa = %t\n", cfg.CPUAutoNUMA))
+	sb.WriteString("\n")
 
 	// Use 0644 permissions for readability
 	if err := os.WriteFile(configPath, []byte(sb.String()), 0644); err != nil {
@@ -914,13 +914,17 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	}
 
 	// CPU optimization settings (v6.46.0+)
-	// These are opt-out booleans (default true), so we must apply both true and false explicitly
-	// The [cpu_optimization] section is only written when any differs from default
-	cfg.CPUAutoTune = local.CPUAutoTune
-	cfg.CPUBoostGovernor = local.CPUBoostGovernor
-	cfg.CPUAutoCompression = local.CPUAutoCompression
-	cfg.CPUAutoCacheBuffer = local.CPUAutoCacheBuffer
-	cfg.CPUAutoNUMA = local.CPUAutoNUMA
+	// Only apply if the [cpu_optimization] section was explicitly present in the config file.
+	// Without this guard, a config file missing the section (e.g. saved by an older version)
+	// would produce all-false zero values from LocalConfig, overwriting the true defaults
+	// from config.New() and silently disabling all CPU optimizations.
+	if local.CPUOptPresent {
+		cfg.CPUAutoTune = local.CPUAutoTune
+		cfg.CPUBoostGovernor = local.CPUBoostGovernor
+		cfg.CPUAutoCompression = local.CPUAutoCompression
+		cfg.CPUAutoCacheBuffer = local.CPUAutoCacheBuffer
+		cfg.CPUAutoNUMA = local.CPUAutoNUMA
+	}
 }
 
 // ConfigFromConfig creates a LocalConfig from a Config

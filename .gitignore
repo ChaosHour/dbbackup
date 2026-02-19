@@ -92,3 +92,4 @@ examples/
 # ─── Local database artifacts ────────────────────────────────────
 *.db
 *.sqlite
+.dbbackup.conf.bak

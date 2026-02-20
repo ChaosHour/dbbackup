@@ -16,7 +16,7 @@ import (
 
 // Build information (set by ldflags)
 var (
-	version   = "6.50.4"
+	version   = "6.50.5"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )

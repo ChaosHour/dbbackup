@@ -604,14 +604,18 @@ func runVerify(ctx context.Context, archiveName string) error {
 // updateCatalogVerification marks a backup as verified in the catalog so that
 // the Prometheus exporter reports dbbackup_backup_verified=1.
 func updateCatalogVerification(ctx context.Context, archivePath string, valid bool) {
-	catalogDB := filepath.Join(os.Getenv("HOME"), ".dbbackup", "catalog.db")
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = "/root" // fallback for systemd services where HOME may not be set
+	}
+	catalogDB := filepath.Join(home, ".dbbackup", "catalog.db")
 	if catalogDBPath != "" {
 		catalogDB = catalogDBPath
 	}
 
 	cat, err := catalog.NewSQLiteCatalog(catalogDB)
 	if err != nil {
-		// Catalog not available — silently skip
+		fmt.Fprintf(os.Stderr, "[CATALOG] WARN: Cannot open catalog for verification update: %v (path=%s)\n", err, catalogDB)
 		return
 	}
 	defer cat.Close()
@@ -621,17 +625,22 @@ func updateCatalogVerification(ctx context.Context, archivePath string, valid bo
 	// Find the catalog entry matching this backup file
 	entries, err := cat.List(ctx, "", 500)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "[CATALOG] WARN: Cannot list catalog entries: %v\n", err)
 		return
 	}
 
 	for _, e := range entries {
 		if e.BackupPath == baseName || filepath.Base(e.BackupPath) == baseName {
-			if err := cat.MarkVerified(ctx, e.ID, valid); err == nil {
+			if err := cat.MarkVerified(ctx, e.ID, valid); err != nil {
+				fmt.Fprintf(os.Stderr, "[CATALOG] WARN: Failed to mark as verified: %v (id=%d, path=%s)\n", err, e.ID, baseName)
+			} else {
 				fmt.Printf("[CATALOG] Marked %s as verified in catalog\n", baseName)
 			}
 			return
 		}
 	}
+
+	fmt.Fprintf(os.Stderr, "[CATALOG] WARN: Entry not found in catalog for %s (%d entries searched)\n", baseName, len(entries))
 }
 
 func verifyPgDump(path string) error {

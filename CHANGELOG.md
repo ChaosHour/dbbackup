@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.5] - 2026-02-20 — Verify Catalog Update Fix
+
+### Fixed
+
+- **Verify command silently fails to update catalog** — The `dbbackup verify` command reported "[SUCCESS] Archive verification completed successfully!" but never updated the catalog entry to "verified" status, causing `dbbackup_backup_verified` Prometheus metric to remain `0` and the `DBBackupNotVerified` alert to fire continuously (since Feb 16). Root cause: `updateCatalogVerification()` silently swallowed all errors — catalog open failures, entry-not-found, and mark failures all returned without any output. Fixed by: (1) adding `$HOME` fallback to `/root` for systemd services where `HOME` may be unset, (2) logging all failure paths to stderr with `[CATALOG] WARN:` prefix so issues are visible in `journalctl`, (3) reporting when no matching catalog entry is found.
+
 ## [6.50.4] - 2026-02-19 — CPU Optimization Config Persistence Fix
 
 ### Fixed

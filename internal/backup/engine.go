@@ -907,13 +907,16 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 						} else {
 							// Validate output — native engine may "succeed" but produce
 							// an empty/trivial dump due to conn busy errors (all tables skipped).
-							// If output < 1KB but database > 100KB, treat as failure.
+							// If output < 1KB but database > 100KB AND the engine actually found
+							// user objects to process, treat as a conn-busy failure.
+							// If ObjectsProcessed == 0 the database is legitimately empty of
+							// user tables (e.g. the system "postgres" DB) — not a bug.
 							outInfo, statErr := os.Stat(sqlFile)
 							outputSize := int64(0)
 							if statErr == nil {
 								outputSize = outInfo.Size()
 							}
-							if outputSize < 1024 && thisDbSize > 100*1024 {
+							if outputSize < 1024 && thisDbSize > 100*1024 && result.ObjectsProcessed > 0 {
 								os.Remove(sqlFile)
 								if e.cfg.FallbackToTools {
 									mu.Lock()

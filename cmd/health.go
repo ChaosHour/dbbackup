@@ -157,6 +157,9 @@ func runHealthCheck(cmd *cobra.Command, args []string) error {
 	// 10. Disk space
 	report.addCheck(checkDiskSpace())
 
+	// 11. System memory policy (overcommit)
+	report.addCheck(checkSystemMemory())
+
 	// Calculate overall status
 	report.calculateOverallStatus()
 
@@ -709,7 +712,85 @@ func formatBytesHealth(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// checkLargeObjectHealth reports on PostgreSQL large object status.
+// checkSystemMemory detects vm.overcommit_memory=2 (strict mode) which causes
+// 'runtime: cannot allocate memory' crashes in Go programs during large backups.
+// This is the default on Hetzner dedicated servers and some AWS/GCP instances.
+func checkSystemMemory() HealthCheck {
+	check := HealthCheck{
+		Name:   "System Memory Policy",
+		Status: StatusHealthy,
+	}
+
+	policyData, err := os.ReadFile("/proc/sys/vm/overcommit_memory")
+	if err != nil {
+		check.Message = "Memory policy check skipped (non-Linux)"
+		return check
+	}
+
+	policy := strings.TrimSpace(string(policyData))
+	switch policy {
+	case "0":
+		check.Message = "vm.overcommit_memory=0 (heuristic, compatible)"
+	case "1":
+		check.Message = "vm.overcommit_memory=1 (always overcommit, compatible)"
+	case "2":
+		ratioData, _ := os.ReadFile("/proc/sys/vm/overcommit_ratio")
+		ratio := strings.TrimSpace(string(ratioData))
+
+		mem, merr := parseProcMeminfoHealth()
+		if merr != nil {
+			check.Status = StatusWarning
+			check.Message = "vm.overcommit_memory=2 (strict) — large backups may crash"
+			check.Details = "Cannot read /proc/meminfo. Permanent fix: sysctl -w vm.overcommit_memory=0"
+			return check
+		}
+
+		commitLimit := mem["CommitLimit"]  // kB
+		committedAS := mem["Committed_AS"] // kB
+		memTotal := mem["MemTotal"]
+		swapTotal := mem["SwapTotal"]
+		availKB := commitLimit - committedAS
+
+		details := fmt.Sprintf(
+			"RAM=%dMB Swap=%dMB CommitLimit=%dMB CommittedAS=%dMB Available=%dMB (ratio=%s%%)\n"+
+				"Permanent fix: sysctl -w vm.overcommit_memory=0\n"+
+				"Quick workaround: GOMEMLIMIT=<N>GiB dbbackup ...",
+			memTotal/1024, swapTotal/1024, commitLimit/1024, committedAS/1024, availKB/1024, ratio)
+
+		if availKB < 2*1024*1024 { // < 2 GB virtual address space available
+			check.Status = StatusCritical
+			check.Message = fmt.Sprintf("vm.overcommit_memory=2 (strict, ratio=%s%%) — system near virtual memory limit, backups WILL crash", ratio)
+		} else {
+			check.Status = StatusWarning
+			check.Message = fmt.Sprintf("vm.overcommit_memory=2 (strict, ratio=%s%%) — may cause crashes during large DB backups", ratio)
+		}
+		check.Details = details
+	default:
+		check.Message = fmt.Sprintf("Unknown overcommit policy: %s", policy)
+	}
+	return check
+}
+
+// parseProcMeminfoHealth reads /proc/meminfo key→value map (values in kB).
+func parseProcMeminfoHealth() (map[string]int64, error) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]int64)
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		key := strings.TrimSuffix(fields[0], ":")
+		var val int64
+		fmt.Sscanf(fields[1], "%d", &val)
+		result[key] = val
+	}
+	return result, nil
+}
+
 func checkLargeObjectHealth(ctx context.Context) HealthCheck {
 	check := HealthCheck{
 		Name:   "Large Objects",

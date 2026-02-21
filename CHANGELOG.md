@@ -5,6 +5,14 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.6] - 2026-02-21 — Overcommit Memory Guard & Empty DB False-Positive Fix
+
+### Fixed
+
+- **Go runtime crash on strict overcommit kernels (`vm.overcommit_memory=2`)** — On Hetzner dedicated servers, certain AWS/GCP instances, and any Linux host running strict virtual memory accounting, large database backups triggered `runtime: cannot allocate memory` when Go's runtime tried to `mmap` new heap pages. Root cause: the kernel denied allocations once `Committed_AS` exceeded `CommitLimit` (`RAM × overcommit_ratio + Swap`). Fixed by auto-detecting `vm.overcommit_memory=2` at startup via `/proc/sys/vm/overcommit_memory`, reading `CommitLimit`/`Committed_AS` from `/proc/meminfo`, and calling `debug.SetMemoryLimit()` to cap the Go heap at 85% of available virtual address space. Respects explicit `GOMEMLIMIT` env if set. Silently ignored on non-Linux.
+- **`dbbackup health` now reports overcommit policy** — Added "System Memory Policy" check to `dbbackup health` that detects `vm.overcommit_memory=2` and reports available commit headroom, with CRITICAL status when < 2 GB remains.
+- **Cluster backup false-positive failure on empty system databases** — `BackupCluster` treated any dump file < 1 KB as a conn-busy failure when the source database was > 100 KB, even for legitimately empty databases (e.g. the `postgres` admin database which has no user tables). Added `ObjectsProcessed > 0` guard so an empty native-engine dump is only flagged when tables were actually expected.
+
 ## [6.50.5] - 2026-02-20 — Verify Catalog Update Fix
 
 ### Fixed

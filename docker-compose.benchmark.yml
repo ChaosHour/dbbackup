@@ -1,0 +1,114 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DBBackup Benchmark Stack
+# Daten liegen auf /dev/sda1 (276GB frei) via Docker-Volumes unter /var/lib/docker
+# KEIN WAL-Archiving - das war der Grund für den vollen Disk letzte Woche
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: bench-postgres
+    restart: "no"
+    environment:
+      POSTGRES_USER: bench
+      POSTGRES_PASSWORD: bench
+      POSTGRES_DB: bench_control
+      # WAL-Archivierung DEAKTIVIERT - war root cause des vollen Disks
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    command: >
+      postgres
+        -c archive_mode=off
+        -c wal_level=minimal
+        -c max_wal_senders=0
+        -c shared_buffers=4GB
+        -c effective_cache_size=16GB
+        -c maintenance_work_mem=2GB
+        -c work_mem=256MB
+        -c max_parallel_workers_per_gather=8
+        -c max_parallel_workers=16
+        -c checkpoint_completion_target=0.9
+        -c synchronous_commit=off
+        -c fsync=off
+        -c full_page_writes=off
+    volumes:
+      - pg_bench_data:/var/lib/postgresql/data
+    ports:
+      - "15432:5432"
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── MariaDB ──────────────────────────────────────────────────────────────────
+  mariadb:
+    image: mariadb:11.4
+    container_name: bench-mariadb
+    restart: "no"
+    environment:
+      MARIADB_ROOT_PASSWORD: bench
+      MARIADB_DATABASE: bench_control
+      MARIADB_USER: bench
+      MARIADB_PASSWORD: bench
+    command: >
+      --innodb-buffer-pool-size=8G
+      --innodb-log-file-size=512M
+      --innodb-flush-log-at-trx-commit=0
+      --innodb-flush-method=O_DIRECT
+      --skip-log-bin
+      --max-allowed-packet=1G
+    volumes:
+      - mariadb_bench_data:/var/lib/mysql
+    ports:
+      - "13306:3306"
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── MySQL ────────────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.4
+    container_name: bench-mysql
+    restart: "no"
+    environment:
+      MYSQL_ROOT_PASSWORD: bench
+      MYSQL_DATABASE: bench_control
+    command: >
+      --innodb-buffer-pool-size=8G
+      --innodb-log-file-size=512M
+      --innodb-flush-log-at-trx-commit=0
+      --innodb-flush-method=O_DIRECT
+      --skip-log-bin
+      --max-allowed-packet=1G
+      --local-infile=1
+    volumes:
+      - mysql_bench_data:/var/lib/mysql
+    ports:
+      - "13307:3306"
+    networks:
+      - bench-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pbench"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  pg_bench_data:
+    driver: local
+  mariadb_bench_data:
+    driver: local
+  mysql_bench_data:
+    driver: local
+
+networks:
+  bench-net:
+    driver: bridge

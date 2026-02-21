@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -161,25 +162,39 @@ func runHealthCheck(cmd *cobra.Command, args []string) error {
 	// 10. Disk space
 	report.addCheck(checkDiskSpace())
 
-	// 11. System memory policy (overcommit)
+	// 11. Inode exhaustion
+	report.addCheck(checkInodeSpace())
+
+	// 12. System memory policy (overcommit)
 	report.addCheck(checkSystemMemory())
 
-	// 12. Container memory limit (cgroup)
+	// 13. Container memory limit (cgroup)
 	report.addCheck(checkCgroupMemory())
 
-	// 13. Container CPU quota (cgroup)
+	// 14. Container CPU quota (cgroup)
 	report.addCheck(checkCgroupCPU())
 
-	// 14. Disk I/O throughput
+	// 15. Disk I/O throughput
 	report.addCheck(checkDiskIO())
 
-	// 15. Temp directory space
+	// 16. Temp directory space
 	report.addCheck(checkTempSpace())
 
-	// 16. pg_dump / server version compatibility
+	// 17. pg_dump / server version compatibility
 	if !healthSkipDB && cfg.IsPostgreSQL() {
 		report.addCheck(checkToolVersionCompat(ctx))
 	}
+
+	// 18. Connection pooler detection (PgBouncer, pgpool-II, RDS Proxy)
+	if !healthSkipDB && cfg.IsPostgreSQL() {
+		report.addCheck(checkConnectionPooler(ctx))
+	}
+
+	// 19. SELinux / AppArmor detection
+	report.addCheck(checkSecurityModules())
+
+	// 20. AWS IMDS / credential check for container environments
+	report.addCheck(checkCloudCredentials())
 
 	// Calculate overall status
 	report.calculateOverallStatus()
@@ -264,6 +279,14 @@ func (r *HealthReport) generateRecommendations() {
 			r.Recommendations = append(r.Recommendations, "Set TMPDIR to a volume with more space, or mount a larger /tmp")
 		case check.Name == "Tool Compatibility" && check.Status != StatusHealthy:
 			r.Recommendations = append(r.Recommendations, "Install matching pg_dump version: apt install postgresql-client-<server_major>")
+		case check.Name == "Inode Space" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Free inodes: find large directories with many small files (e.g., old WAL segments) and clean up")
+		case check.Name == "Connection Pooler" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Use a direct connection bypassing the pooler for pg_dump: set host/port to the actual PostgreSQL server")
+		case check.Name == "Security Modules" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Check SELinux/AppArmor policies: review audit logs with ausearch or journalctl for denied operations")
+		case check.Name == "Cloud Credentials" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Set explicit cloud credentials (AWS_ACCESS_KEY_ID, GOOGLE_APPLICATION_CREDENTIALS) or fix IMDS hop limit")
 		}
 	}
 }
@@ -1269,4 +1292,349 @@ func parsePgToolVersion(output string) int {
 		return 0
 	}
 	return major
+}
+
+// checkInodeSpace detects inode exhaustion on the backup directory's filesystem.
+// Backup directories with many small files (WAL segments, incremental chunks)
+// can exhaust inodes while reporting plenty of free bytes, causing "No space
+// left on device" errors that are confusing to debug.
+func checkInodeSpace() HealthCheck {
+	check := HealthCheck{
+		Name:   "Inode Space",
+		Status: StatusHealthy,
+	}
+
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(cfg.BackupDir, &stat); err != nil {
+		check.Message = "Inode check skipped (cannot stat backup dir)"
+		return check
+	}
+
+	if stat.Files == 0 {
+		check.Message = "Inode check skipped (filesystem does not report inodes)"
+		return check
+	}
+
+	totalInodes := stat.Files
+	freeInodes := stat.Ffree
+	usedInodes := totalInodes - freeInodes
+	usedPct := float64(usedInodes) / float64(totalInodes) * 100
+
+	details := fmt.Sprintf("Total=%d Used=%d Free=%d (%.1f%% used)", totalInodes, usedInodes, freeInodes, usedPct)
+
+	if usedPct >= 95 {
+		check.Status = StatusCritical
+		check.Message = fmt.Sprintf("Inode space critical: %.1f%% used (%d free)", usedPct, freeInodes)
+		check.Details = details + "\nBackups will fail with 'No space left on device' despite free bytes."
+	} else if usedPct >= 80 {
+		check.Status = StatusWarning
+		check.Message = fmt.Sprintf("Inode space elevated: %.1f%% used (%d free)", usedPct, freeInodes)
+		check.Details = details
+	} else {
+		check.Message = fmt.Sprintf("Inode space OK: %.1f%% used (%d free)", usedPct, freeInodes)
+		check.Details = details
+	}
+
+	return check
+}
+
+// checkConnectionPooler detects PgBouncer, pgpool-II, or RDS Proxy sitting between
+// dbbackup and PostgreSQL. Connection poolers in transaction mode break pg_dump's
+// multi-statement snapshot isolation. Session mode is safe but should be noted.
+func checkConnectionPooler(ctx context.Context) HealthCheck {
+	check := HealthCheck{
+		Name:   "Connection Pooler",
+		Status: StatusHealthy,
+	}
+
+	db, err := database.New(cfg, log)
+	if err != nil {
+		check.Message = "Cannot create database instance for pooler check"
+		return check
+	}
+	defer db.Close()
+
+	if err := db.Connect(ctx); err != nil {
+		check.Message = "Cannot connect for pooler check"
+		return check
+	}
+
+	pgDB, ok := db.(*database.PostgreSQL)
+	if !ok {
+		check.Message = "Not PostgreSQL — skipped"
+		return check
+	}
+
+	sqlDB := pgDB.GetConn()
+
+	// Test 1: Try SHOW pool_mode (PgBouncer-specific command)
+	var poolMode string
+	row := sqlDB.QueryRowContext(ctx, "SHOW pool_mode")
+	if err := row.Scan(&poolMode); err == nil {
+		// We're talking to PgBouncer, not PostgreSQL directly
+		poolMode = strings.TrimSpace(strings.ToLower(poolMode))
+		details := fmt.Sprintf("PgBouncer detected (pool_mode=%s)", poolMode)
+		if poolMode == "transaction" || poolMode == "statement" {
+			check.Status = StatusWarning
+			check.Message = fmt.Sprintf("PgBouncer in %s mode — pg_dump may produce inconsistent backups", poolMode)
+			check.Details = details + "\nConnect directly to PostgreSQL for backups (bypass the pooler)."
+		} else {
+			// session mode — safe for pg_dump
+			check.Message = fmt.Sprintf("PgBouncer detected (%s mode — safe for backups)", poolMode)
+			check.Details = details
+		}
+		return check
+	}
+
+	// Test 2: Check application_name or version for proxy indicators
+	var version string
+	row = sqlDB.QueryRowContext(ctx, "SELECT version()")
+	if err := row.Scan(&version); err == nil {
+		versionLower := strings.ToLower(version)
+		if strings.Contains(versionLower, "pgpool") {
+			check.Status = StatusWarning
+			check.Message = "pgpool-II detected — ensure load_balance_mode=off for backup connections"
+			check.Details = "Version: " + version
+			return check
+		}
+	}
+
+	// Test 3: Check for RDS Proxy by examining connection parameters
+	var proxyHint string
+	row = sqlDB.QueryRowContext(ctx, "SHOW application_name")
+	if err := row.Scan(&proxyHint); err == nil {
+		if strings.Contains(strings.ToLower(proxyHint), "rds") || strings.Contains(strings.ToLower(proxyHint), "proxy") {
+			check.Status = StatusWarning
+			check.Message = "Possible RDS Proxy detected — pg_dump requires direct endpoint"
+			check.Details = fmt.Sprintf("application_name=%s", proxyHint)
+			return check
+		}
+	}
+
+	// Test 4: Check if we can use SET — poolers in transaction mode often block it
+	_, err = sqlDB.ExecContext(ctx, "SET idle_in_transaction_session_timeout = '0'")
+	if err != nil {
+		errStr := strings.ToLower(err.Error())
+		if strings.Contains(errStr, "not allowed") || strings.Contains(errStr, "unsupported") {
+			check.Status = StatusWarning
+			check.Message = "Connection pooler suspected — SET commands restricted"
+			check.Details = err.Error()
+			return check
+		}
+	}
+
+	check.Message = "No connection pooler detected (direct connection)"
+	return check
+}
+
+// checkSecurityModules detects SELinux or AppArmor enforcement that could
+// silently block backup file writes, socket connections, or pg_dump execution.
+// On RHEL/CentOS/Fedora, SELinux is often in enforcing mode. On Ubuntu/Debian,
+// AppArmor profiles may restrict PostgreSQL client tools.
+func checkSecurityModules() HealthCheck {
+	check := HealthCheck{
+		Name:   "Security Modules",
+		Status: StatusHealthy,
+	}
+
+	if runtime.GOOS != "linux" {
+		check.Message = "Security module check skipped (non-Linux)"
+		return check
+	}
+
+	var modules []string
+
+	// Check SELinux
+	selinuxStatus := detectSELinux()
+	if selinuxStatus != "" {
+		modules = append(modules, selinuxStatus)
+	}
+
+	// Check AppArmor
+	apparmorStatus := detectAppArmor()
+	if apparmorStatus != "" {
+		modules = append(modules, apparmorStatus)
+	}
+
+	if len(modules) == 0 {
+		check.Message = "No security modules active"
+		return check
+	}
+
+	details := strings.Join(modules, "; ")
+
+	// Determine if any are in enforcing/blocking mode
+	hasEnforcing := false
+	for _, m := range modules {
+		if strings.Contains(m, "enforcing") || strings.Contains(m, "enforce") {
+			hasEnforcing = true
+		}
+	}
+
+	if hasEnforcing {
+		check.Status = StatusWarning
+		check.Message = "Security module enforcing — may block backup operations"
+		check.Details = details + "\nIf backups fail, check: ausearch -m avc -ts recent (SELinux) or journalctl | grep apparmor (AppArmor)"
+	} else {
+		check.Message = "Security modules present (permissive/disabled)"
+		check.Details = details
+	}
+
+	return check
+}
+
+// detectSELinux checks SELinux status via /sys/fs/selinux or getenforce.
+func detectSELinux() string {
+	// Fast path: check if SELinux filesystem is mounted
+	if _, err := os.Stat("/sys/fs/selinux"); os.IsNotExist(err) {
+		return ""
+	}
+
+	// Read enforce status
+	data, err := os.ReadFile("/sys/fs/selinux/enforce")
+	if err != nil {
+		// Try getenforce command
+		out, err := exec.Command("getenforce").Output()
+		if err != nil {
+			return ""
+		}
+		status := strings.TrimSpace(string(out))
+		return fmt.Sprintf("SELinux=%s", strings.ToLower(status))
+	}
+
+	enforce := strings.TrimSpace(string(data))
+	if enforce == "1" {
+		return "SELinux=enforcing"
+	}
+	return "SELinux=permissive"
+}
+
+// detectAppArmor checks AppArmor status via /sys/kernel/security/apparmor.
+func detectAppArmor() string {
+	// Check if AppArmor is loaded
+	data, err := os.ReadFile("/sys/kernel/security/apparmor/profiles")
+	if err != nil {
+		return ""
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
+		return ""
+	}
+
+	enforceCount := 0
+	complainCount := 0
+	for _, line := range lines {
+		if strings.Contains(line, "(enforce)") {
+			enforceCount++
+		} else if strings.Contains(line, "(complain)") {
+			complainCount++
+		}
+	}
+
+	if enforceCount > 0 {
+		return fmt.Sprintf("AppArmor=%d profiles enforce, %d complain", enforceCount, complainCount)
+	}
+	if complainCount > 0 {
+		return fmt.Sprintf("AppArmor=%d profiles complain", complainCount)
+	}
+	return fmt.Sprintf("AppArmor=%d profiles loaded", len(lines))
+}
+
+// checkCloudCredentials detects AWS IMDS reachability issues common in containers.
+// When running inside Docker/ECS on an EC2 instance with IMDSv2 (default since 2024),
+// the metadata service requires a token obtained via PUT to 169.254.169.254. If the
+// EC2 instance has HttpPutResponseHopLimit=1 (the default), containers cannot reach
+// IMDS because the extra network hop (docker bridge) causes the TTL to expire.
+// This silently breaks IAM role credential resolution.
+func checkCloudCredentials() HealthCheck {
+	check := HealthCheck{
+		Name:   "Cloud Credentials",
+		Status: StatusHealthy,
+	}
+
+	// Only relevant if cloud backend is configured
+	if cfg.CloudProvider == "" {
+		check.Message = "No cloud backend configured"
+		return check
+	}
+
+	// Check for explicit credentials first (always preferred)
+	hasExplicitCreds := false
+	switch strings.ToLower(cfg.CloudProvider) {
+	case "s3":
+		if os.Getenv("AWS_ACCESS_KEY_ID") != "" || os.Getenv("AWS_PROFILE") != "" || os.Getenv("AWS_WEB_IDENTITY_TOKEN_FILE") != "" {
+			hasExplicitCreds = true
+		}
+	case "gcs":
+		if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") != "" {
+			hasExplicitCreds = true
+		}
+	case "azure":
+		if os.Getenv("AZURE_STORAGE_ACCOUNT") != "" {
+			hasExplicitCreds = true
+		}
+	}
+
+	if hasExplicitCreds {
+		check.Message = fmt.Sprintf("Cloud credentials configured via environment (%s)", cfg.CloudProvider)
+		return check
+	}
+
+	// Detect container environment
+	inContainer := false
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		inContainer = true
+	} else if data, err := os.ReadFile("/proc/1/cgroup"); err == nil {
+		content := string(data)
+		if strings.Contains(content, "docker") || strings.Contains(content, "kubepods") || strings.Contains(content, "ecs") {
+			inContainer = true
+		}
+	}
+
+	// If S3 backend in container, probe IMDS reachability
+	if strings.ToLower(cfg.CloudProvider) == "s3" && inContainer {
+		imdsReachable := probeIMDS()
+		if !imdsReachable {
+			check.Status = StatusWarning
+			check.Message = "AWS IMDS unreachable from container — IAM role credentials will fail"
+			check.Details = "EC2 instances default to HttpPutResponseHopLimit=1, blocking IMDS from containers.\n" +
+				"Fix: aws ec2 modify-instance-metadata-options --instance-id <id> --http-put-response-hop-limit 2\n" +
+				"Or: set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY environment variables."
+			return check
+		}
+		check.Message = "AWS IMDS reachable — IAM role credentials available"
+		return check
+	}
+
+	if inContainer {
+		check.Status = StatusWarning
+		check.Message = fmt.Sprintf("Running in container without explicit %s credentials", cfg.CloudProvider)
+		check.Details = "Set cloud credentials via environment variables for reliable operation."
+		return check
+	}
+
+	check.Message = fmt.Sprintf("Cloud backend: %s (using default credential chain)", cfg.CloudProvider)
+	return check
+}
+
+// probeIMDS attempts to reach the EC2 Instance Metadata Service (IMDSv2).
+// Returns true if IMDS responds, false if unreachable (common in containers
+// when HttpPutResponseHopLimit=1).
+func probeIMDS() bool {
+	// Step 1: Request IMDSv2 token
+	client := &http.Client{Timeout: 2 * time.Second}
+	req, err := http.NewRequest("PUT", "http://169.254.169.254/latest/api/token", nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("X-aws-ec2-metadata-token-ttl-seconds", "21600")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+
+	return resp.StatusCode == 200
 }

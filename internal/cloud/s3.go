@@ -180,6 +180,14 @@ func (s *S3Backend) uploadSimple(ctx context.Context, file *os.File, key string,
 			return fmt.Errorf("failed to reset file position: %w", err)
 		}
 
+		// Apply per-upload timeout
+		uploadTimeout := time.Duration(s.config.Timeout) * time.Second
+		if uploadTimeout <= 0 {
+			uploadTimeout = 300 * time.Second
+		}
+		uploadCtx, uploadCancel := context.WithTimeout(ctx, uploadTimeout)
+		defer uploadCancel()
+
 		// Create progress reader
 		var reader io.Reader = file
 		if progress != nil {
@@ -188,7 +196,7 @@ func (s *S3Backend) uploadSimple(ctx context.Context, file *os.File, key string,
 
 		// Apply bandwidth throttling if configured
 		if s.config.BandwidthLimit > 0 {
-			reader = NewThrottledReader(ctx, reader, s.config.BandwidthLimit)
+			reader = NewThrottledReader(uploadCtx, reader, s.config.BandwidthLimit)
 		}
 
 		// Upload to S3
@@ -199,7 +207,7 @@ func (s *S3Backend) uploadSimple(ctx context.Context, file *os.File, key string,
 		}
 		s.applyObjectLock(input)
 
-		_, err := s.client.PutObject(ctx, input)
+		_, err := s.client.PutObject(uploadCtx, input)
 
 		if err != nil {
 			return fmt.Errorf("failed to upload to S3: %w", err)
@@ -218,6 +226,19 @@ func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key stri
 		if _, err := file.Seek(0, 0); err != nil {
 			return fmt.Errorf("failed to reset file position: %w", err)
 		}
+
+		// Apply per-upload timeout from config (prevents infinite hangs on stalled connections)
+		uploadTimeout := time.Duration(s.config.Timeout) * time.Second
+		if uploadTimeout <= 0 {
+			uploadTimeout = 300 * time.Second
+		}
+		// Scale timeout by file size: at least 1 minute per GB (minimum: config timeout)
+		sizeBasedTimeout := time.Duration(fileSize/(1024*1024*1024)+1) * time.Minute
+		if sizeBasedTimeout > uploadTimeout {
+			uploadTimeout = sizeBasedTimeout
+		}
+		uploadCtx, uploadCancel := context.WithTimeout(ctx, uploadTimeout)
+		defer uploadCancel()
 
 		// Calculate concurrency based on bandwidth limit
 		// If limited, reduce concurrency to make throttling more effective
@@ -247,7 +268,7 @@ func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key stri
 
 		// Apply bandwidth throttling if configured
 		if s.config.BandwidthLimit > 0 {
-			reader = NewThrottledReader(ctx, reader, s.config.BandwidthLimit)
+			reader = NewThrottledReader(uploadCtx, reader, s.config.BandwidthLimit)
 		}
 
 		// Upload with multipart
@@ -258,7 +279,7 @@ func (s *S3Backend) uploadMultipart(ctx context.Context, file *os.File, key stri
 		}
 		s.applyObjectLock(input)
 
-		_, err := uploader.Upload(ctx, input)
+		_, err := uploader.Upload(uploadCtx, input)
 
 		if err != nil {
 			return fmt.Errorf("multipart upload failed: %w", err)

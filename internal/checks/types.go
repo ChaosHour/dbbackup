@@ -12,6 +12,12 @@ type DiskSpaceCheck struct {
 	Sufficient     bool
 	Warning        bool
 	Critical       bool
+	// Inode information
+	TotalInodes      uint64
+	FreeInodes       uint64
+	InodeUsedPercent float64
+	InodeCritical    bool
+	InodeWarning     bool
 }
 
 // formatBytes formats bytes to human-readable format

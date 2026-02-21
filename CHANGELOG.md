@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.8] - 2026-02-21 — Enterprise Hardening Batch 2
+
+### Added
+
+- **Inode exhaustion health check** — `dbbackup health` now checks inode usage on the backup directory's filesystem. Backup directories with many small files (WAL segments, incremental chunks) can exhaust inodes while reporting plenty of free bytes, causing "No space left on device" errors. WARNING at 80% inode usage, CRITICAL at 95%.
+- **S3/GCS upload timeout enforcement** — Multipart and simple uploads now enforce per-operation timeouts via `context.WithTimeout`. Previously, stalled connections during S3 multipart uploads could hang indefinitely. Timeout scales with file size (minimum: config timeout or 1 min/GB, whichever is larger). Applies to both S3 (simple + multipart) and GCS uploads.
+- **Connection pooler detection (PgBouncer, pgpool-II, RDS Proxy)** — `dbbackup health` detects connection poolers between dbbackup and PostgreSQL. PgBouncer in transaction/statement mode breaks `pg_dump`'s multi-statement snapshot isolation, producing inconsistent backups. Detection uses `SHOW pool_mode` (PgBouncer), version string analysis (pgpool-II), application_name hints (RDS Proxy), and SET command restrictions.
+- **AWS IMDS reachability check for containers** — `dbbackup health` probes the EC2 Instance Metadata Service (IMDSv2) when running in a container with S3 backend. Default `HttpPutResponseHopLimit=1` blocks IMDS from containers (Docker bridge adds a hop), silently breaking IAM role credential resolution. Reports fix command: `aws ec2 modify-instance-metadata-options --http-put-response-hop-limit 2`.
+- **SELinux/AppArmor detection** — `dbbackup health` detects active Linux Security Modules. SELinux in enforcing mode (default on RHEL/CentOS/Fedora) or AppArmor enforce profiles (Ubuntu/Debian) can silently block backup file writes, socket connections, or `pg_dump` execution. Reports module status and directs to audit logs.
+
 ## [6.50.7] - 2026-02-21 — Container & Cloud Production Hardening
 
 ### Added

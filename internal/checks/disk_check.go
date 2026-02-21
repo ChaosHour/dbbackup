@@ -42,6 +42,16 @@ func CheckDiskSpace(path string) *DiskSpaceCheck {
 		UsedPercent:    usedPercent,
 	}
 
+	// Inode information
+	if stat.Files > 0 {
+		check.TotalInodes = stat.Files
+		check.FreeInodes = stat.Ffree
+		usedInodes := stat.Files - stat.Ffree
+		check.InodeUsedPercent = float64(usedInodes) / float64(stat.Files) * 100
+		check.InodeCritical = check.InodeUsedPercent >= 95
+		check.InodeWarning = check.InodeUsedPercent >= 80 && !check.InodeCritical
+	}
+
 	// Determine status thresholds
 	check.Critical = usedPercent >= 95
 	check.Warning = usedPercent >= 80 && !check.Critical

@@ -112,11 +112,24 @@ func (g *GCSBackend) Upload(ctx context.Context, localPath, remotePath string, p
 			return fmt.Errorf("failed to reset file position: %w", err)
 		}
 
+		// Apply per-upload timeout (prevents infinite hangs on stalled connections)
+		uploadTimeout := time.Duration(g.config.Timeout) * time.Second
+		if uploadTimeout <= 0 {
+			uploadTimeout = 300 * time.Second
+		}
+		// Scale timeout by file size: at least 1 minute per GB (minimum: config timeout)
+		sizeBasedTimeout := time.Duration(fileSize/(1024*1024*1024)+1) * time.Minute
+		if sizeBasedTimeout > uploadTimeout {
+			uploadTimeout = sizeBasedTimeout
+		}
+		uploadCtx, uploadCancel := context.WithTimeout(ctx, uploadTimeout)
+		defer uploadCancel()
+
 		bucket := g.client.Bucket(g.bucketName)
 		object := bucket.Object(objectName)
 
 		// Create writer with automatic chunking for large files
-		writer := object.NewWriter(ctx)
+		writer := object.NewWriter(uploadCtx)
 		writer.ChunkSize = 16 * 1024 * 1024 // 16MB chunks for streaming
 
 		// Wrap reader with progress tracking and hash calculation
@@ -125,11 +138,11 @@ func (g *GCSBackend) Upload(ctx context.Context, localPath, remotePath string, p
 
 		// Apply bandwidth throttling if configured
 		if g.config.BandwidthLimit > 0 {
-			reader = NewThrottledReader(ctx, reader, g.config.BandwidthLimit)
+			reader = NewThrottledReader(uploadCtx, reader, g.config.BandwidthLimit)
 		}
 
 		// Upload with progress tracking and context awareness
-		_, err = CopyWithContext(ctx, writer, reader)
+		_, err = CopyWithContext(uploadCtx, writer, reader)
 		if err != nil {
 			writer.Close()
 			return fmt.Errorf("failed to upload object: %w", err)
@@ -142,7 +155,7 @@ func (g *GCSBackend) Upload(ctx context.Context, localPath, remotePath string, p
 
 		// Store checksum as metadata
 		checksum := hex.EncodeToString(hash.Sum(nil))
-		_, err = object.Update(ctx, storage.ObjectAttrsToUpdate{
+		_, err = object.Update(uploadCtx, storage.ObjectAttrsToUpdate{
 			Metadata: map[string]string{
 				"sha256": checksum,
 			},

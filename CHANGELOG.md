@@ -5,6 +5,16 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.7] - 2026-02-21 — Container & Cloud Production Hardening
+
+### Added
+
+- **Container memory limit detection (cgroup v1/v2)** — Auto-detects Docker, Kubernetes, and ECS/Fargate memory limits via `/sys/fs/cgroup/memory.max` (v2) and `/sys/fs/cgroup/memory/memory.limit_in_bytes` (v1). Sets `debug.SetMemoryLimit()` to 85% of the cgroup limit to prevent OOM kills (SIGKILL with no stack trace). Previously the Go runtime only saw host RAM, not the container boundary. `dbbackup health` now reports container memory usage and limit.
+- **Container CPU quota detection (cgroup v1/v2)** — Reads CPU quota from `/sys/fs/cgroup/cpu.max` (v2) and `cpu.cfs_quota_us`/`cpu.cfs_period_us` (v1) to cap `LogicalCores` in the CPU detector. On a 96-core host with a 2-CPU container, worker pools, compression goroutines, and parallel restore jobs are now correctly limited to 2 instead of spawning 96, eliminating CPU throttling. All 50+ `runtime.NumCPU()` call sites benefit automatically through the config system.
+- **Disk I/O health check** — `dbbackup health` now reads `/proc/diskstats` to detect I/O queue depth on the backup directory's block device. Reports WARNING at >16 in-flight requests and CRITICAL at >64 (indicating EBS burst credit exhaustion, HDD saturation, or throttled cloud disks).
+- **Temp directory space check** — `dbbackup health` verifies that `$TMPDIR` (or `/tmp`) has sufficient free space before backup operations. Detects tmpfs-backed temp dirs (common on cloud VMs) and warns when <2 GB free, critical when <512 MB. Recommends `export TMPDIR=/var/tmp` for RAM-backed mounts.
+- **pg_dump vs server version compatibility check** — `dbbackup health` compares `pg_dump --version` major against the PostgreSQL server's `server_version_num`. Raises CRITICAL when pg_dump is older than the server (e.g., pg_dump 14 backing up PG 16), which can silently produce incomplete dumps. Common on RDS/Cloud SQL/AlloyDB after auto-upgrades. Suggests `apt install postgresql-client-<version>`.
+
 ## [6.50.6] - 2026-02-21 — Overcommit Memory Guard & Empty DB False-Positive Fix
 
 ### Fixed

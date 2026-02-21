@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -18,7 +19,7 @@ import (
 
 // Build information (set by ldflags)
 var (
-	version   = "6.50.6"
+	version   = "6.50.7"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -75,17 +76,38 @@ func main() {
 	}
 }
 
-// applyMemoryLimit detects vm.overcommit_memory=2 (strict mode, common on Hetzner/AWS)
-// and auto-sets the Go heap limit via runtime/debug.SetMemoryLimit to prevent
-// 'runtime: cannot allocate memory' crashes during large database backups.
-// Silently ignored on non-Linux systems or if GOMEMLIMIT is already set by the user.
+// applyMemoryLimit auto-configures the Go heap limit to prevent OOM crashes.
+// Detects two scenarios:
+//  1. cgroup memory limits (Docker, Kubernetes, ECS/Fargate) — Go runtime sees host RAM
+//     but the container can only use a fraction. Without a heap cap, Go allocates past
+//     the cgroup limit and the kernel OOM-kills the process (SIGKILL, no stack trace).
+//  2. vm.overcommit_memory=2 (Hetzner, some AWS/GCP) — strict virtual memory accounting
+//     causes 'runtime: cannot allocate memory' when CommitLimit is reached.
+//
+// Silently ignored on non-Linux or if GOMEMLIMIT is already set by the user.
 func applyMemoryLimit(log logger.Logger) {
 	// Respect explicit user override
 	if os.Getenv("GOMEMLIMIT") != "" {
 		return
 	}
 
-	// Read overcommit policy — Linux only
+	// --- Priority 1: cgroup memory limit (container environments) ---
+	if cgroupLimit := detectCgroupMemoryLimit(); cgroupLimit > 0 {
+		// Use 85% of cgroup limit to leave headroom for non-Go allocations
+		// (C libraries, pg_dump/mysqldump child processes, kernel buffers)
+		limitBytes := int64(float64(cgroupLimit) * 0.85)
+		if limitBytes < 256*1024*1024 {
+			limitBytes = 256 * 1024 * 1024 // Floor: 256 MB
+		}
+		debug.SetMemoryLimit(limitBytes)
+		log.Warn("Container memory limit detected: Go heap limit auto-configured",
+			"cgroup_limit_mb", cgroupLimit/1024/1024,
+			"heap_limit_mb", limitBytes/1024/1024,
+			"override", "GOMEMLIMIT=<N>GiB dbbackup ...")
+		return
+	}
+
+	// --- Priority 2: strict overcommit policy ---
 	policyData, err := os.ReadFile("/proc/sys/vm/overcommit_memory")
 	if err != nil {
 		return
@@ -94,7 +116,6 @@ func applyMemoryLimit(log logger.Logger) {
 		return // only strict mode needs intervention
 	}
 
-	// Parse /proc/meminfo for CommitLimit and Committed_AS
 	mem, err := parseProcMeminfo()
 	if err != nil {
 		log.Warn("vm.overcommit_memory=2 detected but cannot read /proc/meminfo — set GOMEMLIMIT manually to avoid crashes")
@@ -113,7 +134,6 @@ func applyMemoryLimit(log logger.Logger) {
 		return
 	}
 
-	// Use 85% of available virtual address space, minimum 512 MB
 	limitBytes := int64(float64(availKB*1024) * 0.85)
 	if limitBytes < 512*1024*1024 {
 		limitBytes = 512 * 1024 * 1024
@@ -125,6 +145,69 @@ func applyMemoryLimit(log logger.Logger) {
 		"committed_as_mb", committedAS/1024,
 		"heap_limit_mb", limitBytes/1024/1024,
 		"permanent_fix", "sysctl -w vm.overcommit_memory=0")
+}
+
+// detectCgroupMemoryLimit reads the container memory limit from cgroup v2 or v1.
+// Returns the limit in bytes, or 0 if not in a cgroup or unlimited.
+func detectCgroupMemoryLimit() int64 {
+	// cgroup v2: /sys/fs/cgroup/memory.max
+	if data, err := os.ReadFile("/sys/fs/cgroup/memory.max"); err == nil {
+		s := strings.TrimSpace(string(data))
+		if s != "max" { // "max" = unlimited
+			if limit, err := strconv.ParseInt(s, 10, 64); err == nil && limit > 0 {
+				return limit
+			}
+		}
+	}
+
+	// cgroup v1: /sys/fs/cgroup/memory/memory.limit_in_bytes
+	if data, err := os.ReadFile("/sys/fs/cgroup/memory/memory.limit_in_bytes"); err == nil {
+		if limit, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil {
+			// Values near page-aligned max (e.g. 9223372036854771712) mean unlimited
+			if limit > 0 && limit < 1<<62 {
+				return limit
+			}
+		}
+	}
+
+	return 0
+}
+
+// detectCgroupCPUQuota reads the container CPU quota from cgroup v2 or v1.
+// Returns the effective number of CPUs (e.g. 2 for a 200% quota), or 0 if unlimited.
+func detectCgroupCPUQuota() int {
+	// cgroup v2: /sys/fs/cgroup/cpu.max — format: "$MAX $PERIOD" or "max $PERIOD"
+	if data, err := os.ReadFile("/sys/fs/cgroup/cpu.max"); err == nil {
+		fields := strings.Fields(strings.TrimSpace(string(data)))
+		if len(fields) == 2 && fields[0] != "max" {
+			quota, qerr := strconv.ParseInt(fields[0], 10, 64)
+			period, perr := strconv.ParseInt(fields[1], 10, 64)
+			if qerr == nil && perr == nil && period > 0 && quota > 0 {
+				cpus := int(quota / period)
+				if cpus < 1 {
+					cpus = 1
+				}
+				return cpus
+			}
+		}
+	}
+
+	// cgroup v1: cpu.cfs_quota_us / cpu.cfs_period_us
+	quotaData, qerr := os.ReadFile("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
+	periodData, perr := os.ReadFile("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
+	if qerr == nil && perr == nil {
+		quota, qerr := strconv.ParseInt(strings.TrimSpace(string(quotaData)), 10, 64)
+		period, perr := strconv.ParseInt(strings.TrimSpace(string(periodData)), 10, 64)
+		if qerr == nil && perr == nil && quota > 0 && period > 0 { // quota=-1 means unlimited
+			cpus := int(quota / period)
+			if cpus < 1 {
+				cpus = 1
+			}
+			return cpus
+		}
+	}
+
+	return 0
 }
 
 // parseProcMeminfo reads /proc/meminfo and returns key→value map (values in kB).

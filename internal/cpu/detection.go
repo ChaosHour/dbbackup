@@ -12,14 +12,15 @@ import (
 
 // CPUInfo holds information about the system CPU
 type CPUInfo struct {
-	LogicalCores  int      `json:"logical_cores"`
-	PhysicalCores int      `json:"physical_cores"`
-	Architecture  string   `json:"architecture"`
-	ModelName     string   `json:"model_name"`
-	MaxFrequency  float64  `json:"max_frequency_mhz"`
-	CacheSize     string   `json:"cache_size"`
-	Vendor        string   `json:"vendor"`
-	Features      []string `json:"features"`
+	LogicalCores   int      `json:"logical_cores"`
+	PhysicalCores  int      `json:"physical_cores"`
+	CgroupCPUQuota int      `json:"cgroup_cpu_quota,omitempty"` // Container CPU limit (0 = unlimited)
+	Architecture   string   `json:"architecture"`
+	ModelName      string   `json:"model_name"`
+	MaxFrequency   float64  `json:"max_frequency_mhz"`
+	CacheSize      string   `json:"cache_size"`
+	Vendor         string   `json:"vendor"`
+	Features       []string `json:"features"`
 }
 
 // Detector provides CPU detection functionality
@@ -49,6 +50,11 @@ func (d *Detector) DetectCPU() (*CPUInfo, error) {
 		if err := d.detectLinux(info); err != nil {
 			return info, fmt.Errorf("linux CPU detection failed: %w", err)
 		}
+		// Apply cgroup CPU quota cap — in containers (Docker, K8s, ECS),
+		// runtime.NumCPU() returns host cores but the cgroup enforces a
+		// smaller quota. Without this cap, we spawn e.g. 96 goroutines
+		// on a 2-CPU container, causing massive CPU throttling.
+		d.applyCgroupCPUCap(info)
 	case "darwin":
 		if err := d.detectDarwin(info); err != nil {
 			return info, fmt.Errorf("darwin CPU detection failed: %w", err)
@@ -189,6 +195,63 @@ func (d *Detector) getSocketCount(output string) int {
 		}
 	}
 	return 1 // Default to 1 socket
+}
+
+// applyCgroupCPUCap reads the container CPU quota from cgroup v2 or v1 and caps
+// LogicalCores and PhysicalCores accordingly. This ensures that worker pools,
+// compression goroutines, and parallel restore jobs don't exceed the container quota.
+func (d *Detector) applyCgroupCPUCap(info *CPUInfo) {
+	quota := d.detectCgroupCPUQuota()
+	if quota <= 0 {
+		return // no cgroup limit or unlimited
+	}
+
+	// Store original for reporting
+	info.CgroupCPUQuota = quota
+
+	if quota < info.LogicalCores {
+		info.LogicalCores = quota
+	}
+	if quota < info.PhysicalCores {
+		info.PhysicalCores = quota
+	}
+}
+
+// detectCgroupCPUQuota reads the container CPU quota from cgroup v2 or v1.
+// Returns the effective number of CPUs (e.g. 2 for a 200% quota), or 0 if unlimited.
+func (d *Detector) detectCgroupCPUQuota() int {
+	// cgroup v2: /sys/fs/cgroup/cpu.max — format: "$MAX $PERIOD" or "max $PERIOD"
+	if data, err := os.ReadFile("/sys/fs/cgroup/cpu.max"); err == nil {
+		fields := strings.Fields(strings.TrimSpace(string(data)))
+		if len(fields) == 2 && fields[0] != "max" {
+			quota, qerr := strconv.ParseInt(fields[0], 10, 64)
+			period, perr := strconv.ParseInt(fields[1], 10, 64)
+			if qerr == nil && perr == nil && period > 0 && quota > 0 {
+				cpus := int(quota / period)
+				if cpus < 1 {
+					cpus = 1
+				}
+				return cpus
+			}
+		}
+	}
+
+	// cgroup v1: /sys/fs/cgroup/cpu/cpu.cfs_quota_us / cpu.cfs_period_us
+	quotaData, qerr := os.ReadFile("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
+	periodData, perr := os.ReadFile("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
+	if qerr == nil && perr == nil {
+		quota, qerr := strconv.ParseInt(strings.TrimSpace(string(quotaData)), 10, 64)
+		period, perr := strconv.ParseInt(strings.TrimSpace(string(periodData)), 10, 64)
+		if qerr == nil && perr == nil && quota > 0 && period > 0 { // quota=-1 = unlimited
+			cpus := int(quota / period)
+			if cpus < 1 {
+				cpus = 1
+			}
+			return cpus
+		}
+	}
+
+	return 0
 }
 
 // detectDarwin detects CPU information on macOS systems

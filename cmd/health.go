@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"dbbackup/internal/catalog"
@@ -160,6 +164,23 @@ func runHealthCheck(cmd *cobra.Command, args []string) error {
 	// 11. System memory policy (overcommit)
 	report.addCheck(checkSystemMemory())
 
+	// 12. Container memory limit (cgroup)
+	report.addCheck(checkCgroupMemory())
+
+	// 13. Container CPU quota (cgroup)
+	report.addCheck(checkCgroupCPU())
+
+	// 14. Disk I/O throughput
+	report.addCheck(checkDiskIO())
+
+	// 15. Temp directory space
+	report.addCheck(checkTempSpace())
+
+	// 16. pg_dump / server version compatibility
+	if !healthSkipDB && cfg.IsPostgreSQL() {
+		report.addCheck(checkToolVersionCompat(ctx))
+	}
+
 	// Calculate overall status
 	report.calculateOverallStatus()
 
@@ -233,6 +254,16 @@ func (r *HealthReport) generateRecommendations() {
 			r.Recommendations = append(r.Recommendations, "Check database connection settings in .dbbackup.conf")
 		case check.Name == "Large Objects" && check.Status != StatusHealthy:
 			r.Recommendations = append(r.Recommendations, "Enable pre-backup LO cleanup: dbbackup backup cluster --lo-vacuum")
+		case check.Name == "Container Memory" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Set GOMEMLIMIT to 85%% of container limit, or increase container memory")
+		case check.Name == "Container CPU" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Increase container CPU limit or reduce --jobs / --cluster-parallelism")
+		case check.Name == "Disk I/O" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Use a faster volume (gp3 with provisioned IOPS) or reduce parallel workers")
+		case check.Name == "Temp Space" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Set TMPDIR to a volume with more space, or mount a larger /tmp")
+		case check.Name == "Tool Compatibility" && check.Status != StatusHealthy:
+			r.Recommendations = append(r.Recommendations, "Install matching pg_dump version: apt install postgresql-client-<server_major>")
 		}
 	}
 }
@@ -859,4 +890,383 @@ func checkLargeObjectHealth(ctx context.Context) HealthCheck {
 	check.Details = details
 
 	return check
+}
+
+// checkCgroupMemory detects container memory limits (Docker, Kubernetes, ECS/Fargate).
+// When Go runs inside a cgroup, runtime.MemStats sees host RAM but the kernel
+// enforces a smaller limit. Without awareness, Go allocates past the cgroup
+// boundary and the OOM killer sends SIGKILL (no stack trace, no recovery).
+func checkCgroupMemory() HealthCheck {
+	check := HealthCheck{
+		Name:   "Container Memory",
+		Status: StatusHealthy,
+	}
+
+	// Try cgroup v2 first, then v1
+	var limitBytes int64
+
+	if data, err := os.ReadFile("/sys/fs/cgroup/memory.max"); err == nil {
+		s := strings.TrimSpace(string(data))
+		if s == "max" {
+			check.Message = "No container memory limit (cgroup v2 unlimited)"
+			return check
+		}
+		if v, err := strconv.ParseInt(s, 10, 64); err == nil && v > 0 {
+			limitBytes = v
+		}
+	} else if data, err := os.ReadFile("/sys/fs/cgroup/memory/memory.limit_in_bytes"); err == nil {
+		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil {
+			if v > 0 && v < 1<<62 { // near-max = unlimited
+				limitBytes = v
+			} else {
+				check.Message = "No container memory limit (cgroup v1 unlimited)"
+				return check
+			}
+		}
+	} else {
+		check.Message = "Not running in a container (no cgroup memory)"
+		return check
+	}
+
+	if limitBytes <= 0 {
+		check.Message = "No container memory limit detected"
+		return check
+	}
+
+	limitMB := limitBytes / 1024 / 1024
+
+	// Read current usage
+	var usageMB int64
+	if data, err := os.ReadFile("/sys/fs/cgroup/memory.current"); err == nil {
+		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil {
+			usageMB = v / 1024 / 1024
+		}
+	} else if data, err := os.ReadFile("/sys/fs/cgroup/memory/memory.usage_in_bytes"); err == nil {
+		if v, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil {
+			usageMB = v / 1024 / 1024
+		}
+	}
+
+	pctUsed := float64(0)
+	if limitMB > 0 {
+		pctUsed = float64(usageMB) / float64(limitMB) * 100
+	}
+
+	details := fmt.Sprintf("Limit=%dMB Usage=%dMB (%.0f%%)", limitMB, usageMB, pctUsed)
+
+	goMemLimit := os.Getenv("GOMEMLIMIT")
+	if goMemLimit != "" {
+		details += fmt.Sprintf(" GOMEMLIMIT=%s", goMemLimit)
+	}
+
+	if limitMB < 512 {
+		check.Status = StatusCritical
+		check.Message = fmt.Sprintf("Container memory critically low: %dMB limit", limitMB)
+		check.Details = details + "\nBackups of databases >100MB will likely OOM. Increase container memory to 2GB+."
+	} else if limitMB < 2048 {
+		check.Status = StatusWarning
+		check.Message = fmt.Sprintf("Container memory limited: %dMB", limitMB)
+		check.Details = details + "\nMay OOM on large databases. Consider 4GB+ for production."
+	} else {
+		check.Message = fmt.Sprintf("Container memory: %dMB (%.0f%% used)", limitMB, pctUsed)
+		check.Details = details
+	}
+
+	return check
+}
+
+// checkCgroupCPU detects container CPU quota limits.
+// runtime.NumCPU() returns host cores, not the container quota. On a 96-core
+// host with a 2-CPU container, spawning 96 goroutines causes CPU throttling.
+func checkCgroupCPU() HealthCheck {
+	check := HealthCheck{
+		Name:   "Container CPU",
+		Status: StatusHealthy,
+	}
+
+	hostCPUs := runtime.NumCPU()
+	var quotaCPUs int
+
+	// cgroup v2
+	if data, err := os.ReadFile("/sys/fs/cgroup/cpu.max"); err == nil {
+		fields := strings.Fields(strings.TrimSpace(string(data)))
+		if len(fields) == 2 {
+			if fields[0] == "max" {
+				check.Message = fmt.Sprintf("No container CPU limit (%d host cores)", hostCPUs)
+				return check
+			}
+			quota, qerr := strconv.ParseInt(fields[0], 10, 64)
+			period, perr := strconv.ParseInt(fields[1], 10, 64)
+			if qerr == nil && perr == nil && period > 0 && quota > 0 {
+				quotaCPUs = int(quota / period)
+				if quotaCPUs < 1 {
+					quotaCPUs = 1
+				}
+			}
+		}
+	} else {
+		// cgroup v1
+		quotaData, qerr := os.ReadFile("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
+		periodData, perr := os.ReadFile("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
+		if qerr == nil && perr == nil {
+			quota, qerr := strconv.ParseInt(strings.TrimSpace(string(quotaData)), 10, 64)
+			period, perr := strconv.ParseInt(strings.TrimSpace(string(periodData)), 10, 64)
+			if qerr == nil && perr == nil && quota > 0 && period > 0 {
+				quotaCPUs = int(quota / period)
+				if quotaCPUs < 1 {
+					quotaCPUs = 1
+				}
+			} else {
+				check.Message = fmt.Sprintf("No container CPU limit (%d host cores)", hostCPUs)
+				return check
+			}
+		} else {
+			check.Message = fmt.Sprintf("Not running in a container (%d cores)", hostCPUs)
+			return check
+		}
+	}
+
+	if quotaCPUs <= 0 {
+		check.Message = fmt.Sprintf("No container CPU limit (%d host cores)", hostCPUs)
+		return check
+	}
+
+	details := fmt.Sprintf("Host cores=%d, Container quota=%d CPUs", hostCPUs, quotaCPUs)
+
+	if quotaCPUs < hostCPUs {
+		ratio := float64(hostCPUs) / float64(quotaCPUs)
+		if ratio > 4 {
+			check.Status = StatusWarning
+			check.Message = fmt.Sprintf("Container CPU limited: %d/%d host cores (%.0f:1 oversubscription)", quotaCPUs, hostCPUs, ratio)
+			check.Details = details + "\nWorker counts auto-capped to container quota."
+		} else {
+			check.Message = fmt.Sprintf("Container CPU: %d/%d host cores", quotaCPUs, hostCPUs)
+			check.Details = details
+		}
+	} else {
+		check.Message = fmt.Sprintf("Container CPU: %d cores (no throttling)", quotaCPUs)
+		check.Details = details
+	}
+
+	return check
+}
+
+// checkDiskIO reads /sys/block/<dev>/stat for the backup directory's block device
+// to detect I/O saturation or high queue depth that indicates EBS burst credit
+// exhaustion, saturated HDDs, or throttled cloud disks.
+func checkDiskIO() HealthCheck {
+	check := HealthCheck{
+		Name:   "Disk I/O",
+		Status: StatusHealthy,
+	}
+
+	// Find the device backing the backup directory
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(cfg.BackupDir, &stat); err != nil {
+		check.Message = "Disk I/O check skipped (cannot stat backup dir)"
+		return check
+	}
+
+	// Read /proc/diskstats for all block devices to find utilization
+	data, err := os.ReadFile("/proc/diskstats")
+	if err != nil {
+		check.Message = "Disk I/O check skipped (non-Linux)"
+		return check
+	}
+
+	// Parse diskstats — find devices with significant I/O
+	// Format: major minor name rd_ios rd_merges rd_sectors rd_ticks
+	//         wr_ios wr_merges wr_sectors wr_ticks in_flight io_ticks weighted_ticks
+	var maxInFlight int64
+	var maxDevName string
+	var totalWeightedTicks int64
+
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 14 {
+			continue
+		}
+
+		devName := fields[2]
+		// Skip partitions — only check whole disks (sda, vda, nvme0n1, xvda)
+		// Partition check: skip sdaX, vdaX etc. but keep nvme0n1
+		if len(devName) > 0 {
+			// Skip loop devices, dm-*, ram*
+			if strings.HasPrefix(devName, "loop") || strings.HasPrefix(devName, "dm-") || strings.HasPrefix(devName, "ram") {
+				continue
+			}
+		}
+
+		inFlight, _ := strconv.ParseInt(fields[11], 10, 64)
+		weightedTicks, _ := strconv.ParseInt(fields[13], 10, 64)
+
+		if inFlight > maxInFlight {
+			maxInFlight = inFlight
+			maxDevName = devName
+		}
+		totalWeightedTicks += weightedTicks
+	}
+
+	if maxDevName == "" {
+		check.Message = "No block devices found for I/O check"
+		return check
+	}
+
+	details := fmt.Sprintf("Device=%s InFlight=%d", maxDevName, maxInFlight)
+
+	if maxInFlight > 64 {
+		check.Status = StatusCritical
+		check.Message = fmt.Sprintf("Disk I/O saturated: %d requests in flight on %s", maxInFlight, maxDevName)
+		check.Details = details + "\nPossible EBS burst credit exhaustion or HDD saturation. Consider gp3 with provisioned IOPS."
+	} else if maxInFlight > 16 {
+		check.Status = StatusWarning
+		check.Message = fmt.Sprintf("Disk I/O elevated: %d requests in flight on %s", maxInFlight, maxDevName)
+		check.Details = details
+	} else {
+		check.Message = fmt.Sprintf("Disk I/O normal (%s, %d in flight)", maxDevName, maxInFlight)
+		check.Details = details
+	}
+
+	return check
+}
+
+// checkTempSpace verifies that the temp directory (os.TempDir() or TMPDIR) has
+// sufficient space for backup operations. Many cloud VMs mount /tmp as a small
+// tmpfs (50% of RAM) that fills up during compression or native engine staging.
+func checkTempSpace() HealthCheck {
+	check := HealthCheck{
+		Name:   "Temp Space",
+		Status: StatusHealthy,
+	}
+
+	tmpDir := os.TempDir()
+	if envTmp := os.Getenv("TMPDIR"); envTmp != "" {
+		tmpDir = envTmp
+	}
+
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(tmpDir, &stat); err != nil {
+		check.Message = fmt.Sprintf("Cannot check temp dir: %s", tmpDir)
+		check.Status = StatusWarning
+		return check
+	}
+
+	availBytes := int64(stat.Bavail) * int64(stat.Bsize)
+	totalBytes := int64(stat.Blocks) * int64(stat.Bsize)
+	availMB := availBytes / 1024 / 1024
+	totalMB := totalBytes / 1024 / 1024
+
+	details := fmt.Sprintf("Path=%s Available=%dMB Total=%dMB", tmpDir, availMB, totalMB)
+
+	// Check if it's a tmpfs (RAM-backed, typically small)
+	isTmpfs := stat.Type == 0x01021994 // TMPFS_MAGIC
+
+	if isTmpfs {
+		details += " (tmpfs/RAM-backed)"
+	}
+
+	if availMB < 512 {
+		check.Status = StatusCritical
+		check.Message = fmt.Sprintf("Temp dir critically low: %dMB free", availMB)
+		if isTmpfs {
+			check.Details = details + "\nSet TMPDIR to a disk-backed volume: export TMPDIR=/var/tmp"
+		} else {
+			check.Details = details + "\nFree up space in " + tmpDir
+		}
+	} else if availMB < 2048 {
+		check.Status = StatusWarning
+		check.Message = fmt.Sprintf("Temp dir limited: %dMB free", availMB)
+		check.Details = details
+	} else {
+		check.Message = fmt.Sprintf("Temp space OK: %dMB free in %s", availMB, tmpDir)
+		check.Details = details
+	}
+
+	return check
+}
+
+// checkToolVersionCompat compares the local pg_dump version against the PostgreSQL
+// server version. pg_dump from an older major version backing up a newer server
+// can silently skip features or produce incomplete dumps. This is common on
+// managed databases (RDS, Cloud SQL, AlloyDB) that auto-upgrade.
+func checkToolVersionCompat(ctx context.Context) HealthCheck {
+	check := HealthCheck{
+		Name:   "Tool Compatibility",
+		Status: StatusHealthy,
+	}
+
+	// Get pg_dump version
+	pgDumpOut, err := exec.Command("pg_dump", "--version").Output()
+	if err != nil {
+		check.Message = "pg_dump not found — using native engine?"
+		return check
+	}
+
+	pgDumpVer := parsePgToolVersion(string(pgDumpOut))
+	if pgDumpVer == 0 {
+		check.Message = "Cannot parse pg_dump version"
+		return check
+	}
+
+	// Get server version
+	db, err := database.New(cfg, log)
+	if err != nil {
+		check.Message = "Cannot connect to check server version"
+		return check
+	}
+	defer db.Close()
+
+	if err := db.Connect(ctx); err != nil {
+		check.Message = "Cannot connect to check server version"
+		return check
+	}
+
+	pgDB, ok := db.(*database.PostgreSQL)
+	if !ok {
+		check.Message = "Not PostgreSQL — skipped"
+		return check
+	}
+
+	serverVer, err := pgDB.GetMajorVersion(ctx)
+	if err != nil {
+		check.Message = "Cannot query server version"
+		check.Details = err.Error()
+		return check
+	}
+
+	details := fmt.Sprintf("pg_dump=%d, server=%d", pgDumpVer, serverVer)
+
+	if pgDumpVer < serverVer {
+		check.Status = StatusCritical
+		check.Message = fmt.Sprintf("pg_dump %d is older than server %d — backups may be incomplete!", pgDumpVer, serverVer)
+		check.Details = details + fmt.Sprintf("\nInstall: apt install postgresql-client-%d", serverVer)
+	} else if pgDumpVer > serverVer {
+		// Newer pg_dump is generally safe but note it
+		check.Message = fmt.Sprintf("pg_dump %d backing up server %d (compatible)", pgDumpVer, serverVer)
+		check.Details = details
+	} else {
+		check.Message = fmt.Sprintf("pg_dump %d matches server %d", pgDumpVer, serverVer)
+		check.Details = details
+	}
+
+	return check
+}
+
+// parsePgToolVersion extracts the major version from pg_dump --version output.
+// e.g. "pg_dump (PostgreSQL) 16.1" → 16, "pg_dump (PostgreSQL) 14.9" → 14
+func parsePgToolVersion(output string) int {
+	line := strings.TrimSpace(strings.Split(output, "\n")[0])
+	// Last field is the version string
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return 0
+	}
+	verStr := parts[len(parts)-1]
+	// Split on "." and parse major
+	dotParts := strings.SplitN(verStr, ".", 2)
+	major, err := strconv.Atoi(dotParts[0])
+	if err != nil {
+		return 0
+	}
+	return major
 }

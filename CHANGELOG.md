@@ -5,6 +5,27 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.9] - 2026-02-21 — Grafana Dashboard Overhaul
+
+### Fixed
+
+- **Broken Grafana panels referencing nonexistent metrics** — "Backup Success Rate (24h)" gauge and "Failures by Database (Hourly)" timeseries referenced `dbbackup_backups_success_total` and `dbbackup_backups_failure_total` which never existed in the codebase. Fixed to use `dbbackup_backup_total{status="success"}` and `dbbackup_backup_total{status="failure"}`.
+- **Duplicate panel IDs causing Grafana import conflicts** — Capacity Planning row and its 3 panels reused IDs 300-303 from the Restore Operations row. Reassigned to 600-603.
+- **Backup Duration panel missing threshold line** — Added 1-hour (3600s) threshold line matching the `DBBackupDurationHigh` alert rule, so slow backups are visually flagged.
+
+### Added
+
+- **Backup Intelligence row** — New dashboard section with 9 panels covering previously invisible metrics:
+  - **Last Success Timestamp** — Shows when each database was last successfully backed up (`dbbackup_last_success_timestamp`). Matches `DBBackupNoRecentFull` alert.
+  - **Exporter Health** — UP/DOWN status via `up{job="dbbackup"}`. Matches `DBBackupExporterDown` alert.
+  - **Last Restore Timestamp** — When the last restore was performed (`dbbackup_restore_last_timestamp`).
+  - **Last Restore Size** — Size of last restored archive (`dbbackup_restore_size_bytes`).
+  - **Backup Type Distribution** — Stacked bar chart of full vs incremental vs pitr_base backups (`dbbackup_backup_by_type`).
+  - **Backup Size Anomaly Detection** — Actual backup size vs 7-day rolling average with dashed baseline. Matches `DBBackupSizeAnomaly` alert.
+  - **PITR Archive Count** — Total archived WAL segments/binlogs (`dbbackup_pitr_archive_count`).
+  - **PITR Archive Size** — Storage consumed by archives (`dbbackup_pitr_archive_size_bytes`).
+  - **PITR Archive Lag Over Time** — Timeseries with 10m warning / 30m critical threshold lines matching `DBBackupPITRArchiveLag` and `DBBackupPITRArchiveCritical` alerts.
+
 ## [6.50.8] - 2026-02-21 — Enterprise Hardening Batch 2
 
 ### Added

@@ -1555,6 +1555,43 @@ Data collected 2026-02-22 from live infrastructure:
 **Fleet totals:** 5 servers, 14 databases, 3 engines (PostgreSQL, MySQL, MariaDB).
 Backups run every 8 hours via systemd timer. All exporters report on port 9399.
 
+**Fleet aggregate (from Prometheus, 2026-02-22):**
+
+| Metric | Value |
+|--------|-------|
+| Total backup runs | 530 (431 success, 99 failure) |
+| Fleet success rate | 81.3% |
+| Average backup duration | 1.83s |
+| Slowest backup | 11.3s (ejabberd, 38 MB, MySQL) |
+| Total last-backup footprint | 50.4 MB across 14 databases |
+
+### Dedup Storage Efficiency (Nextcloud, cloud.uuxo.net)
+
+Content-addressable dedup running on 45 backups of a Nextcloud MySQL database:
+
+| Metric | Value |
+|--------|-------|
+| Total backup data ingested | 3,304 MB |
+| Stored on disk (after dedup) | 135.9 MB |
+| Space saved | 3,168 MB |
+| Dedup ratio | 95.9% |
+| Unique chunks | 8,045 |
+| Manifests | 34 |
+| Per-database dedup ratio | 94.5% |
+
+Only 4.1% of backup data is unique across 45 runs -- the rest is deduplicated at the chunk level.
+
+### PITR (MySQL Binlog Archiving, mysql01.uuxo.net)
+
+| Metric | Value |
+|--------|-------|
+| PITR enabled | Yes |
+| Binlog archives | 2 |
+| Archive size | 1,347 bytes |
+| Chain valid | Yes |
+| Gaps | 0 |
+| Recovery window | 0.4 min |
+
 ## Configuration
 
 ### PostgreSQL Authentication

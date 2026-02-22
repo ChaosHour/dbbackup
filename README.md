@@ -1506,24 +1506,54 @@ sudo systemctl start dbbackup-exporter
 **Available metrics:**
 | Metric | Type | Description |
 |--------|------|-------------|
+| `dbbackup_build_info` | gauge | Build info (version, commit) |
 | `dbbackup_last_success_timestamp` | gauge | Unix timestamp of last successful backup |
 | `dbbackup_last_backup_duration_seconds` | gauge | Duration of last backup |
 | `dbbackup_last_backup_size_bytes` | gauge | Size of last backup |
-| `dbbackup_backup_total` | counter | Total backups by status (success/failure) |
+| `dbbackup_backup_total` | gauge | Total backups by status (success/failure) |
+| `dbbackup_backup_by_type` | gauge | Total backups by backup type |
 | `dbbackup_rpo_seconds` | gauge | Seconds since last successful backup |
 | `dbbackup_backup_verified` | gauge | Whether last backup was verified (1/0) |
-| `dbbackup_scrape_timestamp` | gauge | When metrics were collected |
+| `dbbackup_restore_total` | counter | Total restore operations by status |
+| `dbbackup_restore_duration_seconds` | gauge | Duration of last restore |
+| `dbbackup_restore_size_bytes` | gauge | Size of last restored archive |
+| `dbbackup_dedup_database_last_backup_timestamp` | gauge | Last dedup backup timestamp |
 
-**Labels:** `instance`, `database`, `engine`
+**Labels:** `server`, `database`, `engine`, `backup_type`, `status`
 
-**Example Prometheus query:**
+**Example Prometheus queries:**
 ```promql
 # Alert if RPO exceeds 24 hours
-dbbackup_rpo_seconds{instance="production"} > 86400
+dbbackup_rpo_seconds{server="production"} > 86400
 
-# Backup success rate
-sum(rate(dbbackup_backup_total{status="success"}[24h])) / sum(rate(dbbackup_backup_total[24h]))
+# Backup success rate over 24h
+sum by (server) (increase(dbbackup_backup_total{status="success"}[24h]))
+  / sum by (server) (increase(dbbackup_backup_total[24h]))
+
+# Combined RPO across regular and dedup backups
+min by (server, database) (
+  dbbackup_rpo_seconds
+  or (time() - dbbackup_dedup_database_last_backup_timestamp)
+)
 ```
+
+### Production Metrics (Live Infrastructure)
+
+dbbackup ships with a built-in Prometheus exporter running on 5 production nodes.
+Data collected 2026-02-22 from live infrastructure:
+
+| Server | Database | Engine | Backup Size | Duration | RPO |
+|--------|----------|--------|-------------|----------|-----|
+| mysql01 | ejabberd | MySQL | 38.1 MB | 11.3s | 8.0h |
+| alternate | c1aps1 | MySQL | 4.3 MB | 6.6s | 8.1h |
+| alternate | matomo | MySQL | 3.0 MB | 1.6s | 8.1h |
+| gitea | gitea | MySQL | 3.3 MB | 1.4s | 7.0h |
+| cloud | nextcloud_db | MySQL | -- | -- | 7.2h |
+| dev | funkrunde | PostgreSQL | 0.4 MB | 0.3s | 8.1h |
+| dev | keycloak | PostgreSQL | 0.05 MB | 0.4s | 8.1h |
+
+**Fleet totals:** 5 servers, 14 databases, 3 engines (PostgreSQL, MySQL, MariaDB).
+Backups run every 8 hours via systemd timer. All exporters report on port 9399.
 
 ## Configuration
 

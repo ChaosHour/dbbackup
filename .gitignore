@@ -21,6 +21,12 @@ reports/
 QA_FULL_REPORT_*.md
 validation_results/
 
+# ─── Shell scripts (internal tooling, not for public repo) ───────
+*.sh
+
+# ─── Real Ansible inventory (contains production hostnames) ──────
+deploy/ansible/inventory.yml
+
 # ─── Backup artifacts & logs ─────────────────────────────────────
 pg_backups/
 *.tar.gz

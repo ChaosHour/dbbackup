@@ -1,3 +1,6 @@
+// dbbackup — High-performance, Go-native backup engine.
+// Hardware-introspective, streaming-first, zero-copy where possible.
+// Only absolute performance garanten allowed beyond this point.
 package main
 
 import (
@@ -19,7 +22,7 @@ import (
 
 // Build information (set by ldflags)
 var (
-	version   = "6.50.9"
+	version   = "6.50.10"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )

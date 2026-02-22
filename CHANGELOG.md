@@ -5,6 +5,27 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.10] - 2026-02-22 — Benchmark Results & Repo Cleanup
+
+### Added
+
+- **100 GB benchmark results** in README — real-world native backup benchmarks across PostgreSQL (130.9 MB/s), MariaDB (77.5 MB/s), MySQL (160.2 MB/s) with compression ratios up to 709×
+- **QA benchmark results** — full-cycle backup/restore/verify timings for all three engines
+- **Benchmark SVG graphic** (`docs/benchmark-100gb.svg`) — visual throughput and compression chart for README
+- **Copilot context tag** in README — performance-first project philosophy for AI-assisted development
+- **Performance comment** in `main.go` package header
+
+### Fixed
+
+- **Benchmark summary table garbled** — `dbbackup-benchmark.sh` `summary()` function read only 6 fields from 8-column CSV, causing column misalignment. Fixed to parse all columns correctly
+- **README version badge** outdated — updated from v6.45.0 to v6.50.10
+
+### Security
+
+- **Removed `.sh` files from tracking** — 40 internal shell scripts (benchmarks, QA, build, deploy) excluded from public repo via `.gitignore`
+- **Removed `deploy/ansible/inventory.yml`** — contained real production hostnames (`*.uuxoi.local`), database names, and infrastructure paths
+- **Removed `BENCHMARK_PLAN.md` and `CLI_FLAGS.txt`** — internal planning documents not intended for public distribution
+
 ## [6.50.9] - 2026-02-21 — Grafana Dashboard Overhaul
 
 ### Fixed

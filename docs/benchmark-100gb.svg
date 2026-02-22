@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" font-family="'Segoe UI',Arial,sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="pgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#336791"/>
+      <stop offset="100%" stop-color="#264d6e"/>
+    </linearGradient>
+    <linearGradient id="mariaGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c0765a"/>
+      <stop offset="100%" stop-color="#9e5a3c"/>
+    </linearGradient>
+    <linearGradient id="myGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00758f"/>
+      <stop offset="100%" stop-color="#005a6e"/>
+    </linearGradient>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="520" rx="12" fill="url(#bgGrad)"/>
+  <rect x="1" y="1" width="898" height="518" rx="12" fill="none" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Title -->
+  <text x="450" y="38" text-anchor="middle" fill="#e6edf3" font-size="20" font-weight="700">dbbackup — 100 GB Benchmark Results</text>
+  <text x="450" y="58" text-anchor="middle" fill="#8b949e" font-size="12">3 runs per engine · native backup to local disk · Feb 2026</text>
+
+  <!-- ═══ THROUGHPUT BAR CHART (left) ═══ -->
+  <text x="230" y="90" text-anchor="middle" fill="#c9d1d9" font-size="14" font-weight="600">Throughput (MB/s)</text>
+
+  <!-- Grid lines -->
+  <line x1="100" y1="110" x2="100" y2="280" stroke="#21262d" stroke-width="1"/>
+  <line x1="100" y1="280" x2="400" y2="280" stroke="#30363d" stroke-width="1"/>
+  <line x1="100" y1="236" x2="400" y2="236" stroke="#21262d" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="100" y1="192" x2="400" y2="192" stroke="#21262d" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="100" y1="148" x2="400" y2="148" stroke="#21262d" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="95" y="284" text-anchor="end" fill="#8b949e" font-size="10">0</text>
+  <text x="95" y="240" text-anchor="end" fill="#8b949e" font-size="10">50</text>
+  <text x="95" y="196" text-anchor="end" fill="#8b949e" font-size="10">100</text>
+  <text x="95" y="152" text-anchor="end" fill="#8b949e" font-size="10">150</text>
+  <text x="95" y="114" text-anchor="end" fill="#8b949e" font-size="10">200</text>
+
+  <!-- PostgreSQL bar: 130.9 MB/s → height = 130.9/200 * 170 = 111.3 -->
+  <rect x="130" y="168.7" width="60" height="111.3" rx="4" fill="url(#pgGrad)" filter="url(#shadow)"/>
+  <text x="160" y="163" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="700">130.9</text>
+  <text x="160" y="298" text-anchor="middle" fill="#8b949e" font-size="11">PostgreSQL</text>
+
+  <!-- MariaDB bar: 77.5 MB/s → height = 77.5/200 * 170 = 65.9 -->
+  <rect x="220" y="214.1" width="60" height="65.9" rx="4" fill="url(#mariaGrad)" filter="url(#shadow)"/>
+  <text x="250" y="209" text-anchor="middle" fill="#d2a374" font-size="12" font-weight="700">77.5</text>
+  <text x="250" y="298" text-anchor="middle" fill="#8b949e" font-size="11">MariaDB</text>
+
+  <!-- MySQL bar: 160.2 MB/s → height = 160.2/200 * 170 = 136.2 -->
+  <rect x="310" y="143.8" width="60" height="136.2" rx="4" fill="url(#myGrad)" filter="url(#shadow)"/>
+  <text x="340" y="139" text-anchor="middle" fill="#3fb8af" font-size="12" font-weight="700">160.2</text>
+  <text x="340" y="298" text-anchor="middle" fill="#8b949e" font-size="11">MySQL</text>
+
+  <!-- ═══ COMPRESSION RATIO CHART (right) ═══ -->
+  <text x="670" y="90" text-anchor="middle" fill="#c9d1d9" font-size="14" font-weight="600">Compression Ratio</text>
+
+  <!-- Grid lines -->
+  <line x1="520" y1="110" x2="520" y2="280" stroke="#21262d" stroke-width="1"/>
+  <line x1="520" y1="280" x2="840" y2="280" stroke="#30363d" stroke-width="1"/>
+  <line x1="520" y1="236" x2="840" y2="236" stroke="#21262d" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="520" y1="192" x2="840" y2="192" stroke="#21262d" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="520" y1="148" x2="840" y2="148" stroke="#21262d" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="515" y="284" text-anchor="end" fill="#8b949e" font-size="10">0×</text>
+  <text x="515" y="240" text-anchor="end" fill="#8b949e" font-size="10">200×</text>
+  <text x="515" y="196" text-anchor="end" fill="#8b949e" font-size="10">400×</text>
+  <text x="515" y="152" text-anchor="end" fill="#8b949e" font-size="10">600×</text>
+  <text x="515" y="114" text-anchor="end" fill="#8b949e" font-size="10">800×</text>
+
+  <!-- PostgreSQL: 205x → height = 205/800 * 170 = 43.6 -->
+  <rect x="550" y="236.4" width="60" height="43.6" rx="4" fill="url(#pgGrad)" filter="url(#shadow)"/>
+  <text x="580" y="231" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="700">205×</text>
+  <text x="580" y="298" text-anchor="middle" fill="#8b949e" font-size="11">PostgreSQL</text>
+
+  <!-- MariaDB: 478x → height = 478/800 * 170 = 101.6 -->
+  <rect x="650" y="178.4" width="60" height="101.6" rx="4" fill="url(#mariaGrad)" filter="url(#shadow)"/>
+  <text x="680" y="173" text-anchor="middle" fill="#d2a374" font-size="12" font-weight="700">478×</text>
+  <text x="680" y="298" text-anchor="middle" fill="#8b949e" font-size="11">MariaDB</text>
+
+  <!-- MySQL: 709x → height = 709/800 * 170 = 150.7 -->
+  <rect x="750" y="129.3" width="60" height="150.7" rx="4" fill="url(#myGrad)" filter="url(#shadow)"/>
+  <text x="780" y="124" text-anchor="middle" fill="#3fb8af" font-size="12" font-weight="700">709×</text>
+  <text x="780" y="298" text-anchor="middle" fill="#8b949e" font-size="11">MySQL</text>
+
+  <!-- ═══ DATA TABLE ═══ -->
+  <rect x="40" y="320" width="820" height="25" rx="4" fill="#21262d"/>
+  <text x="80" y="337" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">Engine</text>
+  <text x="200" y="337" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">DB Size</text>
+  <text x="320" y="337" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">Backup Size</text>
+  <text x="450" y="337" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">Avg Duration</text>
+  <text x="580" y="337" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">Throughput</text>
+  <text x="720" y="337" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">Compression</text>
+  <text x="830" y="337" text-anchor="middle" fill="#8b949e" font-size="11" font-weight="600">Variance</text>
+
+  <!-- PostgreSQL row -->
+  <rect x="40" y="348" width="820" height="28" fill="#161b22"/>
+  <circle cx="55" cy="362" r="5" fill="#336791"/>
+  <text x="80" y="366" text-anchor="middle" fill="#c9d1d9" font-size="12">PostgreSQL</text>
+  <text x="200" y="366" text-anchor="middle" fill="#e6edf3" font-size="12">103.66 GB</text>
+  <text x="320" y="366" text-anchor="middle" fill="#e6edf3" font-size="12">517.79 MB</text>
+  <text x="450" y="366" text-anchor="middle" fill="#e6edf3" font-size="12">13m 31s</text>
+  <text x="580" y="366" text-anchor="middle" fill="#58a6ff" font-size="12" font-weight="600">130.9 MB/s</text>
+  <text x="720" y="366" text-anchor="middle" fill="#e6edf3" font-size="12">205×</text>
+  <text x="830" y="366" text-anchor="middle" fill="#3fb950" font-size="11">&lt;3%</text>
+
+  <!-- MariaDB row -->
+  <rect x="40" y="378" width="820" height="28" fill="#0d1117"/>
+  <circle cx="55" cy="392" r="5" fill="#c0765a"/>
+  <text x="80" y="396" text-anchor="middle" fill="#c9d1d9" font-size="12">MariaDB</text>
+  <text x="200" y="396" text-anchor="middle" fill="#e6edf3" font-size="12">97.88 GB</text>
+  <text x="320" y="396" text-anchor="middle" fill="#e6edf3" font-size="12">209.67 MB</text>
+  <text x="450" y="396" text-anchor="middle" fill="#e6edf3" font-size="12">21m 33s</text>
+  <text x="580" y="396" text-anchor="middle" fill="#d2a374" font-size="12" font-weight="600">77.5 MB/s</text>
+  <text x="720" y="396" text-anchor="middle" fill="#e6edf3" font-size="12">478×</text>
+  <text x="830" y="396" text-anchor="middle" fill="#3fb950" font-size="11">&lt;3%</text>
+
+  <!-- MySQL row -->
+  <rect x="40" y="408" width="820" height="28" fill="#161b22"/>
+  <circle cx="55" cy="422" r="5" fill="#00758f"/>
+  <text x="80" y="426" text-anchor="middle" fill="#c9d1d9" font-size="12">MySQL</text>
+  <text x="200" y="426" text-anchor="middle" fill="#e6edf3" font-size="12">104.58 GB</text>
+  <text x="320" y="426" text-anchor="middle" fill="#e6edf3" font-size="12">151.08 MB</text>
+  <text x="450" y="426" text-anchor="middle" fill="#e6edf3" font-size="12">11m 09s</text>
+  <text x="580" y="426" text-anchor="middle" fill="#3fb8af" font-size="12" font-weight="600">160.2 MB/s</text>
+  <text x="720" y="426" text-anchor="middle" fill="#e6edf3" font-size="12">709×</text>
+  <text x="830" y="426" text-anchor="middle" fill="#3fb950" font-size="11">&lt;3%</text>
+
+  <!-- ═══ KEY STATS FOOTER ═══ -->
+  <rect x="40" y="450" width="820" height="55" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+
+  <text x="80" y="470" fill="#8b949e" font-size="10">TOTAL RUNTIME</text>
+  <text x="80" y="490" fill="#e6edf3" font-size="14" font-weight="700">4h 17m</text>
+
+  <line x1="220" y1="457" x2="220" y2="498" stroke="#30363d"/>
+  <text x="260" y="470" fill="#8b949e" font-size="10">FASTEST</text>
+  <text x="260" y="490" fill="#3fb8af" font-size="14" font-weight="700">MySQL 160 MB/s</text>
+
+  <line x1="440" y1="457" x2="440" y2="498" stroke="#30363d"/>
+  <text x="480" y="470" fill="#8b949e" font-size="10">BEST COMPRESSION</text>
+  <text x="480" y="490" fill="#3fb8af" font-size="14" font-weight="700">MySQL 709×</text>
+
+  <line x1="660" y1="457" x2="660" y2="498" stroke="#30363d"/>
+  <text x="700" y="470" fill="#8b949e" font-size="10">DISK USED</text>
+  <text x="700" y="490" fill="#3fb950" font-size="14" font-weight="700">2.7 / 300 GB</text>
+</svg>

@@ -82,11 +82,11 @@ All three database engines are now production-ready:
 10. Performance baseline (binary size, startup latency, build time)
 
 ```bash
-# Quick validation (~10s)
-bash scripts/pre_release_suite.sh --quick
+# Quick validation
+dbbackup validate --quick
 
-# Full validation (~5 min)
-bash scripts/pre_release_suite.sh --skip-docker
+# Full validation
+dbbackup validate --all
 ```
 
 ---
@@ -152,7 +152,7 @@ v6.0 is **fully backwards compatible** with v5.x. No configuration changes requi
 
 ```bash
 # Download
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.0.0/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.50.10/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 

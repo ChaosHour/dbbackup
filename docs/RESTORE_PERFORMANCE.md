@@ -63,10 +63,10 @@ dbbackup restore cluster backup.tar.gz --confirm --parallel-dbs 4 --jobs 8
 
 ## Benchmarking Your Restore Performance
 
-Use the included benchmark script to identify bottlenecks:
+Use the built-in benchmark command to identify bottlenecks:
 
 ```bash
-./scripts/benchmark_restore.sh backup.dump.gz test_database
+dbbackup benchmark run test_database --engine postgres --iterations 3
 ```
 
 This will test:

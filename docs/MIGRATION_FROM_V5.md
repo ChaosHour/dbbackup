@@ -26,7 +26,7 @@ This guide covers what's new and how to take advantage of v6.0 features.
 
 ```bash
 # Download the new binary
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.0.0/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.50.10/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 
 # Replace the existing binary
@@ -114,14 +114,14 @@ dbbackup backup single mydb --native=false
 
 ### 5. Pre-Release Validation (NEW in v5.8.75)
 
-Run the comprehensive test suite before deploying:
+Run the comprehensive validation via CLI:
 
 ```bash
-# Quick validation (tests 1–4, ~10 seconds)
-bash scripts/pre_release_suite.sh --quick
+# Quick validation
+dbbackup validate --quick
 
-# Full validation (all 10 categories, ~5 minutes)
-bash scripts/pre_release_suite.sh --skip-docker
+# Full validation
+dbbackup validate --all
 ```
 
 ---
@@ -235,8 +235,8 @@ dbbackup backup single testdb --compression=1
 # 4. Test a restore
 dbbackup restore single testdb_backup.sql.gz --restore-mode=balanced --confirm
 
-# 5. Run validation suite
-bash scripts/pre_release_suite.sh --quick
+# 5. Run validation
+dbbackup validate --quick
 ```
 
 ---

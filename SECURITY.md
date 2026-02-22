@@ -6,10 +6,10 @@ We release security updates for the following versions:
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 5.7.x   | :white_check_mark: |
-| 5.6.x   | :white_check_mark: |
-| 5.5.x   | :white_check_mark: |
-| < 5.5   | :x:                |
+| 6.50.x  | :white_check_mark: |
+| 6.x     | :white_check_mark: |
+| 5.8.x   | Security fixes only|
+| < 5.8   | :x:                |
 
 ## Reporting a Vulnerability
 

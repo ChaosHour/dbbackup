@@ -442,8 +442,8 @@ dbbackup backup single testdb \
 ### Run Integration Tests
 
 ```bash
-# Run comprehensive test suite
-./scripts/test_gcs_storage.sh
+# Test GCS connectivity
+dbbackup cloud status --provider gcs
 ```
 
 Tests include:
@@ -624,7 +624,7 @@ gcloud logging sinks create backup-logs \
 For issues specific to GCS integration:
 
 1. Check [Troubleshooting](#troubleshooting) section
-2. Run integration tests: `./scripts/test_gcs_storage.sh`
+2. Run cloud diagnostics: `dbbackup cloud status --provider gcs --debug`
 3. Enable debug mode: `--debug`
 4. Check GCP Service Status
 5. Open an issue on GitHub with debug logs

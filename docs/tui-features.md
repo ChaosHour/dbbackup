@@ -387,4 +387,4 @@ The JSON output includes all metrics with machine-readable field names, suitable
 
 ---
 
-*Last updated: 2026-02-12 -- v6.18.0*
+*Last updated: 2026-02-16 -- v6.50.10*

@@ -99,3 +99,5 @@ examples/
 *.db
 *.sqlite
 .dbbackup.conf.bak
+BENCHMARK_PLAN.md
+CLI_FLAGS.txt

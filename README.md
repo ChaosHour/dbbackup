@@ -329,7 +329,7 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.30.0/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.50.10/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
@@ -1010,9 +1010,9 @@ dbbackup backup cluster -n  # Short flag
 
 **Example output:**
 ```
-╔══════════════════════════════════════════════════════════════╗
-║             [DRY RUN] Preflight Check Results                ║
-╚══════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════╗
+║           [DRY RUN] Preflight Check Results                ║
+╚════════════════════════════════════════════════════════════╝
 
   Database: PostgreSQL PostgreSQL 15.4
   Target:   postgres@localhost:5432/mydb
@@ -1287,7 +1287,7 @@ dbbackup backup single mydb --verify-restore
 **Example output:**
 ```
 ╔═══════════════════════════════════════════════════════════╗
-║              Restore Verification Report                  ║
+║             Restore Verification Report                   ║
 ╠═══════════════════════════════════════════════════════════╣
 ║ Database: mydb → _dbbackup_verify_20260216_123456         ║
 ╠════════════════════╦══════════╦══════════╦════════════════╣
@@ -1323,16 +1323,16 @@ dbbackup status --backup-dir /mnt/backups
 
 **Example output:**
 ```
-╔═══════════════════════════════════════════════════════════════════════════╗
-║                        Backup Status Dashboard                           ║
-╠══════════════════╦═══════════════════╦════════╦════════╦═════╦═══════════╣
-║ DATABASE         ║ LAST BACKUP       ║ AGE    ║ SIZE   ║ ENC ║ STATUS    ║
-╠══════════════════╬═══════════════════╬════════╬════════╬═════╬═══════════╣
-║ production_db    ║ 2026-02-16 08:00  ║ 4h     ║ 245 MB ║ Yes ║ ✓ OK      ║
-║ analytics_db     ║ 2026-02-16 08:00  ║ 4h     ║ 1.2 GB ║ Yes ║ ✓ OK      ║
-║ users_db         ║ 2026-02-14 08:00  ║ 2d     ║ 89 MB  ║ No  ║ ⚠ AGING   ║
-║ legacy_db        ║ 2026-02-01 03:00  ║ 15d    ║ 456 MB ║ No  ║ ✗ STALE   ║
-╚══════════════════╩═══════════════════╩════════╩════════╩═════╩═══════════╝
+╔══════════════════════════════════════════════════════════════════════════╗
+║                        Backup Status Dashboard                          ║
+╠══════════════════╦═══════════════════╦════════╦════════╦═════╦══════════╣
+║ DATABASE         ║ LAST BACKUP       ║ AGE    ║ SIZE   ║ ENC ║ STATUS   ║
+╠══════════════════╬═══════════════════╬════════╬════════╬═════╬══════════╣
+║ production_db    ║ 2026-02-16 08:00  ║ 4h     ║ 245 MB ║ Yes ║ ✓ OK     ║
+║ analytics_db     ║ 2026-02-16 08:00  ║ 4h     ║ 1.2 GB ║ Yes ║ ✓ OK     ║
+║ users_db         ║ 2026-02-14 08:00  ║ 2d     ║ 89 MB  ║ No  ║ ⚠ AGING  ║
+║ legacy_db        ║ 2026-02-01 03:00  ║ 15d    ║ 456 MB ║ No  ║ ✗ STALE  ║
+╚══════════════════╩═══════════════════╩════════╩════════╩═════╩══════════╝
 
   Total Backups: 4
   Summary: 2 OK | 1 AGING | 1 STALE
@@ -1676,15 +1676,15 @@ dbbackup benchmark history --last 10
 dbbackup benchmark show <run-id> --json
 ```
 
-### Bash Wrappers
+### CLI Benchmark Commands
 
-Convenience scripts in `scripts/`:
+Run benchmarks directly via CLI:
 
 ```bash
-./scripts/bench_postgres.sh mydb 3      # PostgreSQL, 3 iterations
-./scripts/bench_mysql.sh mydb 3         # MySQL
-./scripts/bench_mariadb.sh mydb 3       # MariaDB
-./scripts/bench_all.sh 2                # Cross-engine matrix
+dbbackup benchmark run mydb --engine postgres --iterations 3
+dbbackup benchmark run mydb --engine mysql --iterations 3
+dbbackup benchmark run mydb --engine mariadb --iterations 3
+dbbackup benchmark matrix --iterations 2    # Cross-engine matrix
 ```
 
 Environment variables: `BENCH_HOST`, `BENCH_PORT`, `BENCH_USER`, `BENCH_WORKERS`, `BENCH_COMP`, `BENCH_SOCKET`.
@@ -1702,19 +1702,19 @@ make bench-history                   # View past results
 ### Sample Output
 
 ```
-╔══════════════════════════════════════════════════════════════╗
-║                    BENCHMARK RESULTS                        ║
-╠══════════════════════════════════════════════════════════════╣
-║  Engine:     postgres                                       ║
-║  Database:   mydb                                           ║
-║  DB Size:    5319.0 MB                                      ║
-║  Iterations: 3                                              ║
-╠══════════════════════════════════════════════════════════════╣
-║  Phase     Min       Avg       Median    P95       MB/s     ║
-║  backup     40.12s    42.47s    42.19s    44.80s   125.3    ║
-║  restore   148.50s   152.66s   151.90s   156.20s    34.8   ║
-║  verify      4.20s     4.55s     4.50s     4.90s     —     ║
-╚══════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════════════════╗
+║                   BENCHMARK RESULTS                        ║
+╠════════════════════════════════════════════════════════════╣
+║  Engine:     postgres                                      ║
+║  Database:   mydb                                          ║
+║  DB Size:    5319.0 MB                                     ║
+║  Iterations: 3                                             ║
+╠════════════════════════════════════════════════════════════╣
+║  Phase     Min       Avg       Median    P95      MB/s     ║
+║  backup     40.12s    42.47s    42.19s    44.80s  125.3    ║
+║  restore   148.50s   152.66s   151.90s   156.20s   34.8   ║
+║  verify      4.20s     4.55s     4.50s     4.90s    —      ║
+╚════════════════════════════════════════════════════════════╝
 ```
 
 Results are persisted to:
@@ -1901,7 +1901,7 @@ grep HugePages /proc/meminfo
 
 ```bash
 ./dbbackup profile --dsn "postgres://user:pass@localhost/mydb"
-# Look for the 📐 HugePages section in the output
+# Look for the HugePages section in the output
 ```
 
 ### Linux Kernel Tuning (sysctl)

@@ -17,7 +17,7 @@ Be respectful, constructive, and professional in all interactions. We're buildin
 
 **Bug Report Template:**
 ```
-**Version:** dbbackup v5.8.61
+**Version:** dbbackup v6.50.10
 **OS:** Linux/macOS/BSD
 **Database:** PostgreSQL 14+ / MySQL 8.0+ / MariaDB 10.6+
 **Command:** The exact command that failed
@@ -72,7 +72,7 @@ go mod download
 go build -o dbbackup
 
 # Build all platforms
-./build_all.sh
+make build-all
 
 # Build Docker image
 docker build -t dbbackup:dev .
@@ -91,7 +91,7 @@ go test -v ./tests/pitr_complete_test.go
 go test -cover ./...
 
 # Run integration tests (requires databases)
-./run_integration_tests.sh
+go test -v -tags integration ./tests/...
 ```
 
 ### Code Style
@@ -277,12 +277,12 @@ Fixes #56
 3. Commit: `git commit -m "Release vX.Y.Z"`
 4. Tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
 5. Push: `git push origin main vX.Y.Z`
-6. Build binaries: `./build_all.sh`
+6. Build binaries: `make build-all`
 7. Create GitHub Release with binaries
 
 ## Questions?
 
-- **Issues:** https://git.uuxo.net/PlusOne/dbbackup/issues
+- **Issues:** https://github.com/PlusOne/dbbackup/issues
 - **Discussions:** Use issue tracker for now
 - **Email:** See SECURITY.md for contact
 

@@ -506,7 +506,7 @@ docker-compose -f docker-compose.minio.yml up -d
 
 **2. Run Integration Tests:**
 ```bash
-./scripts/test_cloud_storage.sh
+dbbackup cloud status --provider s3 --endpoint http://localhost:9000
 ```
 
 **3. Manual Testing:**
@@ -795,15 +795,12 @@ A: Yes, but restore requires thawing. Use lifecycle policies for automatic archi
 - [docker-compose.minio.yml](docker-compose.minio.yml) - MinIO test setup
 - [docker-compose.azurite.yml](docker-compose.azurite.yml) - Azure Azurite test setup
 - [docker-compose.gcs.yml](docker-compose.gcs.yml) - GCS fake-gcs-server test setup
-- [scripts/test_cloud_storage.sh](scripts/test_cloud_storage.sh) - S3 integration tests
-- [scripts/test_azure_storage.sh](scripts/test_azure_storage.sh) - Azure integration tests
-- [scripts/test_gcs_storage.sh](scripts/test_gcs_storage.sh) - GCS integration tests
 
 ---
 
 ## Support
 
 For issues or questions:
-- GitHub Issues: [Create an issue](https://github.com/yourusername/dbbackup/issues)
+- GitHub Issues: [Create an issue](https://github.com/PlusOne/dbbackup/issues)
 - Documentation: Check README.md and inline help
-- Examples: See `scripts/test_cloud_storage.sh`
+- Debug mode: `dbbackup cloud status --debug`

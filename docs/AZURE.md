@@ -347,8 +347,8 @@ dbbackup backup single testdb \
 ### Run Integration Tests
 
 ```bash
-# Run comprehensive test suite
-./scripts/test_azure_storage.sh
+# Test Azure connectivity
+dbbackup cloud status --provider azure
 ```
 
 Tests include:
@@ -491,7 +491,7 @@ az monitor activity-log list \
 For issues specific to Azure integration:
 
 1. Check [Troubleshooting](#troubleshooting) section
-2. Run integration tests: `./scripts/test_azure_storage.sh`
+2. Run cloud diagnostics: `dbbackup cloud status --provider azure --debug`
 3. Enable debug mode: `--debug`
 4. Check Azure Service Health
 5. Open an issue on GitHub with debug logs

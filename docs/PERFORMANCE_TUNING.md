@@ -228,14 +228,14 @@ Using pgzip with 8 workers:
 
 ## Benchmarking Your Setup
 
-Use the built-in benchmark script to establish baselines:
+Use the built-in benchmark commands to establish baselines:
 
 ```bash
 # Compare dbbackup vs native pg_restore
-bash scripts/benchmark_restore.sh
+dbbackup benchmark run mydb --engine postgres --iterations 3
 
-# Run the full pre-release validation suite
-bash scripts/pre_release_suite.sh --test=10
+# Run the full cross-engine benchmark matrix
+dbbackup benchmark matrix --iterations 2
 ```
 
 ### Key Metrics to Track

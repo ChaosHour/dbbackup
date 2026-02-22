@@ -104,7 +104,7 @@ docker run --rm \
 Pull pre-built image (when published):
 ```bash
 docker pull uuxo/dbbackup:latest
-docker pull uuxo/dbbackup:6.30.0
+docker pull uuxo/dbbackup:6.50.10
 ```
 
 ## Kubernetes Deployment
@@ -242,9 +242,9 @@ docker buildx build \
 ```bash
 # Tag for registry
 docker tag dbbackup:latest git.uuxo.net/uuxo/dbbackup:latest
-docker tag dbbackup:latest git.uuxo.net/uuxo/dbbackup:6.30.0
+docker tag dbbackup:latest git.uuxo.net/uuxo/dbbackup:6.50.10
 
 # Push to private registry
 docker push git.uuxo.net/uuxo/dbbackup:latest
-docker push git.uuxo.net/uuxo/dbbackup:6.30.0
+docker push git.uuxo.net/uuxo/dbbackup:6.50.10
 ```

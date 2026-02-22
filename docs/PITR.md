@@ -727,9 +727,9 @@ PITR helps meet:
 ## Additional Resources
 
 - PostgreSQL PITR Documentation: https://www.postgresql.org/docs/current/continuous-archiving.html
-- dbbackup GitHub: https://github.com/uuxo/dbbackup
-- Report Issues: https://github.com/uuxo/dbbackup/issues
+- dbbackup GitHub: https://github.com/PlusOne/dbbackup
+- Report Issues: https://github.com/PlusOne/dbbackup/issues
 
 ---
 
-**dbbackup v6.30.0** | Point-in-Time Recovery for PostgreSQL
+**dbbackup v6.50.10** | Point-in-Time Recovery for PostgreSQL

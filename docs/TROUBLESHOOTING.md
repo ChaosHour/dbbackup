@@ -6,6 +6,91 @@ Common issues and solutions for dbbackup.
 
 ## Restore Issues
 
+### Backup Works But Restore Fails With "Connection Failed"
+
+**Symptoms:** `pg_dump` / `dbbackup backup cluster` completes successfully, but `dbbackup restore` immediately fails with `failed to connect to database`, `connection refused`, or `peer authentication failed`.
+
+This is the **#1 restore issue** reported by users. The backup and restore commands use the exact same connection logic, so the problem is almost always environmental.
+
+**Diagnosis checklist:**
+
+```bash
+# 1. Is PostgreSQL still running? (heavy I/O from large backups can crash it)
+sudo systemctl status postgresql
+pg_isready -h localhost -p 5432
+
+# 2. Who are you running as? (peer auth requires OS user == DB user)
+whoami
+# If this shows 'root' but you backed up as 'postgres', that's your problem.
+
+# 3. Are connections maxed out from the backup?
+sudo -u postgres psql -c "SELECT count(*) FROM pg_stat_activity;"
+sudo -u postgres psql -c "SHOW max_connections;"
+
+# 4. Is PGPASSWORD set in this session?
+echo $PGPASSWORD
+
+# 5. Can you connect manually with the same parameters?
+sudo -u postgres psql -c "SELECT 1;"
+```
+
+**Cause 1: Peer authentication mismatch (most common)**
+
+For `localhost` or socket connections, dbbackup prefers Unix sockets which use **peer authentication** — the OS user must match the PostgreSQL role. If you backed up as `postgres` but restore as `root`, the connection will fail.
+
+```bash
+# Fix: Run restore as the same user that ran the backup
+sudo -u postgres dbbackup restore cluster backup.tar.gz --confirm
+
+# Alternative: Use TCP with password instead of peer auth
+export PGPASSWORD='yourpassword'
+dbbackup restore cluster backup.tar.gz --host 127.0.0.1 --user postgres --confirm
+```
+
+**Cause 2: PostgreSQL down after large backup**
+
+A 100 GB+ backup puts extreme I/O load on the server. PostgreSQL may have:
+- Crashed due to disk pressure (check `dmesg` for OOM kills)
+- Been restarted by a watchdog
+- Run out of WAL disk space
+
+```bash
+# Check PostgreSQL status and logs
+sudo systemctl status postgresql
+sudo journalctl -u postgresql --since "1 hour ago" | tail -30
+
+# Restart if needed
+sudo systemctl restart postgresql
+```
+
+**Cause 3: Connection pool exhausted**
+
+If the backup used high parallelism (`--jobs=16`), connections may still be draining when restore starts.
+
+```bash
+# Wait a few seconds and retry, or terminate idle connections:
+sudo -u postgres psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = 'idle' AND pid != pg_backend_pid();"
+```
+
+**Cause 4: Password not exported in restore session**
+
+If you opened a new terminal or `su`'d to a different user, `PGPASSWORD` is not inherited.
+
+```bash
+export PGPASSWORD='yourpassword'
+dbbackup restore cluster backup.tar.gz --confirm
+```
+
+**Debug mode:**
+
+```bash
+# See exactly what connection parameters dbbackup is using
+dbbackup --debug restore cluster backup.tar.gz --confirm 2>&1 | head -30
+# Look for: os_user, db_user, host, port, password_set, auth method
+```
+
+---
+
 ### Restore Stuck at 85%
 
 **Symptoms:** Progress stops, no CPU activity, database appears unresponsive.

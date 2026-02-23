@@ -5,6 +5,19 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.14] - 2026-02-23 — Fix Misleading Auth Mismatch Warning & Restore Troubleshooting
+
+### Fixed
+
+- **Auth mismatch warning suggested deprecated `--password` flag** — The `[WARN] Authentication Mismatch Detected` message included "Solution 4: `--password your_password`" which immediately errors out because the `--password` flag was deprecated in favor of `PGPASSWORD` env var. Removed the broken suggestion; now only shows working solutions (`sudo -u`, `PGPASSWORD`, `.pgpass`)
+- **Auth mismatch warning hardcoded `localhost:5432`** — The `.pgpass` hint always showed `localhost:5432` regardless of actual `--host`/`--port` settings. Now uses the configured host and port values
+- **Auth mismatch warning too definitive** — Message said "OS user 'root' **cannot** authenticate as DB user 'postgres'" which made users think restore was impossible. Changed to "**may not be able to** authenticate" with explicit note that `pg_ident.conf` maps can make this work and the warning may be a false positive
+
+### Added
+
+- **Restore connection troubleshooting in README** — New "Backup Works But Restore Fails With Connection Failed" section covering the 4 most common causes (peer auth mismatch, PostgreSQL crash after heavy backup, max_connections exhausted, missing PGPASSWORD)
+- **Extended restore troubleshooting in docs/TROUBLESHOOTING.md** — Detailed diagnosis checklist with 5 verification steps, per-cause explanations with fix commands, and debug mode instructions
+
 ## [6.50.13] - 2026-02-23 — Fix Backup Verification Status Always Zero
 
 ### Fixed

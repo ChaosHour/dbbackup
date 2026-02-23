@@ -8,7 +8,7 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.50.10-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.50.14-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -2060,6 +2060,37 @@ If the TUI shows `[FAIL] Disconnected`:
 3. **Test with CLI mode:** `./dbbackup backup single testdb` (bypasses TUI)
 
 Connection health checks timeout after 5 seconds.
+
+### Backup Works But Restore Fails With "Connection Failed"
+
+A common scenario: you successfully back up a large database (e.g. 100 GB) with the `postgres` user, but when you immediately try to restore, dbbackup reports a connection failure.
+
+**Most likely causes:**
+
+1. **Peer auth mismatch** — Backup ran as OS user `postgres`, but restore runs as `root`. For localhost/socket connections, PostgreSQL uses peer authentication (OS user must match DB user). Fix:
+   ```bash
+   sudo -u postgres dbbackup restore cluster backup.tar.gz --confirm
+   ```
+
+2. **PostgreSQL crashed or restarted** after the heavy backup I/O. Check:
+   ```bash
+   sudo systemctl status postgresql
+   pg_isready -h localhost -p 5432
+   ```
+
+3. **max_connections exhausted** — The backup's parallel connections weren't fully released. Check:
+   ```bash
+   sudo -u postgres psql -c "SELECT count(*) FROM pg_stat_activity;"
+   sudo -u postgres psql -c "SHOW max_connections;"
+   ```
+
+4. **Password not set for restore session** — If you used `PGPASSWORD` for backup but didn't export it again:
+   ```bash
+   export PGPASSWORD='yourpassword'
+   dbbackup restore cluster backup.tar.gz --confirm
+   ```
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for extended diagnostics.
 
 ### Pre-Restore Failures
 

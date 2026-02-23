@@ -186,42 +186,46 @@ func CheckAuthenticationMismatch(cfg *config.Config) (bool, string) {
 	// Detect authentication method
 	authMethod := DetectPostgreSQLAuthMethod(cfg.Host, cfg.Port, cfg.User)
 
-	// peer and ident require OS user = DB user
+	// peer and ident require OS user = DB user (unless pg_ident.conf maps are configured)
 	if authMethod == AuthPeer || authMethod == AuthIdent {
-		return true, buildAuthMismatchMessage(currentOSUser, requestedDBUser, authMethod)
+		return true, buildAuthMismatchMessage(currentOSUser, requestedDBUser, authMethod, cfg.Host, cfg.Port)
 	}
 
 	return false, ""
 }
 
 // buildAuthMismatchMessage creates a helpful error message
-func buildAuthMismatchMessage(osUser, dbUser string, method AuthMethod) string {
+func buildAuthMismatchMessage(osUser, dbUser string, method AuthMethod, host string, port int) string {
 	var msg strings.Builder
 
-	msg.WriteString("\n[WARN]  Authentication Mismatch Detected\n")
+	// Use actual host/port for .pgpass hint
+	displayHost := host
+	if displayHost == "" {
+		displayHost = "localhost"
+	}
+
+	msg.WriteString("\n[WARN]  Possible Authentication Mismatch\n")
 	msg.WriteString(strings.Repeat("=", 60) + "\n\n")
 
-	msg.WriteString("   PostgreSQL is using '" + string(method) + "' authentication\n")
-	msg.WriteString("   OS user '" + osUser + "' cannot authenticate as DB user '" + dbUser + "'\n\n")
+	msg.WriteString("   PostgreSQL appears to use '" + string(method) + "' authentication\n")
+	msg.WriteString("   OS user '" + osUser + "' may not be able to authenticate as DB user '" + dbUser + "'\n")
+	msg.WriteString("   (This check may be a false positive if pg_ident.conf maps are configured)\n\n")
 
 	msg.WriteString("[TIP] Solutions (choose one):\n\n")
 
 	msg.WriteString("   1. Run as matching user:\n")
 	msg.WriteString(fmt.Sprintf("      sudo -u %s %s\n\n", dbUser, getCommandLine()))
 
-	msg.WriteString("   2. Configure ~/.pgpass file (recommended):\n")
-	msg.WriteString(fmt.Sprintf("      echo \"localhost:5432:*:%s:your_password\" > ~/.pgpass\n", dbUser))
-	msg.WriteString("      chmod 0600 ~/.pgpass\n\n")
-
-	msg.WriteString("   3. Set PGPASSWORD environment variable:\n")
+	msg.WriteString("   2. Set PGPASSWORD environment variable:\n")
 	msg.WriteString("      export PGPASSWORD=your_password\n")
 	msg.WriteString("      " + getCommandLine() + "\n\n")
 
-	msg.WriteString("   4. Provide password via flag:\n")
-	msg.WriteString("      " + getCommandLine() + " --password your_password\n\n")
+	msg.WriteString("   3. Configure ~/.pgpass file (persistent, recommended for production):\n")
+	msg.WriteString(fmt.Sprintf("      echo \"%s:%d:*:%s:your_password\" >> ~/.pgpass\n", displayHost, port, dbUser))
+	msg.WriteString("      chmod 0600 ~/.pgpass\n\n")
 
-	msg.WriteString("[NOTE] Note: For production use, ~/.pgpass or PGPASSWORD are recommended\n")
-	msg.WriteString("         to avoid exposing passwords in command history.\n\n")
+	msg.WriteString("[NOTE] If the connection succeeds despite this warning, pg_ident.conf\n")
+	msg.WriteString("       likely maps '" + osUser + "' → '" + dbUser + "' and this is safe to ignore.\n\n")
 
 	msg.WriteString(strings.Repeat("=", 60) + "\n")
 

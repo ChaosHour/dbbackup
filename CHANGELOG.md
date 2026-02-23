@@ -5,6 +5,13 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.11] - 2026-02-23 — CI Pipeline Fix
+
+### Fixed
+
+- **Pre-Release Validation Suite failing on every tag push** — v6.50.10 cleanup added `*.sh` to `.gitignore` and removed `scripts/pre_release_suite.sh` from git tracking, causing the CI workflow to fail instantly with exit code 1
+- **CI-required scripts restored** — Un-ignored and re-added `scripts/pre_release_suite.sh`, `scripts/validate_tui.sh`, `scripts/test-sigint-cleanup.sh`, and `scripts/benchmark_restore.sh` to git tracking
+
 ## [6.50.10] - 2026-02-22 — Benchmark Results & Repo Cleanup
 
 ### Added

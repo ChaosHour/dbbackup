@@ -24,6 +24,12 @@ validation_results/
 # ─── Shell scripts (internal tooling, not for public repo) ───────
 *.sh
 
+# ─── Un-ignore CI-required scripts ──────────────────────────────
+!scripts/pre_release_suite.sh
+!scripts/validate_tui.sh
+!scripts/test-sigint-cleanup.sh
+!scripts/benchmark_restore.sh
+
 # ─── Real Ansible inventory (contains production hostnames) ──────
 deploy/ansible/inventory.yml
 

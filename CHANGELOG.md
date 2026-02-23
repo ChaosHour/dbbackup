@@ -5,6 +5,12 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.12] - 2026-02-23 — Fix False RPO Alerts from Stale Metrics
+
+### Fixed
+
+- **False `DBBackupRPOCritical` Prometheus alerts caused by stale `database="unknown"` metrics** — The metrics exporter (`dbbackup metrics serve` / `export`) created `database="unknown"` gauge entries for catalog records with empty or unrecognizable database names (e.g. test-*.txt files, legacy backups without .meta.json). Once created, these metrics never updated, causing `dbbackup_rpo_seconds` to grow indefinitely and trigger false RPO alerts. The exporter now skips catalog entries with empty or `"unknown"` database names and logs a warning with the count of skipped entries so operators can clean up their backup directories.
+
 ## [6.50.11] - 2026-02-23 — CI Pipeline Fix
 
 ### Fixed

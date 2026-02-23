@@ -144,10 +144,16 @@ func (m *MetricsWriter) collectMetrics() ([]BackupMetrics, error) {
 	// Group by database
 	byDB := make(map[string]*BackupMetrics)
 
+	var skippedUnknown int
 	for _, e := range entries {
 		key := e.Database
-		if key == "" {
-			key = "unknown"
+		if key == "" || key == "unknown" {
+			// Skip entries with empty or unknown database names.
+			// These come from unparseable files (test-*.txt, legacy backups
+			// without .meta.json, etc.) and would create stale metrics that
+			// never get updated, causing false RPO alerts in Prometheus.
+			skippedUnknown++
+			continue
 		}
 
 		metrics, ok := byDB[key]
@@ -200,6 +206,11 @@ func (m *MetricsWriter) collectMetrics() ([]BackupMetrics, error) {
 		}
 	}
 
+	if skippedUnknown > 0 {
+		m.log.Warn("Skipped catalog entries with empty/unknown database name (would cause stale metrics)",
+			"skipped_count", skippedUnknown)
+	}
+
 	// Convert to slice and sort
 	result := make([]BackupMetrics, 0, len(byDB))
 	for _, metrics := range byDB {
@@ -236,8 +247,10 @@ func (m *MetricsWriter) collectRestoreMetrics() []RestoreMetrics {
 		}
 
 		dbName := e.Database
-		if dbName == "" {
-			dbName = "cluster"
+		if dbName == "" || dbName == "unknown" {
+			// Skip entries with unidentifiable database names to avoid
+			// stale metrics that cause false alerts.
+			continue
 		}
 
 		rm, exists := byDB[dbName]

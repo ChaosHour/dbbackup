@@ -5,6 +5,15 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.13] - 2026-02-23 — Fix Backup Verification Status Always Zero
+
+### Fixed
+
+- **`dbbackup_backup_verified` Prometheus metric always 0 (NOT VERIFIED in Grafana)** — Three interacting bugs prevented verification status from persisting:
+  1. **`catalog sync` overwrote `verified_at`/`verify_valid`** — When sync updated an existing entry (metadata changed or file removed), it called `Update()` with a fresh `metadataToEntry()` struct that had `nil` verification fields, resetting any previously-set verified status back to NULL. Fixed: sync now preserves `VerifiedAt`, `VerifyValid`, `DrillTestedAt`, `DrillSuccess`, and `Status` from the existing catalog entry.
+  2. **No zstd format handlers in `verify` command** — The verify switch handled `.dump`, `.dump.gz`, `.sql`, `.sql.gz`, `.tar.gz` but NOT `.sql.zst`, `.dump.zst`, `.tar.zst`. Since v6.x all backups use zstd compression, the type-specific content validation was silently skipped. Added `verifyZstdSqlScript()`, `verifyZstdPgDump()`, and `verifyZstdArchive()` handlers.
+  3. **Backup engine verified but never recorded it** — The inline post-backup `verification.Verify()` check passed but never wrote the result anywhere the catalog could read. Added `markMetadataVerified()` which writes `"verified": "true"` to `.meta.json` after successful verification, and `metadataToEntry()` now reads this flag to create catalog entries with `status=verified` and `verified_at` set.
+
 ## [6.50.12] - 2026-02-23 — Fix False RPO Alerts from Stale Metrics
 
 ### Fixed

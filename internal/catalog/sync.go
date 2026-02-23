@@ -86,6 +86,17 @@ func (c *SQLiteCatalog) SyncFromDirectory(ctx context.Context, dir string) (*Syn
 			if existing.SHA256 != meta.SHA256 || existing.SizeBytes != meta.SizeBytes {
 				entry := metadataToEntry(meta, backupPath)
 				entry.ID = existing.ID
+				// Preserve verification and drill-test fields from existing entry
+				// so that catalog sync doesn't reset verified_at/verify_valid
+				// back to NULL (root cause of dbbackup_backup_verified always 0)
+				entry.VerifiedAt = existing.VerifiedAt
+				entry.VerifyValid = existing.VerifyValid
+				entry.DrillTestedAt = existing.DrillTestedAt
+				entry.DrillSuccess = existing.DrillSuccess
+				// Preserve verified/corrupted status if already set
+				if existing.Status == StatusVerified || existing.Status == StatusCorrupted {
+					entry.Status = existing.Status
+				}
 				if err := c.Update(ctx, entry); err != nil {
 					result.Errors++
 					result.Details = append(result.Details,
@@ -117,9 +128,10 @@ func (c *SQLiteCatalog) SyncFromDirectory(ctx context.Context, dir string) (*Syn
 			continue
 		}
 		if _, err := os.Stat(entry.BackupPath); os.IsNotExist(err) {
-			// Mark as deleted
-			entry.Status = StatusDeleted
-			c.Update(ctx, entry)
+			// Mark as deleted — use targeted status update to avoid
+			// overwriting verified_at/verify_valid via full Update()
+			c.db.ExecContext(ctx, `UPDATE backups SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+				StatusDeleted, entry.ID)
 			result.Removed++
 			result.Details = append(result.Details,
 				fmt.Sprintf("REMOVED: %s (file not found)", filepath.Base(entry.BackupPath)))
@@ -171,6 +183,17 @@ func metadataToEntry(meta *metadata.BackupMetadata, backupPath string) *Entry {
 
 	if entry.BackupType == "" {
 		entry.BackupType = "full"
+	}
+
+	// Honor verification flag written by backup engine after post-backup
+	// integrity check. This ensures catalog sync creates entries with
+	// verified status when the backup was already verified inline.
+	if meta.ExtraInfo != nil && meta.ExtraInfo["verified"] == "true" {
+		entry.Status = StatusVerified
+		now := meta.Timestamp // Use backup timestamp as verification time
+		entry.VerifiedAt = &now
+		v := true
+		entry.VerifyValid = &v
 	}
 
 	return entry

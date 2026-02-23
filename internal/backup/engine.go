@@ -403,6 +403,8 @@ postBackup:
 		} else {
 			verifyStep.Complete(fmt.Sprintf("Backup verified (SHA-256: %s...)", result.CalculatedSHA256[:16]))
 			e.log.Info("Backup verification successful", "sha256", result.CalculatedSHA256)
+			// Mark metadata as verified so catalog sync creates verified entries
+			e.markMetadataVerified(outputFile)
 		}
 	}
 
@@ -1102,6 +1104,8 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 		} else {
 			e.printf("   [OK] Cluster backup verified successfully\n")
 			e.log.Info("Cluster backup verification successful", "archive", outputFile)
+			// Mark metadata as verified so catalog sync creates verified entries
+			e.markMetadataVerified(outputFile)
 		}
 	}
 
@@ -1972,6 +1976,26 @@ func (e *Engine) createClusterMetadata(backupFile string, databases []string, su
 	}
 
 	return nil
+}
+
+// markMetadataVerified updates the .meta.json file to record that post-backup
+// integrity verification passed. This flag is read by catalog sync so that
+// imported entries are created with status=verified and verified_at set,
+// making dbbackup_backup_verified=1 in the Prometheus exporter.
+func (e *Engine) markMetadataVerified(backupFile string) {
+	meta, err := metadata.Load(backupFile)
+	if err != nil {
+		e.log.Debug("Cannot update metadata with verified flag", "error", err)
+		return
+	}
+	if meta.ExtraInfo == nil {
+		meta.ExtraInfo = make(map[string]string)
+	}
+	meta.ExtraInfo["verified"] = "true"
+	meta.ExtraInfo["verified_at"] = time.Now().Format(time.RFC3339)
+	if err := meta.Save(); err != nil {
+		e.log.Debug("Failed to save verified flag to metadata", "error", err)
+	}
 }
 
 // verifyClusterArchive performs quick integrity check on cluster backup archive

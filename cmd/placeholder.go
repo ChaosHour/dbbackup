@@ -15,6 +15,7 @@ import (
 	"dbbackup/internal/logger"
 	"dbbackup/internal/tui"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/pgzip"
 	"github.com/spf13/cobra"
 )
@@ -558,6 +559,36 @@ func runVerify(ctx context.Context, archiveName string) error {
 			checksPassed++
 		}
 		checksRun++
+
+	case "SQL Script (.sql.zst)":
+		fmt.Print("[CHK] SQL script validation (zstd)... ")
+		if err := verifyZstdSqlScript(archivePath); err != nil {
+			fmt.Printf("[FAIL] FAILED: %v\n", err)
+		} else {
+			fmt.Println("[OK] PASSED")
+			checksPassed++
+		}
+		checksRun++
+
+	case "Single Database (.dump.zst)":
+		fmt.Print("[CHK] PostgreSQL dump format check (zstd)... ")
+		if err := verifyZstdPgDump(archivePath); err != nil {
+			fmt.Printf("[FAIL] FAILED: %v\n", err)
+		} else {
+			fmt.Println("[OK] PASSED")
+			checksPassed++
+		}
+		checksRun++
+
+	case "Cluster Backup (.tar.zst)":
+		fmt.Print("[CHK] Archive header check (zstd)... ")
+		if err := verifyZstdArchive(archivePath); err != nil {
+			fmt.Printf("[FAIL] FAILED: %v\n", err)
+		} else {
+			fmt.Println("[OK] PASSED")
+			checksPassed++
+		}
+		checksRun++
 	}
 
 	// Check for metadata file (.info or .meta.json)
@@ -761,6 +792,81 @@ func verifyTarGz(path string) error {
 	}
 
 	return fmt.Errorf("does not appear to be a valid gzip file")
+}
+
+func verifyZstdSqlScript(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	zr, err := zstd.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("failed to open zstd stream: %w", err)
+	}
+	defer zr.Close()
+
+	buffer := make([]byte, 1024)
+	n, err := zr.Read(buffer)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("cannot read zstd contents: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("zstd archive is empty")
+	}
+
+	if containsSQLKeywords(strings.ToLower(string(buffer[:n]))) {
+		return nil
+	}
+
+	return fmt.Errorf("does not appear to contain SQL content")
+}
+
+func verifyZstdPgDump(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	zr, err := zstd.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("failed to open zstd stream: %w", err)
+	}
+	defer zr.Close()
+
+	buffer := make([]byte, 512)
+	n, err := zr.Read(buffer)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("cannot read zstd contents: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("zstd archive is empty")
+	}
+
+	return checkPgDumpSignature(buffer[:n])
+}
+
+func verifyZstdArchive(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Check for zstd magic number: 0xFD2FB528
+	buffer := make([]byte, 4)
+	n, err := file.Read(buffer)
+	if err != nil || n < 4 {
+		return fmt.Errorf("cannot read file header")
+	}
+
+	if buffer[0] == 0x28 && buffer[1] == 0xB5 && buffer[2] == 0x2F && buffer[3] == 0xFD {
+		return nil // Valid zstd magic (little-endian)
+	}
+
+	return fmt.Errorf("does not appear to be a valid zstd file")
 }
 
 func checkPgDumpSignature(data []byte) error {

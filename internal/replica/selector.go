@@ -233,7 +233,7 @@ func (d *PostgreSQLDetector) Detect(ctx context.Context, db *sql.DB) (*Topology,
 		if err != nil {
 			return nil, fmt.Errorf("failed to query replication status: %w", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var addr sql.NullString
@@ -319,7 +319,7 @@ func (d *MySQLDetector) Detect(ctx context.Context, db *sql.DB) (*Topology, erro
 		if err != nil {
 			return topology, nil // Standalone or error
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		// Parse slave hosts
 		cols, _ := rows.Columns()
@@ -364,7 +364,7 @@ func (d *MySQLDetector) Detect(ctx context.Context, db *sql.DB) (*Topology, erro
 
 		return topology, nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return topology, nil
 }
@@ -376,7 +376,7 @@ func (d *MySQLDetector) GetRole(ctx context.Context, db *sql.DB) (Role, error) {
 	if err != nil {
 		return RoleUnknown, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if rows.Next() {
 		return RoleReplica, nil
@@ -387,7 +387,7 @@ func (d *MySQLDetector) GetRole(ctx context.Context, db *sql.DB) (Role, error) {
 	if err != nil {
 		return RoleStandalone, nil
 	}
-	defer rows2.Close()
+	defer func() { _ = rows2.Close() }()
 
 	if rows2.Next() {
 		return RolePrimary, nil
@@ -404,7 +404,7 @@ func (d *MySQLDetector) GetReplicationLag(ctx context.Context, db *sql.DB) (time
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if !rows.Next() {
 		return 0, nil // Not a replica
@@ -429,7 +429,7 @@ func (d *MySQLDetector) GetReplicationLag(ctx context.Context, db *sql.DB) (time
 				lagSeconds.Int64 = v
 				lagSeconds.Valid = true
 			case []byte:
-				fmt.Sscanf(string(v), "%d", &lagSeconds.Int64)
+				_, _ = fmt.Sscanf(string(v), "%d", &lagSeconds.Int64)
 				lagSeconds.Valid = true
 			}
 			break

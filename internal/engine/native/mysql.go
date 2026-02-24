@@ -142,7 +142,7 @@ func (e *MySQLNativeEngine) Connect(ctx context.Context) error {
 	db.SetConnMaxLifetime(30 * time.Minute)
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return fmt.Errorf("failed to ping MySQL server: %w", err)
 	}
 
@@ -183,7 +183,7 @@ func (e *MySQLNativeEngine) Backup(ctx context.Context, outputWriter io.Writer) 
 		if err != nil {
 			return nil, fmt.Errorf("failed to start transaction: %w", err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		// Set transaction isolation
 		if _, err := tx.ExecContext(ctx, "SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ"); err != nil {
@@ -351,7 +351,7 @@ func (e *MySQLNativeEngine) backupTableData(ctx context.Context, w io.Writer, da
 	if err != nil {
 		return 0, fmt.Errorf("failed to query table data: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Get column type metadata to handle DECIMAL/NUMERIC correctly
 	colTypes, _ := rows.ColumnTypes()
@@ -514,7 +514,7 @@ func (e *MySQLNativeEngine) getBinlogPosition(ctx context.Context) (*BinlogPosit
 	if executedGtidSet.Valid && executedGtidSet.String != "" {
 		gtidSet = executedGtidSet.String
 	} else if row := e.db.QueryRowContext(ctx, "SELECT @@global.gtid_executed"); row != nil {
-		row.Scan(&gtidSet)
+		_ = row.Scan(&gtidSet)
 	}
 
 	return &BinlogPosition{
@@ -566,7 +566,7 @@ func (e *MySQLNativeEngine) getDatabases(ctx context.Context) ([]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var databases []string
 	for rows.Next() {
@@ -642,7 +642,7 @@ func (e *MySQLNativeEngine) getTables(ctx context.Context, database string) ([]M
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var objects []MySQLDatabaseObject
 	for rows.Next() {
@@ -676,7 +676,7 @@ func (e *MySQLNativeEngine) getViews(ctx context.Context, database string) ([]My
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var objects []MySQLDatabaseObject
 	for rows.Next() {
@@ -808,7 +808,7 @@ func (e *MySQLNativeEngine) getTableColumns(ctx context.Context, database, table
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var columns []string
 	for rows.Next() {
@@ -1081,7 +1081,7 @@ func (e *MySQLNativeEngine) backupRoutines(ctx context.Context, w io.Writer, dat
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var routineName, routineType string
@@ -1138,7 +1138,7 @@ func (e *MySQLNativeEngine) backupTriggers(ctx context.Context, w io.Writer, dat
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var triggerName string
@@ -1175,7 +1175,7 @@ func (e *MySQLNativeEngine) backupEvents(ctx context.Context, w io.Writer, datab
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var eventName string
@@ -1320,12 +1320,12 @@ func (e *MySQLNativeEngine) Restore(ctx context.Context, inputReader io.Reader, 
 
 	// Restore settings at end
 	defer func() {
-		e.db.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1")
-		e.db.ExecContext(ctx, "SET UNIQUE_CHECKS = 1")
-		e.db.ExecContext(ctx, "COMMIT")
-		e.db.ExecContext(ctx, "SET AUTOCOMMIT = 1")
-		e.db.ExecContext(ctx, "SET sql_log_bin = 1")
-		e.db.ExecContext(ctx, "SET SESSION innodb_flush_log_at_trx_commit = 1")
+		_, _ = e.db.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1")
+		_, _ = e.db.ExecContext(ctx, "SET UNIQUE_CHECKS = 1")
+		_, _ = e.db.ExecContext(ctx, "COMMIT")
+		_, _ = e.db.ExecContext(ctx, "SET AUTOCOMMIT = 1")
+		_, _ = e.db.ExecContext(ctx, "SET sql_log_bin = 1")
+		_, _ = e.db.ExecContext(ctx, "SET SESSION innodb_flush_log_at_trx_commit = 1")
 	}()
 
 	// Detect source database name from the dump so we can rewrite

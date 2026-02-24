@@ -325,7 +325,7 @@ func runCloudCleanup(ctx context.Context, uri string) error {
 				} else {
 					deletedCount++
 					// Also try to delete metadata
-					backend.Delete(ctx, backup.Key+".meta.json")
+					_ = backend.Delete(ctx, backup.Key+".meta.json")
 				}
 			}
 		}

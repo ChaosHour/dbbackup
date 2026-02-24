@@ -395,7 +395,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			var err error
 			tuiDebugFile, err = os.Create(tuiLogPath)
 			if err == nil {
-				defer tuiDebugFile.Close()
+				defer func() { _ = tuiDebugFile.Close() }()
 				fmt.Fprintf(tuiDebugFile, "=== TUI Restore Debug Log ===\n")
 				fmt.Fprintf(tuiDebugFile, "Started: %s\n", time.Now().Format(time.RFC3339))
 				fmt.Fprintf(tuiDebugFile, "Archive: %s\n", archive.Path)
@@ -410,7 +410,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			if tuiDebugFile != nil {
 				fmt.Fprintf(tuiDebugFile, "[%s] %s", time.Now().Format("15:04:05.000"), fmt.Sprintf(msg, args...))
 				fmt.Fprintln(tuiDebugFile)
-				tuiDebugFile.Sync() // Flush immediately so we capture hangs
+				_ = tuiDebugFile.Sync() // Flush immediately so we capture hangs
 			}
 		}
 
@@ -462,7 +462,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 				elapsed: time.Since(start),
 			}
 		}
-		defer dbClient.Close()
+		defer func() { _ = dbClient.Close() }()
 
 		tuiLog("Database client created successfully")
 
@@ -762,7 +762,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			if archive.ExtractedDir != "" {
 				tuiLog("Using pre-extracted cluster directory: %s", archive.ExtractedDir)
 				log.Info("Using pre-extracted cluster directory", "path", archive.ExtractedDir)
-				defer os.RemoveAll(archive.ExtractedDir) // Cleanup after restore completes
+				defer func() { _ = os.RemoveAll(archive.ExtractedDir) }() // Cleanup after restore completes
 				restoreErr = engine.RestoreCluster(ctx, archive.Path, archive.ExtractedDir)
 			} else {
 				tuiLog("Calling engine.RestoreCluster for: %s", archive.Path)
@@ -774,7 +774,7 @@ func executeRestoreWithTUIProgress(parentCtx context.Context, cfg *config.Config
 			// Restore single database from cluster backup
 			// Also cleanup pre-extracted dir if present
 			if archive.ExtractedDir != "" {
-				defer os.RemoveAll(archive.ExtractedDir)
+				defer func() { _ = os.RemoveAll(archive.ExtractedDir) }()
 			}
 			restoreErr = engine.RestoreSingleFromCluster(ctx, archive.Path, targetDB, targetDB, cleanFirst, createIfMissing)
 			tuiLog("RestoreSingleFromCluster returned: err=%v", restoreErr)
@@ -1139,7 +1139,7 @@ func cleanupRestoreTempDirs(log logger.Logger) {
 		if entry.IsDir() && strings.HasPrefix(entry.Name(), ".restore_") {
 			fullPath := filepath.Join(tmpDir, entry.Name())
 			log.Info("Cleaning up temp directory", "path", fullPath)
-			os.RemoveAll(fullPath)
+			_ = os.RemoveAll(fullPath)
 		}
 	}
 }

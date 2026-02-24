@@ -119,7 +119,7 @@ func loadArchives(cfg *config.Config, log logger.Logger) tea.Cmd {
 					continue // Skip non-backup directories
 				}
 				// Calculate directory size
-				filepath.Walk(fullPath, func(_ string, fi os.FileInfo, _ error) error {
+				_ = filepath.Walk(fullPath, func(_ string, fi os.FileInfo, _ error) error {
 					if fi != nil && !fi.IsDir() {
 						size += fi.Size()
 					}

@@ -217,8 +217,8 @@ func BenchmarkStreamingDecompressor(b *testing.B) {
 
 	var compressed bytes.Buffer
 	w, _ := NewParallelGzipWriter(&compressed, DefaultCompressionConfig())
-	w.Write(testData)
-	w.Close()
+	_, _ = w.Write(testData)
+	_ = w.Close()
 
 	compressedData := compressed.Bytes()
 	cfg := DefaultRestoreConfig()
@@ -228,7 +228,7 @@ func BenchmarkStreamingDecompressor(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		sd := NewStreamingDecompressor(bytes.NewReader(compressedData), cfg, nil)
-		sd.Decompress(context.Background(), io.Discard)
+		_ = sd.Decompress(context.Background(), io.Discard)
 	}
 }
 

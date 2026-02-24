@@ -178,7 +178,7 @@ func verifyCloudBackup(ctx context.Context, uri string, quick, verbose bool) (*r
 	if !quick {
 		_, err := verification.Verify(result.LocalPath)
 		if err != nil {
-			result.Cleanup()
+			_ = result.Cleanup()
 			return nil, err
 		}
 	}
@@ -210,7 +210,7 @@ func runVerifyCloudBackup(cmd *cobra.Command, args []string) error {
 		}
 
 		// Cleanup temp file
-		defer result.Cleanup()
+		defer func() { _ = result.Cleanup() }()
 
 		fmt.Printf("   [OK] VALID\n")
 		if verboseVerify && result.MetadataPath != "" {

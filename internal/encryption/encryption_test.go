@@ -117,8 +117,8 @@ func TestEncryptDecrypt(t *testing.T) {
 			t.Fatalf("Failed to create encryption writer: %v", err)
 		}
 
-		writer.Write(original)
-		writer.Close()
+		_, _ = writer.Write(original)
+		_ = writer.Close()
 
 		// Try to decrypt with wrong password
 		reader, err := NewDecryptionReader(&encrypted, EncryptionOptions{

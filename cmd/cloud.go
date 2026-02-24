@@ -420,7 +420,7 @@ func runCloudDelete(cmd *cobra.Command, args []string) error {
 		fmt.Printf("[WARN] Delete %s (%s) from cloud storage?\n", remotePath, cloud.FormatSize(size))
 		fmt.Print("Type 'yes' to confirm: ")
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response)
 		if response != "yes" {
 			fmt.Println("Cancelled")
 			return nil

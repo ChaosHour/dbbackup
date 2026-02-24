@@ -296,7 +296,7 @@ func (s *Streamer) shutdown() error {
 
 	// Save final checkpoint
 	if s.config.CheckpointEnabled {
-		s.saveCheckpoint()
+		_ = s.saveCheckpoint()
 	}
 
 	return nil
@@ -314,7 +314,7 @@ func (s *Streamer) checkpointLoop(ctx context.Context) {
 		case <-s.stopCh:
 			return
 		case <-ticker.C:
-			s.saveCheckpoint()
+			_ = s.saveCheckpoint()
 		}
 	}
 }

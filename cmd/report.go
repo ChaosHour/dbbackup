@@ -142,7 +142,7 @@ func runReportGenerate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open catalog: %w", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Configure generator
 	config := report.ReportConfig{
@@ -176,7 +176,7 @@ func runReportGenerate(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create output file: %w", err)
 		}
-		defer output.Close()
+		defer func() { _ = output.Close() }()
 	} else {
 		output = os.Stdout
 	}
@@ -217,7 +217,7 @@ func runReportSummary(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open catalog: %w", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Configure and generate
 	config := report.ReportConfig{

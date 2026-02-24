@@ -241,8 +241,8 @@ func ValidateBackupDirExists(path string) error {
 			Message: "directory is not writable",
 		}
 	}
-	f.Close()
-	os.Remove(testFile)
+	_ = f.Close()
+	_ = os.Remove(testFile)
 
 	return nil
 }

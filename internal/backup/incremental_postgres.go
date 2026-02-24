@@ -322,7 +322,7 @@ func (e *PostgresIncrementalEngine) CalculateFileChecksum(path string) (string, 
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {

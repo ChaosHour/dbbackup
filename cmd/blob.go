@@ -169,7 +169,7 @@ func runBlobStats(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fmt.Printf("Scanning %s for blob columns...\n\n", cfg.DisplayDatabaseType())
 
@@ -204,7 +204,7 @@ func runBlobStats(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to query columns: %w", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var col BlobColumn
@@ -229,7 +229,7 @@ func runBlobStats(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to query columns: %w", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var col BlobColumn
@@ -419,10 +419,10 @@ func runBlobBackup(cmd *cobra.Command, args []string) error {
 		op.Fail("Failed to create output file", "error", err)
 		return fmt.Errorf("create output file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	tw := tar.NewWriter(f)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	// Configure BLOB engine
 	engineCfg := &backup.BLOBEngineConfig{
@@ -494,7 +494,7 @@ func runBlobRestore(cmd *cobra.Command, args []string) error {
 		op.Fail("Failed to open input file", "error", err)
 		return fmt.Errorf("open input file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Connect to database
 	connStr := fmt.Sprintf("host=%s port=%d user=%s dbname=%s sslmode=%s",

@@ -105,7 +105,7 @@ func VerifyRestore(ctx context.Context, cfg *config.Config, log logger.Logger,
 		res.Duration = time.Since(start)
 		return res, nil
 	}
-	defer restoreDB.Close()
+	defer func() { _ = restoreDB.Close() }()
 
 	restoreEngine := restore.NewSilent(&restoreCfg, log, restoreDB)
 	if err := restoreEngine.RestoreSingle(ctx, archivePath, tempDB, false, false); err != nil {
@@ -124,7 +124,7 @@ func VerifyRestore(ctx context.Context, cfg *config.Config, log logger.Logger,
 		res.Duration = time.Since(start)
 		return res, nil
 	}
-	defer verifyDB.Close()
+	defer func() { _ = verifyDB.Close() }()
 
 	if err := verifyDB.Connect(ctx); err != nil {
 		res.Error = fmt.Sprintf("failed to connect to temp database: %v", err)

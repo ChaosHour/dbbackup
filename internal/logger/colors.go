@@ -12,41 +12,41 @@ import (
 // Success prints a success message with green checkmark
 func Success(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	SuccessColor.Fprint(os.Stdout, "✓ ")
+	_, _ = SuccessColor.Fprint(os.Stdout, "✓ ")
 	fmt.Println(msg)
 }
 
 // Error prints an error message with red X
 func Error(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	ErrorColor.Fprint(os.Stderr, "✗ ")
+	_, _ = ErrorColor.Fprint(os.Stderr, "✗ ")
 	fmt.Fprintln(os.Stderr, msg)
 }
 
 // Warning prints a warning message with yellow exclamation
 func Warning(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	WarnColor.Fprint(os.Stdout, "⚠ ")
+	_, _ = WarnColor.Fprint(os.Stdout, "⚠ ")
 	fmt.Println(msg)
 }
 
 // Info prints an info message with blue arrow
 func Info(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	InfoColor.Fprint(os.Stdout, "→ ")
+	_, _ = InfoColor.Fprint(os.Stdout, "→ ")
 	fmt.Println(msg)
 }
 
 // Header prints a bold header
 func Header(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	HighlightColor.Println(msg)
+	_, _ = HighlightColor.Println(msg)
 }
 
 // Dim prints dimmed/secondary text
 func Dim(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	DimColor.Println(msg)
+	_, _ = DimColor.Println(msg)
 }
 
 // Bold returns bold text
@@ -76,16 +76,16 @@ func Cyan(text string) string {
 
 // StatusLine prints a key-value status line
 func StatusLine(key, value string) {
-	DimColor.Printf("  %s: ", key)
+	_, _ = DimColor.Printf("  %s: ", key)
 	fmt.Println(value)
 }
 
 // ProgressStatus prints operation status with timing
 func ProgressStatus(operation string, status string, isSuccess bool) {
 	if isSuccess {
-		SuccessColor.Print("[OK] ")
+		_, _ = SuccessColor.Print("[OK] ")
 	} else {
-		ErrorColor.Print("[FAIL] ")
+		_, _ = ErrorColor.Print("[FAIL] ")
 	}
 	fmt.Printf("%s: %s\n", operation, status)
 }
@@ -94,7 +94,7 @@ func ProgressStatus(operation string, status string, isSuccess bool) {
 func TableRow(cols ...string) {
 	for i, col := range cols {
 		if i == 0 {
-			InfoColor.Printf("%-20s", col)
+			_, _ = InfoColor.Printf("%-20s", col)
 		} else {
 			fmt.Printf("%-15s", col)
 		}

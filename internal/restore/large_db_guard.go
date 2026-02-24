@@ -266,7 +266,7 @@ func (g *LargeDBGuard) checkLockConfiguration(ctx context.Context) (int, int) {
 		}
 		return 64, 100 // PostgreSQL defaults
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var maxLocks, maxConns int
 
@@ -522,7 +522,7 @@ func getMemInfo() (*memInfo, error) {
 
 		// Parse value (in kB)
 		var value uint64
-		fmt.Sscanf(fields[1], "%d", &value)
+		_, _ = fmt.Sscanf(fields[1], "%d", &value)
 		value *= 1024 // Convert to bytes
 
 		switch fields[0] {
@@ -654,7 +654,7 @@ func (g *LargeDBGuard) StreamCountBLOBs(ctx context.Context, dumpFile string) (i
 	}
 
 	if err := scanner.Err(); err != nil {
-		cmd.Wait()
+		_ = cmd.Wait()
 		return count, err
 	}
 
@@ -690,7 +690,7 @@ func (g *LargeDBGuard) StreamAnalyzeDump(ctx context.Context, dumpFile string) (
 	}
 
 	if err := scanner.Err(); err != nil {
-		cmd.Wait()
+		_ = cmd.Wait()
 		return blobCount, totalObjects, err
 	}
 
@@ -741,8 +741,8 @@ func (g *LargeDBGuard) CheckTmpfsAvailable() *TmpfsRecommendation {
 		if err != nil {
 			continue
 		}
-		f.Close()
-		os.Remove(testFile)
+		_ = f.Close()
+		_ = os.Remove(testFile)
 
 		// Found usable tmpfs - prefer the one with most free space
 		if freeBytes > rec.FreeBytes {

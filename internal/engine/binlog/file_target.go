@@ -275,14 +275,14 @@ func (c *CompressedFileTarget) openNewFile() error {
 // rotate closes current file and opens a new one
 func (c *CompressedFileTarget) rotate() error {
 	if c.gzWriter != nil {
-		c.gzWriter.Close()
+		_ = c.gzWriter.Close()
 	}
 	if c.sw != nil {
 		c.sw.Shutdown() // Block lingering pgzip goroutines before closing file
 		c.sw = nil
 	}
 	if c.file != nil {
-		c.file.Close()
+		_ = c.file.Close()
 		c.file = nil
 	}
 

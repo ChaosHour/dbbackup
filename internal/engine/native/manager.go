@@ -251,7 +251,7 @@ func (m *EngineManager) BackupWithNativeEngine(ctx context.Context, outputWriter
 	if err := engine.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("failed to connect with native engine: %w", err)
 	}
-	defer engine.Close()
+	defer func() { _ = engine.Close() }()
 
 	// Perform backup
 	result, err := engine.Backup(ctx, outputWriter)
@@ -296,7 +296,7 @@ func (m *EngineManager) RestoreWithNativeEngine(ctx context.Context, inputReader
 		if err := restoreEngine.Connect(ctx); err != nil {
 			return fmt.Errorf("failed to connect to target database %s: %w", targetDB, err)
 		}
-		defer restoreEngine.Close()
+		defer func() { _ = restoreEngine.Close() }()
 
 		// Perform restore
 		if err := restoreEngine.Restore(ctx, inputReader, targetDB); err != nil {
@@ -327,7 +327,7 @@ func (m *EngineManager) RestoreWithNativeEngine(ctx context.Context, inputReader
 		if err := restoreEngine.Connect(ctx); err != nil {
 			return fmt.Errorf("failed to connect to target database %s: %w", targetDB, err)
 		}
-		defer restoreEngine.Close()
+		defer func() { _ = restoreEngine.Close() }()
 
 		// Perform restore
 		if err := restoreEngine.Restore(ctx, inputReader, targetDB); err != nil {

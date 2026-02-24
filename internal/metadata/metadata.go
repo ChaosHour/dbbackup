@@ -68,7 +68,7 @@ func CalculateSHA256(filePath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	hasher := sha256.New()
 	if _, err := io.Copy(hasher, f); err != nil {

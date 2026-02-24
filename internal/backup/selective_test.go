@@ -344,7 +344,7 @@ func TestTableBackupConfigDefaults(t *testing.T) {
 	}
 
 	log := &mockLogger{}
-	NewTableBackup(cfg, log)
+	_, _ = NewTableBackup(cfg, log)
 
 	// After NewTableBackup - defaults should be set
 	if cfg.Port != 5432 {

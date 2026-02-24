@@ -97,7 +97,7 @@ func (m *HealthViewModel) runHealthChecks() tea.Cmd {
 		checks = append(checks, catalogCheck)
 
 		if cat != nil {
-			defer cat.Close()
+			defer func() { _ = cat.Close() }()
 
 			// 5. Backup freshness check
 			checks = append(checks, m.checkBackupFreshness(cat, interval))
@@ -220,7 +220,7 @@ func (m *HealthViewModel) checkDatabaseConnectivity() TUIHealthCheck {
 		check.Details = err.Error()
 		return check
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		check.Status = HealthStatusCritical
@@ -271,7 +271,7 @@ func (m *HealthViewModel) checkBackupDir() TUIHealthCheck {
 		check.Details = err.Error()
 		return check
 	}
-	os.Remove(testFile)
+	_ = os.Remove(testFile)
 
 	check.Message = "Directory accessible"
 	check.Details = m.config.BackupDir
@@ -300,7 +300,7 @@ func (m *HealthViewModel) checkCatalogIntegrity() (TUIHealthCheck, *catalog.SQLi
 		check.Status = HealthStatusCritical
 		check.Message = "Catalog corrupted"
 		check.Details = err.Error()
-		cat.Close()
+		_ = cat.Close()
 		return check, nil
 	}
 
@@ -695,7 +695,7 @@ func (m *HealthViewModel) checkGaleraCluster() TUIHealthCheck {
 		check.Details = err.Error()
 		return check
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		check.Status = HealthStatusWarning

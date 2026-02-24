@@ -92,7 +92,7 @@ func parsePgHbaConf(path string, user string) AuthMethod {
 		// This avoids sudo password prompts when running as postgres via su
 		return AuthUnknown
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	var content strings.Builder
@@ -290,7 +290,7 @@ func parsePgpass(path string, cfg *config.Config) string {
 	if err != nil {
 		return ""
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Check file permissions (should be 0600)
 	info, err := file.Stat()

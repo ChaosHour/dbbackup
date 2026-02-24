@@ -130,7 +130,7 @@ func (a *AzureBackend) Upload(ctx context.Context, localPath, remotePath string,
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
@@ -300,14 +300,14 @@ func (a *AzureBackend) Download(ctx context.Context, remotePath, localPath strin
 		if err != nil {
 			return fmt.Errorf("failed to download blob: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// Create/truncate local file
 		file, err := os.Create(localPath)
 		if err != nil {
 			return fmt.Errorf("failed to create file: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		// Wrap reader with progress tracking
 		reader := NewProgressReader(resp.Body, fileSize, progress)

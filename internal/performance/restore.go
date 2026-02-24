@@ -222,7 +222,7 @@ func (sd *StreamingDecompressor) Decompress(ctx context.Context, w io.Writer) er
 	if err != nil {
 		return fmt.Errorf("failed to create decompressor: %w", err)
 	}
-	defer gr.Close()
+	defer func() { _ = gr.Close() }()
 
 	start := time.Now()
 

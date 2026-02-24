@@ -101,7 +101,7 @@ func (e *AESEncryptor) Encrypt(reader io.Reader, key []byte) (io.Reader, error) 
 	pr, pw := io.Pipe()
 
 	go func() {
-		defer pw.Close()
+		defer func() { _ = pw.Close() }()
 
 		// Write nonce first (needed for decryption)
 		if _, err := pw.Write(nonce); err != nil {
@@ -176,7 +176,7 @@ func (e *AESEncryptor) Decrypt(reader io.Reader, key []byte) (io.Reader, error) 
 	pr, pw := io.Pipe()
 
 	go func() {
-		defer pw.Close()
+		defer func() { _ = pw.Close() }()
 
 		// Read initial nonce
 		nonce := make([]byte, NonceSize)
@@ -240,14 +240,14 @@ func (e *AESEncryptor) EncryptFile(inputPath, outputPath string, key []byte) err
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
 	}
-	defer inFile.Close()
+	defer func() { _ = inFile.Close() }()
 
 	// Create output file
 	outFile, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Encrypt
 	encReader, err := e.Encrypt(inFile, key)
@@ -277,14 +277,14 @@ func (e *AESEncryptor) DecryptFile(inputPath, outputPath string, key []byte) err
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
 	}
-	defer inFile.Close()
+	defer func() { _ = inFile.Close() }()
 
 	// Create output file
 	outFile, err := os.Create(actualOutputPath)
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Decrypt
 	decReader, err := e.Decrypt(inFile, key)
@@ -296,19 +296,19 @@ func (e *AESEncryptor) DecryptFile(inputPath, outputPath string, key []byte) err
 	if _, err := io.Copy(outFile, decReader); err != nil {
 		// Clean up temp file on failure
 		if inPlace {
-			os.Remove(actualOutputPath)
+			_ = os.Remove(actualOutputPath)
 		}
 		return fmt.Errorf("failed to write decrypted data: %w", err)
 	}
 
 	// For in-place decryption, replace original file
 	if inPlace {
-		outFile.Close() // Close before rename
-		inFile.Close()  // Close before remove
+		_ = outFile.Close() // Close before rename
+		_ = inFile.Close()  // Close before remove
 
 		// Remove original encrypted file
 		if err := os.Remove(inputPath); err != nil {
-			os.Remove(actualOutputPath)
+			_ = os.Remove(actualOutputPath)
 			return fmt.Errorf("failed to remove original file: %w", err)
 		}
 

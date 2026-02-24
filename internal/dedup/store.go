@@ -134,7 +134,7 @@ func (s *ChunkStore) Put(chunk *Chunk) (isNew bool, err error) {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
-		os.MkdirAll(chunkDir, 0700) // retry mkdir
+		_ = os.MkdirAll(chunkDir, 0700) // retry mkdir
 	}
 
 	// Prepare data
@@ -167,7 +167,7 @@ func (s *ChunkStore) Put(chunk *Chunk) (isNew bool, err error) {
 		}
 		// Directory might not be visible yet on network FS
 		time.Sleep(20 * time.Millisecond)
-		os.MkdirAll(chunkDir, 0700)
+		_ = os.MkdirAll(chunkDir, 0700)
 	}
 	if writeErr != nil {
 		return false, fmt.Errorf("failed to write chunk: %w", writeErr)
@@ -182,10 +182,10 @@ func (s *ChunkStore) Put(chunk *Chunk) (isNew bool, err error) {
 		// Brief pause before retry on network filesystems
 		time.Sleep(10 * time.Millisecond)
 		// Re-ensure directory exists (refresh CIFS cache)
-		os.MkdirAll(filepath.Dir(path), 0700)
+		_ = os.MkdirAll(filepath.Dir(path), 0700)
 	}
 	if renameErr != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return false, fmt.Errorf("failed to commit chunk: %w", renameErr)
 	}
 
@@ -342,7 +342,7 @@ func (s *ChunkStore) decompressData(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	return io.ReadAll(r)
 }
 

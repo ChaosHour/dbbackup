@@ -201,7 +201,7 @@ func (m *MenuModel) checkConnectionHealth() tea.Cmd {
 			log.Error("[TUI-MENU] database.New() failed", "error", err)
 			return connectionHealthMsg{err: err, timestamp: time.Now()}
 		}
-		defer dbClient.Close()
+		defer func() { _ = dbClient.Close() }()
 
 		if err := dbClient.Connect(ctx); err != nil {
 			log.Error("[TUI-MENU] Connect() failed",
@@ -781,7 +781,7 @@ func RunInteractiveMenu(cfg *config.Config, log logger.Logger) error {
 	// Ensure cleanup on exit
 	defer func() {
 		if m != nil {
-			m.Close()
+			_ = m.Close()
 		}
 	}()
 

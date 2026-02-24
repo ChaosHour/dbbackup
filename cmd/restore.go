@@ -111,7 +111,7 @@ Examples:
   dbbackup restore list
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 
@@ -518,7 +518,7 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 		}
 
 		if !diagnoseKeepTemp {
-			defer os.RemoveAll(tempDir)
+			defer func() { _ = os.RemoveAll(tempDir) }()
 		} else {
 			log.Info("Temp directory preserved", "path", tempDir)
 		}
@@ -535,7 +535,7 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 		var hasErrors bool
 		for _, result := range results {
 			if diagnoseJSON {
-				diagnoser.PrintDiagnosisJSON(result)
+				_ = diagnoser.PrintDiagnosisJSON(result)
 			} else {
 				diagnoser.PrintDiagnosis(result)
 			}
@@ -577,7 +577,7 @@ func runRestoreDiagnose(cmd *cobra.Command, args []string) error {
 	}
 
 	if diagnoseJSON {
-		diagnoser.PrintDiagnosisJSON(result)
+		_ = diagnoser.PrintDiagnosisJSON(result)
 	} else {
 		diagnoser.PrintDiagnosis(result)
 	}
@@ -759,7 +759,7 @@ func runRestoreSingle(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create database instance: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Create restore engine
 	engine := restore.New(cfg, log, db)
@@ -1011,7 +1011,7 @@ func handleSingleDatabaseExtraction(ctx context.Context, archivePath, dbName str
 	if err != nil {
 		return fmt.Errorf("failed to create database instance: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Create restore engine
 	engine := restore.New(cfg, log, db)
@@ -1198,7 +1198,7 @@ func runFullClusterRestore(archivePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create database instance: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Check existing databases if --clean-cluster is enabled
 	var existingDBs []string
@@ -1332,7 +1332,7 @@ func runFullClusterRestore(archivePath string) error {
 		if extractErr != nil {
 			return fmt.Errorf("failed to extract cluster archive: %w", extractErr)
 		}
-		defer os.RemoveAll(extractedDir) // Cleanup at end
+		defer func() { _ = os.RemoveAll(extractedDir) }() // Cleanup at end
 		log.Info("Archive extracted successfully", "location", extractedDir)
 	}
 

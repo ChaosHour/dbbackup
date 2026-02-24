@@ -120,10 +120,10 @@ func (e *Engine) dropPostgresDatabaseIfExists(ctx context.Context, dbName string
 		}
 		revokeCmd := cleanup.SafeCommand(ctx, "psql", revokeArgs...)
 		revokeCmd.Env = append(os.Environ(), fmt.Sprintf("PGPASSWORD=%s", e.cfg.Password))
-		revokeCmd.Run() // Ignore errors - database might not exist
+		_ = revokeCmd.Run() // Ignore errors - database might not exist
 
 		// Terminate again after revoking
-		e.terminateConnections(ctx, dbName)
+		_ = e.terminateConnections(ctx, dbName)
 
 		select {
 		case <-ctx.Done():

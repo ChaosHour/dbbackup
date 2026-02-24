@@ -410,7 +410,7 @@ func testConnection(ctx context.Context) error {
 		indicator.Fail(fmt.Sprintf("Failed to create database instance: %v", err))
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Test tool availability
 	indicator.Start("Checking required tools...")

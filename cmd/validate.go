@@ -286,7 +286,7 @@ func validatePaths(cfg *config.Config, result *ValidationResult) {
 					Suggestion:  "Check directory permissions",
 				})
 			} else {
-				os.Remove(testFile)
+				_ = os.Remove(testFile)
 				check.Status = "pass"
 				check.Message = cfg.BackupDir
 			}
@@ -479,7 +479,7 @@ func validateConnectivity(cfg *config.Config, result *ValidationResult) {
 			Suggestion:  "Check host, port, and network connectivity",
 		})
 	} else {
-		conn.Close()
+		_ = conn.Close()
 		check.Status = "pass"
 		check.Message = fmt.Sprintf("Connected to %s", address)
 	}

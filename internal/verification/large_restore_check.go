@@ -120,7 +120,7 @@ func (c *LargeRestoreChecker) CheckDatabase(ctx context.Context, database string
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// 1. Get all tables
 	tables, err := c.getTables(ctx, db, database)
@@ -249,7 +249,7 @@ func (c *LargeRestoreChecker) getTables(ctx context.Context, db *sql.DB, databas
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var t tableInfo
@@ -352,7 +352,7 @@ func (c *LargeRestoreChecker) detectBlobColumns(ctx context.Context, db *sql.DB,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var col string
@@ -408,7 +408,7 @@ func (c *LargeRestoreChecker) verifyPostgresLargeObjects(ctx context.Context, db
 		// pg_largeobject_metadata may not exist or be empty
 		return nil, 0, 0, nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var oids []int64
 	for rows.Next() {
@@ -460,7 +460,7 @@ func (c *LargeRestoreChecker) verifyLargeObject(ctx context.Context, db *sql.DB,
 		result.Error = fmt.Sprintf("failed to read large object: %v", err)
 		return result
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	hasher := sha256.New()
 	var totalSize int64
@@ -509,7 +509,7 @@ func (c *LargeRestoreChecker) verifyTableBlobs(ctx context.Context, db *sql.DB, 
 			// Table might not have an id column, skip
 			continue
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var rowID string
@@ -574,7 +574,7 @@ func (c *LargeRestoreChecker) checkPostgresIntegrity(ctx context.Context, db *sq
 		LIMIT 5`
 	rows, err := db.QueryContext(ctx, query)
 	if err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var tableName string
 			var deadTuples int64
@@ -595,7 +595,7 @@ func (c *LargeRestoreChecker) checkMySQLIntegrity(ctx context.Context, db *sql.D
 		if err != nil {
 			continue
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var table, op, msgType, msgText string
@@ -678,7 +678,7 @@ func (c *LargeRestoreChecker) calculateFileChecksum(path string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	hasher := sha256.New()
 	buf := make([]byte, c.chunkSize)
@@ -716,7 +716,7 @@ func (c *LargeRestoreChecker) detectBackupFormat(path string) string {
 	if err != nil {
 		return "unknown"
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	magic := make([]byte, 8)
 	n, _ := f.Read(magic)
@@ -829,7 +829,7 @@ func (c *LargeRestoreChecker) verifyGzip(ctx context.Context, path string, resul
 	if err != nil {
 		return fmt.Errorf("cannot open gzip file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Get compressed size from file info
 	fi, err := f.Stat()
@@ -843,7 +843,7 @@ func (c *LargeRestoreChecker) verifyGzip(ctx context.Context, path string, resul
 	if err != nil {
 		return fmt.Errorf("gzip integrity check failed: invalid gzip header: %w", err)
 	}
-	defer gzr.Close()
+	defer func() { _ = gzr.Close() }()
 
 	// Read through entire file to verify integrity and calculate uncompressed size
 	var uncompressedSize int64

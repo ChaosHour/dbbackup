@@ -165,7 +165,7 @@ func TestMockTarget(t *testing.T) {
 		t.Error("expected target to be healthy")
 	}
 
-	target.Close()
+	_ = target.Close()
 	if !target.closed {
 		t.Error("expected target to be closed")
 	}
@@ -180,7 +180,7 @@ func TestFileTargetWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create file target: %v", err)
 	}
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 
 	ctx := context.Background()
 	events := []*Event{
@@ -203,7 +203,7 @@ func TestFileTargetWrite(t *testing.T) {
 		t.Fatalf("flush error: %v", err)
 	}
 
-	target.Close()
+	_ = target.Close()
 
 	// Find the generated file in the output directory
 	files, err := os.ReadDir(outputDir)
@@ -246,7 +246,7 @@ func TestCompressedFileTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create target: %v", err)
 	}
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 
 	ctx := context.Background()
 	events := []*Event{
@@ -268,7 +268,7 @@ func TestCompressedFileTarget(t *testing.T) {
 		t.Fatalf("flush error: %v", err)
 	}
 
-	target.Close()
+	_ = target.Close()
 
 	// Verify file exists
 	info, err := os.Stat(outputPath)
@@ -305,6 +305,6 @@ func BenchmarkEventMarshal(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(event)
+		_, _ = json.Marshal(event)
 	}
 }

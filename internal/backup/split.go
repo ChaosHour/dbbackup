@@ -164,7 +164,7 @@ func NewSplitBackupWriter(layout *SplitBackupLayout, dbName, dbType string, stre
 	// Open data file
 	dataFile, err := os.Create(layout.DataFile)
 	if err != nil {
-		schemaFile.Close()
+		_ = schemaFile.Close()
 		return nil, fmt.Errorf("create data file: %w", err)
 	}
 
@@ -175,10 +175,10 @@ func NewSplitBackupWriter(layout *SplitBackupLayout, dbName, dbType string, stre
 		streamFile, err := os.Create(streamPath)
 		if err != nil {
 			// Cleanup on error
-			schemaFile.Close()
-			dataFile.Close()
+			_ = schemaFile.Close()
+			_ = dataFile.Close()
 			for j := 0; j < i; j++ {
-				blobWriters[j].file.Close()
+				_ = blobWriters[j].file.Close()
 			}
 			return nil, fmt.Errorf("create blob stream %d: %w", i, err)
 		}
@@ -353,7 +353,7 @@ func (w *SplitBackupWriter) Close() error {
 		if err := encoder.Encode(w.manifest); err != nil {
 			errs = append(errs, fmt.Errorf("write manifest: %w", err))
 		}
-		manifestFile.Close()
+		_ = manifestFile.Close()
 	}
 
 	if len(errs) > 0 {

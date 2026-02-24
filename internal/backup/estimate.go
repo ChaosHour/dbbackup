@@ -58,7 +58,7 @@ func EstimateBackupSize(ctx context.Context, cfg *config.Config, log logger.Logg
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database instance: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -146,7 +146,7 @@ func EstimateClusterBackupSize(ctx context.Context, cfg *config.Config, log logg
 	if err != nil {
 		return nil, fmt.Errorf("failed to create database instance: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)

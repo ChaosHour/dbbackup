@@ -92,7 +92,7 @@ func (e *PsqlRestoreEngine) RestoreFile(ctx context.Context, filePath string) (*
 	if err != nil {
 		return result, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get file size for throughput calculation
 	stat, _ := file.Stat()
@@ -111,7 +111,7 @@ func (e *PsqlRestoreEngine) RestoreFile(ctx context.Context, filePath string) (*
 		}
 		decompCloser = decomp
 		reader = decomp.Reader
-		defer decompCloser.Close()
+		defer func() { _ = decompCloser.Close() }()
 		e.log.Info("Psql restore decompression", "algorithm", algo)
 	}
 
@@ -290,7 +290,7 @@ func BenchmarkVsNative(ctx context.Context, config *PostgreSQLNativeConfig, file
 	if err != nil {
 		return nil, fmt.Errorf("native engine setup failed: %w", err)
 	}
-	defer nativeEngine.Close()
+	defer func() { _ = nativeEngine.Close() }()
 
 	nativeResult, err := nativeEngine.RestoreFile(ctx, filePath, &ParallelRestoreOptions{
 		Workers:         workers,

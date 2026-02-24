@@ -71,7 +71,7 @@ func (v *CatalogSyncView) runSync() tea.Cmd {
 		if err != nil {
 			return catalogSyncResultMsg{err: fmt.Errorf("failed to open catalog at %s: %w", catalogPath, err)}
 		}
-		defer cat.Close()
+		defer func() { _ = cat.Close() }()
 
 		log.Info("Starting catalog sync", "directory", backupDir, "catalog", catalogPath)
 
@@ -81,7 +81,7 @@ func (v *CatalogSyncView) runSync() tea.Cmd {
 		}
 
 		// Update last sync time
-		cat.SetLastSync(ctx)
+		_ = cat.SetLastSync(ctx)
 
 		return catalogSyncResultMsg{
 			result:  result,

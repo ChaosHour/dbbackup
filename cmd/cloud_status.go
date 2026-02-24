@@ -341,10 +341,10 @@ func checkUploadPermissions(ctx context.Context, backend cloud.Backend, status *
 		})
 		return
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	if _, err := tmpFile.Write(testData); err != nil {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		fmt.Printf("[FAIL] Could not write test file: %v\n", err)
 		status.Checks = append(status.Checks, CloudStatusCheck{
 			Name:   "Upload Test",
@@ -353,7 +353,7 @@ func checkUploadPermissions(ctx context.Context, backend cloud.Backend, status *
 		})
 		return
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	startTime := time.Now()
 	err = backend.Upload(ctx, tmpFile.Name(), testKey, nil)

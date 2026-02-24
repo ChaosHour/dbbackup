@@ -125,7 +125,7 @@ func runMetricsExport(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open catalog: %w", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Create metrics writer with version info
 	writer := prometheus.NewMetricsWriterWithVersion(log, cat, server, cfg.Version, cfg.GitCommit)
@@ -160,7 +160,7 @@ func runMetricsServe(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open catalog: %w", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Create exporter with version info
 	exporter := prometheus.NewExporterWithVersion(log, cat, server, metricsPort, cfg.Version, cfg.GitCommit)

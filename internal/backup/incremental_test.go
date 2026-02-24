@@ -18,7 +18,7 @@ func TestIncrementalBackupRestore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	dataDir := filepath.Join(tempDir, "pgdata")
 	backupDir := filepath.Join(tempDir, "backups")
@@ -255,7 +255,7 @@ func TestIncrementalBackupErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	t.Run("Missing base backup", func(t *testing.T) {
 		config := &IncrementalBackupConfig{
@@ -272,11 +272,11 @@ func TestIncrementalBackupErrors(t *testing.T) {
 	t.Run("No changed files", func(t *testing.T) {
 		// Create a dummy base backup
 		baseBackupPath := filepath.Join(tempDir, "base.tar.gz")
-		os.WriteFile(baseBackupPath, []byte("dummy"), 0644)
+		_ = os.WriteFile(baseBackupPath, []byte("dummy"), 0644)
 
 		// Create metadata with current timestamp
 		baseMetadata := createTestMetadata("testdb", baseBackupPath, 100, "dummychecksum", "full", nil)
-		saveTestMetadata(baseBackupPath, baseMetadata)
+		_ = saveTestMetadata(baseBackupPath, baseMetadata)
 
 		config := &IncrementalBackupConfig{
 			BaseBackupPath:   baseBackupPath,
@@ -315,7 +315,7 @@ func saveTestMetadata(backupPath string, metadata map[string]interface{}) error 
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Simple JSON encoding
 	content := fmt.Sprintf(`{

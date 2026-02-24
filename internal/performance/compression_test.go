@@ -68,7 +68,7 @@ func TestParallelGzipWriter(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create gzip reader: %v", err)
 		}
-		defer gr.Close()
+		defer func() { _ = gr.Close() }()
 
 		decompressed, err := io.ReadAll(gr)
 		if err != nil {
@@ -108,7 +108,7 @@ func TestParallelGzipWriter(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create gzip reader: %v", err)
 		}
-		defer gr.Close()
+		defer func() { _ = gr.Close() }()
 
 		decompressed, err := io.ReadAll(gr)
 		if err != nil {
@@ -143,7 +143,7 @@ func TestParallelGzipReader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create reader: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	decompressed, err := io.ReadAll(r)
 	if err != nil {
@@ -228,8 +228,8 @@ func BenchmarkParallelGzipWriterFastest(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		w, _ := NewParallelGzipWriter(&buf, cfg)
-		w.Write(data)
-		w.Close()
+		_, _ = w.Write(data)
+		_ = w.Close()
 	}
 }
 
@@ -251,8 +251,8 @@ func BenchmarkParallelGzipWriterDefault(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		w, _ := NewParallelGzipWriter(&buf, cfg)
-		w.Write(data)
-		w.Close()
+		_, _ = w.Write(data)
+		_ = w.Close()
 	}
 }
 
@@ -265,8 +265,8 @@ func BenchmarkParallelGzipReader(b *testing.B) {
 	// Pre-compress
 	var compressed bytes.Buffer
 	w, _ := NewParallelGzipWriter(&compressed, DefaultCompressionConfig())
-	w.Write(data)
-	w.Close()
+	_, _ = w.Write(data)
+	_ = w.Close()
 
 	compressedData := compressed.Bytes()
 
@@ -275,8 +275,8 @@ func BenchmarkParallelGzipReader(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		r, _ := NewParallelGzipReader(bytes.NewReader(compressedData), DefaultCompressionConfig())
-		io.Copy(io.Discard, r)
-		r.Close()
+		_, _ = io.Copy(io.Discard, r)
+		_ = r.Close()
 	}
 }
 
@@ -292,7 +292,7 @@ func BenchmarkStandardGzipWriter(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		w, _ := gzip.NewWriterLevel(&buf, gzip.BestSpeed)
-		w.Write(data)
-		w.Close()
+		_, _ = w.Write(data)
+		_ = w.Close()
 	}
 }

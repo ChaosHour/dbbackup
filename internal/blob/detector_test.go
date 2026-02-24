@@ -432,7 +432,7 @@ func BenchmarkDetectType(b *testing.B) {
 	jpegData := append([]byte{0xFF, 0xD8, 0xFF, 0xE0}, make([]byte, 1024)...)
 	jsonData := []byte(`{"key": "value", "number": 42, "items": [1, 2, 3]}`)
 	randomData := make([]byte, 1024)
-	rand.Read(randomData)
+	_, _ = rand.Read(randomData)
 
 	b.Run("JPEG", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
@@ -455,7 +455,7 @@ func BenchmarkDetectType(b *testing.B) {
 
 func BenchmarkCalculateEntropy(b *testing.B) {
 	data := make([]byte, 4096)
-	rand.Read(data)
+	_, _ = rand.Read(data)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

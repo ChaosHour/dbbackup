@@ -69,7 +69,7 @@ func (c *ChainView) loadChains() tea.Msg {
 	if err != nil {
 		return chainLoadedMsg{err: fmt.Errorf("failed to open catalog: %w", err)}
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Get all databases
 	databases, err := cat.ListDatabases(ctx)

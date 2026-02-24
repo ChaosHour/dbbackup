@@ -127,8 +127,8 @@ func (c *SQLiteCatalog) PruneByGFS(ctx context.Context, policy *GFSPolicy) (*GFS
 					result.FilesDeleted++
 				}
 				// Also remove .meta.json and .sha256 sidecar files
-				os.Remove(d.Path + ".meta.json")
-				os.Remove(d.Path + ".sha256")
+				_ = os.Remove(d.Path + ".meta.json")
+				_ = os.Remove(d.Path + ".sha256")
 			}
 		}
 	}
@@ -255,7 +255,7 @@ func (c *SQLiteCatalog) listCompletedBackups(ctx context.Context, database strin
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var entries []*Entry
 	for rows.Next() {
@@ -278,13 +278,13 @@ func (c *SQLiteCatalog) deleteEntries(ctx context.Context, candidates []GFSCandi
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.PrepareContext(ctx, "DELETE FROM backups WHERE id = ?")
 	if err != nil {
 		return fmt.Errorf("prepare statement: %w", err)
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 
 	for _, d := range candidates {
 		if _, err := stmt.ExecContext(ctx, d.ID); err != nil {

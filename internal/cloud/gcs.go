@@ -95,7 +95,7 @@ func (g *GCSBackend) Upload(ctx context.Context, localPath, remotePath string, p
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	fileInfo, err := file.Stat()
 	if err != nil {
@@ -144,7 +144,7 @@ func (g *GCSBackend) Upload(ctx context.Context, localPath, remotePath string, p
 		// Upload with progress tracking and context awareness
 		_, err = CopyWithContext(uploadCtx, writer, reader)
 		if err != nil {
-			writer.Close()
+			_ = writer.Close()
 			return fmt.Errorf("failed to upload object: %w", err)
 		}
 
@@ -192,14 +192,14 @@ func (g *GCSBackend) Download(ctx context.Context, remotePath, localPath string,
 		if err != nil {
 			return fmt.Errorf("failed to download object: %w", err)
 		}
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		// Create/truncate local file
 		file, err := os.Create(localPath)
 		if err != nil {
 			return fmt.Errorf("failed to create file: %w", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		// Wrap reader with progress tracking
 		progressReader := NewProgressReader(reader, fileSize, progress)

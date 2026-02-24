@@ -149,7 +149,7 @@ func (s *S3Backend) Upload(ctx context.Context, localPath, remotePath string, pr
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get file size
 	stat, err := file.Stat()
@@ -316,14 +316,14 @@ func (s *S3Backend) Download(ctx context.Context, remotePath, localPath string, 
 		if err != nil {
 			return fmt.Errorf("failed to download from S3: %w", err)
 		}
-		defer result.Body.Close()
+		defer func() { _ = result.Body.Close() }()
 
 		// Create/truncate local file
 		outFile, err := os.Create(localPath)
 		if err != nil {
 			return fmt.Errorf("failed to create local file: %w", err)
 		}
-		defer outFile.Close()
+		defer func() { _ = outFile.Close() }()
 
 		// Copy with progress tracking
 		var reader io.Reader = result.Body

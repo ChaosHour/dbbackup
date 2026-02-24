@@ -91,7 +91,7 @@ func (v *DedupAnalyzeView) loadDedupStats() tea.Cmd {
 		if err != nil {
 			return dedupAnalyzeMsg{err: fmt.Errorf("failed to open chunk index at %s: %w", indexPath, err)}
 		}
-		defer index.Close()
+		defer func() { _ = index.Close() }()
 
 		// Get index stats
 		idxStats, err := index.Stats()

@@ -22,7 +22,7 @@ func newMockDB(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
 
 func TestDetectGaleraCluster_NotGalera(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// wsrep_on not found → not Galera
 	mock.ExpectQuery("SHOW VARIABLES LIKE ?").
@@ -43,7 +43,7 @@ func TestDetectGaleraCluster_NotGalera(t *testing.T) {
 
 func TestDetectGaleraCluster_WsrepOFF(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// wsrep_on = OFF
 	mock.ExpectQuery("SHOW VARIABLES LIKE ?").
@@ -62,7 +62,7 @@ func TestDetectGaleraCluster_WsrepOFF(t *testing.T) {
 
 func TestDetectGaleraCluster_Healthy(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// wsrep_on = ON
 	mock.ExpectQuery("SHOW VARIABLES LIKE ?").
@@ -286,7 +286,7 @@ func TestSetDesyncMode_NilDB(t *testing.T) {
 
 func TestSetDesyncMode_Enable(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec("SET GLOBAL wsrep_desync = ON").
 		WillReturnResult(sqlmock.NewResult(0, 0))
@@ -299,7 +299,7 @@ func TestSetDesyncMode_Enable(t *testing.T) {
 
 func TestSetDesyncMode_Disable(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec("SET GLOBAL wsrep_desync = OFF").
 		WillReturnResult(sqlmock.NewResult(0, 0))
@@ -312,7 +312,7 @@ func TestSetDesyncMode_Disable(t *testing.T) {
 
 func TestSetDesyncMode_Error(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectExec("SET GLOBAL wsrep_desync = ON").
 		WillReturnError(fmt.Errorf("access denied"))
@@ -328,7 +328,7 @@ func TestSetDesyncMode_Error(t *testing.T) {
 
 func TestValidateClusterForBackup_Healthy(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	setupHealthyGaleraMock(mock)
 
@@ -343,7 +343,7 @@ func TestValidateClusterForBackup_Healthy(t *testing.T) {
 
 func TestValidateClusterForBackup_TooSmall(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	setupHealthyGaleraMock(mock)
 
@@ -358,7 +358,7 @@ func TestValidateClusterForBackup_TooSmall(t *testing.T) {
 
 func TestValidateClusterForBackup_Unhealthy(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// wsrep_on = ON
 	mock.ExpectQuery("SHOW VARIABLES LIKE ?").
@@ -391,7 +391,7 @@ func TestValidateClusterForBackup_Unhealthy(t *testing.T) {
 
 func TestSelectBestNode_CurrentNode(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	setupHealthyGaleraMock(mock)
 
@@ -406,7 +406,7 @@ func TestSelectBestNode_CurrentNode(t *testing.T) {
 
 func TestSelectBestNode_PreferredMatch(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	setupHealthyGaleraMock(mock)
 
@@ -421,7 +421,7 @@ func TestSelectBestNode_PreferredMatch(t *testing.T) {
 
 func TestSelectBestNode_PreferredMismatch(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	setupHealthyGaleraMock(mock)
 
@@ -436,7 +436,7 @@ func TestSelectBestNode_PreferredMismatch(t *testing.T) {
 
 func TestSelectBestNode_PreferredMatchByAddress(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	setupHealthyGaleraMock(mock)
 
@@ -452,7 +452,7 @@ func TestSelectBestNode_PreferredMatchByAddress(t *testing.T) {
 
 func TestDetectGaleraCluster_QueryError(t *testing.T) {
 	db, mock := newMockDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mock.ExpectQuery("SHOW VARIABLES LIKE ?").
 		WithArgs("wsrep_on").

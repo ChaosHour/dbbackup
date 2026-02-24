@@ -44,7 +44,7 @@ func VerifyStream(filePath string) (*VerifyResult, error) {
 	if err != nil {
 		return result, fmt.Errorf("open archive: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Get compressed size
 	stat, err := f.Stat()
@@ -81,7 +81,7 @@ func VerifyStream(filePath string) (*VerifyResult, error) {
 		result.Error = fmt.Errorf("create decompressor: %w", err)
 		return result, nil
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Decompress the entire stream, counting bytes
 	// We discard the output — this is purely a validation pass
@@ -116,7 +116,7 @@ func VerifyStreamQuick(filePath string) (*VerifyResult, error) {
 	if err != nil {
 		return result, fmt.Errorf("open: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	stat, err := f.Stat()
 	if err != nil {
@@ -250,7 +250,7 @@ func (vr *ValidatingReader) Close() error {
 	}
 
 	if vr.rawReader != nil {
-		vr.rawReader.Close()
+		_ = vr.rawReader.Close()
 	}
 	return decompErr
 }

@@ -246,7 +246,7 @@ func (p *PreflightChecker) checkDatabaseConnectivity(ctx context.Context) Prefli
 		check.Status = StatusFailed
 		check.Message = "Ping failed"
 		check.Details = err.Error()
-		db.Close()
+		_ = db.Close()
 		return check
 	}
 
@@ -503,8 +503,8 @@ func (p *PreflightChecker) checkPermissions() PreflightCheck {
 		check.Details = err.Error()
 		return check
 	}
-	f.Close()
-	os.Remove(testFile)
+	_ = f.Close()
+	_ = os.Remove(testFile)
 
 	check.Status = StatusPassed
 	check.Message = "OK"

@@ -224,7 +224,7 @@ func (a *Analyzer) Analyze(ctx context.Context) (*DatabaseAnalysis, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	a.db = db
 
 	// Discover blob columns
@@ -364,7 +364,7 @@ func (a *Analyzer) discoverBlobColumns(ctx context.Context) ([]BlobColumnInfo, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var columns []BlobColumnInfo
 	for rows.Next() {
@@ -422,7 +422,7 @@ func (a *Analyzer) analyzeColumn(ctx context.Context, col BlobColumnInfo) BlobAn
 		analysis.ScanDuration = time.Since(startTime)
 		return analysis
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Sample blobs and analyze
 	var totalSampled int64
@@ -561,10 +561,10 @@ func (a *Analyzer) testCompression(data []byte) int64 {
 
 	_, err = gz.Write(data)
 	if err != nil {
-		gz.Close()
+		_ = gz.Close()
 		return int64(len(data))
 	}
-	gz.Close()
+	_ = gz.Close()
 
 	return int64(buf.Len())
 }
@@ -934,7 +934,7 @@ func (a *Analyzer) scanLargeObjects(ctx context.Context, analysis *DatabaseAnaly
 		analysis.LargeObjectAnalysis = loAnalysis
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var totalSampled int64
 	for rows.Next() && totalSampled < int64(a.sampleSize) {

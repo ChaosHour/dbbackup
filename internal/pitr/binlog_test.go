@@ -469,7 +469,7 @@ func TestBinlogArchiveInfo_Metadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("creating temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	bm := &BinlogManager{
 		archiveDir: tempDir,

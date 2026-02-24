@@ -80,7 +80,7 @@ func (d *Detector) detectLinux(info *CPUInfo) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	physicalCoreCount := make(map[string]bool)

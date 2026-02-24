@@ -94,7 +94,7 @@ func fetchStatus(cfg *config.Config, log logger.Logger) tea.Cmd {
 				connected: false,
 			}
 		}
-		defer dbClient.Close()
+		defer func() { _ = dbClient.Close() }()
 
 		if err := dbClient.Connect(ctx); err != nil {
 			return statusMsg{

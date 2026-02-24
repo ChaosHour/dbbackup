@@ -242,7 +242,7 @@ func newGzipCompressor(writer io.Writer, level int) (*Compressor, error) {
 	}
 	// Set parallel block size to 1MB for good parallelism
 	if err := gz.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
-		gz.Close()
+		_ = gz.Close()
 		return nil, fmt.Errorf("failed to configure parallel gzip: %w", err)
 	}
 	return &Compressor{
@@ -314,7 +314,7 @@ func WrapReader(reader io.Reader, filePath string, bufSize int) (io.Reader, func
 	}
 
 	cleanup := func() {
-		decomp.Close()
+		_ = decomp.Close()
 	}
 
 	return decomp.Reader, cleanup, nil

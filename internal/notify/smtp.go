@@ -110,14 +110,14 @@ func (s *SMTPNotifier) sendMail(ctx context.Context, message string) error {
 	if err != nil {
 		return fmt.Errorf("dial failed: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Create SMTP client
 	client, err := smtp.NewClient(conn, s.config.SMTPHost)
 	if err != nil {
 		return fmt.Errorf("smtp client creation failed: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// STARTTLS if needed (and not already using TLS)
 	if s.config.SMTPStartTLS && !s.config.SMTPTLS {

@@ -284,7 +284,7 @@ func runPrivilegesCheck(cfg *config.Config, log logger.Logger) PreflightCheckSta
 			State: "warn", Message: fmt.Sprintf("Cannot connect: %v", err),
 		}
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.PingContext(ctx); err != nil {
 		return PreflightCheckStatus{
@@ -337,7 +337,7 @@ func runLocksCheck(cfg *config.Config, log logger.Logger) PreflightCheckStatus {
 			State: "warn", Message: fmt.Sprintf("Cannot connect: %v", err),
 		}
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var maxLocksStr string
 	err = db.QueryRowContext(ctx, "SHOW max_locks_per_transaction").Scan(&maxLocksStr)

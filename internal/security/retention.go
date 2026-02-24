@@ -85,13 +85,13 @@ func (rp *RetentionPolicy) CleanupOldBackups(backupDir string) (int, int64, erro
 			// Also remove checksum file if exists
 			checksumPath := archive.Path + ".sha256"
 			if _, err := os.Stat(checksumPath); err == nil {
-				os.Remove(checksumPath)
+				_ = os.Remove(checksumPath)
 			}
 
 			// Also remove metadata file if exists
 			metadataPath := archive.Path + ".meta"
 			if _, err := os.Stat(metadataPath); err == nil {
-				os.Remove(metadataPath)
+				_ = os.Remove(metadataPath)
 			}
 
 			deletedCount++

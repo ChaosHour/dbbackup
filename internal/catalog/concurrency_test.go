@@ -23,13 +23,13 @@ func TestConcurrency_MultipleReaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -86,13 +86,13 @@ func TestConcurrency_WriterAndReaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -173,13 +173,13 @@ func TestConcurrency_SimultaneousWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -238,7 +238,7 @@ func TestConcurrency_CatalogLocking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "catalog.db")
 
@@ -247,13 +247,13 @@ func TestConcurrency_CatalogLocking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create catalog 1: %v", err)
 	}
-	defer cat1.Close()
+	defer func() { _ = cat1.Close() }()
 
 	cat2, err := NewSQLiteCatalog(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create catalog 2: %v", err)
 	}
-	defer cat2.Close()
+	defer func() { _ = cat2.Close() }()
 
 	ctx := context.Background()
 
@@ -314,13 +314,13 @@ func TestStress_HighVolumeWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -365,13 +365,13 @@ func TestStress_ContextCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Create a cancellable context
 	ctx, cancel := context.WithCancel(context.Background())
@@ -426,13 +426,13 @@ func TestResource_FileDescriptorLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Open many catalogs to test file descriptor handling
 	catalogs := make([]*SQLiteCatalog, 0, 50)
 	defer func() {
 		for _, cat := range catalogs {
-			cat.Close()
+			_ = cat.Close()
 		}
 	}()
 
@@ -473,13 +473,13 @@ func TestResource_LongRunningOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 

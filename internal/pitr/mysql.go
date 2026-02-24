@@ -176,7 +176,7 @@ func (m *MySQLPITR) Enable(ctx context.Context, config PITREnableConfig) error {
 
 	// Check expire_logs_days (don't want logs expiring before we archive them)
 	var expireDays int
-	m.db.QueryRowContext(ctx, "SELECT @@expire_logs_days").Scan(&expireDays)
+	_ = m.db.QueryRowContext(ctx, "SELECT @@expire_logs_days").Scan(&expireDays)
 	if expireDays > 0 && expireDays < config.RetentionDays {
 		issues = append(issues,
 			fmt.Sprintf("expire_logs_days (%d) is less than retention days (%d)",
@@ -302,7 +302,7 @@ func (m *MySQLPITR) GetCurrentPosition(ctx context.Context) (*BinlogPosition, er
 	if err != nil {
 		return nil, fmt.Errorf("getting master status: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if rows.Next() {
 		var file string
@@ -431,7 +431,7 @@ func (m *MySQLPITR) CreateBackup(ctx context.Context, opts BackupOptions) (*PITR
 	if err != nil {
 		return nil, fmt.Errorf("creating backup file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	var writer io.WriteCloser = outFile
 
@@ -449,12 +449,12 @@ func (m *MySQLPITR) CreateBackup(ctx context.Context, opts BackupOptions) (*PITR
 		comp, err := compression.NewCompressor(sw, algo, opts.CompressionLvl)
 		if err != nil {
 			sw.Shutdown()
-			os.Remove(backupPath)
+			_ = os.Remove(backupPath)
 			return nil, fmt.Errorf("creating compressor: %w", err)
 		}
 		writer = comp
 		defer func() {
-			comp.Close()
+			_ = comp.Close()
 			sw.Shutdown()
 		}()
 	}
@@ -463,13 +463,13 @@ func (m *MySQLPITR) CreateBackup(ctx context.Context, opts BackupOptions) (*PITR
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		os.Remove(backupPath)
+		_ = os.Remove(backupPath)
 		return nil, fmt.Errorf("mysqldump failed: %w", err)
 	}
 
 	// Close writers
 	if opts.Compression {
-		writer.Close()
+		_ = writer.Close()
 	}
 
 	// Get file size
@@ -498,7 +498,7 @@ func (m *MySQLPITR) CreateBackup(ctx context.Context, opts BackupOptions) (*PITR
 	// Save metadata alongside backup
 	metadataPath := backupPath + ".meta"
 	metaData, _ := json.MarshalIndent(backupInfo, "", "  ")
-	os.WriteFile(metadataPath, metaData, 0640)
+	_ = os.WriteFile(metadataPath, metaData, 0640)
 
 	return backupInfo, nil
 }
@@ -625,7 +625,7 @@ func (m *MySQLPITR) restoreBaseBackup(ctx context.Context, backup *PITRBackupInf
 	if err != nil {
 		return fmt.Errorf("opening backup file: %w", err)
 	}
-	defer backupFile.Close()
+	defer func() { _ = backupFile.Close() }()
 
 	input = backupFile
 
@@ -635,7 +635,7 @@ func (m *MySQLPITR) restoreBaseBackup(ctx context.Context, backup *PITRBackupInf
 		if err != nil {
 			return fmt.Errorf("creating decompression reader: %w", err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		input = decomp.Reader
 	}
 
@@ -693,7 +693,7 @@ func (m *MySQLPITR) ListRecoveryPoints(ctx context.Context) ([]RecoveryWindow, e
 
 		// Parse position
 		var startPos BinlogPosition
-		json.Unmarshal([]byte(backup.PositionJSON), &startPos)
+		_ = json.Unmarshal([]byte(backup.PositionJSON), &startPos)
 
 		window := RecoveryWindow{
 			BaseBackup:    backup.BackupFile,
@@ -821,7 +821,7 @@ func (m *MySQLPITR) ArchiveNewBinlogs(ctx context.Context) ([]BinlogArchiveInfo,
 	// Update metadata
 	if len(newArchives) > 0 {
 		allArchived, _ := m.binlogManager.ListArchivedBinlogs(ctx)
-		m.binlogManager.SaveArchiveMetadata(allArchived)
+		_ = m.binlogManager.SaveArchiveMetadata(allArchived)
 	}
 
 	return newArchives, nil
@@ -843,7 +843,7 @@ func (m *MySQLPITR) PurgeBinlogs(ctx context.Context) error {
 
 	for _, a := range archived {
 		if a.ArchivedAt.Before(cutoff) {
-			os.Remove(a.ArchivePath)
+			_ = os.Remove(a.ArchivePath)
 		}
 	}
 
@@ -856,7 +856,7 @@ func ExtractBinlogPositionFromDump(dumpPath string) (*BinlogPosition, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening dump file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var reader io.Reader = file
 	if compression.IsCompressed(dumpPath) {
@@ -864,7 +864,7 @@ func ExtractBinlogPositionFromDump(dumpPath string) (*BinlogPosition, error) {
 		if err != nil {
 			return nil, fmt.Errorf("creating decompression reader: %w", err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 	}
 

@@ -112,7 +112,7 @@ func runRTOAnalyze(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Create calculator
 	config := rto.DefaultConfig()
@@ -163,7 +163,7 @@ func runRTOStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Create calculator and analyze all
 	config := rto.DefaultConfig()
@@ -279,7 +279,7 @@ func runRTOCheck(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Create calculator
 	config := rto.DefaultConfig()

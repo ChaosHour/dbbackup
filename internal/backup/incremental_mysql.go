@@ -361,7 +361,7 @@ func (e *MySQLIncrementalEngine) CalculateFileChecksum(path string) (string, err
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
@@ -378,7 +378,7 @@ func (e *MySQLIncrementalEngine) createTarGz(ctx context.Context, outputFile str
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(outFile)
@@ -393,11 +393,11 @@ func (e *MySQLIncrementalEngine) createTarGz(ctx context.Context, outputFile str
 	if err != nil {
 		return fmt.Errorf("failed to create compressor: %w", err)
 	}
-	defer comp.Close()
+	defer func() { _ = comp.Close() }()
 
 	// Create tar writer
 	tarWriter := tar.NewWriter(comp)
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 
 	// Add each changed file to archive
 	for i, changedFile := range changedFiles {
@@ -427,7 +427,7 @@ func (e *MySQLIncrementalEngine) addFileToTar(tarWriter *tar.Writer, changedFile
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get file info
 	info, err := file.Stat()
@@ -472,14 +472,14 @@ func (e *MySQLIncrementalEngine) extractTarGz(ctx context.Context, archivePath, 
 	if err != nil {
 		return fmt.Errorf("failed to open archive: %w", err)
 	}
-	defer archiveFile.Close()
+	defer func() { _ = archiveFile.Close() }()
 
 	// Create decompression reader (supports gzip and zstd based on file extension)
 	decomp, err := compression.NewDecompressor(archiveFile, archivePath)
 	if err != nil {
 		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Create tar reader
 	tarReader := tar.NewReader(decomp.Reader)
@@ -525,10 +525,10 @@ func (e *MySQLIncrementalEngine) extractTarGz(ctx context.Context, archivePath, 
 			}
 
 			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
+				_ = outFile.Close()
 				return fmt.Errorf("failed to write file %s: %w", header.Name, err)
 			}
-			outFile.Close()
+			_ = outFile.Close()
 
 			// Preserve modification time
 			if err := os.Chtimes(targetPath, header.ModTime, header.ModTime); err != nil {

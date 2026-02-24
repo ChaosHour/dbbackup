@@ -199,10 +199,10 @@ func (e *CloneEngine) CheckAvailability(ctx context.Context) (*AvailabilityResul
 	var hasBackupAdmin bool
 	rows, err := e.db.QueryContext(ctx, "SHOW GRANTS")
 	if err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var grant string
-			rows.Scan(&grant)
+			_ = rows.Scan(&grant)
 			if strings.Contains(strings.ToUpper(grant), "BACKUP_ADMIN") ||
 				strings.Contains(strings.ToUpper(grant), "ALL PRIVILEGES") {
 				hasBackupAdmin = true
@@ -273,7 +273,7 @@ func (e *CloneEngine) Backup(ctx context.Context, opts *BackupOptions) (*BackupR
 
 	if cloneErr != nil {
 		// Cleanup on failure
-		os.RemoveAll(cloneDir)
+		_ = os.RemoveAll(cloneDir)
 		return nil, fmt.Errorf("clone failed: %w", cloneErr)
 	}
 
@@ -285,7 +285,7 @@ func (e *CloneEngine) Backup(ctx context.Context, opts *BackupOptions) (*BackupR
 
 	// Calculate clone size
 	var cloneSize int64
-	filepath.Walk(cloneDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(cloneDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			cloneSize += info.Size()
 		}
@@ -308,7 +308,7 @@ func (e *CloneEngine) Backup(ctx context.Context, opts *BackupOptions) (*BackupR
 		}
 
 		// Remove uncompressed clone
-		os.RemoveAll(cloneDir)
+		_ = os.RemoveAll(cloneDir)
 
 		// Get compressed file info
 		info, _ := os.Stat(tarFile)
@@ -611,7 +611,7 @@ func (e *CloneEngine) compressClone(ctx context.Context, sourceDir, targetFile s
 	if err != nil {
 		return err
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(outFile)
@@ -627,11 +627,11 @@ func (e *CloneEngine) compressClone(ctx context.Context, sourceDir, targetFile s
 	if err != nil {
 		return err
 	}
-	defer comp.Close()
+	defer func() { _ = comp.Close() }()
 
 	// Create tar writer
 	tarWriter := tar.NewWriter(comp.Writer)
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 
 	// Walk directory and add files
 	return filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
@@ -670,7 +670,7 @@ func (e *CloneEngine) compressClone(ctx context.Context, sourceDir, targetFile s
 			if err != nil {
 				return err
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 
 			_, err = io.Copy(tarWriter, file)
 			if err != nil {
@@ -704,14 +704,14 @@ func (e *CloneEngine) extractClone(ctx context.Context, sourceFile, targetDir st
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Create decompressor (auto-detects gzip or zstd from filename)
 	decomp, err := compression.NewDecompressor(file, sourceFile)
 	if err != nil {
 		return err
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Create tar reader
 	tarReader := tar.NewReader(decomp.Reader)
@@ -749,10 +749,10 @@ func (e *CloneEngine) extractClone(ctx context.Context, sourceFile, targetDir st
 				return err
 			}
 			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
+				_ = outFile.Close()
 				return err
 			}
-			outFile.Close()
+			_ = outFile.Close()
 		}
 	}
 
@@ -820,13 +820,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	_, err = io.Copy(dstFile, srcFile)
 	return err

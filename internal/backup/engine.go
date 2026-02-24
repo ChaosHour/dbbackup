@@ -203,7 +203,7 @@ func (e *Engine) printf(format string, args ...interface{}) {
 // generateOperationID creates a unique operation ID
 func generateOperationID() string {
 	bytes := make([]byte, 8)
-	rand.Read(bytes)
+	_, _ = rand.Read(bytes)
 	return hex.EncodeToString(bytes)
 }
 
@@ -278,7 +278,7 @@ func (e *Engine) BackupSingle(ctx context.Context, databaseName string) error {
 				e.log.Warn("Native backup failed, falling back to external tools",
 					"database", databaseName, "error", nativeErr)
 				nativeStep.Fail(nativeErr)
-				os.Remove(outputFile) // Clean up partial file
+				_ = os.Remove(outputFile) // Clean up partial file
 				// Fall through to external tools path below
 			} else {
 				nativeStep.Fail(nativeErr)
@@ -585,7 +585,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	}
 	// For compressed output, remove temp dir after. For plain, we'll rename it.
 	if !plainOutput {
-		defer os.RemoveAll(tempDir)
+		defer func() { _ = os.RemoveAll(tempDir) }()
 	}
 
 	// Backup globals (users, roles, grants)
@@ -856,7 +856,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 						} else {
 							e.log.Error("Native engine connection failed", "database", name, "error", connErr)
 							atomic.AddInt32(&failCount, 1)
-							nativeEngine.Close()
+							_ = nativeEngine.Close()
 							return
 						}
 					} else {
@@ -865,7 +865,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 						if fileErr != nil {
 							e.log.Error("Failed to create output file", "file", sqlFile, "error", fileErr)
 							atomic.AddInt32(&failCount, 1)
-							nativeEngine.Close()
+							_ = nativeEngine.Close()
 							return
 						}
 
@@ -885,16 +885,16 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 						compWriter, _ := comp.NewCompressor(sw, algo, compressionLevel)
 
 						result, backupErr := nativeEngine.Backup(ctx, compWriter.Writer)
-						compWriter.Close()
+						_ = compWriter.Close()
 						sw.Shutdown() // Block lingering pgzip goroutines before closing file
-						outFile.Close()
-						nativeEngine.Close()
+						_ = outFile.Close()
+						_ = nativeEngine.Close()
 
 						// Stop the file size monitor
 						cancelMonitor()
 
 						if backupErr != nil {
-							os.Remove(sqlFile) // Clean up partial file
+							_ = os.Remove(sqlFile) // Clean up partial file
 							if e.cfg.FallbackToTools {
 								mu.Lock()
 								e.log.Warn("Native backup failed, falling back to pg_dump", "database", name, "error", backupErr)
@@ -919,7 +919,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 								outputSize = outInfo.Size()
 							}
 							if outputSize < 1024 && thisDbSize > 100*1024 && result.ObjectsProcessed > 0 {
-								os.Remove(sqlFile)
+								_ = os.Remove(sqlFile)
 								if e.cfg.FallbackToTools {
 									mu.Lock()
 									e.log.Warn("Native backup produced empty output (conn busy?), falling back to pg_dump",
@@ -1065,7 +1065,7 @@ func (e *Engine) BackupCluster(ctx context.Context) error {
 	if plainOutput {
 		// For directory, calculate total size
 		var totalSize int64
-		filepath.Walk(outputFile, func(_ string, fi os.FileInfo, _ error) error {
+		_ = filepath.Walk(outputFile, func(_ string, fi os.FileInfo, _ error) error {
 			if fi != nil && !fi.IsDir() {
 				totalSize += fi.Size()
 			}
@@ -1174,7 +1174,7 @@ func (e *Engine) executeCommandWithProgress(ctx context.Context, cmdArgs []strin
 	case <-ctx.Done():
 		// Context cancelled - kill entire process group
 		e.log.Warn("Backup cancelled - killing process group")
-		cleanup.KillCommandGroup(cmd)
+		_ = cleanup.KillCommandGroup(cmd)
 		<-cmdDone // Wait for goroutine to finish
 		cmdErr = ctx.Err()
 	}
@@ -1191,7 +1191,7 @@ func (e *Engine) executeCommandWithProgress(ctx context.Context, cmdArgs []strin
 
 // monitorCommandProgress monitors command output for progress information
 func (e *Engine) monitorCommandProgress(stderr io.ReadCloser, tracker *progress.OperationTracker) {
-	defer stderr.Close()
+	defer func() { _ = stderr.Close() }()
 
 	scanner := bufio.NewScanner(stderr)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024) // 64KB initial, 1MB max for performance
@@ -1241,7 +1241,7 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Create parallel compression writer (gzip or zstd based on config)
 	algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
@@ -1249,7 +1249,7 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 	if err != nil {
 		return fmt.Errorf("failed to create compression writer: %w", err)
 	}
-	defer compWriter.Close()
+	defer func() { _ = compWriter.Close() }()
 
 	// Set up pipeline: mysqldump stdout -> compressor -> file
 	pipe, err := dumpCmd.StdoutPipe()
@@ -1294,7 +1294,7 @@ func (e *Engine) executeMySQLWithProgressAndCompression(ctx context.Context, cmd
 		// mysqldump completed
 	case <-ctx.Done():
 		e.log.Warn("Backup cancelled - killing mysqldump process group")
-		cleanup.KillCommandGroup(dumpCmd)
+		_ = cleanup.KillCommandGroup(dumpCmd)
 		<-dumpDone
 		return ctx.Err()
 	}
@@ -1334,7 +1334,7 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Create parallel compression writer (gzip or zstd based on config)
 	algo, _ := comp.ParseAlgorithm(e.cfg.CompressionAlgorithm)
@@ -1342,7 +1342,7 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 	if err != nil {
 		return fmt.Errorf("failed to create compression writer: %w", err)
 	}
-	defer compWriter.Close()
+	defer func() { _ = compWriter.Close() }()
 
 	// Set up pipeline: mysqldump stdout -> compressor -> file
 	pipe, err := dumpCmd.StdoutPipe()
@@ -1387,7 +1387,7 @@ func (e *Engine) executeMySQLWithCompression(ctx context.Context, cmdArgs []stri
 		// mysqldump completed
 	case <-ctx.Done():
 		e.log.Warn("Backup cancelled - killing mysqldump process group")
-		cleanup.KillCommandGroup(dumpCmd)
+		_ = cleanup.KillCommandGroup(dumpCmd)
 		<-dumpDone
 		return ctx.Err()
 	}
@@ -1426,7 +1426,7 @@ func (e *Engine) executeMySQLToFile(ctx context.Context, cmdArgs []string, outpu
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	pipe, err := dumpCmd.StdoutPipe()
 	if err != nil {
@@ -1456,7 +1456,7 @@ func (e *Engine) executeMySQLToFile(ctx context.Context, cmdArgs []string, outpu
 	case dumpErr = <-dumpDone:
 	case <-ctx.Done():
 		e.log.Warn("Backup cancelled - killing mysqldump process group")
-		cleanup.KillCommandGroup(dumpCmd)
+		_ = cleanup.KillCommandGroup(dumpCmd)
 		<-dumpDone
 		return ctx.Err()
 	}
@@ -1488,7 +1488,7 @@ func (e *Engine) createSampleBackup(ctx context.Context, databaseName, outputFil
 	if err != nil {
 		return fmt.Errorf("failed to create sample backup file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Write header
 	fmt.Fprintf(file, "-- Sample Database Backup\n")
@@ -1589,7 +1589,7 @@ func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 		// Command completed normally
 	case <-ctx.Done():
 		e.log.Warn("Globals backup cancelled - killing pg_dumpall process group")
-		cleanup.KillCommandGroup(cmd)
+		_ = cleanup.KillCommandGroup(cmd)
 		<-cmdDone
 		return ctx.Err()
 	}
@@ -1663,7 +1663,7 @@ func (e *Engine) backupMySQLGlobals(ctx context.Context, tempDir string) error {
 	case cmdErr = <-cmdDone:
 	case <-ctx.Done():
 		e.log.Warn("Globals backup cancelled - killing mysqldump process group")
-		cleanup.KillCommandGroup(cmd)
+		_ = cleanup.KillCommandGroup(cmd)
 		<-cmdDone
 		return ctx.Err()
 	}
@@ -1721,14 +1721,14 @@ func (e *Engine) createTarCompressed(ctx context.Context, sourceDir, outputFile 
 	if err != nil {
 		return fmt.Errorf("cannot create archive: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Use buffered writer for better I/O performance
 	bufWriter := bufio.NewWriterSize(outFile, 4*1024*1024) // 4MB buffer
 
 	compWriter, err := comp.NewCompressor(bufWriter, algo, level)
 	if err != nil {
-		os.Remove(outputFile)
+		_ = os.Remove(outputFile)
 		return fmt.Errorf("cannot create %s compressor: %w", algo, err)
 	}
 
@@ -1775,7 +1775,7 @@ func (e *Engine) createTarCompressed(ctx context.Context, sourceDir, outputFile 
 			if err != nil {
 				return fmt.Errorf("cannot open %s: %w", path, err)
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 			if _, err := io.Copy(tarWriter, file); err != nil {
 				return fmt.Errorf("cannot write %s: %w", path, err)
 			}
@@ -1784,10 +1784,10 @@ func (e *Engine) createTarCompressed(ctx context.Context, sourceDir, outputFile 
 	})
 
 	if archiveErr != nil {
-		tarWriter.Close()
-		compWriter.Close()
-		outFile.Close()
-		os.Remove(outputFile)
+		_ = tarWriter.Close()
+		_ = compWriter.Close()
+		_ = outFile.Close()
+		_ = os.Remove(outputFile)
 		return archiveErr
 	}
 
@@ -2005,7 +2005,7 @@ func (e *Engine) verifyClusterArchive(ctx context.Context, archivePath string) e
 	if err != nil {
 		return fmt.Errorf("cannot open archive: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get file size
 	info, err := file.Stat()
@@ -2029,7 +2029,7 @@ func (e *Engine) verifyClusterArchive(ctx context.Context, archivePath string) e
 	if err != nil {
 		return fmt.Errorf("invalid compressed format: %w", err)
 	}
-	defer decompReader.Close()
+	defer func() { _ = decompReader.Close() }()
 
 	// Read just the first tar header to verify archive structure
 	tarReader := tar.NewReader(decompReader.Reader)
@@ -2251,7 +2251,7 @@ func (e *Engine) executeCommand(ctx context.Context, cmdArgs []string, outputFil
 	case <-ctx.Done():
 		// Context cancelled - kill entire process group
 		e.log.Warn("Backup cancelled - killing pg_dump process group")
-		cleanup.KillCommandGroup(cmd)
+		_ = cleanup.KillCommandGroup(cmd)
 		<-cmdDone // Wait for goroutine to finish
 		cmdErr = ctx.Err()
 	}
@@ -2323,7 +2323,7 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Wrap file in SafeWriter to prevent pgzip goroutine panics on early close
 	sw := fs.NewSafeWriter(outFile)
@@ -2368,7 +2368,7 @@ func (e *Engine) executeWithStreamingCompression(ctx context.Context, cmdArgs []
 	case <-ctx.Done():
 		// Context cancelled/timeout - kill pg_dump process group
 		e.log.Warn("Backup timeout - killing pg_dump process group")
-		cleanup.KillCommandGroup(dumpCmd)
+		_ = cleanup.KillCommandGroup(dumpCmd)
 		<-dumpDone // Wait for goroutine to finish
 		dumpErr = ctx.Err()
 	}
@@ -2456,10 +2456,10 @@ func (e *Engine) backupSingleNativePostgreSQL(ctx context.Context, databaseName,
 	}
 
 	if err := nativeEngine.Connect(ctx); err != nil {
-		nativeEngine.Close()
+		_ = nativeEngine.Close()
 		return fmt.Errorf("native engine connection failed: %w", err)
 	}
-	defer nativeEngine.Close()
+	defer func() { _ = nativeEngine.Close() }()
 
 	outFile, err := os.Create(outputFile)
 	if err != nil {
@@ -2472,9 +2472,9 @@ func (e *Engine) backupSingleNativePostgreSQL(ctx context.Context, databaseName,
 
 	tracker.UpdateProgress(50, "Native backup in progress...")
 	result, backupErr := nativeEngine.Backup(ctx, compWriter.Writer)
-	compWriter.Close()
+	_ = compWriter.Close()
 	sw.Shutdown() // Block lingering pgzip goroutines before closing file
-	outFile.Close()
+	_ = outFile.Close()
 
 	if backupErr != nil {
 		return fmt.Errorf("native backup failed: %w", backupErr)
@@ -2523,10 +2523,10 @@ func (e *Engine) backupSingleNativeMySQL(ctx context.Context, databaseName, outp
 	}
 
 	if err := nativeEngine.Connect(ctx); err != nil {
-		nativeEngine.Close()
+		_ = nativeEngine.Close()
 		return fmt.Errorf("MySQL native engine connection failed: %w", err)
 	}
-	defer nativeEngine.Close()
+	defer func() { _ = nativeEngine.Close() }()
 
 	outFile, err := os.Create(outputFile)
 	if err != nil {
@@ -2539,9 +2539,9 @@ func (e *Engine) backupSingleNativeMySQL(ctx context.Context, databaseName, outp
 
 	tracker.UpdateProgress(50, "Native MySQL backup in progress...")
 	result, backupErr := nativeEngine.Backup(ctx, compWriter.Writer)
-	compWriter.Close()
+	_ = compWriter.Close()
 	sw.Shutdown() // Block lingering pgzip goroutines before closing file
-	outFile.Close()
+	_ = outFile.Close()
 
 	if backupErr != nil {
 		return fmt.Errorf("native MySQL backup failed: %w", backupErr)

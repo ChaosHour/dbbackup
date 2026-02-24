@@ -45,7 +45,7 @@ func (m *TmpfsManager) Detect() ([]TmpfsInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot read /proc/mounts: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -94,8 +94,8 @@ func (m *TmpfsManager) checkMount(mountPoint string) *TmpfsInfo {
 	// Check if we can write
 	testFile := filepath.Join(mountPoint, ".dbbackup_test")
 	if f, err := os.Create(testFile); err == nil {
-		f.Close()
-		os.Remove(testFile)
+		_ = f.Close()
+		_ = os.Remove(testFile)
 		info.Writable = true
 	}
 
@@ -116,7 +116,7 @@ func (m *TmpfsManager) checkMount(mountPoint string) *TmpfsInfo {
 // Returns the writable tmpfs with the most free space (no hardcoded path preferences)
 func (m *TmpfsManager) GetBestTmpfs(minFreeGB int) *TmpfsInfo {
 	if m.available == nil {
-		m.Detect()
+		_, _ = m.Detect()
 	}
 
 	minFreeBytes := uint64(minFreeGB) * 1024 * 1024 * 1024
@@ -153,7 +153,7 @@ func (m *TmpfsManager) GetTempDir(subdir string, minFreeGB int) (string, bool) {
 	}
 
 	// Ensure permissions are correct even if dir already existed
-	os.Chmod(dir, 0700)
+	_ = os.Chmod(dir, 0700)
 
 	return dir, true
 }
@@ -161,7 +161,7 @@ func (m *TmpfsManager) GetTempDir(subdir string, minFreeGB int) (string, bool) {
 // Summary returns a string summarizing available tmpfs
 func (m *TmpfsManager) Summary() string {
 	if m.available == nil {
-		m.Detect()
+		_, _ = m.Detect()
 	}
 
 	if len(m.available) == 0 {
@@ -191,7 +191,7 @@ func (m *TmpfsManager) Summary() string {
 // PrintAvailable logs available tmpfs mounts
 func (m *TmpfsManager) PrintAvailable() {
 	if m.available == nil {
-		m.Detect()
+		_, _ = m.Detect()
 	}
 
 	if len(m.available) == 0 {

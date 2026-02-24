@@ -195,7 +195,7 @@ func (p *PostgreSQL) ListDatabases(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query databases: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var databases []string
 	for rows.Next() {
@@ -224,7 +224,7 @@ func (p *PostgreSQL) ListTables(ctx context.Context, database string) ([]string,
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tables: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []string
 	for rows.Next() {

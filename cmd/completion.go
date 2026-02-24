@@ -64,13 +64,13 @@ work correctly for the command you're using.`,
 
 		switch shell {
 		case "bash":
-			root.GenBashCompletionV2(os.Stdout, true)
+			_ = root.GenBashCompletionV2(os.Stdout, true)
 		case "zsh":
-			root.GenZshCompletion(os.Stdout)
+			_ = root.GenZshCompletion(os.Stdout)
 		case "fish":
-			root.GenFishCompletion(os.Stdout, true)
+			_ = root.GenFishCompletion(os.Stdout, true)
 		case "powershell":
-			root.GenPowerShellCompletionWithDesc(os.Stdout)
+			_ = root.GenPowerShellCompletionWithDesc(os.Stdout)
 		}
 	},
 }

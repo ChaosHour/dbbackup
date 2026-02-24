@@ -88,7 +88,7 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 	if err := engineManager.InitializeEngines(ctx); err != nil {
 		return fmt.Errorf("failed to initialize native engines: %w", err)
 	}
-	defer engineManager.Close()
+	defer func() { _ = engineManager.Close() }()
 
 	// Check if native engine is available for this database type
 	dbType := detectDatabaseTypeFromConfig()
@@ -127,7 +127,7 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Wrap with compression if enabled
 	var writer io.Writer = file
@@ -141,7 +141,7 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 			return fmt.Errorf("failed to create compressor: %w", err)
 		}
 		defer func() {
-			comp.Close()
+			_ = comp.Close()
 			sw.Shutdown()
 		}()
 		writer = comp.Writer
@@ -156,7 +156,7 @@ func runNativeBackup(ctx context.Context, db database.Database, databaseName, ba
 	result, err := engineManager.BackupWithNativeEngine(ctx, writer)
 	if err != nil {
 		// Clean up failed backup file
-		os.Remove(outputFile)
+		_ = os.Remove(outputFile)
 		auditLogger.LogBackupFailed(user, databaseName, err)
 		if notifyManager != nil {
 			notifyManager.Notify(notify.NewEvent(notify.EventBackupFailed, notify.SeverityError, "Native backup failed").

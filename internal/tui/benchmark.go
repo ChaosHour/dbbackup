@@ -190,7 +190,7 @@ func (v *BenchmarkView) fetchDatabases() tea.Cmd {
 		if err != nil {
 			return benchDBListMsg{err: fmt.Errorf("database client: %w", err)}
 		}
-		defer dbClient.Close()
+		defer func() { _ = dbClient.Close() }()
 		if err := dbClient.Connect(ctx); err != nil {
 			return benchDBListMsg{err: fmt.Errorf("connect: %w", err)}
 		}
@@ -546,7 +546,7 @@ func (v *BenchmarkView) startBenchmark() (tea.Model, tea.Cmd) {
 		if err != nil {
 			return benchDoneMsg{err: fmt.Errorf("open store: %w", err)}
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 
 		summaries, err := store.ListRecent(context.Background(), 1)
 		if err != nil || len(summaries) == 0 {
@@ -567,7 +567,7 @@ func (v *BenchmarkView) loadHistory() tea.Cmd {
 		if err != nil {
 			return benchHistoryMsg{err: err}
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		entries, err := store.ListRecent(context.Background(), 50)
 		return benchHistoryMsg{entries: entries, err: err}
 	}
@@ -579,7 +579,7 @@ func (v *BenchmarkView) loadDetail(runID string) tea.Cmd {
 		if err != nil {
 			return benchDetailMsg{err: err}
 		}
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		report, err := store.GetReport(context.Background(), runID)
 		return benchDetailMsg{report: report, err: err}
 	}

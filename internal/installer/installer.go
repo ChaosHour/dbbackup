@@ -177,8 +177,8 @@ func (i *Installer) Uninstall(ctx context.Context, instance string, purge bool) 
 	timerPath := filepath.Join(i.unitDir, timerName)
 
 	if !i.dryRun {
-		os.Remove(servicePath)
-		os.Remove(timerPath)
+		_ = os.Remove(servicePath)
+		_ = os.Remove(timerPath)
 	} else {
 		i.log.Info("Would remove", "service", servicePath)
 		i.log.Info("Would remove", "timer", timerPath)
@@ -192,8 +192,8 @@ func (i *Installer) Uninstall(ctx context.Context, instance string, purge bool) 
 		// Only remove templates if no other instances are using them
 		if i.canRemoveTemplates() {
 			if !i.dryRun {
-				os.Remove(templateService)
-				os.Remove(templateTimer)
+				_ = os.Remove(templateService)
+				_ = os.Remove(templateTimer)
 			}
 		}
 	}
@@ -203,7 +203,7 @@ func (i *Installer) Uninstall(ctx context.Context, instance string, purge bool) 
 	_ = i.systemctl(ctx, "stop", "dbbackup-exporter.service")
 	_ = i.systemctl(ctx, "disable", "dbbackup-exporter.service")
 	if !i.dryRun {
-		os.Remove(exporterPath)
+		_ = os.Remove(exporterPath)
 	}
 
 	// Reload systemd
@@ -425,9 +425,9 @@ func (i *Installer) createDirectories(opts InstallOptions) error {
 		u, err := user.Lookup(opts.User)
 		if err == nil {
 			var uid, gid int
-			fmt.Sscanf(u.Uid, "%d", &uid)
-			fmt.Sscanf(u.Gid, "%d", &gid)
-			os.Chown(d.path, uid, gid)
+			_, _ = fmt.Sscanf(u.Uid, "%d", &uid)
+			_, _ = fmt.Sscanf(u.Gid, "%d", &gid)
+			_ = os.Chown(d.path, uid, gid)
 		}
 	}
 
@@ -455,14 +455,14 @@ func (i *Installer) copyBinary(opts *InstallOptions) error {
 	if err != nil {
 		return fmt.Errorf("failed to open source binary: %w", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	// Create destination
 	dst, err := os.OpenFile(installPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create %s: %w", installPath, err)
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	// Copy
 	if _, err := io.Copy(dst, src); err != nil {

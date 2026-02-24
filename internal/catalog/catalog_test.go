@@ -15,7 +15,7 @@ func TestSQLiteCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "test_catalog.db")
 
@@ -24,7 +24,7 @@ func TestSQLiteCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -197,14 +197,14 @@ func TestGapDetection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "test_catalog.db")
 	cat, err := NewSQLiteCatalog(dbPath)
 	if err != nil {
 		t.Fatalf("Failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -229,7 +229,7 @@ func TestGapDetection(t *testing.T) {
 			CreatedAt:    ts,
 			Status:       StatusCompleted,
 		}
-		cat.Add(ctx, entry)
+		_ = cat.Add(ctx, entry)
 	}
 
 	// Detect gaps with 24h expected interval

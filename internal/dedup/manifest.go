@@ -87,7 +87,7 @@ func (s *ManifestStore) Save(m *Manifest) error {
 	}
 
 	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to commit manifest: %w", err)
 	}
 

@@ -87,7 +87,7 @@ func (b *BlobStatsView) discoverBlobColumns() ([]BlobColumn, int64, int64, error
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("failed to connect: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(b.ctx, 30*time.Second)
 	defer cancel()
@@ -132,7 +132,7 @@ func (b *BlobStatsView) scanPostgresBlobColumns(ctx context.Context, db *sql.DB)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query columns: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var columns []BlobColumn
 	for rows.Next() {
@@ -164,7 +164,7 @@ func (b *BlobStatsView) scanMySQLBlobColumns(ctx context.Context, db *sql.DB) ([
 	if err != nil {
 		return nil, fmt.Errorf("failed to query columns: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var columns []BlobColumn
 	for rows.Next() {

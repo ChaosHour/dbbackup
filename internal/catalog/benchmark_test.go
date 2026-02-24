@@ -23,14 +23,14 @@ func BenchmarkCatalogQuery(b *testing.B) {
 			if err != nil {
 				b.Fatalf("failed to create temp dir: %v", err)
 			}
-			defer os.RemoveAll(tmpDir)
+			defer func() { _ = os.RemoveAll(tmpDir) }()
 
 			dbPath := filepath.Join(tmpDir, "catalog.db")
 			cat, err := catalog.NewSQLiteCatalog(dbPath)
 			if err != nil {
 				b.Fatalf("failed to create catalog: %v", err)
 			}
-			defer cat.Close()
+			defer func() { _ = cat.Close() }()
 
 			ctx := context.Background()
 
@@ -75,14 +75,14 @@ func BenchmarkCatalogQueryByDatabase(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "catalog.db")
 	cat, err := catalog.NewSQLiteCatalog(dbPath)
 	if err != nil {
 		b.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -127,14 +127,14 @@ func BenchmarkCatalogAdd(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "catalog.db")
 	cat, err := catalog.NewSQLiteCatalog(dbPath)
 	if err != nil {
 		b.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 	now := time.Now()
@@ -165,14 +165,14 @@ func BenchmarkCatalogLatest(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "catalog.db")
 	cat, err := catalog.NewSQLiteCatalog(dbPath)
 	if err != nil {
 		b.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -221,14 +221,14 @@ func TestCatalogQueryPerformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	dbPath := filepath.Join(tmpDir, "catalog.db")
 	cat, err := catalog.NewSQLiteCatalog(dbPath)
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 

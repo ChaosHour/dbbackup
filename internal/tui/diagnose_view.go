@@ -76,7 +76,7 @@ func runDiagnosis(cfg *config.Config, log logger.Logger, archive ArchiveInfo) te
 				return diagnoseCompleteMsg{err: fmt.Errorf("failed to create temp dir (workDir=%s): %w", cfg.WorkDir, err)}
 			}
 			log.Info("Using temp directory", "path", tempDir)
-			defer removeTempDir(tempDir)
+			defer func() { _ = removeTempDir(tempDir) }()
 
 			// Diagnose all dumps in the cluster
 			results, err := diagnoser.DiagnoseClusterDumps(context.Background(), archive.Path, tempDir)

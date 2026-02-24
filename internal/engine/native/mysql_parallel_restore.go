@@ -101,7 +101,7 @@ func (e *MySQLParallelRestoreEngine) RestoreFile(ctx context.Context, filePath s
 	if err := os.MkdirAll(e.tmpDir, 0700); err != nil {
 		return result, fmt.Errorf("failed to create temp directory: %w", err)
 	}
-	defer os.RemoveAll(e.tmpDir) // Clean up TSV files
+	defer func() { _ = os.RemoveAll(e.tmpDir) }() // Clean up TSV files
 
 	e.log.Info("MySQL parallel restore starting",
 		"file", filePath,
@@ -113,7 +113,7 @@ func (e *MySQLParallelRestoreEngine) RestoreFile(ctx context.Context, filePath s
 	if err != nil {
 		return result, fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	bufReader := bufio.NewReaderSize(file, 256*1024)
 	var reader io.Reader = bufReader
@@ -123,7 +123,7 @@ func (e *MySQLParallelRestoreEngine) RestoreFile(ctx context.Context, filePath s
 		if err != nil {
 			return result, fmt.Errorf("failed to create %s reader: %w", algo, err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 		e.log.Info("Decompression active", "algorithm", algo)
 	}
@@ -145,7 +145,7 @@ func (e *MySQLParallelRestoreEngine) RestoreFile(ctx context.Context, filePath s
 	if err != nil {
 		return result, fmt.Errorf("failed to connect to MySQL: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	db.SetMaxOpenConns(e.workers + 2) // Workers + schema connection + buffer
 	db.SetMaxIdleConns(e.workers + 1)
@@ -195,7 +195,7 @@ func (e *MySQLParallelRestoreEngine) RestoreFile(ctx context.Context, filePath s
 		"SET SESSION bulk_insert_buffer_size = 268435456",
 	}
 	for _, opt := range bulkOpts {
-		db.ExecContext(ctx, opt)
+		_, _ = db.ExecContext(ctx, opt)
 	}
 
 	// Phase 3: Parallel data loading via LOAD DATA LOCAL INFILE
@@ -275,9 +275,9 @@ func (e *MySQLParallelRestoreEngine) RestoreFile(ctx context.Context, filePath s
 	}
 
 	// Re-enable checks
-	db.ExecContext(ctx, "SET SESSION FOREIGN_KEY_CHECKS = 1")
-	db.ExecContext(ctx, "SET SESSION UNIQUE_CHECKS = 1")
-	db.ExecContext(ctx, "COMMIT")
+	_, _ = db.ExecContext(ctx, "SET SESSION FOREIGN_KEY_CHECKS = 1")
+	_, _ = db.ExecContext(ctx, "SET SESSION UNIQUE_CHECKS = 1")
+	_, _ = db.ExecContext(ctx, "COMMIT")
 
 	result.Duration = time.Since(startTime)
 	e.log.Info("MySQL parallel restore completed",
@@ -311,8 +311,8 @@ func (e *MySQLParallelRestoreEngine) parseDump(ctx context.Context, reader io.Re
 
 	closeTsv := func() {
 		if tsvWriter != nil {
-			tsvWriter.Flush()
-			tsvFile.Close()
+			_ = tsvWriter.Flush()
+			_ = tsvFile.Close()
 			tsvWriter = nil
 			tsvFile = nil
 		}
@@ -413,7 +413,7 @@ func (e *MySQLParallelRestoreEngine) parseDump(ctx context.Context, reader io.Re
 							for _, row := range rows {
 								tsvLine := convertRowToTSV(row)
 								n, _ := tsvWriter.WriteString(tsvLine)
-								tsvWriter.WriteByte('\n')
+								_ = tsvWriter.WriteByte('\n')
 								currentChunk.RowCount++
 								currentChunk.ByteCount += int64(n + 1)
 							}
@@ -427,7 +427,7 @@ func (e *MySQLParallelRestoreEngine) parseDump(ctx context.Context, reader io.Re
 					for _, row := range rows {
 						tsvLine := convertRowToTSV(row)
 						n, _ := tsvWriter.WriteString(tsvLine)
-						tsvWriter.WriteByte('\n')
+						_ = tsvWriter.WriteByte('\n')
 						currentChunk.RowCount++
 						currentChunk.ByteCount += int64(n + 1)
 					}
@@ -478,7 +478,7 @@ func (e *MySQLParallelRestoreEngine) loadDataChunk(ctx context.Context, db *sql.
 	if err != nil {
 		return 0, fmt.Errorf("failed to get connection: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Apply per-connection bulk settings
 	for _, stmt := range []string{
@@ -486,12 +486,12 @@ func (e *MySQLParallelRestoreEngine) loadDataChunk(ctx context.Context, db *sql.
 		"SET SESSION UNIQUE_CHECKS = 0",
 		"SET SESSION AUTOCOMMIT = 0",
 	} {
-		conn.ExecContext(ctx, stmt)
+		_, _ = conn.ExecContext(ctx, stmt)
 	}
 
 	// DISABLE KEYS for MyISAM tables (non-critical if InnoDB)
 	if disableKeys {
-		conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s DISABLE KEYS", chunk.TableName))
+		_, _ = conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s DISABLE KEYS", chunk.TableName))
 	}
 
 	// Execute LOAD DATA LOCAL INFILE
@@ -507,7 +507,7 @@ func (e *MySQLParallelRestoreEngine) loadDataChunk(ctx context.Context, db *sql.
 	if err != nil {
 		// Re-enable keys even on error
 		if disableKeys {
-			conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", chunk.TableName))
+			_, _ = conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", chunk.TableName))
 		}
 		return 0, fmt.Errorf("LOAD DATA failed: %w", err)
 	}
@@ -516,10 +516,10 @@ func (e *MySQLParallelRestoreEngine) loadDataChunk(ctx context.Context, db *sql.
 
 	// ENABLE KEYS
 	if disableKeys {
-		conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", chunk.TableName))
+		_, _ = conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", chunk.TableName))
 	}
 
-	conn.ExecContext(ctx, "COMMIT")
+	_, _ = conn.ExecContext(ctx, "COMMIT")
 
 	return rows, nil
 }
@@ -531,7 +531,7 @@ func (e *MySQLParallelRestoreEngine) fallbackInsert(ctx context.Context, db *sql
 	if err != nil {
 		return fmt.Errorf("failed to open TSV for fallback: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)

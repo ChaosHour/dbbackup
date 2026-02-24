@@ -251,7 +251,7 @@ func vacuumLegacy(ctx context.Context, db *sql.DB, log logger.Logger, result *LO
 	if err != nil {
 		return result, fmt.Errorf("failed to list orphaned LO OIDs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var cleaned int64
 	for rows.Next() {
@@ -339,7 +339,7 @@ func findOIDColumns(ctx context.Context, db *sql.DB) []oidColumnRef {
 	if err != nil {
 		return nil
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var refs []oidColumnRef
 	for rows.Next() {

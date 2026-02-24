@@ -349,7 +349,7 @@ func executeBackupWithTUIProgress(parentCtx context.Context, cfg *config.Config,
 				err:    fmt.Errorf("failed to create database client: %w", err),
 			}
 		}
-		defer dbClient.Close()
+		defer func() { _ = dbClient.Close() }()
 
 		if err := dbClient.Connect(ctx); err != nil {
 			return backupCompleteMsg{
@@ -610,7 +610,7 @@ func (m BackupExecutionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Final poll of progress state — the backup may complete faster than
 		// the 100ms tick interval, leaving m.dbTotal at 0 in the summary.
 		func() {
-			defer func() { recover() }()
+			defer func() { _ = recover() }()
 			dbTotal, dbDone, dbName, overallPhase, phaseDesc, hasUpdate, _, dbAvgPerDB, _, bytesDone, bytesTotal, metaSrc := getCurrentBackupProgress()
 			if hasUpdate || dbTotal > 0 {
 				m.dbTotal = dbTotal

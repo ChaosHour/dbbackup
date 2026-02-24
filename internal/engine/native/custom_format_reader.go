@@ -460,7 +460,7 @@ func (r *CustomFormatReader) readDataBlock(entry *TOCEntry) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gzip reader: %w", err)
 		}
-		defer gz.Close()
+		defer func() { _ = gz.Close() }()
 		return io.ReadAll(gz)
 
 	case CompressZstd:
@@ -468,7 +468,7 @@ func (r *CustomFormatReader) readDataBlock(entry *TOCEntry) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("zstd reader: %w", err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		return io.ReadAll(decomp.Reader)
 
 	case CompressLZ4:
@@ -643,7 +643,7 @@ func (r *CustomFormatReader) DumpSQL(ctx context.Context, output io.Writer) erro
 			tableName = entry.Namespace + "." + entry.Tag
 		}
 		fmt.Fprintf(output, "COPY %s FROM stdin;\n", tableName)
-		output.Write(data)
+		_, _ = output.Write(data)
 		fmt.Fprintf(output, "\\.\n\n")
 	}
 

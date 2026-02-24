@@ -449,8 +449,8 @@ func (r *RestoreDryRun) checkWorkDirectory() DryRunCheck {
 		check.Details = err.Error()
 		return check
 	}
-	f.Close()
-	os.Remove(testFile)
+	_ = f.Close()
+	_ = os.Remove(testFile)
 
 	check.Status = DryRunPassed
 	check.Message = fmt.Sprintf("Work directory writable: %s", workDir)
@@ -540,7 +540,7 @@ func (r *RestoreDryRun) checkLockSettings(ctx context.Context) DryRunCheck {
 
 	// Default is 64, recommend at least 128 for parallel restores
 	var lockCount int
-	fmt.Sscanf(locks, "%d", &lockCount)
+	_, _ = fmt.Sscanf(locks, "%d", &lockCount)
 
 	if lockCount < 128 {
 		check.Status = DryRunWarning
@@ -572,7 +572,7 @@ func (r *RestoreDryRun) checkMemoryAvailability() DryRunCheck {
 	var availableKB int64
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.HasPrefix(line, "MemAvailable:") {
-			fmt.Sscanf(line, "MemAvailable: %d kB", &availableKB)
+			_, _ = fmt.Sscanf(line, "MemAvailable: %d kB", &availableKB)
 			break
 		}
 	}

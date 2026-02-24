@@ -183,10 +183,10 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 	// Create output file
 	outFile, err := os.Create(outputFile)
 	if err != nil {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		return nil, fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Setup writer (with optional compression)
 	var writer io.Writer = outFile
@@ -205,7 +205,7 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 			return nil, fmt.Errorf("failed to create compressor: %w", err)
 		}
 		defer func() {
-			compressor.Close()
+			_ = compressor.Close()
 			sw.Shutdown()
 		}()
 		writer = compressor.Writer
@@ -220,7 +220,7 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 		n, err := bufReader.Read(buf)
 		if n > 0 {
 			if _, werr := writer.Write(buf[:n]); werr != nil {
-				cmd.Process.Kill()
+				_ = cmd.Process.Kill()
 				return nil, fmt.Errorf("failed to write output: %w", werr)
 			}
 			bytesWritten += int64(n)
@@ -244,7 +244,7 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 
 	// Close compressor before checking command status
 	if compressor != nil {
-		compressor.Close()
+		_ = compressor.Close()
 	}
 
 	// Wait for command with proper context handling
@@ -259,7 +259,7 @@ func (e *MySQLDumpEngine) Backup(ctx context.Context, opts *BackupOptions) (*Bac
 		// Command completed
 	case <-ctx.Done():
 		e.log.Warn("MySQL backup cancelled - killing process")
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		<-cmdDone
 		cmdErr = ctx.Err()
 	}
@@ -384,7 +384,7 @@ func (e *MySQLDumpEngine) Restore(ctx context.Context, opts *RestoreOptions) err
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
 	}
-	defer inFile.Close()
+	defer func() { _ = inFile.Close() }()
 
 	// Setup reader (with optional decompression)
 	var reader io.Reader = inFile
@@ -393,7 +393,7 @@ func (e *MySQLDumpEngine) Restore(ctx context.Context, opts *RestoreOptions) err
 		if err != nil {
 			return fmt.Errorf("failed to create decompressor: %w", err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 	}
 
@@ -464,19 +464,19 @@ func (e *MySQLDumpEngine) BackupToWriter(ctx context.Context, w io.Writer, opts 
 		}
 		streamComp, _ = compression.NewCompressor(w, algo, 0)
 		if streamComp != nil {
-			defer streamComp.Close()
+			defer func() { _ = streamComp.Close() }()
 			writer = streamComp.Writer
 		}
 	}
 
 	bytesWritten, err := io.Copy(writer, stdout)
 	if err != nil {
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		return nil, err
 	}
 
 	if streamComp != nil {
-		streamComp.Close()
+		_ = streamComp.Close()
 	}
 
 	// Wait for command with proper context handling
@@ -491,7 +491,7 @@ func (e *MySQLDumpEngine) BackupToWriter(ctx context.Context, w io.Writer, opts 
 		// Command completed
 	case <-ctx.Done():
 		e.log.Warn("MySQL streaming backup cancelled - killing process")
-		cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		<-cmdDone
 		cmdErr = ctx.Err()
 	}
@@ -579,7 +579,7 @@ func (e *MySQLDumpEngine) getBinlogPosition(ctx context.Context) (string, int64,
 	if err != nil {
 		return "", 0, ""
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if rows.Next() {
 		var file string
@@ -588,9 +588,9 @@ func (e *MySQLDumpEngine) getBinlogPosition(ctx context.Context) (string, int64,
 
 		cols, _ := rows.Columns()
 		if len(cols) >= 5 {
-			rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB, &gtidSet)
+			_ = rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB, &gtidSet)
 		} else {
-			rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB)
+			_ = rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB)
 		}
 
 		return file, position, gtidSet.String

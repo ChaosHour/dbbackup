@@ -127,13 +127,13 @@ func (a *Archiver) copyWAL(walFilePath, walFileName string, config ArchiveConfig
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to open WAL file: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.OpenFile(archivePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to create archive file: %w", err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	written, err := io.Copy(dstFile, srcFile)
 	if err != nil {
@@ -184,7 +184,7 @@ func (a *Archiver) compressAndEncryptWAL(walFilePath, walFileName string, config
 	if err := os.MkdirAll(tempDir, 0700); err != nil {
 		return "", 0, fmt.Errorf("failed to create temp directory: %w", err)
 	}
-	defer os.RemoveAll(tempDir) // Clean up temp dir
+	defer func() { _ = os.RemoveAll(tempDir) }() // Clean up temp dir
 
 	tempCompressed := filepath.Join(tempDir, walFileName+".gz")
 	compressor := NewCompressor(a.log)

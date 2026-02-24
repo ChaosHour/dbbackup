@@ -130,7 +130,7 @@ func getToolVersion(command string, args []string) string {
 func outputVersionJSON(info versionInfo) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	enc.Encode(info)
+	_ = enc.Encode(info)
 }
 
 func outputTable(info versionInfo) {

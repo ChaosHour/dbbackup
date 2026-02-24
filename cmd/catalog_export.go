@@ -72,7 +72,7 @@ func runCatalogExport(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -131,7 +131,7 @@ func exportCSV(entries []*catalog.Entry, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
@@ -205,7 +205,7 @@ func exportHTML(entries []*catalog.Entry, outputPath string, database string) er
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	title := "Backup Catalog Report"
 	if database != "" {
@@ -245,7 +245,7 @@ func exportHTML(entries []*catalog.Entry, outputPath string, database string) er
         <h1>%s</h1>
 `, title, title)
 
-	file.WriteString(htmlHeader)
+	_, _ = file.WriteString(htmlHeader)
 
 	// Summary section
 	totalSize := int64(0)
@@ -320,7 +320,7 @@ func exportHTML(entries []*catalog.Entry, outputPath string, database string) er
 		formatTimeSpan(newestBackup.Sub(oldestBackup)),
 	)
 
-	file.WriteString(summaryHTML)
+	_, _ = file.WriteString(summaryHTML)
 
 	// Table header
 	tableHeader := `
@@ -338,7 +338,7 @@ func exportHTML(entries []*catalog.Entry, outputPath string, database string) er
             </thead>
             <tbody>
 `
-	file.WriteString(tableHeader)
+	_, _ = file.WriteString(tableHeader)
 
 	// Table rows
 	for _, entry := range entries {
@@ -378,7 +378,7 @@ func exportHTML(entries []*catalog.Entry, outputPath string, database string) er
 			html.EscapeString(statusText),
 			strings.Join(badges, " "),
 		)
-		file.WriteString(row)
+		_, _ = file.WriteString(row)
 	}
 
 	// Table footer and close HTML
@@ -392,7 +392,7 @@ func exportHTML(entries []*catalog.Entry, outputPath string, database string) er
 </body>
 </html>
 `
-	file.WriteString(htmlFooter)
+	_, _ = file.WriteString(htmlFooter)
 
 	fmt.Printf("✅ Exported %d backups to HTML: %s\n", len(entries), outputPath)
 	fmt.Printf("   Open in browser: file://%s\n", filepath.Join(os.Getenv("PWD"), exportOutput))
@@ -405,7 +405,7 @@ func exportJSON(entries []*catalog.Entry, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")

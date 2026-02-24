@@ -675,15 +675,15 @@ func containsMiddle(s, substr string) bool {
 func BenchmarkWALArchiving(b *testing.B) {
 	tempDir := b.TempDir()
 	walArchiveDir := filepath.Join(tempDir, "wal_archive")
-	os.MkdirAll(walArchiveDir, 0700)
+	_ = os.MkdirAll(walArchiveDir, 0700)
 
 	walDir := filepath.Join(tempDir, "wal")
-	os.MkdirAll(walDir, 0700)
+	_ = os.MkdirAll(walDir, 0700)
 
 	// Create a 16MB mock WAL file (typical size)
 	walContent := make([]byte, 16*1024*1024)
 	walFilePath := filepath.Join(walDir, "000000010000000000000001")
-	os.WriteFile(walFilePath, walContent, 0600)
+	_ = os.WriteFile(walFilePath, walContent, 0600)
 
 	cfg := &config.Config{}
 	log := logger.New("info", "text")
@@ -698,14 +698,14 @@ func BenchmarkWALArchiving(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ctx := context.Background()
-		archiver.ArchiveWALFile(ctx, walFilePath, "000000010000000000000001", archiveConfig)
+		_, _ = archiver.ArchiveWALFile(ctx, walFilePath, "000000010000000000000001", archiveConfig)
 	}
 }
 
 func BenchmarkRecoveryTargetParsing(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pitr.ParseRecoveryTarget(
+		_, _ = pitr.ParseRecoveryTarget(
 			"2024-11-26 12:00:00",
 			"",
 			"",

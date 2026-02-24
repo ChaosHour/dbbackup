@@ -190,7 +190,7 @@ func parseProcMeminfo() (map[string]int64, error) {
 		}
 		key := strings.TrimSuffix(fields[0], ":")
 		var val int64
-		fmt.Sscanf(fields[1], "%d", &val)
+		_, _ = fmt.Sscanf(fields[1], "%d", &val)
 		result[key] = val
 	}
 	return result, nil

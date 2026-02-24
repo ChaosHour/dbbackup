@@ -81,7 +81,7 @@ func (z *ZFSBackend) CreateSnapshot(ctx context.Context, opts SnapshotOptions) (
 	// Optionally sync filesystem first
 	if opts.Sync {
 		cmd := exec.CommandContext(ctx, "sync")
-		cmd.Run()
+		_ = cmd.Run()
 	}
 
 	// Create snapshot

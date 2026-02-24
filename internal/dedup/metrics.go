@@ -50,7 +50,7 @@ func CollectMetrics(basePath string, indexPath string) (*DedupMetrics, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open chunk index: %w", err)
 	}
-	defer idx.Close()
+	defer func() { _ = idx.Close() }()
 
 	store, err := NewChunkStore(StoreConfig{BasePath: basePath})
 	if err != nil {
@@ -161,7 +161,7 @@ func WritePrometheusTextfile(path string, instance string, basePath string, inde
 	}
 
 	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 

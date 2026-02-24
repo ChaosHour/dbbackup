@@ -123,7 +123,7 @@ func runCompressionAnalyze(ctx context.Context) error {
 
 	// Create analyzer
 	analyzer := compression.NewAnalyzer(cfg, log)
-	defer analyzer.Close()
+	defer func() { _ = analyzer.Close() }()
 
 	// Disable cache if requested
 	if compressionNoCache {
@@ -259,7 +259,7 @@ func AutoAnalyzeBeforeBackup(ctx context.Context, cfg *config.Config, log logger
 	}
 
 	analyzer := compression.NewAnalyzer(cfg, log)
-	defer analyzer.Close()
+	defer func() { _ = analyzer.Close() }()
 
 	// Use quick scan for auto-analyze to minimize delay
 	analysis, err := analyzer.QuickScan(ctx)

@@ -389,7 +389,7 @@ func (v *CatalogDashboardView) loadCatalog() tea.Cmd {
 		if err != nil {
 			return catalogLoadedMsg{err: err}
 		}
-		defer cat.Close()
+		defer func() { _ = cat.Close() }()
 
 		// Load entries
 		entries, err := cat.Search(context.Background(), &catalog.SearchQuery{})

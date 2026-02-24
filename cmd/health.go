@@ -141,7 +141,7 @@ func runHealthCheck(cmd *cobra.Command, args []string) error {
 	report.addCheck(catalogCheck)
 
 	if cat != nil {
-		defer cat.Close()
+		defer func() { _ = cat.Close() }()
 
 		// 5. Backup freshness check
 		report.addCheck(checkBackupFreshness(ctx, cat, interval))
@@ -323,7 +323,7 @@ func checkDatabaseConnectivity(ctx context.Context) HealthCheck {
 		check.Details = err.Error()
 		return check
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		check.Status = StatusCritical
@@ -374,7 +374,7 @@ func checkBackupDir() HealthCheck {
 		check.Details = err.Error()
 		return check
 	}
-	os.Remove(testFile)
+	_ = os.Remove(testFile)
 
 	check.Message = "Backup directory accessible"
 	check.Details = cfg.BackupDir
@@ -402,7 +402,7 @@ func checkCatalogIntegrity(ctx context.Context) (HealthCheck, *catalog.SQLiteCat
 		check.Status = StatusCritical
 		check.Message = "Catalog corrupted or inaccessible"
 		check.Details = err.Error()
-		cat.Close()
+		_ = cat.Close()
 		return check, nil
 	}
 
@@ -642,14 +642,14 @@ func checkDiskSpace() HealthCheck {
 		check.Details = err.Error()
 		return check
 	}
-	os.Remove(testPath)
+	_ = os.Remove(testPath)
 
 	// Try to get actual free space (Linux-specific)
 	info, err := os.Stat(cfg.BackupDir)
 	if err == nil && info.IsDir() {
 		// Walk the backup directory to get size
 		var totalSize int64
-		filepath.Walk(cfg.BackupDir, func(path string, info os.FileInfo, err error) error {
+		_ = filepath.Walk(cfg.BackupDir, func(path string, info os.FileInfo, err error) error {
 			if err == nil && !info.IsDir() {
 				totalSize += info.Size()
 			}
@@ -839,7 +839,7 @@ func parseProcMeminfoHealth() (map[string]int64, error) {
 		}
 		key := strings.TrimSuffix(fields[0], ":")
 		var val int64
-		fmt.Sscanf(fields[1], "%d", &val)
+		_, _ = fmt.Sscanf(fields[1], "%d", &val)
 		result[key] = val
 	}
 	return result, nil
@@ -858,7 +858,7 @@ func checkLargeObjectHealth(ctx context.Context) HealthCheck {
 		check.Details = err.Error()
 		return check
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		check.Status = StatusWarning
@@ -1237,7 +1237,7 @@ func checkToolVersionCompat(ctx context.Context) HealthCheck {
 		check.Message = "Cannot connect to check server version"
 		return check
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		check.Message = "Cannot connect to check server version"
@@ -1352,7 +1352,7 @@ func checkConnectionPooler(ctx context.Context) HealthCheck {
 		check.Message = "Cannot create database instance for pooler check"
 		return check
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		check.Message = "Cannot connect for pooler check"
@@ -1634,7 +1634,7 @@ func probeIMDS() bool {
 	if err != nil {
 		return false
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	return resp.StatusCode == 200
 }

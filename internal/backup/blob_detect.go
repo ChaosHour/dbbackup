@@ -103,7 +103,7 @@ func (d *BLOBDetector) DetectBLOBColumns(ctx context.Context) ([]BLOBColumn, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to detect BLOB columns: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var columns []BLOBColumn
 	for rows.Next() {

@@ -69,7 +69,7 @@ func (m *MockStreamingEngine) BackupToWriter(ctx context.Context, w io.Writer, o
 		return m.backupToWriterResult, nil
 	}
 	// Write some test data
-	w.Write([]byte("test backup data"))
+	_, _ = w.Write([]byte("test backup data"))
 	return &BackupResult{
 		Engine:    m.name,
 		StartTime: time.Now().Add(-time.Minute),
@@ -342,7 +342,7 @@ func BenchmarkRegistryGet(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		registry.Get("e")
+		_, _ = registry.Get("e")
 	}
 }
 

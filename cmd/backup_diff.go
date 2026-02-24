@@ -118,7 +118,7 @@ func resolveBackupArg(arg string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open catalog: %w", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 

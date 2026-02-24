@@ -307,7 +307,7 @@ func TestCollectBackupFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create mock backup files
 	files := []struct {
@@ -346,7 +346,7 @@ func TestCollectBackupFilesEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &PgBasebackupConfig{}
 	log := &mockLogger{}
@@ -368,7 +368,7 @@ func TestParseBackupLabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create mock backup_label file with exact format expected by parseBackupLabel
 	// The implementation splits on spaces, so format matters:
@@ -410,7 +410,7 @@ func TestParseBackupLabelNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &PgBasebackupConfig{}
 	log := &mockLogger{}

@@ -336,7 +336,7 @@ func (t *TableBackup) GetTableInfo(ctx context.Context, schema, table string) (*
 
 	// Get row count
 	var rowCount int64
-	t.pool.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", info.FullName)).Scan(&rowCount)
+	_ = t.pool.QueryRow(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", info.FullName)).Scan(&rowCount)
 	info.RowCount = rowCount
 
 	return info, nil
@@ -365,7 +365,7 @@ func (t *TableBackup) BackupTable(ctx context.Context, schema, table string, w i
 		}
 		writer = comp
 		compCloser2 = comp
-		defer compCloser2.Close()
+		defer func() { _ = compCloser2.Close() }()
 	}
 
 	result := &TableBackupResult{
@@ -520,7 +520,7 @@ func (t *TableBackup) BackupToFile(ctx context.Context, outputPath string) error
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var writer io.Writer = file
 	var compCloser io.Closer
@@ -535,11 +535,11 @@ func (t *TableBackup) BackupToFile(ctx context.Context, outputPath string) error
 		}
 		writer = comp
 		compCloser = comp
-		defer compCloser.Close()
+		defer func() { _ = compCloser.Close() }()
 	}
 
 	bufWriter := bufio.NewWriterSize(writer, 1024*1024)
-	defer bufWriter.Flush()
+	defer func() { _ = bufWriter.Flush() }()
 
 	// Write header
 	fmt.Fprintf(bufWriter, "-- dbbackup selective backup\n")
@@ -570,7 +570,7 @@ func (t *TableBackup) RestoreTable(ctx context.Context, inputPath string, target
 	if err != nil {
 		return fmt.Errorf("failed to open backup file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var reader io.Reader = file
 	if strings.HasSuffix(inputPath, ".gz") || strings.HasSuffix(inputPath, ".zst") || strings.HasSuffix(inputPath, ".zstd") {
@@ -578,7 +578,7 @@ func (t *TableBackup) RestoreTable(ctx context.Context, inputPath string, target
 		if err != nil {
 			return fmt.Errorf("failed to create decompressor: %w", err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 	}
 

@@ -101,7 +101,7 @@ func TestListWALFilesEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cfg := &Config{ArchiveDir: tmpDir}
 	log := &mockLogger{}
@@ -135,7 +135,7 @@ func TestListWALFilesWithFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create mock WAL files (24 hex chars)
 	walFiles := []string{
@@ -150,13 +150,13 @@ func TestListWALFilesWithFiles(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f.WriteString("dummy content")
-		f.Close()
+		_, _ = f.WriteString("dummy content")
+		_ = f.Close()
 	}
 
 	// Create non-WAL files (should be ignored)
-	os.WriteFile(filepath.Join(tmpDir, "README.txt"), []byte("readme"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "backup_label"), []byte("label"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "README.txt"), []byte("readme"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "backup_label"), []byte("label"), 0644)
 
 	cfg := &Config{ArchiveDir: tmpDir}
 	log := &mockLogger{}
@@ -196,11 +196,11 @@ func TestGetStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create some WAL files
-	os.WriteFile(filepath.Join(tmpDir, "00000001000000000000000A"), []byte("x"), 0644)
-	os.WriteFile(filepath.Join(tmpDir, "00000001000000000000000B"), []byte("xx"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "00000001000000000000000A"), []byte("x"), 0644)
+	_ = os.WriteFile(filepath.Join(tmpDir, "00000001000000000000000B"), []byte("xx"), 0644)
 
 	cfg := &Config{
 		ArchiveDir: tmpDir,
@@ -316,7 +316,7 @@ func TestFindWALsForRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create WAL files with different modification times
 	now := time.Now()
@@ -336,7 +336,7 @@ func TestFindWALsForRecovery(t *testing.T) {
 		if err := os.WriteFile(path, []byte("x"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		os.Chtimes(path, wf.modTime, wf.modTime)
+		_ = os.Chtimes(path, wf.modTime, wf.modTime)
 	}
 
 	cfg := &Config{ArchiveDir: tmpDir}
@@ -388,7 +388,7 @@ func TestCleanupOldWAL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	now := time.Now()
 
@@ -396,11 +396,11 @@ func TestCleanupOldWAL(t *testing.T) {
 	oldFile := filepath.Join(tmpDir, "00000001000000000000000A")
 	newFile := filepath.Join(tmpDir, "00000001000000000000000B")
 
-	os.WriteFile(oldFile, []byte("old"), 0644)
-	os.WriteFile(newFile, []byte("new"), 0644)
+	_ = os.WriteFile(oldFile, []byte("old"), 0644)
+	_ = os.WriteFile(newFile, []byte("new"), 0644)
 
 	// Make oldFile 10 days old
-	os.Chtimes(oldFile, now.AddDate(0, 0, -10), now.AddDate(0, 0, -10))
+	_ = os.Chtimes(oldFile, now.AddDate(0, 0, -10), now.AddDate(0, 0, -10))
 	// newFile stays current
 
 	cfg := &Config{

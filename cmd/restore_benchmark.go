@@ -211,7 +211,7 @@ Expected speedup: 3-6x for multi-table dumps.`,
 		if err != nil {
 			return fmt.Errorf("failed to create engine: %w", err)
 		}
-		defer engine.Close()
+		defer func() { _ = engine.Close() }()
 
 		pipelineCfg := &native.PipelineConfig{
 			ChunkSize:      rbPipelineChunkMB * 1024 * 1024,
@@ -302,7 +302,7 @@ This checks:
 		if err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
 		}
-		defer engine.Close()
+		defer func() { _ = engine.Close() }()
 
 		diag, err := native.DiagnoseRestore(ctx, engine.GetPool(), log)
 		if err != nil {

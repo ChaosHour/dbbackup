@@ -253,7 +253,7 @@ func (e *Engine) discoverPostgresqlTables(ctx context.Context) ([]*Table, error)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []*Table
 	for rows.Next() {
@@ -287,7 +287,7 @@ func (e *Engine) discoverMySQLTables(ctx context.Context) ([]*Table, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []*Table
 	for rows.Next() {
@@ -383,7 +383,7 @@ func (e *Engine) backupTable(ctx context.Context, table *Table) *TableResult {
 		result.Duration = time.Since(start)
 		return result
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Wrap with compression if needed
 	var writer io.WriteCloser = file
@@ -399,7 +399,7 @@ func (e *Engine) backupTable(ctx context.Context, table *Table) *TableResult {
 			return result
 		}
 		defer func() {
-			gzWriter.Close()
+			_ = gzWriter.Close()
 			sw.Shutdown()
 		}()
 		writer = gzWriter
@@ -411,7 +411,7 @@ func (e *Engine) backupTable(ctx context.Context, table *Table) *TableResult {
 			result.Duration = time.Since(start)
 			return result
 		}
-		defer comp.Close()
+		defer func() { _ = comp.Close() }()
 		writer = comp
 	}
 
@@ -467,7 +467,7 @@ func (e *Engine) dumpPostgresTable(ctx context.Context, table *Table, w io.Write
 		// Fallback to regular SELECT
 		return e.dumpViaSelect(ctx, table, cols, w)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var rowCount int64
 	for rows.Next() {
@@ -502,7 +502,7 @@ func (e *Engine) dumpViaSelect(ctx context.Context, table *Table, cols []string,
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var rowCount int64
 
@@ -547,7 +547,7 @@ func (e *Engine) getPostgresColumns(ctx context.Context, table *Table) ([]string
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var cols []string
 	for rows.Next() {
@@ -571,7 +571,7 @@ func (e *Engine) getMySQLColumns(ctx context.Context, table *Table) ([]string, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var cols []string
 	for rows.Next() {

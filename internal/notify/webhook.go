@@ -136,7 +136,7 @@ func (w *WebhookNotifier) doRequest(ctx context.Context, body []byte) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body for error messages
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -325,7 +325,7 @@ func (s *SlackWebhookNotifier) doRequest(ctx context.Context, body []byte) error
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
 

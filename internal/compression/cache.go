@@ -77,7 +77,7 @@ func (c *Cache) Get(host string, port int, database string) (*DatabaseAnalysis, 
 	// Check if expired
 	if time.Now().After(entry.ExpiresAt) {
 		// Clean up expired cache
-		os.Remove(path)
+		_ = os.Remove(path)
 		return nil, false
 	}
 
@@ -139,7 +139,7 @@ func (c *Cache) InvalidateAll() error {
 
 	for _, entry := range entries {
 		if filepath.Ext(entry.Name()) == ".json" {
-			os.Remove(filepath.Join(c.cacheDir, entry.Name()))
+			_ = os.Remove(filepath.Join(c.cacheDir, entry.Name()))
 		}
 	}
 	return nil

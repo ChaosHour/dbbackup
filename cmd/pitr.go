@@ -922,7 +922,7 @@ func runBinlogArchive(cmd *cobra.Command, args []string) error {
 	// Update metadata
 	if len(newArchives) > 0 {
 		allArchived, _ := bm.ListArchivedBinlogs(ctx)
-		bm.SaveArchiveMetadata(allArchived)
+		_ = bm.SaveArchiveMetadata(allArchived)
 	}
 
 	log.Info("[OK] Binlog archiving completed", "archived", len(newArchives))
@@ -972,7 +972,7 @@ func runBinlogWatch(cmd *cobra.Command, args []string) error {
 
 		// Update metadata
 		allArchived, _ := bm.ListArchivedBinlogs(ctx)
-		bm.SaveArchiveMetadata(allArchived)
+		_ = bm.SaveArchiveMetadata(allArchived)
 	})
 
 	if err != nil && err != context.Canceled {
@@ -1092,7 +1092,7 @@ func runBinlogPosition(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("connecting to MySQL: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("pinging MySQL: %w", err)
@@ -1103,7 +1103,7 @@ func runBinlogPosition(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("getting master status: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	fmt.Println("=============================================================")
 	fmt.Println("  Current Binary Log Position")
@@ -1164,7 +1164,7 @@ func runMySQLPITRStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("connecting to MySQL: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("pinging MySQL: %w", err)
@@ -1202,7 +1202,7 @@ func runMySQLPITRStatus(cmd *cobra.Command, args []string) error {
 
 	// Get binary logging status
 	var logBin string
-	db.QueryRowContext(ctx, "SELECT @@log_bin").Scan(&logBin)
+	_ = db.QueryRowContext(ctx, "SELECT @@log_bin").Scan(&logBin)
 	if logBin == "1" || logBin == "ON" {
 		fmt.Println("Binary Logging:  [OK] ENABLED")
 	} else {
@@ -1214,14 +1214,14 @@ func runMySQLPITRStatus(cmd *cobra.Command, args []string) error {
 	// Check GTID mode
 	var gtidMode string
 	if status.DatabaseType == pitr.DatabaseMariaDB {
-		db.QueryRowContext(ctx, "SELECT @@gtid_current_pos").Scan(&gtidMode)
+		_ = db.QueryRowContext(ctx, "SELECT @@gtid_current_pos").Scan(&gtidMode)
 		if gtidMode != "" {
 			fmt.Println("GTID Mode:       [OK] ENABLED")
 		} else {
 			fmt.Println("GTID Mode:       [FAIL] DISABLED")
 		}
 	} else {
-		db.QueryRowContext(ctx, "SELECT @@gtid_mode").Scan(&gtidMode)
+		_ = db.QueryRowContext(ctx, "SELECT @@gtid_mode").Scan(&gtidMode)
 		if gtidMode == "ON" {
 			fmt.Println("GTID Mode:       [OK] ENABLED")
 		} else {
@@ -1276,7 +1276,7 @@ func runMySQLPITREnable(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("connecting to MySQL: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.PingContext(ctx); err != nil {
 		return fmt.Errorf("pinging MySQL: %w", err)

@@ -431,7 +431,7 @@ func diagnosePermissions(autoFix bool) DiagnoseResult {
 			}
 		}
 	} else {
-		os.Remove(testFile)
+		_ = os.Remove(testFile)
 		result.Message = fmt.Sprintf("Backup directory writable: %s", backupDir)
 		if diagnoseVerbose {
 			result.Details = fmt.Sprintf("mode=%s", info.Mode().Perm())
@@ -527,7 +527,7 @@ func diagnosePostgresql(ctx context.Context) DiagnoseResult {
 		}
 		return result
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		result.Status = DiagnoseCritical
@@ -593,7 +593,7 @@ func diagnoseMysql(ctx context.Context) DiagnoseResult {
 		}
 		return result
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		result.Status = DiagnoseCritical
@@ -645,7 +645,7 @@ func diagnoseCatalog(ctx context.Context, autoFix bool) DiagnoseResult {
 					result.Status = DiagnoseFixed
 					result.Message = "Initialized catalog database"
 					result.FixApplied = true
-					cat.Close()
+					_ = cat.Close()
 					return result
 				}
 			}
@@ -660,7 +660,7 @@ func diagnoseCatalog(ctx context.Context, autoFix bool) DiagnoseResult {
 		}
 		return result
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	// Check integrity via a query
 	stats, err := cat.Stats(ctx)
@@ -920,7 +920,7 @@ func diagnoseRestoreSettings(ctx context.Context) DiagnoseResult {
 		result.Details = err.Error()
 		return result
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if err := db.Connect(ctx); err != nil {
 		result.Status = DiagnoseWarning

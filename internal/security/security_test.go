@@ -220,8 +220,8 @@ func TestRateLimiter_RecordSuccess(t *testing.T) {
 	log := &mockLogger{}
 	rl := NewRateLimiter(3, log)
 
-	rl.CheckAndWait("localhost")
-	rl.CheckAndWait("localhost")
+	_ = rl.CheckAndWait("localhost")
+	_ = rl.CheckAndWait("localhost")
 
 	rl.RecordSuccess("localhost")
 

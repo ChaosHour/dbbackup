@@ -319,7 +319,7 @@ func detectDiskProfile(ctx context.Context) (*DiskProfile, error) {
 
 	// Quick benchmark: Write and read test file
 	testFile := "/tmp/dbbackup_disk_bench.tmp"
-	defer os.Remove(testFile)
+	defer func() { _ = os.Remove(testFile) }()
 
 	// Write test (10MB)
 	data := make([]byte, 10*1024*1024)
@@ -339,8 +339,8 @@ func detectDiskProfile(ctx context.Context) (*DiskProfile, error) {
 	// Sync to ensure data is written
 	f, _ := os.OpenFile(testFile, os.O_RDWR, 0644)
 	if f != nil {
-		f.Sync()
-		f.Close()
+		_ = f.Sync()
+		_ = f.Close()
 	}
 
 	// Read test
@@ -470,7 +470,7 @@ func detectPostgresDatabaseProfile(ctx context.Context, dsn string) (*DatabasePr
 	var maxConns string
 	err = pool.QueryRow(ctx, "SHOW max_connections").Scan(&maxConns)
 	if err == nil {
-		fmt.Sscanf(maxConns, "%d", &profile.MaxConnections)
+		_, _ = fmt.Sscanf(maxConns, "%d", &profile.MaxConnections)
 	}
 
 	// Get shared_buffers
@@ -503,7 +503,7 @@ func detectPostgresDatabaseProfile(ctx context.Context, dsn string) (*DatabasePr
 
 	// Check for common BLOB columns
 	var blobCount int
-	pool.QueryRow(ctx, `
+	_ = pool.QueryRow(ctx, `
 		SELECT count(*)
 		FROM information_schema.columns
 		WHERE data_type IN ('bytea', 'text')
@@ -514,7 +514,7 @@ func detectPostgresDatabaseProfile(ctx context.Context, dsn string) (*DatabasePr
 
 	// Check for indexes
 	var indexCount int
-	pool.QueryRow(ctx, `
+	_ = pool.QueryRow(ctx, `
 		SELECT count(*)
 		FROM pg_indexes
 		WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
@@ -522,7 +522,7 @@ func detectPostgresDatabaseProfile(ctx context.Context, dsn string) (*DatabasePr
 	profile.HasIndexes = indexCount > 0
 
 	// Count tables
-	pool.QueryRow(ctx, `
+	_ = pool.QueryRow(ctx, `
 		SELECT count(*)
 		FROM information_schema.tables
 		WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
@@ -530,7 +530,7 @@ func detectPostgresDatabaseProfile(ctx context.Context, dsn string) (*DatabasePr
 	`).Scan(&profile.TableCount)
 
 	// Estimate row count (rough)
-	pool.QueryRow(ctx, `
+	_ = pool.QueryRow(ctx, `
 		SELECT COALESCE(sum(n_live_tup), 0)
 		FROM pg_stat_user_tables
 	`).Scan(&profile.EstimatedRowCount)
@@ -544,7 +544,7 @@ func detectMySQLDatabaseProfile(ctx context.Context, dsn string) (*DatabaseProfi
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Configure connection pool
 	db.SetMaxOpenConns(2)
@@ -621,7 +621,7 @@ func detectMySQLDatabaseProfile(ctx context.Context, dsn string) (*DatabaseProfi
 		FROM information_schema.tables 
 		WHERE table_schema = DATABASE() 
 		AND table_type = 'BASE TABLE'`)
-	row.Scan(&profile.TableCount)
+	_ = row.Scan(&profile.TableCount)
 
 	// Estimate row count
 	var rowCount sql.NullInt64

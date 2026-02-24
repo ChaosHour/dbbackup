@@ -69,7 +69,7 @@ func quickPostRestoreCheck(ctx context.Context, cfg *config.Config, log logger.L
 		log.Debug("Post-restore check: connection failed", "error", err)
 		return result
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	switch dbType {
 	case "postgres", "postgresql":
@@ -145,7 +145,7 @@ func checkPostgres(ctx context.Context, db *sql.DB, result *RestoreVerification)
 		result.Error = fmt.Sprintf("query tables: %v", err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var name string
@@ -180,7 +180,7 @@ func countPostgresRowsFallback(ctx context.Context, db *sql.DB, result *RestoreV
 	if err != nil {
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type tblInfo struct{ schema, name string }
 	var tables []tblInfo
@@ -239,7 +239,7 @@ func checkMySQL(ctx context.Context, db *sql.DB, result *RestoreVerification) {
 		result.Error = fmt.Sprintf("query tables: %v", err)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var name string

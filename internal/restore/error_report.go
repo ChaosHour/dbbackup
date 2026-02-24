@@ -258,7 +258,7 @@ func (ec *ErrorCollector) getSurroundingLines(lineNum int, context int) []string
 	if err != nil {
 		return nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Handle compressed files (gzip and zstd)
 	if compression.IsCompressed(ec.archivePath) {
@@ -266,7 +266,7 @@ func (ec *ErrorCollector) getSurroundingLines(lineNum int, context int) []string
 		if err != nil {
 			return nil
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 	} else {
 		reader = file
@@ -525,7 +525,7 @@ func extractLineNumber(errLine string) int {
 			}
 			if numEnd > numStart {
 				var num int
-				fmt.Sscanf(errLine[numStart:numEnd], "%d", &num)
+				_, _ = fmt.Sscanf(errLine[numStart:numEnd], "%d", &num)
 				return num
 			}
 		}

@@ -87,7 +87,7 @@ func NewSQLiteCatalog(dbPath string) (*SQLiteCatalog, error) {
 	}
 
 	if err := catalog.initialize(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 
@@ -289,10 +289,10 @@ func (c *SQLiteCatalog) scanEntry(row *sql.Row) (*Entry, error) {
 	}
 
 	if tagsJSON.Valid && tagsJSON.String != "" {
-		json.Unmarshal([]byte(tagsJSON.String), &entry.Tags)
+		_ = json.Unmarshal([]byte(tagsJSON.String), &entry.Tags)
 	}
 	if metaJSON.Valid && metaJSON.String != "" {
-		json.Unmarshal([]byte(metaJSON.String), &entry.Metadata)
+		_ = json.Unmarshal([]byte(metaJSON.String), &entry.Metadata)
 	}
 
 	return &entry, nil
@@ -331,7 +331,7 @@ func (c *SQLiteCatalog) Search(ctx context.Context, query *SearchQuery) ([]*Entr
 	if err != nil {
 		return nil, fmt.Errorf("search query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	return c.scanEntries(rows)
 }
@@ -380,10 +380,10 @@ func (c *SQLiteCatalog) scanEntries(rows *sql.Rows) ([]*Entry, error) {
 		}
 
 		if tagsJSON.Valid && tagsJSON.String != "" {
-			json.Unmarshal([]byte(tagsJSON.String), &entry.Tags)
+			_ = json.Unmarshal([]byte(tagsJSON.String), &entry.Tags)
 		}
 		if metaJSON.Valid && metaJSON.String != "" {
-			json.Unmarshal([]byte(metaJSON.String), &entry.Metadata)
+			_ = json.Unmarshal([]byte(metaJSON.String), &entry.Metadata)
 		}
 
 		entries = append(entries, &entry)
@@ -492,7 +492,7 @@ func (c *SQLiteCatalog) ListDatabases(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list databases: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var databases []string
 	for rows.Next() {
@@ -575,31 +575,31 @@ func (c *SQLiteCatalog) Stats(ctx context.Context) (*Stats, error) {
 
 	// By database
 	rows, _ := c.db.QueryContext(ctx, "SELECT database, COUNT(*) FROM backups GROUP BY database")
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var db string
 		var count int64
-		rows.Scan(&db, &count)
+		_ = rows.Scan(&db, &count)
 		stats.ByDatabase[db] = count
 	}
 
 	// By type
-	rows, _ = c.db.QueryContext(ctx, "SELECT backup_type, COUNT(*) FROM backups GROUP BY backup_type")
-	defer rows.Close()
-	for rows.Next() {
+	rows2, _ := c.db.QueryContext(ctx, "SELECT backup_type, COUNT(*) FROM backups GROUP BY backup_type")
+	defer func() { _ = rows2.Close() }()
+	for rows2.Next() {
 		var t string
 		var count int64
-		rows.Scan(&t, &count)
+		_ = rows2.Scan(&t, &count)
 		stats.ByType[t] = count
 	}
 
 	// By status
-	rows, _ = c.db.QueryContext(ctx, "SELECT status, COUNT(*) FROM backups GROUP BY status")
-	defer rows.Close()
-	for rows.Next() {
+	rows3, _ := c.db.QueryContext(ctx, "SELECT status, COUNT(*) FROM backups GROUP BY status")
+	defer func() { _ = rows3.Close() }()
+	for rows3.Next() {
 		var s string
 		var count int64
-		rows.Scan(&s, &count)
+		_ = rows3.Scan(&s, &count)
 		stats.ByStatus[s] = count
 	}
 

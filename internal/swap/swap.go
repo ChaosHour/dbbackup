@@ -184,7 +184,7 @@ func (m *Manager) Setup() error {
 // cleanup removes the swap file (internal helper)
 func (m *Manager) cleanup() {
 	if m.wasCreated {
-		os.Remove(m.swapPath)
+		_ = os.Remove(m.swapPath)
 		m.wasCreated = false
 	}
 }

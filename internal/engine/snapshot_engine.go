@@ -156,7 +156,7 @@ func (e *SnapshotEngine) Backup(ctx context.Context, opts *BackupOptions) (*Back
 		if _, err := e.db.ExecContext(ctx, "FLUSH TABLES WITH READ LOCK"); err != nil {
 			return nil, fmt.Errorf("failed to lock tables: %w", err)
 		}
-		defer e.db.ExecContext(ctx, "UNLOCK TABLES")
+		defer func() { _, _ = e.db.ExecContext(ctx, "UNLOCK TABLES") }()
 
 		// Get binlog position
 		binlogFile, binlogPos, gtidExecuted = e.getBinlogPosition(ctx)
@@ -176,7 +176,7 @@ func (e *SnapshotEngine) Backup(ctx context.Context, opts *BackupOptions) (*Back
 
 	// Step 3: Unlock tables immediately
 	if e.db != nil {
-		e.db.ExecContext(ctx, "UNLOCK TABLES")
+		_, _ = e.db.ExecContext(ctx, "UNLOCK TABLES")
 	}
 	lockDuration := time.Since(lockStart)
 	e.log.Info("Lock released", "duration", lockDuration)
@@ -184,10 +184,10 @@ func (e *SnapshotEngine) Backup(ctx context.Context, opts *BackupOptions) (*Back
 	// Ensure cleanup
 	defer func() {
 		if snap.MountPoint != "" {
-			e.backend.UnmountSnapshot(ctx, snap)
+			_ = e.backend.UnmountSnapshot(ctx, snap)
 		}
 		if e.config.AutoRemoveSnapshot {
-			e.backend.RemoveSnapshot(ctx, snap)
+			_ = e.backend.RemoveSnapshot(ctx, snap)
 		}
 	}()
 
@@ -299,7 +299,7 @@ func (e *SnapshotEngine) streamSnapshot(ctx context.Context, sourcePath, destFil
 	if err != nil {
 		return 0, err
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Wrap in counting writer for progress
 	countWriter := &countingWriter{w: outFile}
@@ -321,15 +321,15 @@ func (e *SnapshotEngine) streamSnapshot(ctx context.Context, sourcePath, destFil
 	if err != nil {
 		return 0, err
 	}
-	defer comp.Close()
+	defer func() { _ = comp.Close() }()
 
 	// Create tar writer
 	tarWriter := tar.NewWriter(comp)
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 
 	// Count files for progress
 	var totalFiles int
-	filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			totalFiles++
 		}
@@ -384,7 +384,7 @@ func (e *SnapshotEngine) streamSnapshot(ctx context.Context, sourcePath, destFil
 				return err
 			}
 			_, err = io.Copy(tarWriter, file)
-			file.Close()
+			_ = file.Close()
 			if err != nil {
 				return err
 			}
@@ -410,8 +410,8 @@ func (e *SnapshotEngine) streamSnapshot(ctx context.Context, sourcePath, destFil
 	}
 
 	// Close tar and compressor to flush
-	tarWriter.Close()
-	comp.Close()
+	_ = tarWriter.Close()
+	_ = comp.Close()
 
 	return countWriter.count, nil
 }
@@ -426,7 +426,7 @@ func (e *SnapshotEngine) getBinlogPosition(ctx context.Context) (string, int64, 
 	if err != nil {
 		return "", 0, ""
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if rows.Next() {
 		var file string
@@ -435,9 +435,9 @@ func (e *SnapshotEngine) getBinlogPosition(ctx context.Context) (string, int64, 
 
 		cols, _ := rows.Columns()
 		if len(cols) >= 5 {
-			rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB, &gtidSet)
+			_ = rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB, &gtidSet)
 		} else {
-			rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB)
+			_ = rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB)
 		}
 
 		return file, position, gtidSet.String
@@ -460,14 +460,14 @@ func (e *SnapshotEngine) Restore(ctx context.Context, opts *RestoreOptions) erro
 	if err != nil {
 		return fmt.Errorf("failed to open backup file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Create decompression reader (supports gzip and zstd based on file extension)
 	decomp, err := compression.NewDecompressor(file, opts.SourcePath)
 	if err != nil {
 		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Create tar reader
 	tarReader := tar.NewReader(decomp.Reader)
@@ -505,10 +505,10 @@ func (e *SnapshotEngine) Restore(ctx context.Context, opts *RestoreOptions) erro
 				return err
 			}
 			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
+				_ = outFile.Close()
 				return err
 			}
-			outFile.Close()
+			_ = outFile.Close()
 		case tar.TypeSymlink:
 			if err := os.Symlink(header.Linkname, targetPath); err != nil {
 				e.log.Warn("Failed to create symlink", "path", targetPath, "error", err)

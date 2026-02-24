@@ -381,7 +381,7 @@ func checkBackupDirectory() error {
 	if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
 		return fmt.Errorf("cannot write to backup directory: %w", err)
 	}
-	os.Remove(testFile) // Clean up
+	_ = os.Remove(testFile) // Clean up
 	return nil
 }
 
@@ -489,7 +489,7 @@ func runVerify(ctx context.Context, archiveName string) error {
 	if file, err := os.Open(archivePath); err != nil {
 		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
-		file.Close()
+		_ = file.Close()
 		fmt.Println("[OK] PASSED")
 		checksPassed++
 	}
@@ -649,7 +649,7 @@ func updateCatalogVerification(ctx context.Context, archivePath string, valid bo
 		fmt.Fprintf(os.Stderr, "[CATALOG] WARN: Cannot open catalog for verification update: %v (path=%s)\n", err, catalogDB)
 		return
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	baseName := filepath.Base(archivePath)
 
@@ -680,7 +680,7 @@ func verifyPgDump(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	buffer := make([]byte, 512)
 	n, err := file.Read(buffer)
@@ -699,13 +699,13 @@ func verifyPgDumpGzip(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("failed to open gzip stream: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	buffer := make([]byte, 512)
 	n, err := gz.Read(buffer)
@@ -725,7 +725,7 @@ func verifySqlScript(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	buffer := make([]byte, 1024)
 	n, err := file.Read(buffer)
@@ -748,13 +748,13 @@ func verifyGzipSqlScript(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	gz, err := pgzip.NewReader(file)
 	if err != nil {
 		return fmt.Errorf("failed to open gzip stream: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	buffer := make([]byte, 1024)
 	n, err := gz.Read(buffer)
@@ -778,7 +778,7 @@ func verifyTarGz(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Check if it starts with gzip magic number
 	buffer := make([]byte, 3)
@@ -799,7 +799,7 @@ func verifyZstdSqlScript(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	zr, err := zstd.NewReader(file)
 	if err != nil {
@@ -828,7 +828,7 @@ func verifyZstdPgDump(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	zr, err := zstd.NewReader(file)
 	if err != nil {
@@ -853,7 +853,7 @@ func verifyZstdArchive(path string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Check for zstd magic number: 0xFD2FB528
 	buffer := make([]byte, 4)

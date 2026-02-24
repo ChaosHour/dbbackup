@@ -692,7 +692,7 @@ func DetectNUMATopology() *NUMATopology {
 					}
 				}
 			}
-			file.Close()
+			_ = file.Close()
 		}
 
 		nt.Nodes = append(nt.Nodes, node)

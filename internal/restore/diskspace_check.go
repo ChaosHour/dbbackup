@@ -371,7 +371,7 @@ func detectCompressionFormat(path string) string {
 	if err != nil {
 		return "unknown"
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	magic := make([]byte, 6)
 	n, _ := f.Read(magic)

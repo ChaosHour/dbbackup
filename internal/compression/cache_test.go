@@ -15,7 +15,7 @@ func TestCacheOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cache := NewCache(tmpDir)
 
@@ -93,7 +93,7 @@ func TestCacheExpiration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cache := NewCache(tmpDir)
 	cache.SetTTL(time.Millisecond * 100) // Short TTL for testing
@@ -129,7 +129,7 @@ func TestCacheInvalidateAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cache := NewCache(tmpDir)
 
@@ -138,7 +138,7 @@ func TestCacheInvalidateAll(t *testing.T) {
 		analysis := &DatabaseAnalysis{
 			Database: "testdb",
 		}
-		cache.Set("localhost", 5432+i, "testdb", analysis)
+		_ = cache.Set("localhost", 5432+i, "testdb", analysis)
 	}
 
 	entries, _ := cache.List()
@@ -163,7 +163,7 @@ func TestCacheCleanExpired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cache := NewCache(tmpDir)
 	cache.SetTTL(time.Millisecond * 50)
@@ -171,7 +171,7 @@ func TestCacheCleanExpired(t *testing.T) {
 	// Add entries
 	for i := 0; i < 3; i++ {
 		analysis := &DatabaseAnalysis{Database: "testdb"}
-		cache.Set("localhost", 5432+i, "testdb", analysis)
+		_ = cache.Set("localhost", 5432+i, "testdb", analysis)
 	}
 
 	// Wait for expiration

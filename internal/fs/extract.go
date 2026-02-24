@@ -171,7 +171,7 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 	// Get file size for progress
 	stat, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("cannot stat archive: %w", err)
 	}
 	totalSize := stat.Size()
@@ -182,7 +182,7 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 	sr := &safeReader{r: file}
 	decomp, err := compression.NewDecompressor(sr, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("cannot create decompressor: %w", err)
 	}
 
@@ -192,8 +192,8 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 	cleanup := func() {
 		cleanupOnce.Do(func() {
 			sr.shutdown()
-			decomp.Close()
-			file.Close()
+			_ = decomp.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanup()
@@ -272,11 +272,11 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 
 			// Copy with context awareness to allow Ctrl+C interruption during large file extraction
 			written, err := CopyWithContext(ctx, outFile, tarReader)
-			outFile.Close()
+			_ = outFile.Close()
 
 			if err != nil {
 				// Clean up partial file on error
-				os.Remove(targetPath)
+				_ = os.Remove(targetPath)
 				return fmt.Errorf("error writing %s: %w", targetPath, err)
 			}
 
@@ -321,7 +321,7 @@ func ListTarGzContents(ctx context.Context, archivePath string) ([]string, error
 	sr := &safeReader{r: file}
 	decomp, err := compression.NewDecompressor(sr, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("cannot create decompressor: %w", err)
 	}
 
@@ -331,8 +331,8 @@ func ListTarGzContents(ctx context.Context, archivePath string) ([]string, error
 	cleanup := func() {
 		cleanupOnce.Do(func() {
 			sr.shutdown()
-			decomp.Close()
-			file.Close()
+			_ = decomp.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanup()
@@ -390,7 +390,7 @@ func ListTarGzHeaders(ctx context.Context, archivePath string, maxEntries int) (
 	sr := &safeReader{r: file}
 	decomp, err := compression.NewDecompressor(sr, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("cannot create decompressor: %w", err)
 	}
 
@@ -399,8 +399,8 @@ func ListTarGzHeaders(ctx context.Context, archivePath string, maxEntries int) (
 	cleanup := func() {
 		cleanupOnce.Do(func() {
 			sr.shutdown()
-			decomp.Close()
-			file.Close()
+			_ = decomp.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanup()
@@ -549,7 +549,7 @@ func listTarGzHeadersGo(ctx context.Context, archivePath string, maxEntries int)
 
 	decompReader, err := compression.NewDecompressor(sr, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("cannot create decompressor: %w", err)
 	}
 
@@ -558,8 +558,8 @@ func listTarGzHeadersGo(ctx context.Context, archivePath string, maxEntries int)
 	cleanup := func() {
 		cleanupOnce.Do(func() {
 			sr.shutdown() // Signal safeReader first so decompressor goroutines get EOF
-			decompReader.Close()
-			file.Close()
+			_ = decompReader.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanup()
@@ -709,13 +709,13 @@ func ExtractTarCompressed(ctx context.Context, archivePath, destDir string) erro
 	if err != nil {
 		return fmt.Errorf("cannot open archive: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	decompReader, err := compression.NewDecompressor(file, archivePath)
 	if err != nil {
 		return fmt.Errorf("cannot create decompressor: %w", err)
 	}
-	defer decompReader.Close()
+	defer func() { _ = decompReader.Close() }()
 
 	tarReader := tar.NewReader(decompReader.Reader)
 
@@ -758,10 +758,10 @@ func ExtractTarCompressed(ctx context.Context, archivePath, destDir string) erro
 				return fmt.Errorf("cannot create file %s: %w", header.Name, err)
 			}
 			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
+				_ = outFile.Close()
 				return fmt.Errorf("cannot write file %s: %w", header.Name, err)
 			}
-			outFile.Close()
+			_ = outFile.Close()
 		}
 	}
 	return nil
@@ -786,7 +786,7 @@ func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, comp
 	if err != nil {
 		return fmt.Errorf("cannot create archive: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Wrap file in safeWriter to prevent pgzip goroutine panics on early close.
 	// pgzip spawns a background listener goroutine that writes compressed data
@@ -806,14 +806,14 @@ func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, comp
 		_ = err // non-fatal, continue with defaults
 	}
 	defer func() {
-		gzWriter.Close()
+		_ = gzWriter.Close()
 		// Signal safeWriter to reject further writes from lingering pgzip goroutines
 		sw.shutdown()
 	}()
 
 	// Create tar writer
 	tarWriter := tar.NewWriter(gzWriter)
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 
 	var bytesWritten int64
 	var filesCount int
@@ -871,7 +871,7 @@ func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, comp
 			if err != nil {
 				return fmt.Errorf("cannot open %s: %w", path, err)
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 
 			written, err := io.Copy(tarWriter, file)
 			if err != nil {
@@ -898,9 +898,9 @@ func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, comp
 		// Clean up partial file on error
 		// Signal safeWriter first so pgzip goroutines get clean errors
 		sw.shutdown()
-		gzWriter.Close()
-		outFile.Close()
-		os.Remove(outputPath)
+		_ = gzWriter.Close()
+		_ = outFile.Close()
+		_ = os.Remove(outputPath)
 		return err
 	}
 
@@ -924,7 +924,7 @@ func EstimateCompressionRatio(archivePath string) (float64, error) {
 	if err != nil {
 		return 3.0, err // Default to 3x
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get compressed size
 	stat, err := file.Stat()
@@ -942,7 +942,7 @@ func EstimateCompressionRatio(archivePath string) (float64, error) {
 	}
 	defer func() {
 		sr.shutdown()
-		decomp.Close()
+		_ = decomp.Close()
 	}()
 
 	// Read up to 1MB of decompressed data

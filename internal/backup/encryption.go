@@ -29,7 +29,7 @@ func EncryptBackupFile(backupPath string, key []byte, log logger.Logger) error {
 	// Encrypt file
 	if err := encryptor.EncryptFile(backupPath, encryptedPath, key); err != nil {
 		// Clean up temp file on failure
-		os.Remove(encryptedPath)
+		_ = os.Remove(encryptedPath)
 		return fmt.Errorf("encryption failed: %w", err)
 	}
 
@@ -101,7 +101,7 @@ func IsBackupEncrypted(backupPath string) bool {
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	header := make([]byte, 6)
 	if n, err := file.Read(header); err != nil || n < 2 {

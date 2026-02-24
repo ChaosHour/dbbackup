@@ -45,7 +45,7 @@ func (pm *ProcessManager) Track(proc *os.Process) {
 
 	// Auto-cleanup when process exits
 	go func() {
-		proc.Wait()
+		_, _ = proc.Wait()
 		pm.mu.Lock()
 		delete(pm.processes, proc.Pid)
 		pm.mu.Unlock()
@@ -167,11 +167,11 @@ func killProcessGroup(pid int) error {
 	// This catches pipelines like "pg_dump | gzip"
 	if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
 		// If SIGTERM fails, try SIGKILL
-		syscall.Kill(-pgid, syscall.SIGKILL)
+		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 	}
 
 	// Also kill the specific PID in case it's not in a group
-	syscall.Kill(pid, syscall.SIGTERM)
+	_ = syscall.Kill(pid, syscall.SIGTERM)
 
 	return nil
 }
@@ -203,7 +203,7 @@ func KillCommandGroup(cmd *exec.Cmd) error {
 	// Kill the entire process group
 	if err := syscall.Kill(-pgid, syscall.SIGTERM); err != nil {
 		// If SIGTERM fails, use SIGKILL
-		syscall.Kill(-pgid, syscall.SIGKILL)
+		_ = syscall.Kill(-pgid, syscall.SIGKILL)
 	}
 
 	return nil

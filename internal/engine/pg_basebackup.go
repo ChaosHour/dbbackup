@@ -442,7 +442,7 @@ func (e *PgBasebackupEngine) collectBackupFiles(outputDir string) (int64, []Back
 	var totalSize int64
 	var files []BackupFile
 
-	filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}

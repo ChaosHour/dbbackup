@@ -77,7 +77,7 @@ func runNativeRestore(ctx context.Context, db database.Database, archivePath, ta
 	if err := engineManager.InitializeEngines(ctx); err != nil {
 		return fmt.Errorf("failed to initialize native engines: %w", err)
 	}
-	defer engineManager.Close()
+	defer func() { _ = engineManager.Close() }()
 
 	// Check if native engine is available for this database type
 	dbType := detectDatabaseTypeFromConfig()
@@ -90,7 +90,7 @@ func runNativeRestore(ctx context.Context, db database.Database, archivePath, ta
 	if err != nil {
 		return fmt.Errorf("failed to open archive: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Detect if file is compressed (gzip or zstd)
 	var reader io.Reader = file
@@ -99,7 +99,7 @@ func runNativeRestore(ctx context.Context, db database.Database, archivePath, ta
 		if err != nil {
 			return fmt.Errorf("failed to create decompressor: %w", err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 	}
 

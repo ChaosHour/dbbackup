@@ -78,7 +78,7 @@ func (s *Safety) validatePgDump(path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Read first 512 bytes for signature check
 	buffer := make([]byte, 512)
@@ -111,14 +111,14 @@ func (s *Safety) validatePgDumpGz(path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Auto-detect decompressor from file extension
 	decomp, err := compression.NewDecompressor(file, path)
 	if err != nil {
 		return fmt.Errorf("not a valid compressed file: %w", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Read first 512 bytes
 	buffer := make([]byte, 512)
@@ -150,7 +150,7 @@ func (s *Safety) validateSQLScript(path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	buffer := make([]byte, 1024)
 	n, err := file.Read(buffer)
@@ -172,14 +172,14 @@ func (s *Safety) validateSQLScriptGz(path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Auto-detect decompressor from file extension
 	decomp, err := compression.NewDecompressor(file, path)
 	if err != nil {
 		return fmt.Errorf("not a valid compressed file: %w", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	buffer := make([]byte, 1024)
 	n, err := decomp.Reader.Read(buffer)
@@ -201,14 +201,14 @@ func (s *Safety) validateTarGz(path string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Auto-detect decompressor from file extension
 	decomp, err := compression.NewDecompressor(file, path)
 	if err != nil {
 		return fmt.Errorf("compressed archive corruption detected: %w", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Read first tar header to verify it's a valid tar archive
 	headerBuf := make([]byte, 512) // Tar header is 512 bytes
@@ -299,7 +299,7 @@ func (s *Safety) ValidateAndExtractCluster(ctx context.Context, archivePath stri
 		err = fs.ExtractTarCompressed(ctx, archivePath, tempDir)
 	}
 	if err != nil {
-		os.RemoveAll(tempDir) // Cleanup on failure
+		_ = os.RemoveAll(tempDir) // Cleanup on failure
 		return "", fmt.Errorf("extraction failed: %w", err)
 	}
 

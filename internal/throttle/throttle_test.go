@@ -88,7 +88,7 @@ func TestThrottledReader(t *testing.T) {
 
 	// Create throttled reader at very high rate (effectively no throttle for test)
 	reader := NewReader(source, 1024*1024*1024) // 1GB/s
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Read all data
 	result := make([]byte, 1024)
@@ -118,7 +118,7 @@ func TestThrottledWriter(t *testing.T) {
 
 	// Create throttled writer at very high rate
 	writer := NewWriter(&buf, 1024*1024*1024) // 1GB/s
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 
 	// Write data
 	data := []byte("hello world")

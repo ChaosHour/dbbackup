@@ -163,7 +163,7 @@ func (e *Engine) Connect(ctx context.Context) error {
 	}
 
 	if err := e.targetDB.Connect(ctx); err != nil {
-		e.sourceDB.Close()
+		_ = e.sourceDB.Close()
 		return fmt.Errorf("failed to connect to target database: %w", err)
 	}
 

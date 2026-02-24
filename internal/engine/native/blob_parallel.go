@@ -346,11 +346,11 @@ func (e *BlobParallelEngine) backupTableBlobs(ctx context.Context, table *TableB
 	if err != nil {
 		return 0, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Use gzip compression
 	gzWriter := gzip.NewWriter(file)
-	defer gzWriter.Close()
+	defer func() { _ = gzWriter.Close() }()
 
 	// Apply session optimizations for COPY
 	optimizations := []string{
@@ -359,7 +359,7 @@ func (e *BlobParallelEngine) backupTableBlobs(ctx context.Context, table *TableB
 		"SET synchronous_commit = 'off'",     // Faster for backup reads
 	}
 	for _, opt := range optimizations {
-		conn.Exec(ctx, opt)
+		_, _ = conn.Exec(ctx, opt)
 	}
 
 	// Write COPY header
@@ -371,7 +371,7 @@ func (e *BlobParallelEngine) backupTableBlobs(ctx context.Context, table *TableB
 	fullTableName := fmt.Sprintf("%s.%s", e.quoteIdentifier(table.Schema), e.quoteIdentifier(table.Table))
 	copyHeader += fmt.Sprintf("COPY %s FROM stdin;\n", fullTableName)
 
-	gzWriter.Write([]byte(copyHeader))
+	_, _ = gzWriter.Write([]byte(copyHeader))
 
 	// Use COPY TO STDOUT for efficient binary data export
 	copySQL := fmt.Sprintf("COPY %s TO STDOUT", fullTableName)
@@ -384,7 +384,7 @@ func (e *BlobParallelEngine) backupTableBlobs(ctx context.Context, table *TableB
 	bytesWritten = copyResult.RowsAffected()
 
 	// Write terminator
-	gzWriter.Write([]byte("\\.\n"))
+	_, _ = gzWriter.Write([]byte("\\.\n"))
 
 	atomic.AddInt64(&e.stats.TotalRows, bytesWritten)
 
@@ -486,7 +486,7 @@ func (e *BlobParallelEngine) restoreBlobFile(ctx context.Context, filePath strin
 		"SET work_mem = '256MB'",
 	}
 	for _, opt := range optimizations {
-		conn.Exec(ctx, opt)
+		_, _ = conn.Exec(ctx, opt)
 	}
 
 	// Open compressed file
@@ -494,13 +494,13 @@ func (e *BlobParallelEngine) restoreBlobFile(ctx context.Context, filePath strin
 	if err != nil {
 		return 0, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	gzReader, err := gzip.NewReader(file)
 	if err != nil {
 		return 0, err
 	}
-	defer gzReader.Close()
+	defer func() { _ = gzReader.Close() }()
 
 	// Read content
 	content, err := io.ReadAll(gzReader)
@@ -636,7 +636,7 @@ func (e *BlobParallelEngine) backupLargeObject(ctx context.Context, oid uint32, 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Read Large Object data using lo_get()
 	var data []byte
@@ -728,7 +728,7 @@ func (e *BlobParallelEngine) restoreLargeObject(ctx context.Context, filePath st
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Create Large Object with specific OID and write data
 	_, err = tx.Exec(ctx, "SELECT lo_create($1)", oid)
@@ -765,7 +765,7 @@ func (e *BlobParallelEngine) StreamingBlobBackup(ctx context.Context, table *Tab
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// Declare cursor
 	_, err = tx.Exec(ctx, fmt.Sprintf("DECLARE %s CURSOR FOR SELECT * FROM %s", cursorName, fullTable))
@@ -794,8 +794,8 @@ func (e *BlobParallelEngine) StreamingBlobBackup(ctx context.Context, table *Tab
 
 			// Write row data
 			line := e.formatRowForCopy(values, numFields)
-			writer.Write([]byte(line))
-			writer.Write([]byte("\n"))
+			_, _ = writer.Write([]byte(line))
+			_, _ = writer.Write([]byte("\n"))
 			rowCount++
 		}
 		rows.Close()
@@ -806,7 +806,7 @@ func (e *BlobParallelEngine) StreamingBlobBackup(ctx context.Context, table *Tab
 	}
 
 	// Close cursor
-	tx.Exec(ctx, fmt.Sprintf("CLOSE %s", cursorName))
+	_, _ = tx.Exec(ctx, fmt.Sprintf("CLOSE %s", cursorName))
 	return tx.Commit(ctx)
 }
 
@@ -906,7 +906,7 @@ func (e *BlobParallelEngine) ExecuteParallelCOPY(ctx context.Context, statements
 				"SET maintenance_work_mem = '512MB'",
 			}
 			for _, opt := range opts {
-				conn.Exec(ctx, opt)
+				_, _ = conn.Exec(ctx, opt)
 			}
 
 			// Execute COPY

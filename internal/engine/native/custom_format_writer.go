@@ -378,7 +378,7 @@ func (w *CustomFormatWriter) compressTableData(ctx context.Context, output *byte
 		"SET work_mem = '256MB'",
 		"SET maintenance_work_mem = '512MB'",
 	} {
-		conn.Exec(ctx, opt)
+		_, _ = conn.Exec(ctx, opt)
 	}
 
 	// Check row count first (skip empty tables)
@@ -412,7 +412,7 @@ func (w *CustomFormatWriter) compressTableData(ctx context.Context, output *byte
 			return rawLen, 0, rowCount, fmt.Errorf("create gzip writer: %w", err)
 		}
 		if _, err := gz.Write(rawBuf.Bytes()); err != nil {
-			gz.Close()
+			_ = gz.Close()
 			return rawLen, 0, rowCount, fmt.Errorf("gzip write: %w", err)
 		}
 		if err := gz.Close(); err != nil {
@@ -424,7 +424,7 @@ func (w *CustomFormatWriter) compressTableData(ctx context.Context, output *byte
 			return rawLen, 0, rowCount, fmt.Errorf("create zstd writer: %w", err)
 		}
 		if _, err := comp.Write(rawBuf.Bytes()); err != nil {
-			comp.Close()
+			_ = comp.Close()
 			return rawLen, 0, rowCount, fmt.Errorf("zstd write: %w", err)
 		}
 		if err := comp.Close(); err != nil {

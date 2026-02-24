@@ -370,7 +370,7 @@ func (e *SplitRestoreEngine) restoreSingleBLOBStream(
 	if err != nil {
 		return 0, 0, fmt.Errorf("open stream: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	sizeHeader := make([]byte, 8)
 

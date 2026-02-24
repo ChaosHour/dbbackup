@@ -54,7 +54,7 @@ func (e *Engine) Run(ctx context.Context, config *DrillConfig) (*DrillResult, er
 	cleanup := func() {
 		if containerID != "" && config.CleanupOnExit && (result.Success || !config.KeepOnFailure) {
 			e.log.Info("[DEL]  Cleaning up container...")
-			e.docker.RemoveContainer(context.Background(), containerID)
+			_ = e.docker.RemoveContainer(context.Background(), containerID)
 		} else if containerID != "" {
 			result.ContainerKept = true
 			e.log.Info("[PKG] Container kept for debugging: " + containerID)
@@ -254,24 +254,24 @@ func (e *Engine) decompressBackup(srcPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to open source: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	decomp, err := compression.NewDecompressor(srcFile, srcPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create decompressor: %w", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	dstFile, err := os.Create(dstPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create destination: %w", err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	// Use context.Background() since decompressBackup doesn't take context
 	// The parent restoreBackup function handles context cancellation
 	if _, err := fs.CopyWithContext(context.Background(), dstFile, decomp.Reader); err != nil {
-		os.Remove(dstPath)
+		_ = os.Remove(dstPath)
 		return "", fmt.Errorf("decompression failed: %w", err)
 	}
 
@@ -290,7 +290,7 @@ func (e *Engine) restoreBackup(ctx context.Context, config *DrillConfig, contain
 			return fmt.Errorf("failed to decompress backup: %w", err)
 		}
 		backupPath = decompressedPath
-		defer os.Remove(decompressedPath) // Clean up temp file
+		defer func() { _ = os.Remove(decompressedPath) }() // Clean up temp file
 	}
 
 	// Copy backup to container
@@ -395,7 +395,7 @@ func (e *Engine) validateDatabase(ctx context.Context, config *DrillConfig, resu
 		result.Errors = append(result.Errors, "Validation connection failed: "+err.Error())
 		return 1
 	}
-	defer validator.Close()
+	defer func() { _ = validator.Close() }()
 
 	// Get database metrics
 	tables, err := validator.GetTableList(ctx)
@@ -561,7 +561,7 @@ func (e *Engine) Validate(ctx context.Context, config *DrillConfig, host string,
 	if err != nil {
 		return nil, err
 	}
-	defer validator.Close()
+	defer func() { _ = validator.Close() }()
 
 	return validator.RunValidationQueries(ctx, config.ValidationQueries), nil
 }

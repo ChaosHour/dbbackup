@@ -43,7 +43,7 @@ func ExampleNativeEngineUsage() {
 		fmt.Printf("Failed to create PostgreSQL engine: %v\n", err)
 		return
 	}
-	defer psqlEngine.Close()
+	defer func() { _ = psqlEngine.Close() }()
 
 	// Advanced backup options
 	advancedOptions := &native.AdvancedBackupOptions{

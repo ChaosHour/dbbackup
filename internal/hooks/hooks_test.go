@@ -327,7 +327,7 @@ func TestLoadHooksFromDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create hooks directory structure
 	preBackupDir := filepath.Join(tmpDir, "pre-backup")

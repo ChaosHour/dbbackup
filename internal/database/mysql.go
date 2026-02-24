@@ -60,7 +60,7 @@ func (m *MySQL) Connect(ctx context.Context) error {
 	defer cancel()
 
 	if err := db.PingContext(timeoutCtx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return fmt.Errorf("failed to ping MySQL: %w", err)
 	}
 
@@ -81,7 +81,7 @@ func (m *MySQL) ListDatabases(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query databases: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var databases []string
 	systemDbs := map[string]bool{
@@ -120,7 +120,7 @@ func (m *MySQL) ListTables(ctx context.Context, database string) ([]string, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tables: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []string
 	for rows.Next() {

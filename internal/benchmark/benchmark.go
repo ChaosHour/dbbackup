@@ -198,7 +198,7 @@ func (r *Runner) Run(ctx context.Context) (*Report, error) {
 		r.log.Info("─── Iteration", "n", fmt.Sprintf("%d/%d", i, r.cfg.Iterations))
 
 		iterDir := filepath.Join(benchDir, fmt.Sprintf("iter_%d", i))
-		os.MkdirAll(iterDir, 0755)
+		_ = os.MkdirAll(iterDir, 0755)
 
 		// ── Backup ──
 		bkpResult := r.runBackup(ctx, i, iterDir)
@@ -218,7 +218,7 @@ func (r *Runner) Run(ctx context.Context) (*Report, error) {
 
 		// Optional cleanup between iterations
 		if r.cfg.CleanBetween && i < r.cfg.Iterations {
-			os.RemoveAll(iterDir)
+			_ = os.RemoveAll(iterDir)
 		}
 	}
 
@@ -391,7 +391,7 @@ func (r *Runner) ensureDB(ctx context.Context, dbName string) {
 			"-h", pgEffectiveHost(t), "-p", fmt.Sprintf("%d", t.Port), "-U", t.User,
 			"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %q; CREATE DATABASE %q;", dbName, dbName))
 		cmd.Env = append(os.Environ(), passwordEnv(t)...)
-		cmd.Run()
+		_ = cmd.Run()
 	case "mysql", "mariadb":
 		mysqlArgs := []string{"-h", t.Host, "-P", fmt.Sprintf("%d", t.Port), "-u", t.User}
 		if t.Socket != "" {
@@ -401,7 +401,7 @@ func (r *Runner) ensureDB(ctx context.Context, dbName string) {
 			fmt.Sprintf("DROP DATABASE IF EXISTS `%s`; CREATE DATABASE `%s`;", dbName, dbName))
 		cmd := exec.CommandContext(ctx, "mysql", mysqlArgs...)
 		cmd.Env = append(os.Environ(), passwordEnv(t)...)
-		cmd.Run()
+		_ = cmd.Run()
 	}
 }
 
@@ -413,7 +413,7 @@ func (r *Runner) dropDB(ctx context.Context, dbName string) {
 			"-h", pgEffectiveHost(t), "-p", fmt.Sprintf("%d", t.Port), "-U", t.User,
 			"-c", fmt.Sprintf("DROP DATABASE IF EXISTS %q;", dbName))
 		cmd.Env = append(os.Environ(), passwordEnv(t)...)
-		cmd.Run()
+		_ = cmd.Run()
 	case "mysql", "mariadb":
 		mysqlArgs := []string{"-h", t.Host, "-P", fmt.Sprintf("%d", t.Port), "-u", t.User}
 		if t.Socket != "" {
@@ -423,7 +423,7 @@ func (r *Runner) dropDB(ctx context.Context, dbName string) {
 			fmt.Sprintf("DROP DATABASE IF EXISTS `%s`;", dbName))
 		cmd := exec.CommandContext(ctx, "mysql", mysqlArgs...)
 		cmd.Env = append(os.Environ(), passwordEnv(t)...)
-		cmd.Run()
+		_ = cmd.Run()
 	}
 }
 
@@ -443,7 +443,7 @@ func (r *Runner) measureDBSize(ctx context.Context) (int64, error) {
 			return 0, err
 		}
 		var size int64
-		fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &size)
+		_, _ = fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &size)
 		return size, nil
 	case "mysql", "mariadb":
 		query = fmt.Sprintf(
@@ -461,7 +461,7 @@ func (r *Runner) measureDBSize(ctx context.Context) (int64, error) {
 			return 0, err
 		}
 		var size int64
-		fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &size)
+		_, _ = fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &size)
 		return size, nil
 	default:
 		return 0, fmt.Errorf("unsupported engine: %s", t.Engine)
@@ -763,7 +763,7 @@ func parsePeakRSS(output string) int64 {
 			parts := strings.Split(line, ":")
 			if len(parts) == 2 {
 				var kb int64
-				fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &kb)
+				_, _ = fmt.Sscanf(strings.TrimSpace(parts[1]), "%d", &kb)
 				return kb
 			}
 		}
@@ -774,7 +774,7 @@ func parsePeakRSS(output string) int64 {
 func findNewestFile(dir string) string {
 	var newest string
 	var newestTime time.Time
-	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}

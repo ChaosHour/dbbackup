@@ -119,8 +119,8 @@ func TestTestCompression(t *testing.T) {
 	// Test with already compressed data (gzip)
 	var gzBuf bytes.Buffer
 	gz := gzip.NewWriter(&gzBuf)
-	gz.Write(compressible)
-	gz.Close()
+	_, _ = gz.Write(compressible)
+	_ = gz.Close()
 
 	alreadyCompressed := gzBuf.Bytes()
 	compressedAgain := analyzer.testCompression(alreadyCompressed)

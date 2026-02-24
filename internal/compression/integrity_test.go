@@ -24,8 +24,8 @@ func TestVerifyStream_ValidGzip(t *testing.T) {
 	if _, err := comp.Write([]byte("CREATE TABLE test (id int);\n")); err != nil {
 		t.Fatal(err)
 	}
-	comp.Close()
-	f.Close()
+	_ = comp.Close()
+	_ = f.Close()
 
 	result, err := VerifyStream(path)
 	if err != nil {
@@ -59,8 +59,8 @@ func TestVerifyStream_ValidZstd(t *testing.T) {
 	if _, err := comp.Write(data); err != nil {
 		t.Fatal(err)
 	}
-	comp.Close()
-	f.Close()
+	_ = comp.Close()
+	_ = f.Close()
 
 	result, err := VerifyStream(path)
 	if err != nil {
@@ -94,8 +94,8 @@ func TestVerifyStream_TruncatedZstd(t *testing.T) {
 	if _, err := comp.Write(data); err != nil {
 		t.Fatal(err)
 	}
-	comp.Close()
-	f.Close()
+	_ = comp.Close()
+	_ = f.Close()
 
 	// Now truncate it
 	fi, _ := os.Stat(path)
@@ -133,8 +133,8 @@ func TestVerifyStream_TruncatedGzip(t *testing.T) {
 	if _, err := comp.Write(data); err != nil {
 		t.Fatal(err)
 	}
-	comp.Close()
-	f.Close()
+	_ = comp.Close()
+	_ = f.Close()
 
 	fi, _ := os.Stat(path)
 	if err := os.Truncate(path, fi.Size()/2); err != nil {
@@ -182,9 +182,9 @@ func TestVerifyStreamQuick_ValidZstd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	comp.Write([]byte("SELECT 1;\n"))
-	comp.Close()
-	f.Close()
+	_, _ = comp.Write([]byte("SELECT 1;\n"))
+	_ = comp.Close()
+	_ = f.Close()
 
 	result, err := VerifyStreamQuick(path)
 	if err != nil {
@@ -225,9 +225,9 @@ func TestValidatingReader_Normal(t *testing.T) {
 		t.Fatal(err)
 	}
 	payload := []byte("DROP TABLE IF EXISTS test; CREATE TABLE test (id int);\n")
-	comp.Write(payload)
-	comp.Close()
-	f.Close()
+	_, _ = comp.Write(payload)
+	_ = comp.Close()
+	_ = f.Close()
 
 	// Open and wrap with ValidatingReader
 	rf, _ := os.Open(path)
@@ -259,8 +259,8 @@ func TestEncoderCRC_Enabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	comp.Write([]byte("test data"))
-	comp.Close()
+	_, _ = comp.Write([]byte("test data"))
+	_ = comp.Close()
 
 	data := buf.Bytes()
 	// Zstd frame with CRC has a 4-byte checksum at the end

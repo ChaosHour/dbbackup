@@ -58,7 +58,7 @@ func (c *SQLiteCatalog) PruneAdvanced(ctx context.Context, config *PruneConfig) 
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	idsToRemove := []int64{}
 	spaceToFree := int64(0)
@@ -126,13 +126,13 @@ func (c *SQLiteCatalog) PruneAdvanced(ctx context.Context, config *PruneConfig) 
 		if err != nil {
 			return nil, fmt.Errorf("begin transaction failed: %w", err)
 		}
-		defer tx.Rollback()
+		defer func() { _ = tx.Rollback() }()
 
 		stmt, err := tx.PrepareContext(ctx, "DELETE FROM backups WHERE id = ?")
 		if err != nil {
 			return nil, fmt.Errorf("prepare delete statement failed: %w", err)
 		}
-		defer stmt.Close()
+		defer func() { _ = stmt.Close() }()
 
 		for _, id := range idsToRemove {
 			if _, err := stmt.ExecContext(ctx, id); err != nil {

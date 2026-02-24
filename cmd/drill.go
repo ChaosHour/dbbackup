@@ -485,7 +485,7 @@ func updateCatalogWithDrillResult(ctx context.Context, backupPath string, result
 	if err != nil {
 		return // Catalog not available, skip
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	entry, err := cat.GetByPath(ctx, backupPath)
 	if err != nil || entry == nil {

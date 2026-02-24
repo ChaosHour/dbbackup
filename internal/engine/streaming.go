@@ -106,7 +106,7 @@ func (s *StreamingBackupEngine) StreamBackup(ctx context.Context, opts *BackupOp
 	// Get streaming engine
 	streamEngine, ok := s.engine.(StreamingEngine)
 	if !ok {
-		streamer.Cancel()
+		_ = streamer.Cancel()
 		return nil, fmt.Errorf("engine does not implement StreamingEngine")
 	}
 
@@ -116,7 +116,7 @@ func (s *StreamingBackupEngine) StreamBackup(ctx context.Context, opts *BackupOp
 	close(progressDone)
 
 	if err != nil {
-		streamer.Cancel()
+		_ = streamer.Cancel()
 		return nil, fmt.Errorf("backup failed: %w", err)
 	}
 
@@ -357,6 +357,6 @@ func (p *PipeReader) Writer() io.WriteCloser {
 
 // Close closes both ends of the pipe
 func (p *PipeReader) Close() error {
-	p.writer.Close()
+	_ = p.writer.Close()
 	return p.reader.Close()
 }

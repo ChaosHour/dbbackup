@@ -228,7 +228,7 @@ func runBenchmarkHistory(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("open catalog: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	results, err := store.ListRecent(cmd.Context(), benchLast)
 	if err != nil {
@@ -259,7 +259,7 @@ func runBenchmarkShow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("open catalog: %w", err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 
 	report, err := store.GetReport(cmd.Context(), args[0])
 	if err != nil {
@@ -362,7 +362,7 @@ func handleOutput(ctx context.Context, report *benchmark.Report) error {
 	if err != nil {
 		log.Warn("Failed to open catalog for benchmark storage", "error", err)
 	} else {
-		defer store.Close()
+		defer func() { _ = store.Close() }()
 		if err := store.Save(ctx, report); err != nil {
 			log.Warn("Failed to save benchmark to catalog", "error", err)
 		} else {

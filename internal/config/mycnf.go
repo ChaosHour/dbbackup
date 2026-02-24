@@ -61,7 +61,7 @@ func LoadMyCnfFromPath(path string) (*MyCnfCredentials, error) {
 		}
 		return nil, fmt.Errorf("failed to read %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	creds := &MyCnfCredentials{}
 	inClientSection := false

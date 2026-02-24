@@ -55,7 +55,7 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 	// Create decompression reader (supports gzip and zstd based on file extension)
 	decomp, err := compression.NewDecompressor(progressReader, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
 
@@ -66,8 +66,8 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			decomp.Close() // Close decompressor first (stops read-ahead goroutines)
-			file.Close()   // Then close underlying file (unblocks any pending reads)
+			_ = decomp.Close() // Close decompressor first (stops read-ahead goroutines)
+			_ = file.Close()   // Then close underlying file (unblocks any pending reads)
 		})
 	}
 	defer cleanupResources()
@@ -135,23 +135,23 @@ func (e *Engine) extractArchiveWithProgress(ctx context.Context, archivePath, de
 			if e.cfg.BufferedIO {
 				bufferedWriter := bufio.NewWriterSize(outFile, 32*1024) // 32KB buffer for faster writes
 				if _, err := fs.CopyWithContext(ctx, bufferedWriter, tarReader); err != nil {
-					outFile.Close()
-					os.Remove(targetPath) // Clean up partial file
+					_ = outFile.Close()
+					_ = os.Remove(targetPath) // Clean up partial file
 					return fmt.Errorf("failed to write file %s: %w", targetPath, err)
 				}
 				if err := bufferedWriter.Flush(); err != nil {
-					outFile.Close()
-					os.Remove(targetPath)
+					_ = outFile.Close()
+					_ = os.Remove(targetPath)
 					return fmt.Errorf("failed to flush buffer for %s: %w", targetPath, err)
 				}
 			} else {
 				if _, err := fs.CopyWithContext(ctx, outFile, tarReader); err != nil {
-					outFile.Close()
-					os.Remove(targetPath) // Clean up partial file
+					_ = outFile.Close()
+					_ = os.Remove(targetPath) // Clean up partial file
 					return fmt.Errorf("failed to write file %s: %w", targetPath, err)
 				}
 			}
-			outFile.Close()
+			_ = outFile.Close()
 		case tar.TypeSymlink:
 			// Security: validate symlink target is within destDir
 			linkTarget := header.Linkname

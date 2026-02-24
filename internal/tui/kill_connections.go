@@ -88,7 +88,7 @@ func (v *KillConnectionsView) fetchConnections() ([]ConnectionInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(v.ctx, killConnectionsTimeout)
 	defer cancel()
@@ -127,7 +127,7 @@ func (v *KillConnectionsView) fetchPostgresConnections(ctx context.Context, db *
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var connections []ConnectionInfo
 	for rows.Next() {
@@ -164,7 +164,7 @@ func (v *KillConnectionsView) fetchMySQLConnections(ctx context.Context, db *sql
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var connections []ConnectionInfo
 	for rows.Next() {
@@ -194,7 +194,7 @@ func (v *KillConnectionsView) doKillConnection(pid int) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(v.ctx, killConnectionsTimeout)
 	defer cancel()
@@ -230,7 +230,7 @@ func (v *KillConnectionsView) doKillAllConnections() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(v.ctx, killConnectionsTimeout)
 	defer cancel()
@@ -242,13 +242,13 @@ func (v *KillConnectionsView) doKillAllConnections() error {
 		if err != nil {
 			return fmt.Errorf("failed to query MySQL connections for database %q: %w", v.database, err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var pid int
 			if err := rows.Scan(&pid); err != nil {
 				continue
 			}
-			db.ExecContext(ctx, fmt.Sprintf("KILL %d", pid))
+			_, _ = db.ExecContext(ctx, fmt.Sprintf("KILL %d", pid))
 		}
 	default:
 		// PostgreSQL: terminate all backends for the database
@@ -456,7 +456,7 @@ func (v *KillConnectionsView) View() string {
 func formatDurationFromSeconds(seconds string) string {
 	// Parse the duration and format nicely
 	var secs float64
-	fmt.Sscanf(seconds, "%f", &secs)
+	_, _ = fmt.Sscanf(seconds, "%f", &secs)
 	if secs < 60 {
 		return fmt.Sprintf("%.0fs", secs)
 	}

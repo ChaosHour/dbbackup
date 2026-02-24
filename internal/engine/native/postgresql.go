@@ -228,7 +228,7 @@ func (e *PostgreSQLNativeEngine) queryMaxConnections(ctx context.Context, connSt
 	if err != nil {
 		return 0
 	}
-	defer conn.Close(ctx2)
+	defer func() { _ = conn.Close(ctx2) }()
 
 	var maxConns int
 	err = conn.QueryRow(ctx2, "SELECT current_setting('max_connections')::int").Scan(&maxConns)
@@ -384,7 +384,7 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 					// Write per-table header
 					header := fmt.Sprintf("\n--\n-- Data for table %s.%s\n--\n\n",
 						e.quoteIdentifier(dobj.Schema), e.quoteIdentifier(dobj.Name))
-					bw.WriteString(header)
+					_, _ = bw.WriteString(header)
 
 					bytesWritten, copyErr := e.copyTableData(ctx, bw, dobj.Schema, dobj.Name)
 
@@ -392,7 +392,7 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 					if flushErr := bw.Flush(); flushErr != nil && copyErr == nil {
 						copyErr = flushErr
 					}
-					tmpf.Close()
+					_ = tmpf.Close()
 
 					results[idx] = tableResult{index: idx, tmpFile: tmpPath, bytes: bytesWritten, err: copyErr}
 
@@ -410,7 +410,7 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 			for i, tr := range results {
 				// Always clean up temp file
 				if tr.tmpFile != "" {
-					defer os.Remove(tr.tmpFile)
+					defer func(f string) { _ = os.Remove(f) }(tr.tmpFile)
 				}
 				if tr.err != nil {
 					e.log.Warn("Failed to copy table data",
@@ -424,10 +424,10 @@ func (e *PostgreSQLNativeEngine) backupPlainFormat(ctx context.Context, w io.Wri
 					continue
 				}
 				if _, err := io.Copy(w, f); err != nil {
-					f.Close()
+					_ = f.Close()
 					return nil, err
 				}
-				f.Close()
+				_ = f.Close()
 				result.BytesProcessed += tr.bytes
 				result.ObjectsProcessed++
 			}
@@ -483,7 +483,7 @@ func (e *PostgreSQLNativeEngine) copyTableData(ctx context.Context, w io.Writer,
 		"SET temp_buffers = '64MB'",          // Temp table buffers
 	}
 	for _, opt := range blobOptimizations {
-		conn.Exec(ctx, opt)
+		_, _ = conn.Exec(ctx, opt)
 	}
 
 	// Check if table has any data

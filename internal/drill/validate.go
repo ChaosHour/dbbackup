@@ -51,7 +51,7 @@ func NewValidator(dbType string, host string, port int, user, password, dbname s
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -96,7 +96,7 @@ func (v *Validator) runQuery(ctx context.Context, query ValidationQuery) Validat
 		result.Error = err.Error()
 		return result
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// Get result
 	if rows.Next() {
@@ -119,7 +119,7 @@ func (v *Validator) runQuery(ctx context.Context, query ValidationQuery) Validat
 	// Check min/max if specified
 	if query.MinValue > 0 || query.MaxValue > 0 {
 		var numValue int64
-		fmt.Sscanf(result.Result, "%d", &numValue)
+		_, _ = fmt.Sscanf(result.Result, "%d", &numValue)
 
 		if query.MinValue > 0 && numValue < query.MinValue {
 			result.Success = false
@@ -276,7 +276,7 @@ func (v *Validator) GetTableList(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []string
 	for rows.Next() {

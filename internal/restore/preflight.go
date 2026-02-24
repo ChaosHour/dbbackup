@@ -236,7 +236,7 @@ func (e *Engine) checkPostgreSQL(ctx context.Context, result *PreflightResult) {
 		e.log.Warn("Could not connect to PostgreSQL for preflight checks", "error", err)
 		return
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Check max_locks_per_transaction
 	var maxLocks string
@@ -245,10 +245,10 @@ func (e *Engine) checkPostgreSQL(ctx context.Context, result *PreflightResult) {
 	}
 
 	// Check maintenance_work_mem
-	db.QueryRowContext(ctx, "SHOW maintenance_work_mem").Scan(&result.PostgreSQL.MaintenanceWorkMem)
+	_ = db.QueryRowContext(ctx, "SHOW maintenance_work_mem").Scan(&result.PostgreSQL.MaintenanceWorkMem)
 
 	// Check shared_buffers (info only, can't change without restart)
-	db.QueryRowContext(ctx, "SHOW shared_buffers").Scan(&result.PostgreSQL.SharedBuffers)
+	_ = db.QueryRowContext(ctx, "SHOW shared_buffers").Scan(&result.PostgreSQL.SharedBuffers)
 
 	// Check max_connections
 	var maxConn string
@@ -257,7 +257,7 @@ func (e *Engine) checkPostgreSQL(ctx context.Context, result *PreflightResult) {
 	}
 
 	// Check version
-	db.QueryRowContext(ctx, "SHOW server_version").Scan(&result.PostgreSQL.Version)
+	_ = db.QueryRowContext(ctx, "SHOW server_version").Scan(&result.PostgreSQL.Version)
 
 	// Check if superuser
 	var isSuperuser bool
@@ -417,7 +417,7 @@ func (e *Engine) estimateBlobsInSQL(sqlFile string) int {
 		e.log.Debug("Cannot open SQL file for BLOB estimation", "file", sqlFile, "error", err)
 		return 0
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Create decompression reader (supports gzip and zstd)
 	decomp, err := compression.NewDecompressor(f, sqlFile)
@@ -425,7 +425,7 @@ func (e *Engine) estimateBlobsInSQL(sqlFile string) int {
 		e.log.Debug("Cannot create decompression reader", "file", sqlFile, "error", err)
 		return 0
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Scan for lo_create patterns
 	// We use a regex to match both "lo_create" and "SELECT lo_create" patterns
@@ -702,7 +702,7 @@ func parseMemoryToMB(memStr string) int {
 	memStr = strings.ToUpper(strings.TrimSpace(memStr))
 	var value int
 	var unit string
-	fmt.Sscanf(memStr, "%d%s", &value, &unit)
+	_, _ = fmt.Sscanf(memStr, "%d%s", &value, &unit)
 
 	switch {
 	case strings.HasPrefix(unit, "G"):

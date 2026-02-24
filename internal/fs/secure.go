@@ -46,7 +46,7 @@ func SecureMkdirTemp(dir, pattern string) (string, error) {
 
 	// Ensure temp directory has secure permissions
 	if err := os.Chmod(tempDir, 0700); err != nil {
-		os.RemoveAll(tempDir)
+		_ = os.RemoveAll(tempDir)
 		return "", fmt.Errorf("failed to secure temp directory: %w", err)
 	}
 
@@ -68,7 +68,7 @@ func CheckWriteAccess(dir string) error {
 		}
 		return fmt.Errorf("cannot write to directory: %w", err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	if err := os.Remove(testFile); err != nil {
 		return fmt.Errorf("cannot remove test file (directory may be read-only): %w", err)

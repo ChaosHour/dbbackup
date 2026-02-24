@@ -231,10 +231,10 @@ func (e *XtraBackupEngine) CheckAvailability(ctx context.Context) (*Availability
 		var hasPrivileges bool
 		rows, err := e.db.QueryContext(ctx, "SHOW GRANTS")
 		if err == nil {
-			defer rows.Close()
+			defer func() { _ = rows.Close() }()
 			for rows.Next() {
 				var grant string
-				rows.Scan(&grant)
+				_ = rows.Scan(&grant)
 				upper := strings.ToUpper(grant)
 				if strings.Contains(upper, "ALL PRIVILEGES") ||
 					(strings.Contains(upper, "RELOAD") && strings.Contains(upper, "LOCK TABLES")) ||
@@ -340,7 +340,7 @@ func (e *XtraBackupEngine) Backup(ctx context.Context, opts *BackupOptions) (*Ba
 	// Monitor progress from stderr
 	go e.monitorBackupProgress(stderrPipe, opts.ProgressFunc)
 	// Drain stdout
-	go io.Copy(io.Discard, stdoutPipe)
+	go func() { _, _ = io.Copy(io.Discard, stdoutPipe) }()
 
 	if err := cmd.Wait(); err != nil {
 		return nil, fmt.Errorf("xtrabackup backup failed: %w", err)
@@ -357,7 +357,7 @@ func (e *XtraBackupEngine) Backup(ctx context.Context, opts *BackupOptions) (*Ba
 
 	// Calculate backup size
 	var backupSize int64
-	filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(targetDir, func(path string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			backupSize += info.Size()
 		}
@@ -385,7 +385,7 @@ func (e *XtraBackupEngine) Backup(ctx context.Context, opts *BackupOptions) (*Ba
 		}
 
 		// Remove uncompressed directory
-		os.RemoveAll(targetDir)
+		_ = os.RemoveAll(targetDir)
 
 		info, _ := os.Stat(tarFile)
 		checksum, _ := security.ChecksumFile(tarFile)
@@ -502,7 +502,7 @@ func (e *XtraBackupEngine) Restore(ctx context.Context, opts *RestoreOptions) er
 			return fmt.Errorf("failed to extract backup: %w", err)
 		}
 		sourcePath = extractDir
-		defer os.RemoveAll(extractDir)
+		defer func() { _ = os.RemoveAll(extractDir) }()
 	}
 
 	// Run --prepare if not already prepared (check xtrabackup_checkpoints)
@@ -929,7 +929,7 @@ func (e *XtraBackupEngine) compressBackup(ctx context.Context, sourceDir, target
 	if err != nil {
 		return err
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Wrap in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(outFile)
@@ -944,10 +944,10 @@ func (e *XtraBackupEngine) compressBackup(ctx context.Context, sourceDir, target
 	if err != nil {
 		return err
 	}
-	defer comp.Close()
+	defer func() { _ = comp.Close() }()
 
 	tarWriter := tar.NewWriter(comp.Writer)
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 
 	return filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -980,7 +980,7 @@ func (e *XtraBackupEngine) compressBackup(ctx context.Context, sourceDir, target
 			if err != nil {
 				return err
 			}
-			defer file.Close()
+			defer func() { _ = file.Close() }()
 
 			_, err = io.Copy(tarWriter, file)
 			if err != nil {
@@ -1002,13 +1002,13 @@ func (e *XtraBackupEngine) extractBackup(ctx context.Context, sourceFile, target
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	decomp, err := compression.NewDecompressor(file, sourceFile)
 	if err != nil {
 		return err
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	tarReader := tar.NewReader(decomp.Reader)
 
@@ -1043,10 +1043,10 @@ func (e *XtraBackupEngine) extractBackup(ctx context.Context, sourceFile, target
 				return err
 			}
 			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
+				_ = outFile.Close()
 				return err
 			}
-			outFile.Close()
+			_ = outFile.Close()
 		}
 	}
 

@@ -272,7 +272,7 @@ func (ro *RestoreOrchestrator) extractTarBackup(ctx context.Context, source, des
 	if err != nil {
 		return fmt.Errorf("cannot open tar file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	tr := tar.NewReader(f)
 	fileCount := 0
@@ -318,10 +318,10 @@ func (ro *RestoreOrchestrator) extractTarBackup(ctx context.Context, source, des
 			}
 
 			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
+				_ = outFile.Close()
 				return fmt.Errorf("failed to write file %s: %w", target, err)
 			}
-			outFile.Close()
+			_ = outFile.Close()
 			fileCount++
 
 		case tar.TypeSymlink:

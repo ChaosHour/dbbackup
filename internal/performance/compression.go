@@ -114,7 +114,7 @@ func NewParallelGzipWriter(w io.Writer, cfg CompressionConfig) (*ParallelGzipWri
 
 	// SetConcurrency: blockSize is the size of each block, workers is the number of goroutines
 	if err := gz.SetConcurrency(blockSize, workers); err != nil {
-		gz.Close()
+		_ = gz.Close()
 		return nil, err
 	}
 

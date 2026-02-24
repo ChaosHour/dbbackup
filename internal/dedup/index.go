@@ -39,7 +39,7 @@ func NewChunkIndexAt(dbPath string) (*ChunkIndex, error) {
 
 	// Test the connection and check for locking issues
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		if isNFSLockingError(err) {
 			return nil, fmt.Errorf("database locked (common on NFS/CIFS): %w\n\n"+
 				"HINT: Use --index-db to put the SQLite index on local storage:\n"+
@@ -50,7 +50,7 @@ func NewChunkIndexAt(dbPath string) (*ChunkIndex, error) {
 
 	idx := &ChunkIndex{db: db, dbPath: dbPath}
 	if err := idx.migrate(); err != nil {
-		db.Close()
+		_ = db.Close()
 		if isNFSLockingError(err) {
 			return nil, fmt.Errorf("database locked during migration (common on NFS/CIFS): %w\n\n"+
 				"HINT: Use --index-db to put the SQLite index on local storage:\n"+
@@ -257,7 +257,7 @@ func (idx *ChunkIndex) Stats() (*IndexStats, error) {
 		stats.NewestChunk, _ = time.Parse("2006-01-02 15:04:05", newestStr)
 	}
 
-	idx.db.QueryRow("SELECT COUNT(*) FROM manifests").Scan(&stats.TotalManifests)
+	_ = idx.db.QueryRow("SELECT COUNT(*) FROM manifests").Scan(&stats.TotalManifests)
 
 	// Calculate accurate dedup ratio from manifests
 	// Sum all backup original sizes and all new data stored
@@ -286,7 +286,7 @@ func (idx *ChunkIndex) ListOrphanedChunks() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var hashes []string
 	for rows.Next() {

@@ -109,7 +109,7 @@ func (e *PostgreSQLNativeEngine) CheckWALPrerequisites(ctx context.Context) erro
 			required: ">= 2",
 			check: func(v string) bool {
 				n := 0
-				fmt.Sscanf(v, "%d", &n)
+				_, _ = fmt.Sscanf(v, "%d", &n)
 				return n >= 2
 			},
 		},

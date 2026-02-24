@@ -77,7 +77,7 @@ func (v *DropDatabaseView) fetchDatabases() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(v.ctx, dropDatabaseTimeout)
 	defer cancel()
@@ -94,7 +94,7 @@ func (v *DropDatabaseView) fetchDatabases() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var databases []string
 	systemDBs := map[string]bool{
@@ -135,7 +135,7 @@ func (v *DropDatabaseView) doDropDatabase(dbName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(v.ctx, dropDatabaseTimeout*2)
 	defer cancel()
@@ -146,11 +146,11 @@ func (v *DropDatabaseView) doDropDatabase(dbName string) error {
 		// MySQL: kill connections
 		rows, err := db.QueryContext(ctx, "SELECT ID FROM information_schema.PROCESSLIST WHERE DB = ?", dbName)
 		if err == nil {
-			defer rows.Close()
+			defer func() { _ = rows.Close() }()
 			for rows.Next() {
 				var pid int
 				if rows.Scan(&pid) == nil {
-					db.ExecContext(ctx, fmt.Sprintf("KILL %d", pid))
+					_, _ = db.ExecContext(ctx, fmt.Sprintf("KILL %d", pid))
 				}
 			}
 		}

@@ -201,7 +201,7 @@ func isCustomFormat(filename string, compressed bool) formatCheckResult {
 		// File doesn't exist or can't be opened - return file not found
 		return formatCheckFileNotFound
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var reader io.Reader = file
 
@@ -211,7 +211,7 @@ func isCustomFormat(filename string, compressed bool) formatCheckResult {
 		if err != nil {
 			return formatCheckFileNotFound
 		}
-		defer gz.Close()
+		defer func() { _ = gz.Close() }()
 		reader = gz
 	}
 

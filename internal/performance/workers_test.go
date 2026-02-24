@@ -108,14 +108,14 @@ func TestWorkerPool(t *testing.T) {
 
 		// Submit some successful tasks
 		for i := 0; i < 5; i++ {
-			pool.Submit(context.Background(), func(ctx context.Context) error {
+			_ = pool.Submit(context.Background(), func(ctx context.Context) error {
 				return nil
 			})
 		}
 
 		// Submit some failing tasks
 		for i := 0; i < 3; i++ {
-			pool.Submit(context.Background(), func(ctx context.Context) error {
+			_ = pool.Submit(context.Background(), func(ctx context.Context) error {
 				return errors.New("fail")
 			})
 		}
@@ -177,7 +177,7 @@ func TestSemaphore(t *testing.T) {
 
 	t.Run("ContextCancellation", func(t *testing.T) {
 		sem := NewSemaphore(1)
-		sem.Acquire(context.Background()) // Exhaust the semaphore
+		_ = sem.Acquire(context.Background()) // Exhaust the semaphore
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -264,7 +264,7 @@ func BenchmarkWorkerPoolSubmit(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		pool.Submit(context.Background(), func(ctx context.Context) error {
+		_ = pool.Submit(context.Background(), func(ctx context.Context) error {
 			return nil
 		})
 	}
@@ -279,7 +279,7 @@ func BenchmarkWorkerPoolParallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			pool.Submit(context.Background(), func(ctx context.Context) error {
+			_ = pool.Submit(context.Background(), func(ctx context.Context) error {
 				return nil
 			})
 		}
@@ -293,7 +293,7 @@ func BenchmarkSemaphoreAcquireRelease(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		sem.Acquire(ctx)
+		_ = sem.Acquire(ctx)
 		sem.Release()
 	}
 }
@@ -306,7 +306,7 @@ func BenchmarkSemaphoreParallel(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			sem.Acquire(ctx)
+			_ = sem.Acquire(ctx)
 			sem.Release()
 		}
 	})

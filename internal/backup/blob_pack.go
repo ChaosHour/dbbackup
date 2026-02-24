@@ -81,15 +81,15 @@ func (p *BLOBPack) Serialize() ([]byte, error) {
 
 	// Write header
 	w.Write(blobPackMagic[:])
-	binary.Write(w, binary.LittleEndian, uint32(blobPackVersion))
-	binary.Write(w, binary.LittleEndian, uint32(len(p.entries)))
+	_ = binary.Write(w, binary.LittleEndian, uint32(blobPackVersion))
+	_ = binary.Write(w, binary.LittleEndian, uint32(len(p.entries)))
 
 	// Write index (pre-calculate offsets)
 	offset := uint64(0)
 	for _, entry := range p.entries {
-		binary.Write(w, binary.LittleEndian, entry.OID)
-		binary.Write(w, binary.LittleEndian, offset)
-		binary.Write(w, binary.LittleEndian, uint64(len(entry.Data)))
+		_ = binary.Write(w, binary.LittleEndian, entry.OID)
+		_ = binary.Write(w, binary.LittleEndian, offset)
+		_ = binary.Write(w, binary.LittleEndian, uint64(len(entry.Data)))
 		offset += uint64(len(entry.Data))
 	}
 

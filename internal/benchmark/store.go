@@ -40,7 +40,7 @@ func OpenStore(dbPath string) (*Store, error) {
 
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
@@ -133,7 +133,7 @@ func (s *Store) ListRecent(ctx context.Context, limit int) ([]BenchmarkSummary, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []BenchmarkSummary
 	for rows.Next() {

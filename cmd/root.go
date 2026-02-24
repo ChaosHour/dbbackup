@@ -187,7 +187,7 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	// SECURITY: Password flag removed - use PGPASSWORD/MYSQL_PWD environment variable or .pgpass file
 	// Provide helpful error message for users expecting --password flag
 	rootCmd.PersistentFlags().StringVar(&deprecatedPassword, "password", "", "DEPRECATED: Use MYSQL_PWD or PGPASSWORD environment variable instead")
-	rootCmd.PersistentFlags().MarkHidden("password")
+	_ = rootCmd.PersistentFlags().MarkHidden("password")
 	rootCmd.PersistentFlags().StringVarP(&cfg.DatabaseType, "db-type", "d", cfg.DatabaseType, "Database type (postgres|mysql|mariadb)")
 	rootCmd.PersistentFlags().StringVar(&cfg.BackupDir, "backup-dir", cfg.BackupDir, "Backup directory")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoColor, "no-color", cfg.NoColor, "Disable colored output")

@@ -56,7 +56,7 @@ func (e *Encryptor) EncryptWALFile(sourcePath, destPath string, opts EncryptionO
 	if err != nil {
 		return 0, fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	// Check file size before reading into memory
 	stat, err := srcFile.Stat()
@@ -100,7 +100,7 @@ func (e *Encryptor) EncryptWALFile(sourcePath, destPath string, opts EncryptionO
 	if err != nil {
 		return 0, fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	// Write magic header to identify encrypted WAL files
 	header := []byte("WALENC01") // WAL Encryption version 1
@@ -146,7 +146,7 @@ func (e *Encryptor) DecryptWALFile(sourcePath, destPath string, opts EncryptionO
 	if err != nil {
 		return 0, fmt.Errorf("failed to open encrypted file: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	// Check file size before reading into memory
 	stat, err := srcFile.Stat()
@@ -205,7 +205,7 @@ func (e *Encryptor) DecryptWALFile(sourcePath, destPath string, opts EncryptionO
 	if err != nil {
 		return 0, fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	written, err := dstFile.Write(plaintext)
 	if err != nil {
@@ -227,7 +227,7 @@ func (e *Encryptor) IsEncrypted(filePath string) bool {
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	header := make([]byte, 8)
 	if _, err := io.ReadFull(file, header); err != nil {
@@ -252,7 +252,7 @@ func (e *Encryptor) EncryptAndArchive(walPath, archiveDir string, opts Encryptio
 	encryptedSize, err = e.EncryptWALFile(walPath, archivePath, opts)
 	if err != nil {
 		// Clean up partial file on error
-		os.Remove(archivePath)
+		_ = os.Remove(archivePath)
 		return "", 0, err
 	}
 
@@ -283,7 +283,7 @@ func (e *Encryptor) VerifyEncryptedFile(encryptedPath string, opts EncryptionOpt
 	if err != nil {
 		return fmt.Errorf("cannot open encrypted file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	header := make([]byte, 8)
 	if _, err := io.ReadFull(file, header); err != nil {

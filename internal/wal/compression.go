@@ -53,7 +53,7 @@ func (c *Compressor) CompressWALFileContext(ctx context.Context, sourcePath, des
 	if err != nil {
 		return 0, fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	// Get source file size for logging
 	srcInfo, err := srcFile.Stat()
@@ -67,7 +67,7 @@ func (c *Compressor) CompressWALFileContext(ctx context.Context, sourcePath, des
 	if err != nil {
 		return 0, fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(dstFile)
@@ -78,7 +78,7 @@ func (c *Compressor) CompressWALFileContext(ctx context.Context, sourcePath, des
 	if err != nil {
 		return 0, fmt.Errorf("failed to create compressor: %w", err)
 	}
-	defer comp.Close()
+	defer func() { _ = comp.Close() }()
 
 	// Copy and compress with context support
 	_, err = fs.CopyWithContext(ctx, comp, srcFile)
@@ -127,26 +127,26 @@ func (c *Compressor) DecompressWALFileContext(ctx context.Context, sourcePath, d
 	if err != nil {
 		return 0, fmt.Errorf("failed to open compressed file: %w", err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	// Create decompression reader (auto-detects gzip/zstd from file extension)
 	decomp, err := compression.NewDecompressor(srcFile, sourcePath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create decompression reader (file may be corrupted): %w", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Create destination file
 	dstFile, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create destination file: %w", err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	// Decompress with context support
 	written, err := fs.CopyWithContext(ctx, dstFile, decomp.Reader)
 	if err != nil {
-		os.Remove(destPath) // Clean up partial file
+		_ = os.Remove(destPath) // Clean up partial file
 		return 0, fmt.Errorf("decompression failed: %w", err)
 	}
 
@@ -174,7 +174,7 @@ func (c *Compressor) CompressAndArchive(walPath, archiveDir string, level int) (
 	compressedSize, err = c.CompressWALFile(walPath, archivePath, level)
 	if err != nil {
 		// Clean up partial file on error
-		os.Remove(archivePath)
+		_ = os.Remove(archivePath)
 		return "", 0, err
 	}
 
@@ -206,13 +206,13 @@ func (c *Compressor) VerifyCompressedFile(compressedPath string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open compressed file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	decomp, err := compression.NewDecompressor(file, compressedPath)
 	if err != nil {
 		return fmt.Errorf("invalid compressed format: %w", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Read first few bytes to verify decompression works
 	buf := make([]byte, 1024)

@@ -88,10 +88,10 @@ func (b *BtrfsBackend) CreateSnapshot(ctx context.Context, opts SnapshotOptions)
 	// Optionally sync filesystem first
 	if opts.Sync {
 		cmd := exec.CommandContext(ctx, "sync")
-		cmd.Run()
+		_ = cmd.Run()
 		// Also run btrfs filesystem sync
 		cmd = exec.CommandContext(ctx, "btrfs", "filesystem", "sync", b.config.Subvolume)
-		cmd.Run()
+		_ = cmd.Run()
 	}
 
 	// Create snapshot

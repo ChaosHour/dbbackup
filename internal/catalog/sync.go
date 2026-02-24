@@ -130,7 +130,7 @@ func (c *SQLiteCatalog) SyncFromDirectory(ctx context.Context, dir string) (*Syn
 		if _, err := os.Stat(entry.BackupPath); os.IsNotExist(err) {
 			// Mark as deleted — use targeted status update to avoid
 			// overwriting verified_at/verify_valid via full Update()
-			c.db.ExecContext(ctx, `UPDATE backups SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			_, _ = c.db.ExecContext(ctx, `UPDATE backups SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 				StatusDeleted, entry.ID)
 			result.Removed++
 			result.Details = append(result.Details,
@@ -253,7 +253,7 @@ func (c *SQLiteCatalog) GetSyncStatus(ctx context.Context) (*SyncStatus, error) 
 
 	// Get last sync time
 	var lastSync sql.NullString
-	c.db.QueryRowContext(ctx, "SELECT value FROM catalog_meta WHERE key = 'last_sync'").Scan(&lastSync)
+	_ = c.db.QueryRowContext(ctx, "SELECT value FROM catalog_meta WHERE key = 'last_sync'").Scan(&lastSync)
 	if lastSync.Valid {
 		if t, err := time.Parse(time.RFC3339, lastSync.String); err == nil {
 			status.LastSync = &t
@@ -261,9 +261,9 @@ func (c *SQLiteCatalog) GetSyncStatus(ctx context.Context) (*SyncStatus, error) 
 	}
 
 	// Count entries
-	c.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM backups").Scan(&status.TotalEntries)
-	c.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM backups WHERE status != 'deleted'").Scan(&status.ActiveEntries)
-	c.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM backups WHERE status = 'deleted'").Scan(&status.DeletedEntries)
+	_ = c.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM backups").Scan(&status.TotalEntries)
+	_ = c.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM backups WHERE status != 'deleted'").Scan(&status.ActiveEntries)
+	_ = c.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM backups WHERE status = 'deleted'").Scan(&status.DeletedEntries)
 
 	// Get unique directories
 	rows, _ := c.db.QueryContext(ctx, `
@@ -276,10 +276,10 @@ func (c *SQLiteCatalog) GetSyncStatus(ctx context.Context) (*SyncStatus, error) 
 		FROM backups WHERE status != 'deleted'
 	`)
 	if rows != nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var dir string
-			rows.Scan(&dir)
+			_ = rows.Scan(&dir)
 			status.Directories = append(status.Directories, dir)
 		}
 	}

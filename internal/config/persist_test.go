@@ -13,7 +13,7 @@ func TestConfigSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, ".dbbackup.conf")
 
@@ -236,7 +236,7 @@ func TestConfigFullRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, ".dbbackup.conf")
 
@@ -418,7 +418,7 @@ func TestConfigSaveZeroValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	configPath := filepath.Join(tmpDir, ".dbbackup.conf")
 

@@ -268,7 +268,7 @@ func BenchmarkCheckAndRecord(b *testing.B) {
 
 	// Pre-generate random BLOBs
 	data := make([]byte, 1024)
-	rand.Read(data)
+	_, _ = rand.Read(data)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -282,7 +282,7 @@ func BenchmarkCheckAndRecord(b *testing.B) {
 
 func BenchmarkHashBLOB(b *testing.B) {
 	data := make([]byte, 10*1024*1024) // 10 MB BLOB
-	rand.Read(data)
+	_, _ = rand.Read(data)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

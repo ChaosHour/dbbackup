@@ -153,7 +153,7 @@ func (pt *ProgressTracker) sendProgressUpdate() {
 		WithDetail("estimated_remaining", progress.EstimatedRemaining.String())
 
 	// Send asynchronously
-	go pt.manager.NotifySync(context.Background(), event)
+	go func() { _ = pt.manager.NotifySync(context.Background(), event) }()
 }
 
 // ProgressInfo contains snapshot of current progress

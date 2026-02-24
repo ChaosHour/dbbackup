@@ -145,7 +145,7 @@ func TestGzipRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDecompressorWithAlgorithm(gzip) failed: %v", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	decompressed, err := io.ReadAll(decomp.Reader)
 	if err != nil {
@@ -188,7 +188,7 @@ func TestZstdRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDecompressorWithAlgorithm(zstd) failed: %v", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	decompressed, err := io.ReadAll(decomp.Reader)
 	if err != nil {
@@ -206,7 +206,7 @@ func TestPassthroughDecompressor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDecompressorWithAlgorithm(none) failed: %v", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	result, err := io.ReadAll(decomp.Reader)
 	if err != nil {
@@ -225,15 +225,15 @@ func TestDecompressorFromFilePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCompressor failed: %v", err)
 	}
-	comp.Writer.Write([]byte(testData))
-	comp.Close()
+	_, _ = comp.Writer.Write([]byte(testData))
+	_ = comp.Close()
 
 	// Use NewDecompressor with file path
 	decomp, err := NewDecompressor(bytes.NewReader(compressed.Bytes()), "backup.sql.zst")
 	if err != nil {
 		t.Fatalf("NewDecompressor failed: %v", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	if decomp.Algorithm() != AlgorithmZstd {
 		t.Errorf("expected zstd algorithm, got %s", decomp.Algorithm())
@@ -256,8 +256,8 @@ func BenchmarkGzipCompress(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		comp, _ := NewCompressor(&buf, AlgorithmGzip, 6)
-		comp.Writer.Write(data)
-		comp.Close()
+		_, _ = comp.Writer.Write(data)
+		_ = comp.Close()
 	}
 }
 
@@ -269,8 +269,8 @@ func BenchmarkZstdCompress(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var buf bytes.Buffer
 		comp, _ := NewCompressor(&buf, AlgorithmZstd, 3)
-		comp.Writer.Write(data)
-		comp.Close()
+		_, _ = comp.Writer.Write(data)
+		_ = comp.Close()
 	}
 }
 
@@ -280,8 +280,8 @@ func BenchmarkGzipDecompress(b *testing.B) {
 	// Pre-compress
 	var compressed bytes.Buffer
 	comp, _ := NewCompressor(&compressed, AlgorithmGzip, 6)
-	comp.Writer.Write(data)
-	comp.Close()
+	_, _ = comp.Writer.Write(data)
+	_ = comp.Close()
 	compBytes := compressed.Bytes()
 
 	b.SetBytes(int64(len(data)))
@@ -289,8 +289,8 @@ func BenchmarkGzipDecompress(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		decomp, _ := NewDecompressorWithAlgorithm(bytes.NewReader(compBytes), AlgorithmGzip)
-		io.Copy(io.Discard, decomp.Reader)
-		decomp.Close()
+		_, _ = io.Copy(io.Discard, decomp.Reader)
+		_ = decomp.Close()
 	}
 }
 
@@ -300,8 +300,8 @@ func BenchmarkZstdDecompress(b *testing.B) {
 	// Pre-compress
 	var compressed bytes.Buffer
 	comp, _ := NewCompressor(&compressed, AlgorithmZstd, 3)
-	comp.Writer.Write(data)
-	comp.Close()
+	_, _ = comp.Writer.Write(data)
+	_ = comp.Close()
 	compBytes := compressed.Bytes()
 
 	b.SetBytes(int64(len(data)))
@@ -309,7 +309,7 @@ func BenchmarkZstdDecompress(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		decomp, _ := NewDecompressorWithAlgorithm(bytes.NewReader(compBytes), AlgorithmZstd)
-		io.Copy(io.Discard, decomp.Reader)
-		decomp.Close()
+		_, _ = io.Copy(io.Discard, decomp.Reader)
+		_ = decomp.Close()
 	}
 }

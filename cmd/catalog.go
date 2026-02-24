@@ -345,7 +345,7 @@ func runCatalogSync(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	fmt.Printf("[DIR] Syncing backups from: %s\n", absDir)
 	fmt.Printf("[STATS] Catalog database: %s\n\n", catalogDBPath)
@@ -357,7 +357,7 @@ func runCatalogSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Update last sync time
-	cat.SetLastSync(ctx)
+	_ = cat.SetLastSync(ctx)
 
 	// Show results
 	fmt.Printf("=====================================================\n")
@@ -396,7 +396,7 @@ func runCatalogList(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -459,7 +459,7 @@ func runCatalogStats(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -532,7 +532,7 @@ func runCatalogGaps(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -641,7 +641,7 @@ func runCatalogSearch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -729,7 +729,7 @@ func runCatalogInfo(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -825,7 +825,7 @@ func runCatalogPrune(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 

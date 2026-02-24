@@ -285,7 +285,7 @@ func RunBackupInTUI(ctx context.Context, cfg *config.Config, log logger.Logger,
 	if err != nil {
 		return fmt.Errorf("failed to create database connection: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	err = db.Connect(ctx)
 	if err != nil {

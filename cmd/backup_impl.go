@@ -93,7 +93,7 @@ func runClusterBackup(ctx context.Context) error {
 		auditLogger.LogBackupFailed(user, "all_databases", err)
 		return fmt.Errorf("failed to create database instance: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Connect to database
 	if err := db.Connect(ctx); err != nil {
@@ -300,7 +300,7 @@ func runSingleBackup(ctx context.Context, databaseName string) error {
 		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to create database instance: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Connect to database
 	if err := db.Connect(ctx); err != nil {
@@ -569,7 +569,7 @@ func runSampleBackup(ctx context.Context, databaseName string) error {
 		auditLogger.LogBackupFailed(user, databaseName, err)
 		return fmt.Errorf("failed to create database instance: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Connect to database
 	if err := db.Connect(ctx); err != nil {
@@ -753,7 +753,7 @@ func findLatestClusterBackup(backupDir string) (string, error) {
 // runBackupPreflight runs preflight checks without executing backup
 func runBackupPreflight(ctx context.Context, databaseName string) error {
 	checker := checks.NewPreflightChecker(cfg, log)
-	defer checker.Close()
+	defer func() { _ = checker.Close() }()
 
 	result, err := checker.RunAllChecks(ctx, databaseName)
 	if err != nil {

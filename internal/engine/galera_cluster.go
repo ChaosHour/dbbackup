@@ -119,7 +119,7 @@ func DetectGaleraCluster(ctx context.Context, db *sql.DB) (*GaleraClusterInfo, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to query wsrep status: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	found := 0
 	for rows.Next() {

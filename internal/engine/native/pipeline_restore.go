@@ -318,10 +318,10 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 	cleanupFn := func() {
 		cleanupOnce.Do(func() {
 			if decompCloser != nil {
-				decompCloser.Close()
+				_ = decompCloser.Close()
 			}
 			HintDoneWithFile(file)
-			file.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanupFn()
@@ -625,7 +625,7 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 								"panic", fmt.Sprintf("%v", r))
 							pw.CloseWithError(fmt.Errorf("feeder panic: %v", r))
 						} else {
-							pw.Close()
+							_ = pw.Close()
 						}
 					}()
 					bw := bufio.NewWriterSize(pw, pipelineCfg.CopyBufferSize)
@@ -641,7 +641,7 @@ func (e *ParallelRestoreEngine) RestoreFilePipeline(ctx context.Context, filePat
 
 				// CopyFrom reads from pipe (no FREEZE — schema created on separate connection)
 				rows, copyErr := e.streamCopyNoFreeze(ctx, job.tableName, pr)
-				pr.Close() // Unblock feeder goroutine if COPY returned early
+				_ = pr.Close() // Unblock feeder goroutine if COPY returned early
 
 				// Wait for feeder to finish before touching job.chunks.
 				// Without this, nilling chunks races with the feeder's range loop

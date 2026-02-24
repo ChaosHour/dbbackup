@@ -66,7 +66,7 @@ func (rcg *RecoveryConfigGenerator) generateModernRecoveryConfig(config *Recover
 	if err != nil {
 		return fmt.Errorf("failed to create recovery.signal: %w", err)
 	}
-	signalFile.Close()
+	_ = signalFile.Close()
 
 	// Generate postgresql.auto.conf with recovery settings
 	autoConfPath := filepath.Join(config.DataDir, "postgresql.auto.conf")
@@ -223,7 +223,7 @@ func (rcg *RecoveryConfigGenerator) ValidateDataDirectory(dataDir string) error 
 	if err := os.WriteFile(testFile, []byte("test"), 0600); err != nil {
 		return fmt.Errorf("data directory is not writable: %w", err)
 	}
-	os.Remove(testFile)
+	_ = os.Remove(testFile)
 
 	rcg.log.Info("Data directory validation passed", "path", dataDir)
 	return nil

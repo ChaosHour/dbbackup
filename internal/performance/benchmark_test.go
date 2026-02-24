@@ -284,7 +284,7 @@ func BenchmarkOptimizedCopy(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		src := bytes.NewReader(testData)
 		dst := &bytes.Buffer{}
-		OptimizedCopy(context.Background(), dst, src)
+		_, _ = OptimizedCopy(context.Background(), dst, src)
 	}
 }
 
@@ -300,7 +300,7 @@ func BenchmarkHighThroughputCopy(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		src := bytes.NewReader(testData)
 		dst := &bytes.Buffer{}
-		HighThroughputCopy(context.Background(), dst, src)
+		_, _ = HighThroughputCopy(context.Background(), dst, src)
 	}
 }
 
@@ -316,7 +316,7 @@ func BenchmarkStandardCopy(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		src := bytes.NewReader(testData)
 		dst := &bytes.Buffer{}
-		io.Copy(dst, src)
+		_, _ = io.Copy(dst, src)
 	}
 }
 

@@ -78,7 +78,7 @@ func (v *BlobExtractView) scanBlobColumns() tea.Cmd {
 		if err != nil {
 			return blobExtractScanMsg{err: fmt.Errorf("failed to connect: %w", err)}
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		queryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
@@ -108,7 +108,7 @@ func scanPostgreSQLBlobColumns(ctx context.Context, db *sql.DB) ([]blobExtractCo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var columns []blobExtractColumn
 	for rows.Next() {
@@ -149,7 +149,7 @@ func scanMySQLBlobColumns(ctx context.Context, db *sql.DB, database string) ([]b
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var columns []blobExtractColumn
 	for rows.Next() {
@@ -179,7 +179,7 @@ func (v *BlobExtractView) exportBlobData() tea.Cmd {
 		if err != nil {
 			return blobExtractExportMsg{err: fmt.Errorf("failed to connect: %w", err)}
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 
 		exported := 0
 		for _, col := range columns {
@@ -250,7 +250,7 @@ func (v *BlobExtractView) exportBlobData() tea.Cmd {
 				}
 				exported++
 			}
-			rows.Close()
+			_ = rows.Close()
 		}
 
 		return blobExtractExportMsg{exported: exported, outputDir: outputDir}

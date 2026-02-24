@@ -143,7 +143,7 @@ func (d *Diagnoser) diagnosePgDump(ctx context.Context, filePath string, result 
 		result.Errors = append(result.Errors, fmt.Sprintf("Cannot open file: %v", err))
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Read first 512 bytes
 	header := make([]byte, 512)
@@ -182,7 +182,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 		result.Errors = append(result.Errors, fmt.Sprintf("Cannot open file: %v", err))
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Verify compressed archive integrity using auto-detected decompressor
 	gz, err := compression.NewDecompressor(file, filePath)
@@ -204,10 +204,10 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 	if err != nil && err != io.EOF {
 		result.IsValid = false
 		result.Errors = append(result.Errors, fmt.Sprintf("Cannot read decompressed header: %v", err))
-		gz.Close()
+		_ = gz.Close()
 		return
 	}
-	gz.Close()
+	_ = gz.Close()
 
 	// Check PGDMP signature
 	if n >= 5 && string(header[:5]) == "PGDMP" {
@@ -237,7 +237,7 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 	}
 
 	// Verify full compressed stream integrity by reading to end
-	file.Seek(0, 0)
+	_, _ = file.Seek(0, 0)
 	gz, err = compression.NewDecompressor(file, filePath)
 	if err != nil {
 		result.IsValid = false
@@ -263,11 +263,11 @@ func (d *Diagnoser) diagnosePgDumpGz(filePath string, result *DiagnoseResult) {
 				fmt.Sprintf("Compressed stream truncated after %d bytes: %v", totalRead, err),
 				"The backup file appears to be incomplete",
 				"Check if backup process completed successfully")
-			gz.Close()
+			_ = gz.Close()
 			return
 		}
 	}
-	gz.Close()
+	_ = gz.Close()
 
 	result.Details.ExpandedSize = totalRead
 	if result.FileSize > 0 {
@@ -287,7 +287,7 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 		result.Errors = append(result.Errors, fmt.Sprintf("Cannot open file: %v", err))
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	if compressed {
 		decomp, derr := compression.NewDecompressor(file, filePath)
@@ -301,7 +301,7 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 		}
 		result.Details.GzipValid = true
 		reader = decomp.Reader
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 	} else {
 		reader = file
 	}
@@ -415,7 +415,7 @@ func (d *Diagnoser) diagnoseSQLScript(filePath string, compressed bool, result *
 
 	// Read last bytes for additional context
 	if !compressed {
-		file.Seek(-min(500, result.FileSize), 2)
+		_, _ = file.Seek(-min(500, result.FileSize), 2)
 		lastBytes := make([]byte, 500)
 		n, _ := file.Read(lastBytes)
 		result.Details.LastBytes = strings.TrimSpace(string(lastBytes[:n]))
@@ -550,7 +550,7 @@ func (d *Diagnoser) diagnoseUnknown(filePath string, result *DiagnoseResult) {
 	if err != nil {
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	header := make([]byte, 512)
 	n, _ := file.Read(header)
@@ -729,7 +729,7 @@ func (d *Diagnoser) DiagnoseClusterDumps(ctx context.Context, archivePath, tempD
 		if testErr != nil {
 			d.log.Debug("Archive not readable", "error", testErr)
 		} else {
-			testF.Close()
+			_ = testF.Close()
 		}
 	}
 
@@ -1034,7 +1034,7 @@ func (d *Diagnoser) tryFastPathWithMetadata(ctx context.Context, filePath string
 		if d.log != nil {
 			d.log.Debug("Fast path: cannot load cluster metadata, removing corrupt .meta.json", "error", err)
 		}
-		os.Remove(metaPath)
+		_ = os.Remove(metaPath)
 		return false
 	}
 
@@ -1043,7 +1043,7 @@ func (d *Diagnoser) tryFastPathWithMetadata(ctx context.Context, filePath string
 		if d.log != nil {
 			d.log.Debug("Fast path: metadata has no databases, removing empty .meta.json")
 		}
-		os.Remove(metaPath)
+		_ = os.Remove(metaPath)
 		return false
 	}
 
@@ -1052,7 +1052,7 @@ func (d *Diagnoser) tryFastPathWithMetadata(ctx context.Context, filePath string
 	if err != nil {
 		return false
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	header := make([]byte, 4)
 	n, err := file.Read(header)
@@ -1119,7 +1119,7 @@ func (d *Diagnoser) QuickValidateClusterArchive(filePath string) error {
 	if err != nil {
 		return fmt.Errorf("cannot open archive: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Detect compression algorithm from file content
 	algo := compression.DetectAlgorithm(filePath)
@@ -1137,7 +1137,7 @@ func (d *Diagnoser) QuickValidateClusterArchive(filePath string) error {
 	var cleanupOnce sync.Once
 	cleanup := func() {
 		cleanupOnce.Do(func() {
-			gz.Close()
+			_ = gz.Close()
 		})
 	}
 	defer cleanup()

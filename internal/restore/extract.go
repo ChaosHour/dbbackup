@@ -93,7 +93,7 @@ func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.
 	// Use compression package to auto-detect algorithm from file extension
 	decompReader, err := compression.NewDecompressor(file, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("not a valid compressed archive: %w", err)
 	}
 
@@ -103,8 +103,8 @@ func ListDatabasesInCluster(ctx context.Context, archivePath string, log logger.
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			decompReader.Close()
-			file.Close()
+			_ = decompReader.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanupResources()
@@ -182,7 +182,7 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 
 	stat, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return "", fmt.Errorf("cannot stat archive: %w", err)
 	}
 	archiveSize := stat.Size()
@@ -190,7 +190,7 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 	// Use compression package to auto-detect algorithm from file extension
 	decompReader, err := compression.NewDecompressor(file, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return "", fmt.Errorf("not a valid compressed archive: %w", err)
 	}
 
@@ -199,8 +199,8 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			decompReader.Close()
-			file.Close()
+			_ = decompReader.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanupResources()
@@ -297,10 +297,10 @@ func ExtractDatabaseFromCluster(ctx context.Context, archivePath, dbName, output
 			}
 
 			written, err := fs.CopyWithContext(ctx, outFile, tarReader)
-			outFile.Close()
+			_ = outFile.Close()
 			if err != nil {
 				close(stopTicker)
-				os.Remove(extractedPath) // Clean up partial file
+				_ = os.Remove(extractedPath) // Clean up partial file
 				return "", fmt.Errorf("extraction failed: %w", err)
 			}
 
@@ -328,7 +328,7 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 
 	stat, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("cannot stat archive: %w", err)
 	}
 	archiveSize := stat.Size()
@@ -336,7 +336,7 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 	// Use compression package to auto-detect algorithm from file extension
 	decompReader, err := compression.NewDecompressor(file, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("not a valid compressed archive: %w", err)
 	}
 
@@ -345,8 +345,8 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			decompReader.Close()
-			file.Close()
+			_ = decompReader.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanupResources()
@@ -460,10 +460,10 @@ func ExtractMultipleDatabasesFromCluster(ctx context.Context, archivePath string
 				}
 
 				written, err := fs.CopyWithContext(ctx, outFile, tarReader)
-				outFile.Close()
+				_ = outFile.Close()
 				if err != nil {
 					close(stopTicker)
-					os.Remove(extractedPath) // Clean up partial file
+					_ = os.Remove(extractedPath) // Clean up partial file
 					return nil, fmt.Errorf("extraction failed for %s: %w", dbName, err)
 				}
 

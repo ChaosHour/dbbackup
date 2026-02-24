@@ -435,12 +435,12 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 	cleanupFn := func() {
 		cleanupOnce.Do(func() {
 			if decompCloser != nil {
-				decompCloser.Close()
+				_ = decompCloser.Close()
 			}
 			// Linux: evict dump file pages from cache to free RAM
 			// for PostgreSQL shared_buffers during the restore.
 			HintDoneWithFile(file)
-			file.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanupFn()
@@ -552,8 +552,8 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 			}
 
 			if !acquired {
-				pw.Close()
-				pr.Close()
+				_ = pw.Close()
+				_ = pr.Close()
 				break
 			}
 
@@ -561,7 +561,7 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 			go func(tbl string, num int64, r *io.PipeReader) {
 				defer wg.Done()
 				defer func() { <-semaphore }()
-				defer r.Close() // Unblock scanner PipeWriter if CopyFrom exits early
+				defer func() { _ = r.Close() }() // Unblock scanner PipeWriter if CopyFrom exits early
 
 				e.log.Info("COPY streaming", "table", tbl, "number", num)
 				copyStart := time.Now()
@@ -616,8 +616,8 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 					break
 				}
 			}
-			bw.Flush() // Flush remaining buffered data
-			pw.Close() // EOF → worker finishes CopyFrom
+			_ = bw.Flush() // Flush remaining buffered data
+			_ = pw.Close() // EOF → worker finishes CopyFrom
 			continue
 		}
 
@@ -1190,7 +1190,7 @@ func (e *ParallelRestoreEngine) preScanDump(ctx context.Context, filePath string
 	if err != nil {
 		return nil, fmt.Errorf("pre-scan: failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	bufReader := bufio.NewReaderSize(file, 4*1024*1024) // 4MB read buffer
 	var reader io.Reader = bufReader
@@ -1199,7 +1199,7 @@ func (e *ParallelRestoreEngine) preScanDump(ctx context.Context, filePath string
 		if err != nil {
 			return nil, fmt.Errorf("pre-scan: failed to create %s reader: %w", algo, err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 	}
 
@@ -1496,10 +1496,10 @@ func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath strin
 	cleanupFn := func() {
 		cleanupOnce.Do(func() {
 			if decompCloser != nil {
-				decompCloser.Close()
+				_ = decompCloser.Close()
 			}
 			HintDoneWithFile(file)
-			file.Close()
+			_ = file.Close()
 		})
 	}
 	defer cleanupFn()
@@ -1574,8 +1574,8 @@ func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath strin
 			case <-ctx.Done():
 			}
 			if !acquired {
-				pw.Close()
-				pr.Close()
+				_ = pw.Close()
+				_ = pr.Close()
 				break
 			}
 
@@ -1583,7 +1583,7 @@ func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath strin
 			go func(tbl string, r *io.PipeReader) {
 				defer wg.Done()
 				defer func() { <-semaphore }()
-				defer r.Close() // Unblock scanner PipeWriter if CopyFrom exits early
+				defer func() { _ = r.Close() }() // Unblock scanner PipeWriter if CopyFrom exits early
 
 				copyStart := time.Now()
 				progressR := &ProgressReader{
@@ -1623,8 +1623,8 @@ func (e *ParallelRestoreEngine) restorePhase(ctx context.Context, filePath strin
 					break
 				}
 			}
-			bw.Flush()
-			pw.Close()
+			_ = bw.Flush()
+			_ = pw.Close()
 			continue
 		}
 

@@ -91,7 +91,7 @@ func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config
 			metaPath := archive.Path + ".meta.json"
 			if _, statErr := os.Stat(metaPath); statErr == nil {
 				log.Warn("Removing corrupt .meta.json", "path", metaPath, "error", err)
-				os.Remove(metaPath)
+				_ = os.Remove(metaPath)
 			}
 		}
 
@@ -118,7 +118,7 @@ func fetchClusterDatabases(ctx context.Context, archive ArchiveInfo, cfg *config
 		databases, err := restore.ListDatabasesFromExtractedDir(ctx, extractedDir, log)
 		if err != nil {
 			// Cleanup on error to prevent leaked temp directories
-			os.RemoveAll(extractedDir)
+			_ = os.RemoveAll(extractedDir)
 			return clusterDatabaseListMsg{databases: nil, err: fmt.Errorf("failed to list databases from extracted dir: %w", err), extractedDir: ""}
 		}
 

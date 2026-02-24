@@ -411,7 +411,7 @@ func (cs *CloudStreamer) abort(ctx context.Context) {
 		return
 	}
 
-	cs.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
+	_, _ = cs.client.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{
 		Bucket:   aws.String(cs.cfg.Bucket),
 		Key:      aws.String(cs.cfg.Key),
 		UploadId: aws.String(cs.uploadID),
@@ -621,7 +621,7 @@ func (u *MultiFileUploader) uploadFile(ctx context.Context, file UploadFile) (st
 	}
 
 	if _, err := io.Copy(streamer, file.Reader); err != nil {
-		streamer.Cancel()
+		_ = streamer.Cancel()
 		return "", err
 	}
 

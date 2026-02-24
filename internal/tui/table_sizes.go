@@ -83,7 +83,7 @@ func (v *TableSizesView) fetchTableSizes() ([]TableInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(v.ctx, tableSizesTimeout)
 	defer cancel()
@@ -128,7 +128,7 @@ func (v *TableSizesView) fetchPostgresTableSizes(ctx context.Context, db *sql.DB
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []TableInfo
 	for rows.Next() {
@@ -162,7 +162,7 @@ func (v *TableSizesView) fetchMySQLTableSizes(ctx context.Context, db *sql.DB) (
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tables []TableInfo
 	for rows.Next() {

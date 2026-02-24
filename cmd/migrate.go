@@ -76,7 +76,7 @@ Examples:
     --dry-run
 `,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 
@@ -186,7 +186,7 @@ func init() {
 	migrateCmd.PersistentFlags().BoolVar(&migrateVerbose, "verbose", false, "Verbose output")
 
 	// Mark required flags
-	migrateCmd.MarkPersistentFlagRequired("target-host")
+	_ = migrateCmd.MarkPersistentFlagRequired("target-host")
 }
 
 func runMigrateCluster(cmd *cobra.Command, args []string) error {
@@ -247,7 +247,7 @@ func runMigrateCluster(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create migration engine: %w", err)
 	}
-	defer engine.Close()
+	defer func() { _ = engine.Close() }()
 
 	// Configure engine
 	engine.SetWorkDir(workdir)
@@ -388,7 +388,7 @@ func runMigrateSingle(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create migration engine: %w", err)
 	}
-	defer engine.Close()
+	defer func() { _ = engine.Close() }()
 
 	// Configure engine
 	engine.SetWorkDir(workdir)

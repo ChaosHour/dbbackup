@@ -11,7 +11,7 @@ import (
 func TestChunker_Basic(t *testing.T) {
 	// Create test data
 	data := make([]byte, 100*1024) // 100KB
-	rand.Read(data)
+	_, _ = rand.Read(data)
 
 	chunker := NewChunker(bytes.NewReader(data), DefaultChunkerConfig())
 
@@ -55,7 +55,7 @@ func TestChunker_Basic(t *testing.T) {
 func TestChunker_Deterministic(t *testing.T) {
 	// Same data should produce same chunks
 	data := make([]byte, 50*1024)
-	rand.Read(data)
+	_, _ = rand.Read(data)
 
 	// First pass
 	chunker1 := NewChunker(bytes.NewReader(data), DefaultChunkerConfig())
@@ -199,7 +199,7 @@ func TestHashData(t *testing.T) {
 func BenchmarkChunker(b *testing.B) {
 	// 1MB of random data
 	data := make([]byte, 1024*1024)
-	rand.Read(data)
+	_, _ = rand.Read(data)
 
 	b.ResetTimer()
 	b.SetBytes(int64(len(data)))

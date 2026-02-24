@@ -26,12 +26,12 @@ func IntegrationExample() {
 			// Fallback to tools if configured
 			if cfg.FallbackToTools {
 				log.Warn("Falling back to external tools")
-				performToolBasedBackupExample(ctx, cfg, log)
+				_ = performToolBasedBackupExample(ctx, cfg, log)
 			}
 		}
 	} else {
 		// Use existing tool-based implementation
-		performToolBasedBackupExample(ctx, cfg, log)
+		_ = performToolBasedBackupExample(ctx, cfg, log)
 	}
 }
 
@@ -42,7 +42,7 @@ func performNativeBackupExample(ctx context.Context, cfg *config.Config, log log
 	if err := engineManager.InitializeEngines(ctx); err != nil {
 		return fmt.Errorf("failed to initialize native engines: %w", err)
 	}
-	defer engineManager.Close()
+	defer func() { _ = engineManager.Close() }()
 
 	// Check if native engine is available for this database type
 	dbType := detectDatabaseTypeExample(cfg)
@@ -55,7 +55,7 @@ func performNativeBackupExample(ctx context.Context, cfg *config.Config, log log
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outputFile.Close()
+	defer func() { _ = outputFile.Close() }()
 
 	// Perform backup using native engine
 	result, err := engineManager.BackupWithNativeEngine(ctx, outputFile)

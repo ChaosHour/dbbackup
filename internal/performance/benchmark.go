@@ -105,7 +105,7 @@ func (p *Profiler) Start() error {
 	p.cpuFile = f
 
 	if err := pprof.StartCPUProfile(f); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("could not start CPU profile: %w", err)
 	}
 
@@ -135,7 +135,7 @@ func (p *Profiler) Stop() error {
 		if err != nil {
 			return fmt.Errorf("could not create memory profile: %w", err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		runtime.GC() // Get up-to-date statistics
 		if err := pprof.WriteHeapProfile(f); err != nil {
@@ -419,7 +419,7 @@ func (bs *BenchmarkSuite) Run(ctx context.Context, name string, fn func(ctx cont
 		if err := bs.profiler.Start(); err != nil {
 			return nil, fmt.Errorf("failed to start profiler: %w", err)
 		}
-		defer bs.profiler.Stop()
+		defer func() { _ = bs.profiler.Stop() }()
 	}
 
 	mc.Start()

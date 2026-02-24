@@ -522,7 +522,7 @@ func (e *BLOBEngine) flushPack(tw *tar.Writer, pack *BLOBPack, packNum int) erro
 		return fmt.Errorf("failed to create zstd encoder: %w", err)
 	}
 	compressed := encoder.EncodeAll(serialized, nil)
-	encoder.Close()
+	_ = encoder.Close()
 
 	// Write to tar
 	header := &tar.Header{
@@ -572,7 +572,7 @@ func (e *BLOBEngine) backupByteaCOPY(ctx context.Context, tw *tar.Writer, schema
 
 	var copyErr error
 	go func() {
-		defer pw.Close()
+		defer func() { _ = pw.Close() }()
 		_, copyErr = conn.Conn().PgConn().CopyTo(ctx, pw, copySQL)
 	}()
 

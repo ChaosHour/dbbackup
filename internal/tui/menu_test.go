@@ -16,7 +16,7 @@ func TestMenuModelCreation(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	if model == nil {
 		t.Fatal("Expected non-nil model")
@@ -57,7 +57,7 @@ func TestMenuNavigation(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	// Initial cursor should be 0
 	if model.cursor != 0 {
@@ -92,7 +92,7 @@ func TestMenuVimNavigation(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	// Navigate down with 'j'
 	newModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
@@ -115,7 +115,7 @@ func TestMenuBoundsCheck(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	// Try to go up from position 0
 	newModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -149,7 +149,7 @@ func TestMenuQuit(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	// Test 'q' to quit
 	newModel, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
@@ -170,7 +170,7 @@ func TestMenuCtrlC(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	// Test Ctrl+C
 	newModel, cmd := model.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
@@ -192,7 +192,7 @@ func TestMenuDatabaseTypeSwitch(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	initialCursor := model.dbTypeCursor
 
@@ -213,7 +213,7 @@ func TestMenuView(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	view := model.View()
 
@@ -237,7 +237,7 @@ func TestMenuQuittingView(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	model.quitting = true
 	view := model.View()
@@ -254,7 +254,7 @@ func TestAutoSelectValid(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	// Trigger auto-select message - should transition to DatabaseSelectorModel
 	newModel, _ := model.Update(autoSelectMsg{})
@@ -281,7 +281,7 @@ func TestAutoSelectSeparatorSkipped(t *testing.T) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	// Should not crash when auto-selecting separator
 	newModel, cmd := model.Update(autoSelectMsg{})
@@ -310,7 +310,7 @@ func BenchmarkMenuView(b *testing.B) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -324,7 +324,7 @@ func BenchmarkMenuNavigation(b *testing.B) {
 	log := logger.NewNullLogger()
 
 	model := NewMenuModel(cfg, log)
-	defer model.Close()
+	defer func() { _ = model.Close() }()
 
 	downKey := tea.KeyMsg{Type: tea.KeyDown}
 	upKey := tea.KeyMsg{Type: tea.KeyUp}

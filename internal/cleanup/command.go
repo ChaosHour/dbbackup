@@ -140,7 +140,7 @@ func WaitWithContext(ctx context.Context, cmd *exec.Cmd, log logger.Logger) erro
 		pgid, err := syscall.Getpgid(cmd.Process.Pid)
 		if err == nil {
 			// Kill process group
-			syscall.Kill(-pgid, syscall.SIGTERM)
+			_ = syscall.Kill(-pgid, syscall.SIGTERM)
 
 			// Wait briefly for graceful shutdown
 			select {
@@ -148,12 +148,12 @@ func WaitWithContext(ctx context.Context, cmd *exec.Cmd, log logger.Logger) erro
 				// Process exited
 			case <-time.After(2 * time.Second):
 				// Force kill
-				syscall.Kill(-pgid, syscall.SIGKILL)
+				_ = syscall.Kill(-pgid, syscall.SIGKILL)
 				<-cmdDone
 			}
 		} else {
 			// Fallback to killing just the process
-			cmd.Process.Kill()
+			_ = cmd.Process.Kill()
 			<-cmdDone
 		}
 

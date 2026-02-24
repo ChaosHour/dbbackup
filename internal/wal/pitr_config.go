@@ -149,7 +149,7 @@ func (pm *PITRManager) GetCurrentPITRConfig(ctx context.Context) (*PITRConfig, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to open postgresql.conf: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	config := &PITRConfig{}
 	scanner := bufio.NewScanner(file)
@@ -199,7 +199,7 @@ func (pm *PITRManager) GetCurrentPITRConfig(ctx context.Context) (*PITRConfig, e
 		case "archive_command":
 			config.ArchiveCommand = value
 		case "max_wal_senders":
-			fmt.Sscanf(value, "%d", &config.MaxWALSenders)
+			_, _ = fmt.Sscanf(value, "%d", &config.MaxWALSenders)
 		case "wal_keep_size":
 			config.WALKeepSize = value
 		case "restore_command":
@@ -271,7 +271,7 @@ func (pm *PITRManager) createRecoverySignal(ctx context.Context, dataDir string,
 	if err != nil {
 		return fmt.Errorf("failed to open postgresql.auto.conf: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := f.WriteString("\n# PITR Recovery Configuration (added by dbbackup)\n"); err != nil {
 		return err
@@ -352,7 +352,7 @@ func (pm *PITRManager) updatePostgreSQLConf(confPath string, settings map[string
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var lines []string
 	existingKeys := make(map[string]bool)
@@ -400,6 +400,6 @@ func (pm *PITRManager) getPostgreSQLVersion(ctx context.Context) (int, error) {
 
 	versionStr := strings.TrimSpace(string(output))
 	var major int
-	fmt.Sscanf(versionStr, "%d", &major)
+	_, _ = fmt.Sscanf(versionStr, "%d", &major)
 	return major, nil
 }

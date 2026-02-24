@@ -19,14 +19,14 @@ func (e *PostgresIncrementalEngine) extractTarGz(ctx context.Context, archivePat
 	if err != nil {
 		return fmt.Errorf("failed to open archive: %w", err)
 	}
-	defer archiveFile.Close()
+	defer func() { _ = archiveFile.Close() }()
 
 	// Create decompression reader (supports gzip and zstd based on file extension)
 	decomp, err := compression.NewDecompressor(archiveFile, archivePath)
 	if err != nil {
 		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
-	defer decomp.Close()
+	defer func() { _ = decomp.Close() }()
 
 	// Create tar reader
 	tarReader := tar.NewReader(decomp.Reader)
@@ -72,10 +72,10 @@ func (e *PostgresIncrementalEngine) extractTarGz(ctx context.Context, archivePat
 			}
 
 			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
+				_ = outFile.Close()
 				return fmt.Errorf("failed to write file %s: %w", header.Name, err)
 			}
-			outFile.Close()
+			_ = outFile.Close()
 
 			// Preserve modification time
 			if err := os.Chtimes(targetPath, header.ModTime, header.ModTime); err != nil {

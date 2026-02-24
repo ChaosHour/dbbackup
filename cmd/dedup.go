@@ -278,7 +278,7 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -302,7 +302,7 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to decompress input: %w", err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 	}
 
@@ -334,7 +334,7 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}
-	defer index.Close()
+	defer func() { _ = index.Close() }()
 
 	// Generate manifest ID
 	now := time.Now()
@@ -371,9 +371,9 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 		chunkReader = io.TeeReader(reader, h)
 	} else {
 		// Regular file - hash first, then reset and chunk
-		file.Seek(0, 0)
-		io.Copy(h, file)
-		file.Seek(0, 0)
+		_, _ = file.Seek(0, 0)
+		_, _ = io.Copy(h, file)
+		_, _ = file.Seek(0, 0)
 		h = sha256.New() // Reset for inline hashing
 		chunkReader = io.TeeReader(file, h)
 	}
@@ -408,7 +408,7 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 			newChunks++
 			storedSize += int64(chunk.Length)
 			// Record in index
-			index.AddChunk(chunk.Hash, chunk.Length, chunk.Length)
+			_ = index.AddChunk(chunk.Hash, chunk.Length, chunk.Length)
 		}
 
 		chunks = append(chunks, dedup.ChunkRef{
@@ -514,7 +514,7 @@ func runDedupRestore(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	h := sha256.New()
 	writer := io.MultiWriter(outFile, h)
@@ -602,7 +602,7 @@ func runDedupStats(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}
-	defer index.Close()
+	defer func() { _ = index.Close() }()
 
 	stats, err := index.Stats()
 	if err != nil {
@@ -648,7 +648,7 @@ func runDedupGC(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}
-	defer index.Close()
+	defer func() { _ = index.Close() }()
 
 	store, err := dedup.NewChunkStore(dedup.StoreConfig{
 		BasePath: basePath,
@@ -708,7 +708,7 @@ func runDedupDelete(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}
-	defer index.Close()
+	defer func() { _ = index.Close() }()
 
 	// Load manifest to decrement chunk refs
 	manifest, err := manifestStore.Load(manifestID)
@@ -718,7 +718,7 @@ func runDedupDelete(cmd *cobra.Command, args []string) error {
 
 	// Decrement reference counts
 	for _, ref := range manifest.Chunks {
-		index.DecrementRef(ref.Hash)
+		_, _ = index.DecrementRef(ref.Hash)
 	}
 
 	// Delete manifest
@@ -777,7 +777,7 @@ func runDedupVerify(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}
-	defer index.Close()
+	defer func() { _ = index.Close() }()
 
 	var manifests []*dedup.Manifest
 
@@ -860,8 +860,8 @@ func runDedupVerify(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  Result: OK (%d unique chunks verified)\n", len(seenHashes))
 			// Update verified timestamp
 			m.VerifiedAt = time.Now()
-			manifestStore.Save(m)
-			index.UpdateManifestVerified(m.ID, m.VerifiedAt)
+			_ = manifestStore.Save(m)
+			_ = index.UpdateManifestVerified(m.ID, m.VerifiedAt)
 		}
 		fmt.Println()
 	}
@@ -896,7 +896,7 @@ func runDedupPrune(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}
-	defer index.Close()
+	defer func() { _ = index.Close() }()
 
 	manifests, err := manifestStore.ListAll()
 	if err != nil {
@@ -1004,13 +1004,13 @@ func runDedupPrune(cmd *cobra.Command, args []string) error {
 	for _, m := range toDelete {
 		// Decrement chunk references
 		for _, ref := range m.Chunks {
-			index.DecrementRef(ref.Hash)
+			_, _ = index.DecrementRef(ref.Hash)
 		}
 
 		if err := manifestStore.Delete(m.ID); err != nil {
 			log.Warn("Failed to delete manifest", "id", m.ID, "error", err)
 		}
-		index.RemoveManifest(m.ID)
+		_ = index.RemoveManifest(m.ID)
 	}
 
 	fmt.Printf("\nDeleted %d backup(s).\n", len(toDelete))
@@ -1115,7 +1115,7 @@ func runDedupBackupDB(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open chunk index: %w", err)
 	}
-	defer index.Close()
+	defer func() { _ = index.Close() }()
 
 	// Generate manifest ID
 	now := time.Now()
@@ -1201,7 +1201,7 @@ func runDedupBackupDB(cmd *cobra.Command, args []string) error {
 		if isNew {
 			newChunks++
 			storedSize += int64(chunk.Length)
-			index.AddChunk(chunk.Hash, chunk.Length, chunk.Length)
+			_ = index.AddChunk(chunk.Hash, chunk.Length, chunk.Length)
 		}
 
 		chunks = append(chunks, dedup.ChunkRef{

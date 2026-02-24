@@ -255,7 +255,7 @@ func TestCreate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Create failed: %v", err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		_, err = f.WriteString("hello")
 		if err != nil {
@@ -278,7 +278,7 @@ func TestOpen(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Open failed: %v", err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		buf := make([]byte, 7)
 		n, err := f.Read(buf)
@@ -297,8 +297,8 @@ func TestOpenFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("OpenFile failed: %v", err)
 		}
-		f.WriteString("test")
-		f.Close()
+		_, _ = f.WriteString("test")
+		_ = f.Close()
 
 		content, _ := ReadFile("/openfile.txt")
 		if string(content) != "test" {
@@ -486,7 +486,7 @@ func TestTempFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("TempFile failed: %v", err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		name := f.Name()
 		if name == "" {
@@ -546,7 +546,7 @@ func TestSecureCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SecureCreate failed: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Write some data
 	_, err = f.WriteString("sensitive data")
@@ -572,7 +572,7 @@ func TestSecureOpenFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SecureOpenFile failed: %v", err)
 		}
-		f.Close()
+		_ = f.Close()
 
 		info, _ := os.Stat(testFile)
 		perm := info.Mode().Perm()
@@ -589,7 +589,7 @@ func TestSecureOpenFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SecureOpenFile failed: %v", err)
 		}
-		f.Close()
+		_ = f.Close()
 	})
 }
 
@@ -601,7 +601,7 @@ func TestSecureMkdirTemp(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SecureMkdirTemp failed: %v", err)
 		}
-		defer os.RemoveAll(tempDir)
+		defer func() { _ = os.RemoveAll(tempDir) }()
 
 		info, err := os.Stat(tempDir)
 		if err != nil {
@@ -623,7 +623,7 @@ func TestSecureMkdirTemp(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SecureMkdirTemp failed: %v", err)
 		}
-		defer os.RemoveAll(tempDir)
+		defer func() { _ = os.RemoveAll(tempDir) }()
 
 		if tempDir == "" {
 			t.Error("Expected non-empty path")

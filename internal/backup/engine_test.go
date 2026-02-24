@@ -39,7 +39,7 @@ func TestGzipCompression(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to write data: %v", err)
 			}
-			w.Close()
+			_ = w.Close()
 
 			// Verify compression (except level 0)
 			if tt.compressionLevel > 0 && buf.Len() >= len(testData) {
@@ -51,7 +51,7 @@ func TestGzipCompression(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create gzip reader: %v", err)
 			}
-			defer r.Close()
+			defer func() { _ = r.Close() }()
 
 			decompressed, err := io.ReadAll(r)
 			if err != nil {
@@ -249,7 +249,7 @@ func TestParallelFileOperations(t *testing.T) {
 				// File might already exist from another goroutine
 				return
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			// Write some data
 			data := []byte(strings.Repeat("data", 100))
@@ -306,7 +306,7 @@ func TestGzipWriterFlush(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reader error: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	result, err := io.ReadAll(r)
 	if err != nil {
@@ -334,7 +334,7 @@ func TestLargeDataCompression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write error: %v", err)
 	}
-	w.Close()
+	_ = w.Close()
 
 	// Compression should reduce size significantly for patterned data
 	ratio := float64(buf.Len()) / float64(size)
@@ -347,7 +347,7 @@ func TestLargeDataCompression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reader error: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	result, err := io.ReadAll(r)
 	if err != nil {
@@ -402,14 +402,14 @@ func TestEmptyBackupData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write error: %v", err)
 	}
-	w.Close()
+	_ = w.Close()
 
 	// Should still produce valid gzip output
 	r, err := gzip.NewReader(&buf)
 	if err != nil {
 		t.Fatalf("reader error: %v", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	result, err := io.ReadAll(r)
 	if err != nil {

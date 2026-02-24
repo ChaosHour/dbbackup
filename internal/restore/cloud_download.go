@@ -101,7 +101,7 @@ func (d *CloudDownloader) Download(ctx context.Context, remotePath string, opts 
 			bar.Fail("Download failed")
 		}
 		// Cleanup on failure
-		os.RemoveAll(tempSubDir)
+		_ = os.RemoveAll(tempSubDir)
 		return nil, fmt.Errorf("download failed: %w", err)
 	}
 
@@ -137,7 +137,7 @@ func (d *CloudDownloader) Download(ctx context.Context, remotePath string, opts 
 		checksum, err := calculateSHA256WithProgress(localPath)
 		if err != nil {
 			// Cleanup on verification failure
-			os.RemoveAll(tempSubDir)
+			_ = os.RemoveAll(tempSubDir)
 			return nil, fmt.Errorf("checksum calculation failed: %w", err)
 		}
 		result.SHA256 = checksum
@@ -149,7 +149,7 @@ func (d *CloudDownloader) Download(ctx context.Context, remotePath string, opts 
 				d.log.Warn("Failed to load metadata for verification", "error", err)
 			} else if meta.SHA256 != "" && meta.SHA256 != checksum {
 				// Cleanup on verification failure
-				os.RemoveAll(tempSubDir)
+				_ = os.RemoveAll(tempSubDir)
 				return nil, fmt.Errorf("checksum mismatch: expected %s, got %s", meta.SHA256, checksum)
 			} else if meta.SHA256 == checksum {
 				d.log.Info("Checksum verified successfully", "sha256", checksum)
@@ -195,7 +195,7 @@ func calculateSHA256WithProgress(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get file size for progress bar
 	stat, err := file.Stat()

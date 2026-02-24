@@ -94,7 +94,7 @@ func runForecast(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 

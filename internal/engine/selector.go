@@ -400,7 +400,7 @@ func (s *Selector) checkBinlogStatus(ctx context.Context, info *DatabaseInfo) {
 	// Get current binlog position
 	rows, err := s.db.QueryContext(ctx, "SHOW MASTER STATUS")
 	if err == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		if rows.Next() {
 			var file string
 			var position int64
@@ -409,9 +409,9 @@ func (s *Selector) checkBinlogStatus(ctx context.Context, info *DatabaseInfo) {
 			// Handle different column counts (MySQL 5.x vs 8.x)
 			cols, _ := rows.Columns()
 			if len(cols) >= 5 {
-				rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB, &gtidSet)
+				_ = rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB, &gtidSet)
 			} else {
-				rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB)
+				_ = rows.Scan(&file, &position, &binlogDoDB, &binlogIgnoreDB)
 			}
 
 			info.BinlogFile = file

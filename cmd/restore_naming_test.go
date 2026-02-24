@@ -11,11 +11,11 @@ func TestExtractDBNameFromArchive_WithMetadata(t *testing.T) {
 	// Create temp dir with a fake backup + meta.json
 	dir := t.TempDir()
 	backupFile := filepath.Join(dir, "9.10.3_prod_dump-resydb_20260211.sql")
-	os.WriteFile(backupFile, []byte("-- fake"), 0644)
+	_ = os.WriteFile(backupFile, []byte("-- fake"), 0644)
 
 	meta := map[string]string{"database": "resydb", "version": "1.0"}
 	data, _ := json.Marshal(meta)
-	os.WriteFile(backupFile+".meta.json", data, 0644)
+	_ = os.WriteFile(backupFile+".meta.json", data, 0644)
 
 	got := extractDBNameFromArchive(backupFile)
 	if got != "resydb" {

@@ -18,7 +18,7 @@ func (e *PostgresIncrementalEngine) createTarGz(ctx context.Context, outputFile 
 	if err != nil {
 		return fmt.Errorf("failed to create output file: %w", err)
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Wrap file in SafeWriter to prevent compressor goroutine panics on early close
 	sw := fs.NewSafeWriter(outFile)
@@ -33,11 +33,11 @@ func (e *PostgresIncrementalEngine) createTarGz(ctx context.Context, outputFile 
 	if err != nil {
 		return fmt.Errorf("failed to create compressor: %w", err)
 	}
-	defer comp.Close()
+	defer func() { _ = comp.Close() }()
 
 	// Create tar writer
 	tarWriter := tar.NewWriter(comp)
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 
 	// Add each changed file to archive
 	for i, changedFile := range changedFiles {
@@ -67,7 +67,7 @@ func (e *PostgresIncrementalEngine) addFileToTar(tarWriter *tar.Writer, changedF
 	if err != nil {
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get file info
 	info, err := file.Stat()

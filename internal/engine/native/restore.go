@@ -161,11 +161,11 @@ func (r *PostgreSQLRestoreEngine) Restore(ctx context.Context, source io.Reader,
 
 	// Restore settings at end
 	defer func() {
-		conn.Exec(ctx, "SET synchronous_commit = 'on'")
-		conn.Exec(ctx, "SET session_replication_role = 'origin'")
+		_, _ = conn.Exec(ctx, "SET synchronous_commit = 'on'")
+		_, _ = conn.Exec(ctx, "SET session_replication_role = 'origin'")
 		if applyFsyncOpt {
-			conn.Exec(ctx, "SET fsync = on")
-			conn.Exec(ctx, "SET full_page_writes = on")
+			_, _ = conn.Exec(ctx, "SET fsync = on")
+			_, _ = conn.Exec(ctx, "SET full_page_writes = on")
 		}
 	}()
 
@@ -343,7 +343,7 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 	if err != nil {
 		return result, fmt.Errorf("failed to acquire dedicated connection: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Apply MySQL bulk load optimizations for faster restores
 	// These provide 2-4x speedup for large SQL restores
@@ -368,12 +368,12 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 
 	// Restore settings at end
 	defer func() {
-		conn.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1")
-		conn.ExecContext(ctx, "SET UNIQUE_CHECKS = 1")
-		conn.ExecContext(ctx, "COMMIT")
-		conn.ExecContext(ctx, "SET AUTOCOMMIT = 1")
-		conn.ExecContext(ctx, "SET sql_log_bin = 1")
-		conn.ExecContext(ctx, "SET SESSION innodb_flush_log_at_trx_commit = 1")
+		_, _ = conn.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS = 1")
+		_, _ = conn.ExecContext(ctx, "SET UNIQUE_CHECKS = 1")
+		_, _ = conn.ExecContext(ctx, "COMMIT")
+		_, _ = conn.ExecContext(ctx, "SET AUTOCOMMIT = 1")
+		_, _ = conn.ExecContext(ctx, "SET sql_log_bin = 1")
+		_, _ = conn.ExecContext(ctx, "SET SESSION innodb_flush_log_at_trx_commit = 1")
 	}()
 
 	// Parse and execute SQL statements from the backup
@@ -513,7 +513,7 @@ func (r *MySQLRestoreEngine) Restore(ctx context.Context, source io.Reader, opti
 
 	// Re-enable keys on all tables that were disabled (safety net)
 	for _, tbl := range disabledTables {
-		conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", tbl))
+		_, _ = conn.ExecContext(ctx, fmt.Sprintf("ALTER TABLE %s ENABLE KEYS", tbl))
 	}
 
 	// Handle any remaining statement

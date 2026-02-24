@@ -48,7 +48,7 @@ func (m *Manager) AddNotifier(n Notifier) {
 // Notify sends an event to all enabled notification backends
 // This is a non-blocking operation that runs in a goroutine
 func (m *Manager) Notify(event *Event) {
-	go m.NotifySync(context.Background(), event)
+	go func() { _ = m.NotifySync(context.Background(), event) }()
 }
 
 // NotifySync sends an event synchronously to all enabled backends

@@ -80,7 +80,7 @@ func TestProgressReaderThrottling(t *testing.T) {
 	// Read multiple times quickly
 	buf := make([]byte, 100)
 	for i := 0; i < 5; i++ {
-		reader.Read(buf)
+		_, _ = reader.Read(buf)
 	}
 
 	// Should not have called callback due to throttling

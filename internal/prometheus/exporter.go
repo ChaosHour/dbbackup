@@ -150,14 +150,14 @@ func (e *Exporter) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(data))
+	_, _ = w.Write([]byte(data))
 }
 
 // handleHealth handles /health endpoint
 func (e *Exporter) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok","service":"dbbackup-exporter"}`))
+	_, _ = w.Write([]byte(`{"status":"ok","service":"dbbackup-exporter"}`))
 }
 
 // handleRoot handles / endpoint
@@ -169,7 +169,7 @@ func (e *Exporter) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`<!DOCTYPE html>
+	_, _ = w.Write([]byte(`<!DOCTYPE html>
 <html>
 <head>
   <title>DBBackup Exporter</title>

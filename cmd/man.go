@@ -108,11 +108,11 @@ func runGenerateMan(cmd *cobra.Command, args []string) error {
 			failedCount++
 			return
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 
 		if err := doc.GenMan(c, header, f); err != nil {
 			failedCount++
-			os.Remove(filename) // Clean up partial file
+			_ = os.Remove(filename) // Clean up partial file
 		} else {
 			generatedCount++
 		}

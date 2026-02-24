@@ -70,7 +70,7 @@ func fetchDatabases(cfg *config.Config, log logger.Logger) tea.Cmd {
 		if err != nil {
 			return databaseListMsg{databases: nil, err: fmt.Errorf("failed to create database client: %w", err)}
 		}
-		defer dbClient.Close()
+		defer func() { _ = dbClient.Close() }()
 
 		if err := dbClient.Connect(ctx); err != nil {
 			return databaseListMsg{databases: nil, err: fmt.Errorf("connection failed: %w", err)}

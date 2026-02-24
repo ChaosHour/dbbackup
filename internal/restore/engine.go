@@ -638,7 +638,7 @@ func (e *Engine) detectBLOBsInArchive(dbName string, archivePath string) (bool, 
 			"database", dbName, "error", err)
 		return false, "none"
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Read first 256KB — enough to catch schema definitions and BLOB markers
 	buf := make([]byte, 256*1024)
@@ -751,7 +751,7 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 	if hasBLOBs {
 		governor := SelectGovernor(blobStrategy, parallelWorkers, e.cfg, e.log)
 		e.blobGovernor = governor
-		defer governor.Close()
+		defer func() { _ = governor.Close() }()
 
 		// Periodically log governor stats
 		go e.logGovernorStats(ctx, governor)
@@ -777,14 +777,14 @@ func (e *Engine) restoreWithNativeEngine(ctx context.Context, archivePath, targe
 		select {
 		case <-ctx.Done():
 			e.log.Debug("Context cancelled - force closing parallel engine", "database", targetDB)
-			parallelEngine.Close()
+			_ = parallelEngine.Close()
 		case <-engineClosed:
 			// Normal exit, cleanup done via defer
 		}
 	}()
 	defer func() {
 		close(engineClosed)
-		parallelEngine.Close()
+		_ = parallelEngine.Close()
 	}()
 
 	// CRITICAL FIX: Add watchdog to detect hangs
@@ -943,14 +943,14 @@ func (e *Engine) restoreWithSequentialNativeEngine(ctx context.Context, archiveP
 	if err != nil {
 		return fmt.Errorf("failed to create native restore engine: %w", err)
 	}
-	defer restoreEngine.Close()
+	defer func() { _ = restoreEngine.Close() }()
 
 	// Open input file
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return fmt.Errorf("failed to open backup file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var reader io.Reader = file
 
@@ -960,7 +960,7 @@ func (e *Engine) restoreWithSequentialNativeEngine(ctx context.Context, archiveP
 		if err != nil {
 			return fmt.Errorf("failed to create decompression reader: %w", err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 		e.log.Info("Sequential PG restore using decompression", "algorithm", decomp.Algorithm())
 	}
@@ -1045,7 +1045,7 @@ func (e *Engine) restoreWithMySQLNativeEngine(ctx context.Context, archivePath, 
 	if err != nil {
 		return fmt.Errorf("failed to create MySQL native restore engine: %w", err)
 	}
-	defer restoreEngine.Close()
+	defer func() { _ = restoreEngine.Close() }()
 
 	// Connect to MySQL
 	if err := restoreEngine.Connect(ctx); err != nil {
@@ -1057,7 +1057,7 @@ func (e *Engine) restoreWithMySQLNativeEngine(ctx context.Context, archivePath, 
 	if err != nil {
 		return fmt.Errorf("failed to open backup file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var reader io.Reader = file
 
@@ -1067,7 +1067,7 @@ func (e *Engine) restoreWithMySQLNativeEngine(ctx context.Context, archivePath, 
 		if err != nil {
 			return fmt.Errorf("failed to create decompression reader: %w", err)
 		}
-		defer decomp.Close()
+		defer func() { _ = decomp.Close() }()
 		reader = decomp.Reader
 		e.log.Info("MySQL restore using decompression", "algorithm", decomp.Algorithm(), "file", archivePath)
 	}
@@ -1226,7 +1226,7 @@ func (e *Engine) executeRestoreCommandWithContext(ctx context.Context, cmdArgs [
 	case <-ctx.Done():
 		// Context cancelled - kill entire process group
 		e.log.Warn("Restore cancelled - killing process group")
-		cleanup.KillCommandGroup(cmd)
+		_ = cleanup.KillCommandGroup(cmd)
 		<-cmdDone
 		cmdErr = ctx.Err()
 	}
@@ -1333,7 +1333,7 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	// Create decompression reader (gzip or zstd)
 	decomp, err := comp.NewDecompressor(file, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
 
@@ -1343,8 +1343,8 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			decomp.Close() // Close decompressor first (stops read-ahead goroutines)
-			file.Close()   // Then close underlying file (unblocks any pending reads)
+			_ = decomp.Close() // Close decompressor first (stops read-ahead goroutines)
+			_ = file.Close()   // Then close underlying file (unblocks any pending reads)
 		})
 	}
 	defer cleanupResources()
@@ -1397,7 +1397,7 @@ func (e *Engine) executeRestoreWithDecompression(ctx context.Context, archivePat
 			}
 		}()
 		_, copyErr := fs.CopyWithContext(ctx, stdin, decomp.Reader)
-		stdin.Close()
+		_ = stdin.Close()
 		copyDone <- copyErr
 	}()
 
@@ -1465,7 +1465,7 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 	// Create decompression reader (handles both gzip and zstd)
 	decomp, err := comp.NewDecompressor(file, archivePath)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("failed to create decompression reader: %w", err)
 	}
 
@@ -1475,8 +1475,8 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 	var cleanupOnce sync.Once
 	cleanupResources := func() {
 		cleanupOnce.Do(func() {
-			decomp.Close() // Close decompressor first (stops read-ahead goroutines for pgzip)
-			file.Close()   // Then close underlying file (unblocks any pending reads)
+			_ = decomp.Close() // Close decompressor first (stops read-ahead goroutines for pgzip)
+			_ = file.Close()   // Then close underlying file (unblocks any pending reads)
 		})
 	}
 	defer cleanupResources()
@@ -1591,7 +1591,7 @@ func (e *Engine) executeRestoreWithPgzipStream(ctx context.Context, archivePath,
 			}
 		}()
 		_, copyErr := fs.CopyWithContext(ctx, stdin, decomp.Reader)
-		stdin.Close()
+		_ = stdin.Close()
 		copyDone <- copyErr
 	}()
 
@@ -1712,7 +1712,7 @@ func (e *Engine) RestoreSingleFromCluster(ctx context.Context, clusterArchivePat
 		operation.Fail("Failed to create temporary directory")
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	// Extract the specific database from cluster archive
 	e.log.Info("Extracting database from cluster backup", "database", dbName, "cluster", filepath.Base(clusterArchivePath))
@@ -2017,7 +2017,7 @@ func (e *Engine) RestoreCluster(ctx context.Context, archivePath string, preExtr
 			operation.Fail("Failed to create temporary directory")
 			return fmt.Errorf("failed to create temp directory in %s: %w", workDir, err)
 		}
-		defer os.RemoveAll(tempDir)
+		defer func() { _ = os.RemoveAll(tempDir) }()
 
 		// Extract archive
 		e.log.Info("Extracting cluster archive", "archive", archivePath, "tempDir", tempDir)
@@ -2992,7 +2992,7 @@ func (e *Engine) restoreGlobals(ctx context.Context, globalsFile string) error {
 		// Command completed
 	case <-ctx.Done():
 		e.log.Warn("Globals restore cancelled - killing process group")
-		cleanup.KillCommandGroup(cmd)
+		_ = cleanup.KillCommandGroup(cmd)
 		<-cmdDone
 		cmdErr = ctx.Err()
 	}
@@ -3051,7 +3051,7 @@ func (e *Engine) restoreMySQLGlobals(ctx context.Context, globalsFile string) er
 	if err != nil {
 		return fmt.Errorf("failed to open globals file: %w", err)
 	}
-	defer globalsData.Close()
+	defer func() { _ = globalsData.Close() }()
 
 	cmd.Stdin = globalsData
 
@@ -3132,7 +3132,7 @@ func (e *Engine) cleanupStaleRestoreDirs(workDir string) {
 
 		// Calculate size before removing
 		var dirSize int64
-		filepath.Walk(dirPath, func(_ string, info os.FileInfo, _ error) error {
+		_ = filepath.Walk(dirPath, func(_ string, info os.FileInfo, _ error) error {
 			if info != nil && !info.IsDir() {
 				dirSize += info.Size()
 			}
@@ -3172,7 +3172,7 @@ func (e *Engine) generateMetadataFromExtracted(archivePath, extractedDir string)
 		// Corrupt or empty — remove so we can regenerate
 		e.log.Warn("Removing corrupt/empty .meta.json, will regenerate",
 			"path", metaPath, "load_error", loadErr)
-		os.Remove(metaPath)
+		_ = os.Remove(metaPath)
 	}
 
 	dumpsDir := filepath.Join(extractedDir, "dumps")
@@ -3518,7 +3518,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 
 	// Verify the connection actually works (sql.Open may not connect immediately)
 	if pingErr := db.PingContext(ctx); pingErr != nil {
-		db.Close()
+		_ = db.Close()
 
 		e.log.Error("Boost: PostgreSQL ping failed",
 			"user", e.cfg.User,
@@ -3540,7 +3540,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 				return nil, fmt.Errorf("failed to connect to PostgreSQL as user 'postgres' (fallback): %w", err)
 			}
 			if pingErr2 := db.PingContext(ctx); pingErr2 != nil {
-				db.Close()
+				_ = db.Close()
 				return nil, fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s (also tried 'postgres'): %w",
 					e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
 			}
@@ -3552,7 +3552,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 			return nil, peerAuthHint(e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
 		}
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	e.log.Debug("Boost: PostgreSQL connection established successfully",
 		"user", e.cfg.User)
@@ -3573,7 +3573,7 @@ func (e *Engine) boostPostgreSQLSettings(ctx context.Context, lockBoostValue int
 	}
 
 	// Get current maintenance_work_mem
-	db.QueryRowContext(ctx, "SHOW maintenance_work_mem").Scan(&original.MaintenanceWorkMem)
+	_ = db.QueryRowContext(ctx, "SHOW maintenance_work_mem").Scan(&original.MaintenanceWorkMem)
 
 	// CRITICAL: max_locks_per_transaction requires a PostgreSQL RESTART!
 	// pg_reload_conf() is NOT sufficient for this parameter.
@@ -3785,7 +3785,7 @@ func (e *Engine) resetPostgreSQLSettings(ctx context.Context, original *Original
 
 	// Verify connection works; fallback to 'postgres' user if needed
 	if pingErr := db.PingContext(ctx); pingErr != nil {
-		db.Close()
+		_ = db.Close()
 		if e.cfg.User != "postgres" {
 			e.log.Warn("resetPostgreSQLSettings: connection failed, retrying with 'postgres' user",
 				"failed_user", e.cfg.User, "error", pingErr)
@@ -3795,7 +3795,7 @@ func (e *Engine) resetPostgreSQLSettings(ctx context.Context, original *Original
 				return fmt.Errorf("failed to connect to PostgreSQL as user 'postgres' (fallback): %w", err)
 			}
 			if pingErr2 := db.PingContext(ctx); pingErr2 != nil {
-				db.Close()
+				_ = db.Close()
 				return fmt.Errorf("failed to connect to PostgreSQL at %s:%d as user %s: %w",
 					e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
 			}
@@ -3804,20 +3804,20 @@ func (e *Engine) resetPostgreSQLSettings(ctx context.Context, original *Original
 				e.cfg.Host, e.cfg.Port, e.cfg.User, pingErr)
 		}
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Reset max_locks_per_transaction (will take effect on next restart)
 	if original.MaxLocks == 64 { // Default
-		db.ExecContext(ctx, "ALTER SYSTEM RESET max_locks_per_transaction")
+		_, _ = db.ExecContext(ctx, "ALTER SYSTEM RESET max_locks_per_transaction")
 	} else if original.MaxLocks > 0 {
-		db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", original.MaxLocks))
+		_, _ = db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET max_locks_per_transaction = %d", original.MaxLocks))
 	}
 
 	// Reset maintenance_work_mem (takes effect immediately with reload)
 	if original.MaintenanceWorkMem == "64MB" { // Default
-		db.ExecContext(ctx, "ALTER SYSTEM RESET maintenance_work_mem")
+		_, _ = db.ExecContext(ctx, "ALTER SYSTEM RESET maintenance_work_mem")
 	} else if original.MaintenanceWorkMem != "" {
-		db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET maintenance_work_mem = '%s'", original.MaintenanceWorkMem))
+		_, _ = db.ExecContext(ctx, fmt.Sprintf("ALTER SYSTEM SET maintenance_work_mem = '%s'", original.MaintenanceWorkMem))
 	}
 
 	// Reload config (only maintenance_work_mem will take effect immediately)

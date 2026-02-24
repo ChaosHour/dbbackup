@@ -330,7 +330,7 @@ func runCrossRegionSync(cmd *cobra.Command, args []string) error {
 	// Confirm if not in dry-run mode
 	fmt.Printf("Proceed with sync? (y/n): ")
 	var response string
-	fmt.Scanln(&response)
+	_, _ = fmt.Scanln(&response)
 	if !strings.HasPrefix(strings.ToLower(response), "y") {
 		fmt.Printf("Sync cancelled\n")
 		return nil
@@ -430,7 +430,7 @@ func copyBackups(ctx context.Context, source, dest cloud.Backend, backups []clou
 
 			// Download to temp file
 			tempFile := filepath.Join(os.TempDir(), fmt.Sprintf("dbbackup-sync-%d-%s", idx, filepath.Base(bkp.Key)))
-			defer os.Remove(tempFile)
+			defer func() { _ = os.Remove(tempFile) }()
 
 			// Download from source
 			err := source.Download(ctx, bkp.Key, tempFile, func(transferred, total int64) {

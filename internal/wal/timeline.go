@@ -134,7 +134,7 @@ func (tm *TimelineManager) parseHistoryFile(path string) (*TimelineInfo, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to open history file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	stat, err := file.Stat()
 	if err != nil {

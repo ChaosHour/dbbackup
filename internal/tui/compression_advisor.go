@@ -57,7 +57,7 @@ func (v *CompressionAdvisorView) Init() tea.Cmd {
 func (v *CompressionAdvisorView) runAnalysis() tea.Cmd {
 	return func() tea.Msg {
 		analyzer := compression.NewAnalyzer(v.config, v.logger)
-		defer analyzer.Close()
+		defer func() { _ = analyzer.Close() }()
 
 		var analysis *compression.DatabaseAnalysis
 		var err error

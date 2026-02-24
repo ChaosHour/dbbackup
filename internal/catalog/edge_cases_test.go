@@ -20,13 +20,13 @@ func TestEdgeCase_EmptyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -47,13 +47,13 @@ func TestEdgeCase_SingleEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -86,13 +86,13 @@ func TestEdgeCase_LargeBackupSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -128,13 +128,13 @@ func TestEdgeCase_ZeroSizeBackup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -172,13 +172,13 @@ func TestEdgeCase_UnicodeNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -240,13 +240,13 @@ func TestEdgeCase_SpecialCharacters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -301,13 +301,13 @@ func TestEdgeCase_FutureTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -346,13 +346,13 @@ func TestEdgeCase_AncientTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -386,13 +386,13 @@ func TestEdgeCase_ZeroTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -430,13 +430,13 @@ func TestEdgeCase_LongPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -483,13 +483,13 @@ func TestEdgeCase_ConcurrentReads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -536,7 +536,7 @@ func TestEdgeCase_CorruptedDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create a corrupted database file
 	corruptPath := filepath.Join(tmpDir, "corrupt.db")
@@ -557,13 +557,13 @@ func TestEdgeCase_DuplicatePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -599,13 +599,13 @@ func TestEdgeCase_DSTTransition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -653,13 +653,13 @@ func TestEdgeCase_MultipleTimezones(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -723,13 +723,13 @@ func TestEdgeCase_NegativeSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 
@@ -765,13 +765,13 @@ func TestEdgeCase_MaxInt64Size(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	cat, err := NewSQLiteCatalog(filepath.Join(tmpDir, "catalog.db"))
 	if err != nil {
 		t.Fatalf("failed to create catalog: %v", err)
 	}
-	defer cat.Close()
+	defer func() { _ = cat.Close() }()
 
 	ctx := context.Background()
 

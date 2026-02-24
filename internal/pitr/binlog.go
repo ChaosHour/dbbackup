@@ -434,14 +434,14 @@ func (m *BinlogManager) ArchiveBinlog(ctx context.Context, binlog *BinlogFile) (
 	if err != nil {
 		return nil, fmt.Errorf("opening binlog: %w", err)
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	// Create destination file
 	dst, err := os.OpenFile(archivePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0640)
 	if err != nil {
 		return nil, fmt.Errorf("creating archive file: %w", err)
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	var writer io.Writer = dst
 	var comp *compression.Compressor
@@ -458,7 +458,7 @@ func (m *BinlogManager) ArchiveBinlog(ctx context.Context, binlog *BinlogFile) (
 		writer = comp
 		defer func() {
 			if comp != nil {
-				comp.Close()
+				_ = comp.Close()
 			}
 			if sw != nil {
 				sw.Shutdown()
@@ -472,14 +472,14 @@ func (m *BinlogManager) ArchiveBinlog(ctx context.Context, binlog *BinlogFile) (
 	// Copy file content
 	written, err := io.Copy(writer, src)
 	if err != nil {
-		os.Remove(archivePath) // Cleanup on error
+		_ = os.Remove(archivePath) // Cleanup on error
 		return nil, fmt.Errorf("copying binlog: %w", err)
 	}
 
 	// Close compressor to flush
 	if comp != nil {
 		if err := comp.Close(); err != nil {
-			os.Remove(archivePath)
+			_ = os.Remove(archivePath)
 			return nil, fmt.Errorf("closing compressor: %w", err)
 		}
 	}
@@ -733,7 +733,7 @@ func (m *BinlogManager) ReplayBinlogs(ctx context.Context, opts ReplayOptions) e
 			return fmt.Errorf("parsing binlogs: %w", err)
 		}
 		if opts.Output != nil {
-			opts.Output.Write(output)
+			_, _ = opts.Output.Write(output)
 		}
 		return nil
 	}
@@ -765,7 +765,7 @@ func (m *BinlogManager) ReplayBinlogs(ctx context.Context, opts ReplayOptions) e
 		return fmt.Errorf("starting mysqlbinlog: %w", err)
 	}
 	if err := mysqlCmd.Start(); err != nil {
-		binlogCmd.Process.Kill()
+		_ = binlogCmd.Process.Kill()
 		return fmt.Errorf("starting mysql: %w", err)
 	}
 
@@ -874,7 +874,7 @@ func (m *BinlogManager) ParseBinlogIndex(indexPath string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening index file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var binlogs []string
 	scanner := bufio.NewScanner(file)

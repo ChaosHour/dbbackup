@@ -141,7 +141,7 @@ func NewParallelGzipWriter(w io.Writer, level int) (*ParallelGzipWriter, error) 
 	}
 	// Set block size and concurrency for parallel compression
 	if err := gzWriter.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
-		// Non-fatal, continue with defaults
+		_ = err // non-fatal, continue with defaults
 	}
 	return &ParallelGzipWriter{Writer: gzWriter}, nil
 }
@@ -199,10 +199,8 @@ func ExtractTarGzParallel(ctx context.Context, archivePath, destDir string, prog
 	defer cleanup()
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			cleanup()
-		}
+		<-ctx.Done()
+		cleanup()
 	}()
 
 	// Create tar reader
@@ -340,10 +338,8 @@ func ListTarGzContents(ctx context.Context, archivePath string) ([]string, error
 	defer cleanup()
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			cleanup()
-		}
+		<-ctx.Done()
+		cleanup()
 	}()
 
 	// Create tar reader
@@ -410,10 +406,8 @@ func ListTarGzHeaders(ctx context.Context, archivePath string, maxEntries int) (
 	defer cleanup()
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			cleanup()
-		}
+		<-ctx.Done()
+		cleanup()
 	}()
 
 	// Create tar reader
@@ -571,10 +565,8 @@ func listTarGzHeadersGo(ctx context.Context, archivePath string, maxEntries int)
 	defer cleanup()
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			cleanup()
-		}
+		<-ctx.Done()
+		cleanup()
 	}()
 
 	var files []string
@@ -811,7 +803,7 @@ func CreateTarGzParallel(ctx context.Context, sourceDir, outputPath string, comp
 	}
 	// Set block size and concurrency for parallel compression
 	if err := gzWriter.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
-		// Non-fatal, continue with defaults
+		_ = err // non-fatal, continue with defaults
 	}
 	defer func() {
 		gzWriter.Close()

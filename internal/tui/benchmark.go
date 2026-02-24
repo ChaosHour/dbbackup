@@ -49,11 +49,6 @@ var (
 				Foreground(lipgloss.Color("3")).
 				Bold(true)
 
-	benchBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("63")).
-			Padding(0, 1)
-
 	benchHeaderRowStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("6")).
 				Bold(true)

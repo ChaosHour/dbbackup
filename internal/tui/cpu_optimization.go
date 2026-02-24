@@ -422,10 +422,6 @@ var (
 			Background(lipgloss.Color("63")).
 			Padding(0, 1)
 
-	cpuNormalRow = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("250")).
-			Padding(0, 1)
-
 	cpuActionStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("75")).
 			Bold(true).

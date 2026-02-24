@@ -634,7 +634,7 @@ func newGzipWriter(w io.Writer) (*gzipWriter, error) {
 	}
 	// Use all CPUs for parallel compression
 	if err := gz.SetConcurrency(256*1024, runtime.NumCPU()); err != nil {
-		// Non-fatal, continue with defaults
+		_ = err // non-fatal, continue with defaults
 	}
 	return &gzipWriter{Writer: gz}, nil
 }

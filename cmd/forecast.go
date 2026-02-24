@@ -276,7 +276,7 @@ func determineConfidence(entries []*catalog.Entry, avgGrowth float64) string {
 		}
 		sizeDiff := float64(entries[i].SizeBytes - entries[i-1].SizeBytes)
 		growthRate := sizeDiff / timeDiff
-		variance += math.Pow(growthRate-avgGrowth, 2)
+		variance += (growthRate - avgGrowth) * (growthRate - avgGrowth)
 	}
 	variance /= float64(len(entries) - 1)
 	stdDev := math.Sqrt(variance)

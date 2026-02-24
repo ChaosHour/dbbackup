@@ -163,7 +163,7 @@ func runCloudStatus(cmd *cobra.Command, args []string) error {
 	status.Details["init_time_ms"] = initDuration.Milliseconds()
 
 	if cloudVerbose {
-		fmt.Printf("[DEBUG] Initialization took %s\n", initDuration.Round(time.Millisecond))
+		fmt.Printf("[INFO] Initialization took %s\n", initDuration.Round(time.Millisecond))
 	}
 
 	status.Connected = true

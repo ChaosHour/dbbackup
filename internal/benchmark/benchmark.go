@@ -275,9 +275,7 @@ func (r *Runner) runBackup(ctx context.Context, iteration int, iterDir string) I
 	if r.cfg.DumpFormat != "" {
 		args = append(args, "--dump-format", r.cfg.DumpFormat)
 	}
-	if r.cfg.Profile != "" {
-		// profile is a restore flag only, skip for backup
-	}
+	// r.cfg.Profile is a restore-only flag — intentionally not added to backup args
 	args = append(args, "--no-verify") // we benchmark verify separately
 
 	result := r.timed(ctx, PhaseBackup, iteration, args)
@@ -578,15 +576,15 @@ func (r *Report) SaveMarkdown(dir string) (string, error) {
 
 // WriteMarkdown renders the report as a Markdown table.
 func (r *Report) WriteMarkdown(sb *strings.Builder) {
-	sb.WriteString(fmt.Sprintf("# Benchmark Report: %s\n\n", r.RunID))
-	sb.WriteString(fmt.Sprintf("- **Engine:** %s\n", r.Config.Target.Engine))
-	sb.WriteString(fmt.Sprintf("- **Database:** %s\n", r.Config.Target.Database))
-	sb.WriteString(fmt.Sprintf("- **DB Size:** %.1f MB\n", r.DBSizeMB))
-	sb.WriteString(fmt.Sprintf("- **Iterations:** %d\n", r.Config.Iterations))
-	sb.WriteString(fmt.Sprintf("- **Workers:** %d\n", r.Config.Workers))
-	sb.WriteString(fmt.Sprintf("- **Compression:** %s (level %d)\n", r.Config.Compression, r.Config.CompLevel))
-	sb.WriteString(fmt.Sprintf("- **System:** %s/%s, %d CPUs, %s\n", r.System.OS, r.System.Arch, r.System.CPUs, r.System.GoVersion))
-	sb.WriteString(fmt.Sprintf("- **Total Time:** %.1fs\n\n", r.TotalSec))
+	fmt.Fprintf(sb, "# Benchmark Report: %s\n\n", r.RunID)
+	fmt.Fprintf(sb, "- **Engine:** %s\n", r.Config.Target.Engine)
+	fmt.Fprintf(sb, "- **Database:** %s\n", r.Config.Target.Database)
+	fmt.Fprintf(sb, "- **DB Size:** %.1f MB\n", r.DBSizeMB)
+	fmt.Fprintf(sb, "- **Iterations:** %d\n", r.Config.Iterations)
+	fmt.Fprintf(sb, "- **Workers:** %d\n", r.Config.Workers)
+	fmt.Fprintf(sb, "- **Compression:** %s (level %d)\n", r.Config.Compression, r.Config.CompLevel)
+	fmt.Fprintf(sb, "- **System:** %s/%s, %d CPUs, %s\n", r.System.OS, r.System.Arch, r.System.CPUs, r.System.GoVersion)
+	fmt.Fprintf(sb, "- **Total Time:** %.1fs\n\n", r.TotalSec)
 
 	sb.WriteString("## Summary\n\n")
 	sb.WriteString("| Phase   | Iters | Min      | Avg      | Median   | Max      | P95      | StdDev   | Avg MB/s | Pass/Fail |\n")
@@ -596,9 +594,9 @@ func (r *Report) WriteMarkdown(sb *strings.Builder) {
 		if !ok || s.Iterations == 0 {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("| %-7s | %5d | %7.2fs | %7.2fs | %7.2fs | %7.2fs | %7.2fs | %7.2fs | %8.1f | %d/%d     |\n",
+		fmt.Fprintf(sb, "| %-7s | %5d | %7.2fs | %7.2fs | %7.2fs | %7.2fs | %7.2fs | %7.2fs | %8.1f | %d/%d     |\n",
 			s.Phase, s.Iterations, s.MinSec, s.AvgSec, s.MedianSec, s.MaxSec,
-			s.P95Sec, s.StdDevSec, s.AvgMBps, s.SuccessCount, s.FailCount))
+			s.P95Sec, s.StdDevSec, s.AvgMBps, s.SuccessCount, s.FailCount)
 	}
 
 	sb.WriteString("\n## Per-Iteration Detail\n\n")
@@ -610,9 +608,9 @@ func (r *Report) WriteMarkdown(sb *strings.Builder) {
 			status = "FAIL"
 		}
 		sizeMB := float64(it.SizeBytes) / 1024 / 1024
-		sb.WriteString(fmt.Sprintf("| %4d | %-7s | %10.2fs | %7.1f MB | %7.1f | %9d | %s   |\n",
+		fmt.Fprintf(sb, "| %4d | %-7s | %10.2fs | %7.1f MB | %7.1f | %9d | %s   |\n",
 			it.Iteration, it.Phase, it.DurationSec, sizeMB,
-			it.ThroughputMB, it.PeakRSSKB, status))
+			it.ThroughputMB, it.PeakRSSKB, status)
 	}
 	sb.WriteString("\n")
 }

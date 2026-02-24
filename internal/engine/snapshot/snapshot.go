@@ -74,6 +74,7 @@ type Config struct {
 	MountPoint string // Where to mount the snapshot
 	Compress   bool   // Compress when streaming
 	Threads    int    // Parallel compression threads
+	WorkDir    string // Working directory for temp mount points (falls back to os.TempDir)
 
 	// Cleanup
 	AutoRemoveSnapshot bool // Remove snapshot after backup

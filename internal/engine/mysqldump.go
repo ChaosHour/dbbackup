@@ -455,7 +455,7 @@ func (e *MySQLDumpEngine) BackupToWriter(ctx context.Context, w io.Writer, opts 
 	}
 
 	// Copy with optional compression
-	var writer io.Writer = w
+	var writer = w
 	var streamComp *compression.Compressor
 	if opts.Compress {
 		algo := compression.AlgorithmGzip

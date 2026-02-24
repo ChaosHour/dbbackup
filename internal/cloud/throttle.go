@@ -187,7 +187,7 @@ func ParseBandwidth(s string) (int64, error) {
 	s = strings.TrimSuffix(s, "ps") // For mbps/kbps
 
 	// Parse unit
-	var multiplier int64 = 1
+	var multiplier int64
 	var value float64
 
 	switch {

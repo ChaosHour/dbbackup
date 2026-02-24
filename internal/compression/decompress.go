@@ -257,7 +257,7 @@ func newZstdCompressor(writer io.Writer, level int) (*Compressor, error) {
 		level = 3 // zstd recommended default
 	}
 	// Map level to zstd encoder level
-	encLevel := zstd.SpeedDefault
+	var encLevel zstd.EncoderLevel
 	switch {
 	case level <= 2:
 		encLevel = zstd.SpeedFastest

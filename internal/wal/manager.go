@@ -297,7 +297,7 @@ func (m *Manager) monitorStreaming(stderr io.ReadCloser) {
 		m.log.Debug("pg_receivewal output", "line", line)
 
 		// Parse for archived WAL files
-		if strings.Contains(line, "received") && strings.Contains(line, ".partial") == false {
+		if strings.Contains(line, "received") && !strings.Contains(line, ".partial") {
 			// Extract WAL filename
 			parts := strings.Fields(line)
 			for _, p := range parts {
@@ -416,7 +416,7 @@ func (m *Manager) ListWALFiles() ([]WALFile, error) {
 // isHexString checks if a string contains only hex characters
 func isHexString(s string) bool {
 	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'A' || c > 'F') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}
@@ -521,7 +521,7 @@ func (m *Manager) GenerateRecoveryConf(targetTime time.Time, targetAction string
 
 // CreateReplicationSlot creates a replication slot for WAL streaming
 func (m *Manager) CreateReplicationSlot(ctx context.Context, slotName string, temporary bool) error {
-	query := "SELECT pg_create_physical_replication_slot($1, true, " + strconv.FormatBool(temporary) + ")"
+	query := "SELECT pg_create_physical_replication_slot('%s', true, " + strconv.FormatBool(temporary) + ")"
 
 	args := []string{
 		"-h", m.config.Host,
@@ -546,7 +546,7 @@ func (m *Manager) CreateReplicationSlot(ctx context.Context, slotName string, te
 
 // DropReplicationSlot drops a replication slot
 func (m *Manager) DropReplicationSlot(ctx context.Context, slotName string) error {
-	query := "SELECT pg_drop_replication_slot($1)"
+	query := "SELECT pg_drop_replication_slot('%s')"
 
 	args := []string{
 		"-h", m.config.Host,
@@ -571,8 +571,8 @@ func (m *Manager) DropReplicationSlot(ctx context.Context, slotName string) erro
 
 // GetReplicationSlotInfo returns information about a replication slot
 func (m *Manager) GetReplicationSlotInfo(ctx context.Context, slotName string) (map[string]string, error) {
-	query := `SELECT slot_name, slot_type, active::text, restart_lsn::text, confirmed_flush_lsn::text 
-              FROM pg_replication_slots WHERE slot_name = $1`
+	query := `SELECT slot_name, slot_type, active::text, restart_lsn::text, confirmed_flush_lsn::text
+              FROM pg_replication_slots WHERE slot_name = '%s'`
 
 	args := []string{
 		"-h", m.config.Host,

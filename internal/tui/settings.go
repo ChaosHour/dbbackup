@@ -661,9 +661,7 @@ func NewSettingsModel(cfg *config.Config, log logger.Logger, parent tea.Model) S
 					if c.Socket != "" {
 						creds.Socket = c.Socket
 					}
-					if err := config.SaveMyCnf(creds); err == nil {
-						// Saved to ~/.my.cnf
-					}
+					_ = config.SaveMyCnf(creds) // best-effort save to ~/.my.cnf
 				}
 				return nil
 			},

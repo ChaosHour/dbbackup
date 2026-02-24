@@ -58,7 +58,6 @@ type WorkerPool struct {
 
 	// State
 	running atomic.Bool
-	mu      sync.RWMutex
 }
 
 type taskWrapper struct {

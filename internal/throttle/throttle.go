@@ -403,11 +403,7 @@ func (c *Copier) CopyN(dst io.Writer, src io.Reader, n int64) (int64, error) {
 	buf := make([]byte, 32*1024) // 32KB buffer
 	var written int64
 
-	for {
-		if n >= 0 && written >= n {
-			break
-		}
-
+	for n < 0 || written < n {
 		readSize := len(buf)
 		if n >= 0 && n-written < int64(readSize) {
 			readSize = int(n - written)

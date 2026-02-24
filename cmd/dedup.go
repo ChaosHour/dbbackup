@@ -374,7 +374,6 @@ func runDedupBackup(cmd *cobra.Command, args []string) error {
 		file.Seek(0, 0)
 		io.Copy(h, file)
 		file.Seek(0, 0)
-		chunkReader = file
 		h = sha256.New() // Reset for inline hashing
 		chunkReader = io.TeeReader(file, h)
 	}

@@ -48,20 +48,11 @@ var (
 				Padding(0, 2).
 				MarginBottom(1)
 
-	profileBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("63")).
-			Padding(1, 2)
-
 	profileLabelStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("244"))
 
 	profileValueStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("15")).
-				Bold(true)
-
-	profileCategoryStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("228")).
 				Bold(true)
 
 	profileRecommendStyle = lipgloss.NewStyle().

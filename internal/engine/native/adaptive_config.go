@@ -393,7 +393,7 @@ func (c *AdaptiveConfig) CreatePool(ctx context.Context, dsn string) (*pgxpool.P
 		// Trades ~5-10% CPU for 20-30% less WAL I/O — significant win on I/O-bound systems.
 		// Safe fallback: PostgreSQL 15+ supports 'on', older versions may error; we ignore errors.
 		if _, err := conn.Exec(ctx, "SET wal_compression = on"); err != nil {
-			// Silently fall back — older PostgreSQL versions don't support this parameter
+			_ = err // silently fall back — older PostgreSQL versions don't support this parameter
 		}
 
 		return nil

@@ -25,7 +25,6 @@ type CatalogSyncView struct {
 	err     error
 	result  *catalog.SyncResult
 	details []string
-	message string
 }
 
 // catalogSyncResultMsg carries sync results

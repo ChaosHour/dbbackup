@@ -254,13 +254,4 @@ func compressedTarExt(format string) string {
 	}
 }
 
-// compressedSQLExt returns the appropriate SQL extension for a compression format.
-// E.g., "zstd" -> ".sql.zst", "gzip" -> ".sql.gz", "" -> ".sql.gz" (default)
-func compressedSQLExt(format string) string {
-	switch strings.ToLower(format) {
-	case "zstd":
-		return ".sql.zst"
-	default:
-		return ".sql.gz"
-	}
-}
+

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"runtime"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -244,8 +243,6 @@ type ParallelTableRestorer struct {
 	config   RestoreConfig
 	metrics  *RestoreMetrics
 	executor *ParallelExecutor
-	mu       sync.Mutex
-	errors   []error
 }
 
 // NewParallelTableRestorer creates a new parallel table restorer

@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -409,7 +410,7 @@ func TestCleanupOldWAL(t *testing.T) {
 	log := &mockLogger{}
 	mgr := NewManager(cfg, log)
 
-	removed, err := mgr.CleanupOldWAL(nil, "")
+	removed, err := mgr.CleanupOldWAL(context.Background(), "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -111,7 +111,7 @@ func runNotifyTest(cmd *cobra.Command, args []string) error {
 	event.WithDetail("command", "dbbackup notify test")
 
 	if notifyVerbose {
-		fmt.Printf("[DEBUG] Sending event: %+v\n", event)
+		fmt.Printf("[VERBOSE] Sending event: type=%s severity=%s message=%s\n", event.Type, event.Severity, event.Message)
 	}
 
 	// Send notification

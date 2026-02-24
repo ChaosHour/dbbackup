@@ -100,13 +100,13 @@ func deleteBackup(backupFile string) error {
 	// Delete legacy .sha256 file if exists
 	sha256File := backupFile + ".sha256"
 	if err := os.Remove(sha256File); err != nil && !os.IsNotExist(err) {
-		// Don't fail if .sha256 doesn't exist (new format)
+		_ = err // best-effort cleanup of legacy file
 	}
 
 	// Delete legacy .info file if exists
 	infoFile := backupFile + ".info"
 	if err := os.Remove(infoFile); err != nil && !os.IsNotExist(err) {
-		// Don't fail if .info doesn't exist (new format)
+		_ = err // best-effort cleanup of legacy file
 	}
 
 	return nil

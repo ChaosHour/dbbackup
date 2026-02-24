@@ -627,9 +627,9 @@ func (m RestorePreviewModel) View() string {
 			s.WriteString(CheckPassedStyle.Render("  Engine Mode: Native Go (pure Go, no external tools)") + "\n")
 		} else {
 			if m.config.IsMySQL() {
-				s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (mysql)\n"))
+				s.WriteString("  Engine Mode: External Tools (mysql)\n")
 			} else {
-				s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (psql)\n"))
+				s.WriteString("  Engine Mode: External Tools (psql)\n")
 			}
 		}
 
@@ -684,9 +684,9 @@ func (m RestorePreviewModel) View() string {
 			s.WriteString(CheckPassedStyle.Render("  Engine Mode: Native Go (pure Go, no external tools)") + "\n")
 		} else {
 			if m.config.IsMySQL() {
-				s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (mysql, mysqldump)\n"))
+				s.WriteString("  Engine Mode: External Tools (mysql, mysqldump)\n")
 			} else {
-				s.WriteString(fmt.Sprintf("  Engine Mode: External Tools (pg_restore, psql)\n"))
+				s.WriteString("  Engine Mode: External Tools (pg_restore, psql)\n")
 			}
 		}
 

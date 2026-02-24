@@ -381,11 +381,9 @@ func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplie
 		MultiplierOverride: s.cfg.DiskSpaceMultiplier,
 	}
 
-	// If config override is 0 and caller passed a specific multiplier, use it as fallback
-	if s.cfg.DiskSpaceMultiplier == 0 && multiplier > 0 {
-		// Only use caller's multiplier if metadata/format detection doesn't apply
-		// DiskSpaceChecker will auto-detect from metadata or format first
-	}
+	// If config override is 0 and caller passed a specific multiplier, it serves as a
+	// fallback hint. However, DiskSpaceChecker auto-detects from metadata/format first,
+	// so we intentionally do not override MultiplierOverride here.
 
 	result, checkErr := checker.Check()
 	if checkErr != nil {

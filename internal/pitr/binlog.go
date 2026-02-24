@@ -467,9 +467,7 @@ func (m *BinlogManager) ArchiveBinlog(ctx context.Context, binlog *BinlogFile) (
 	}
 
 	// TODO: Add encryption layer if enabled
-	if m.encryption && len(m.encryptionKey) > 0 {
-		// Encryption would be added here
-	}
+	// if m.encryption && len(m.encryptionKey) > 0 { ... }
 
 	// Copy file content
 	written, err := io.Copy(writer, src)

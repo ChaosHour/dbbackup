@@ -145,10 +145,10 @@ func validateMySQLIdentifier(name string) error {
 	}
 	// Only allow alphanumeric, underscores, and must start with letter or underscore
 	for i, c := range name {
-		if i == 0 && !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+		if i == 0 && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && c != '_' {
 			return fmt.Errorf("identifier must start with letter or underscore: %s", name)
 		}
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {
 			return fmt.Errorf("identifier contains invalid character %q: %s", c, name)
 		}
 	}

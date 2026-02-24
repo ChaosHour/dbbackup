@@ -176,43 +176,6 @@ func detectCgroupMemoryLimit() int64 {
 	return 0
 }
 
-// detectCgroupCPUQuota reads the container CPU quota from cgroup v2 or v1.
-// Returns the effective number of CPUs (e.g. 2 for a 200% quota), or 0 if unlimited.
-func detectCgroupCPUQuota() int {
-	// cgroup v2: /sys/fs/cgroup/cpu.max — format: "$MAX $PERIOD" or "max $PERIOD"
-	if data, err := os.ReadFile("/sys/fs/cgroup/cpu.max"); err == nil {
-		fields := strings.Fields(strings.TrimSpace(string(data)))
-		if len(fields) == 2 && fields[0] != "max" {
-			quota, qerr := strconv.ParseInt(fields[0], 10, 64)
-			period, perr := strconv.ParseInt(fields[1], 10, 64)
-			if qerr == nil && perr == nil && period > 0 && quota > 0 {
-				cpus := int(quota / period)
-				if cpus < 1 {
-					cpus = 1
-				}
-				return cpus
-			}
-		}
-	}
-
-	// cgroup v1: cpu.cfs_quota_us / cpu.cfs_period_us
-	quotaData, qerr := os.ReadFile("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")
-	periodData, perr := os.ReadFile("/sys/fs/cgroup/cpu/cpu.cfs_period_us")
-	if qerr == nil && perr == nil {
-		quota, qerr := strconv.ParseInt(strings.TrimSpace(string(quotaData)), 10, 64)
-		period, perr := strconv.ParseInt(strings.TrimSpace(string(periodData)), 10, 64)
-		if qerr == nil && perr == nil && quota > 0 && period > 0 { // quota=-1 means unlimited
-			cpus := int(quota / period)
-			if cpus < 1 {
-				cpus = 1
-			}
-			return cpus
-		}
-	}
-
-	return 0
-}
-
 // parseProcMeminfo reads /proc/meminfo and returns key→value map (values in kB).
 func parseProcMeminfo() (map[string]int64, error) {
 	data, err := os.ReadFile("/proc/meminfo")

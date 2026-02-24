@@ -28,19 +28,3 @@ func tuiDebugLog(cfg *config.Config, log logger.Logger, screen string, msg tea.M
 		log.Debug("TUI.Update", "screen", screen, "msg", fmt.Sprintf("%T", msg))
 	}
 }
-
-// tuiDebugTransition logs a screen transition if TUIDebug is enabled.
-func tuiDebugTransition(cfg *config.Config, log logger.Logger, from, to string) {
-	if cfg == nil || !cfg.TUIDebug {
-		return
-	}
-	log.Debug("TUI.Transition", "from", from, "to", to)
-}
-
-// tuiDebugQuit logs a quit event if TUIDebug is enabled.
-func tuiDebugQuit(cfg *config.Config, log logger.Logger, screen string) {
-	if cfg == nil || !cfg.TUIDebug {
-		return
-	}
-	log.Debug("TUI.Quit", "screen", screen)
-}

@@ -507,7 +507,7 @@ func isWALFileName(name string) bool {
 	if len(baseName) == 24 {
 		// Check if all hex
 		for _, c := range baseName {
-			if !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')) {
+			if (c < '0' || c > '9') && (c < 'A' || c > 'F') && (c < 'a' || c > 'f') {
 				return false
 			}
 		}

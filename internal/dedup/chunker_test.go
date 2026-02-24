@@ -31,10 +31,8 @@ func TestChunker_Basic(t *testing.T) {
 		totalBytes += chunk.Length
 
 		// Verify chunk properties
-		if chunk.Length < DefaultMinChunkSize && len(chunks) < 10 {
-			// Only the last chunk can be smaller than min
-			// (unless file is smaller than min)
-		}
+		// Note: chunks smaller than DefaultMinChunkSize are acceptable for the
+		// last chunk or when the file is smaller than min — no assertion needed here.
 		if chunk.Length > DefaultMaxChunkSize {
 			t.Errorf("Chunk %d exceeds max size: %d > %d", len(chunks), chunk.Length, DefaultMaxChunkSize)
 		}

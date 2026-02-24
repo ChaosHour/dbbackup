@@ -185,7 +185,7 @@ func ResourceLimitsFromConfig(estimatedSizeBytes int64, isRestore bool) *Resourc
 
 	// Estimate memory needs based on data size
 	// Restore needs more memory than backup
-	var memoryMultiplier float64 = 0.1 // 10% of data size for backup
+	memoryMultiplier := 0.1 // 10% of data size for backup
 	if isRestore {
 		memoryMultiplier = 0.2 // 20% of data size for restore
 	}

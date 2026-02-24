@@ -40,7 +40,6 @@ var (
 	benchOutputDir   string
 	benchOutputJSON  bool
 	benchLast        int
-	benchRunID       string
 	benchCatalogDB   string
 )
 

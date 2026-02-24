@@ -194,9 +194,11 @@ func (e *SnapshotEngine) Backup(ctx context.Context, opts *BackupOptions) (*Back
 	// Step 4: Mount snapshot
 	mountPoint := e.config.MountPoint
 	if mountPoint == "" {
-		// Note: snapshot engine uses snapshot.Config which doesnt have GetEffectiveWorkDir()
-		// TODO: Refactor to use main config.Config for WorkDir support
-		mountPoint = filepath.Join(os.TempDir(), fmt.Sprintf("dbbackup_snap_%s", timestamp))
+		baseDir := e.config.WorkDir
+		if baseDir == "" {
+			baseDir = os.TempDir()
+		}
+		mountPoint = filepath.Join(baseDir, fmt.Sprintf("dbbackup_snap_%s", timestamp))
 	}
 
 	e.log.Info("Mounting snapshot...", "mount_point", mountPoint)

@@ -356,10 +356,8 @@ func (e *MySQLNativeEngine) backupTableData(ctx context.Context, w io.Writer, da
 	// Get column type metadata to handle DECIMAL/NUMERIC correctly
 	colTypes, _ := rows.ColumnTypes()
 	var colTypeNames []string
-	if colTypes != nil {
-		for _, ct := range colTypes {
-			colTypeNames = append(colTypeNames, strings.ToUpper(ct.DatabaseTypeName()))
-		}
+	for _, ct := range colTypes {
+		colTypeNames = append(colTypeNames, strings.ToUpper(ct.DatabaseTypeName()))
 	}
 
 	// Process rows in batches and generate INSERT statements

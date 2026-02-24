@@ -304,8 +304,9 @@ func New() *Config {
 	cpuDetector := cpu.NewDetector()
 	cpuInfo, err := cpuDetector.DetectCPU()
 	if err != nil {
-		// Log warning but continue with default values
-		// The detector will use fallback defaults
+		// Log warning but continue with default values.
+		// The detector will use fallback defaults.
+		_ = err
 	}
 
 	dbTypeRaw := getEnvString("DB_TYPE", "postgres")

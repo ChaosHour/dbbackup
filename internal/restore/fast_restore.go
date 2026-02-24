@@ -141,7 +141,6 @@ func ApplySessionOptimizations(ctx context.Context, cfg *config.Config, log logg
 // AsyncProgressReporter provides non-blocking progress updates
 type AsyncProgressReporter struct {
 	mu          sync.RWMutex
-	lastUpdate  time.Time
 	minInterval time.Duration
 	bytesTotal  int64
 	bytesDone   int64

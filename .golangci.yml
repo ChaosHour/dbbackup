@@ -1,4 +1,4 @@
-# golangci-lint configuration - relaxed for existing codebase
+# golangci-lint configuration
 version: "2"
 
 run:
@@ -7,14 +7,24 @@ run:
 linters:
   default: none
   enable:
-    # Only essential linters that catch real bugs
     - govet
-
-settings:
-  govet:
-    disable:
-      - fieldalignment
-      - copylocks
+    - staticcheck
+    - unused
+    - ineffassign
+  settings:
+    govet:
+      disable:
+        - fieldalignment
+        - copylocks
+    staticcheck:
+      checks:
+        - "all"
+        - "-QF1003"   # tagged switch - style preference
+        - "-ST1000"   # package comments - too many to add now
+        - "-ST1003"   # naming conventions (e.g. Sql vs SQL)
+        - "-ST1020"   # function comment form
+        - "-ST1021"   # type comment form
+        - "-ST1022"   # var/const comment form
 
 issues:
   max-issues-per-linter: 0

@@ -164,10 +164,6 @@ func classifyGFS(backups []*Entry, policy *GFSPolicy) map[int64]string {
 
 	// === Weekly: keep the oldest backup per ISO week (most recent N weeks) ===
 	// Traverse newest→oldest, group by ISO week, then pick the OLDEST per week
-	type weekBucket struct {
-		key   string
-		entry *Entry
-	}
 	weekMap := make(map[string]*Entry)
 	var weekOrder []string
 	for _, b := range sorted {

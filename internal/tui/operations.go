@@ -52,7 +52,6 @@ func NewOperationsView(cfg *config.Config, log logger.Logger, parent tea.Model) 
 }
 
 func (m OperationsViewModel) Init() tea.Cmd {
-	m.loading = true
 	cfg := m.config
 	return func() tea.Msg {
 		var ops []activeOperation

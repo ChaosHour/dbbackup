@@ -948,7 +948,7 @@ func (s *OptimizationSummary) FormatReport() string {
 	// Hybrid Topology
 	sb.WriteString("[Hybrid Core Topology]\n")
 	if s.Hybrid != nil && s.Hybrid.IsHybrid {
-		sb.WriteString(fmt.Sprintf("  Hybrid: YES (Intel P/E-core)\n"))
+		sb.WriteString("  Hybrid: YES (Intel P/E-core)\n")
 		sb.WriteString(fmt.Sprintf("  P-cores: %d  (used for heavy work)\n", s.Hybrid.PcoreCount))
 		sb.WriteString(fmt.Sprintf("  E-cores: %d  (background / monitoring)\n", s.Hybrid.EcoreCount))
 	} else {

@@ -355,7 +355,7 @@ func (t *TableBackup) BackupTable(ctx context.Context, schema, table string, w i
 		return nil, fmt.Errorf("failed to get table info: %w", err)
 	}
 
-	var writer io.Writer = w
+	var writer = w
 	var compCloser2 io.Closer
 	if t.config.Compress {
 		algo := compression.AlgorithmGzip // default for stream output

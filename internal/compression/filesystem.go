@@ -148,8 +148,7 @@ func detectBtrfsCompression(path string) *FilesystemCompression {
 
 	// Check if path is on Btrfs
 	cmd := exec.Command("btrfs", "filesystem", "df", absPath)
-	output, err := cmd.Output()
-	if err != nil {
+	if _, err := cmd.Output(); err != nil {
 		return nil
 	}
 
@@ -159,6 +158,7 @@ func detectBtrfsCompression(path string) *FilesystemCompression {
 	}
 
 	// Get subvolume info
+	var output []byte
 	cmd = exec.Command("btrfs", "subvolume", "show", absPath)
 	output, err = cmd.Output()
 	if err == nil {

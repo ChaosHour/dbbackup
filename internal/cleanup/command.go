@@ -56,12 +56,12 @@ func NewTrackedCommand(ctx context.Context, log logger.Logger, name string, args
 
 // StartWithCleanup starts the command and registers cleanup with the handler
 func (tc *TrackedCommand) StartWithCleanup(h *Handler) error {
-	if err := tc.Cmd.Start(); err != nil {
+	if err := tc.Start(); err != nil {
 		return err
 	}
 
 	// Register cleanup function
-	pid := tc.Cmd.Process.Pid
+	pid := tc.Process.Pid
 	h.RegisterCleanup(fmt.Sprintf("kill-%s-%d", tc.name, pid), func(ctx context.Context) error {
 		return tc.Kill()
 	})
@@ -71,11 +71,11 @@ func (tc *TrackedCommand) StartWithCleanup(h *Handler) error {
 
 // Kill terminates the command and its process group
 func (tc *TrackedCommand) Kill() error {
-	if tc.Cmd.Process == nil {
+	if tc.Process == nil {
 		return nil // Not started or already cleaned up
 	}
 
-	pid := tc.Cmd.Process.Pid
+	pid := tc.Process.Pid
 
 	// Get the process group ID
 	pgid, err := syscall.Getpgid(pid)
@@ -94,7 +94,7 @@ func (tc *TrackedCommand) Kill() error {
 	// Wait briefly for graceful shutdown
 	done := make(chan error, 1)
 	go func() {
-		_, err := tc.Cmd.Process.Wait()
+		_, err := tc.Process.Wait()
 		done <- err
 	}()
 

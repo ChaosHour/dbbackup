@@ -339,13 +339,6 @@ func (r *CustomFormatReader) restoreDataSequential(ctx context.Context, pool *pg
 
 // restoreDataParallel distributes tables across multiple workers
 func (r *CustomFormatReader) restoreDataParallel(ctx context.Context, pool *pgxpool.Pool, entries []*TOCEntry, opts *CustomFormatRestoreOptions, result *CustomFormatRestoreResult) error {
-	type tableResult struct {
-		rows  int64
-		bytes int64
-		err   error
-		table string
-	}
-
 	// Each worker needs its own decompressed data copy since we can't share
 	// the seekable reader across goroutines. Pre-read all data blocks first.
 	type dataBlock struct {

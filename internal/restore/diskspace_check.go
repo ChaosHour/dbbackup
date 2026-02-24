@@ -300,7 +300,7 @@ func (r *DiskSpaceResult) FormatError() error {
 	archiveName := filepath.Base(r.ArchivePath)
 	shortfall := r.RequiredBytes - r.Info.AvailableBytes
 
-	return fmt.Errorf(`Insufficient disk space for cluster restore
+	return fmt.Errorf(`insufficient disk space for cluster restore
 
 Archive:          %s
 Archive size:     %s compressed

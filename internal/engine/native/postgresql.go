@@ -760,17 +760,6 @@ func (e *PostgreSQLNativeEngine) getTableCreateSQL(ctx context.Context, schema, 
 	return createSQL, nil
 }
 
-// getTableSize returns the total relation size for a table using prepared statement caching.
-func (e *PostgreSQLNativeEngine) getTableSize(ctx context.Context, schema, table string) (int64, error) {
-	query := `SELECT pg_total_relation_size(($1 || '.' || $2)::regclass)`
-	row := e.queryRowPrepared(ctx, e.conn, "ps_get_table_size", query, schema, table)
-	var size int64
-	if err := row.Scan(&size); err != nil {
-		return 0, err
-	}
-	return size, nil
-}
-
 // getIndexDefinitions returns index definitions for a table using prepared statement caching.
 func (e *PostgreSQLNativeEngine) getIndexDefinitions(ctx context.Context, schema, table string) ([]string, error) {
 	query := `
@@ -823,32 +812,6 @@ func (e *PostgreSQLNativeEngine) getConstraintDefinitions(ctx context.Context, s
 		defs = append(defs, fmt.Sprintf("ALTER TABLE %s ADD CONSTRAINT %s %s;", fqTable, e.quoteIdentifier(name), def))
 	}
 	return defs, rows.Err()
-}
-
-// getByteaColumns returns bytea-type columns for a table using prepared statement caching.
-// This is used by BLOB detection to identify binary data columns.
-func (e *PostgreSQLNativeEngine) getByteaColumns(ctx context.Context, schema, table string) ([]string, error) {
-	query := `
-		SELECT column_name
-		FROM information_schema.columns
-		WHERE table_schema = $1 AND table_name = $2 AND data_type = 'bytea'
-		ORDER BY ordinal_position`
-
-	rows, err := e.queryPrepared(ctx, e.conn, "ps_get_bytea_columns", query, schema, table)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var cols []string
-	for rows.Next() {
-		var col string
-		if err := rows.Scan(&col); err != nil {
-			return nil, err
-		}
-		cols = append(cols, col)
-	}
-	return cols, rows.Err()
 }
 
 // formatDataType formats PostgreSQL data types properly
@@ -1041,34 +1004,6 @@ func (e *PostgreSQLNativeEngine) writeSQLFooter(w io.Writer) error {
 	return err
 }
 
-// getOtherObjects retrieves views, functions, sequences, and other database objects
-func (e *PostgreSQLNativeEngine) getOtherObjects(ctx context.Context, schema string) ([]DatabaseObject, error) {
-	var objects []DatabaseObject
-
-	// Get views
-	views, err := e.getViews(ctx, schema)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get views: %w", err)
-	}
-	objects = append(objects, views...)
-
-	// Get sequences
-	sequences, err := e.getSequences(ctx, schema)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sequences: %w", err)
-	}
-	objects = append(objects, sequences...)
-
-	// Get functions
-	functions, err := e.getFunctions(ctx, schema)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get functions: %w", err)
-	}
-	objects = append(objects, functions...)
-
-	return objects, nil
-}
-
 func (e *PostgreSQLNativeEngine) sortByDependencies(objects []DatabaseObject) []DatabaseObject {
 	// Use type-based ordering which guarantees: schemas → sequences → tables →
 	// views → functions. This is the correct CREATE order because tables
@@ -1109,176 +1044,6 @@ func (e *PostgreSQLNativeEngine) sortByType(objects []DatabaseObject) []Database
 	result = append(result, functions...)
 	result = append(result, others...)
 	return result
-}
-
-// topologicalSort performs dependency graph analysis using pg_depend and
-// returns objects in correct creation order.
-func (e *PostgreSQLNativeEngine) topologicalSort(objects []DatabaseObject) ([]DatabaseObject, error) {
-	if e.conn == nil {
-		return nil, fmt.Errorf("no connection available")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Build lookup: schema.name → index
-	idxMap := make(map[string]int, len(objects))
-	for i, obj := range objects {
-		key := obj.Schema + "." + obj.Name + "." + obj.Type
-		idxMap[key] = i
-	}
-
-	// Query pg_depend for inter-object dependencies (views→tables, views→views, etc.)
-	query := `
-		SELECT DISTINCT
-			dn.nspname  AS dep_schema,
-			dc.relname  AS dep_name,
-			CASE dc.relkind
-				WHEN 'r' THEN 'table'
-				WHEN 'v' THEN 'view'
-				WHEN 'm' THEN 'view'
-				WHEN 'S' THEN 'sequence'
-				ELSE 'other'
-			END AS dep_type,
-			rn.nspname  AS ref_schema,
-			rc.relname  AS ref_name,
-			CASE rc.relkind
-				WHEN 'r' THEN 'table'
-				WHEN 'v' THEN 'view'
-				WHEN 'm' THEN 'view'
-				WHEN 'S' THEN 'sequence'
-				ELSE 'other'
-			END AS ref_type
-		FROM pg_depend d
-		JOIN pg_class dc ON d.classid = 'pg_class'::regclass AND d.objid = dc.oid
-		JOIN pg_namespace dn ON dc.relnamespace = dn.oid
-		JOIN pg_class rc ON d.refclassid = 'pg_class'::regclass AND d.refobjid = rc.oid
-		JOIN pg_namespace rn ON rc.relnamespace = rn.oid
-		WHERE d.deptype IN ('n', 'a')
-		  AND dn.nspname NOT IN ('pg_catalog', 'information_schema')
-		  AND rn.nspname NOT IN ('pg_catalog', 'information_schema')
-		  AND dc.oid <> rc.oid`
-
-	rows, err := e.conn.Query(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("dependency query failed: %w", err)
-	}
-	defer rows.Close()
-
-	// Build adjacency list: depKey depends on refKey (refKey must come first)
-	// adj[A] = [B, C] means B and C must come before A
-	adj := make(map[int][]int)    // object index → list of dependency indices
-	inDegree := make(map[int]int) // incoming edge count
-
-	// Initialize all objects
-	for i := range objects {
-		inDegree[i] = 0
-	}
-
-	for rows.Next() {
-		var depSchema, depName, depType, refSchema, refName, refType string
-		if err := rows.Scan(&depSchema, &depName, &depType, &refSchema, &refName, &refType); err != nil {
-			continue
-		}
-
-		depKey := depSchema + "." + depName + "." + depType
-		refKey := refSchema + "." + refName + "." + refType
-
-		depIdx, depOK := idxMap[depKey]
-		refIdx, refOK := idxMap[refKey]
-
-		if depOK && refOK && depIdx != refIdx {
-			adj[depIdx] = append(adj[depIdx], refIdx)
-			inDegree[depIdx]++ // depIdx depends on refIdx → refIdx must come first
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	// Wait — actually adj[depIdx] should contain refIdx, meaning depIdx has an incoming
-	// edge from refIdx. For Kahn's algorithm we need: adj is "X → [dependents of X]"
-	// Let me restructure: forwardAdj[refIdx] = append(forwardAdj[refIdx], depIdx)
-	// means refIdx must come before depIdx.
-	forwardAdj := make(map[int][]int)
-	inDeg := make(map[int]int)
-	for i := range objects {
-		inDeg[i] = 0
-	}
-	for depIdx, refs := range adj {
-		for _, refIdx := range refs {
-			forwardAdj[refIdx] = append(forwardAdj[refIdx], depIdx)
-			inDeg[depIdx]++
-		}
-	}
-
-	// Kahn's algorithm for topological sort
-	var queue []int
-	for i := range objects {
-		if inDeg[i] == 0 {
-			queue = append(queue, i)
-		}
-	}
-
-	sorted := make([]DatabaseObject, 0, len(objects))
-	for len(queue) > 0 {
-		idx := queue[0]
-		queue = queue[1:]
-		sorted = append(sorted, objects[idx])
-
-		for _, depIdx := range forwardAdj[idx] {
-			inDeg[depIdx]--
-			if inDeg[depIdx] == 0 {
-				queue = append(queue, depIdx)
-			}
-		}
-	}
-
-	// Cycle detection: if sorted is shorter than objects, there's a cycle
-	if len(sorted) < len(objects) {
-		e.log.Warn("Dependency cycle detected, falling back to type-based ordering",
-			"sorted", len(sorted), "total", len(objects))
-		return nil, fmt.Errorf("dependency cycle detected")
-	}
-
-	e.log.Debug("Dependency graph resolved", "objects", len(sorted))
-	return sorted, nil
-}
-
-func (e *PostgreSQLNativeEngine) backupCustomFormat(ctx context.Context, w io.Writer, result *BackupResult) (*BackupResult, error) {
-	compression := CompressGzip
-	compLevel := 6
-	if e.cfg.Compression == 0 && e.cfg.CompressionAlgorithm == "none" {
-		compression = CompressNone
-		compLevel = 0
-	} else if e.cfg.Compression > 0 {
-		compLevel = e.cfg.Compression
-	}
-
-	switch e.cfg.CompressionAlgorithm {
-	case "zstd":
-		compression = CompressZstd
-	case "lz4":
-		compression = CompressLZ4
-	case "none":
-		compression = CompressNone
-	}
-
-	writer := NewCustomFormatWriter(e, e.log, &CustomFormatWriterOptions{
-		Compression:     compression,
-		CompLevel:       compLevel,
-		ParallelWorkers: e.cfg.Parallel,
-	})
-
-	return writer.Write(ctx, w)
-}
-
-func (e *PostgreSQLNativeEngine) backupDirectoryFormat(ctx context.Context, w io.Writer, result *BackupResult) (*BackupResult, error) {
-	return nil, fmt.Errorf("directory format not implemented yet")
-}
-
-func (e *PostgreSQLNativeEngine) backupTarFormat(ctx context.Context, w io.Writer, result *BackupResult) (*BackupResult, error) {
-	return nil, fmt.Errorf("tar format not implemented yet")
 }
 
 // Close closes all connections

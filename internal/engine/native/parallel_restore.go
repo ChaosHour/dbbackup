@@ -801,7 +801,8 @@ func (e *ParallelRestoreEngine) RestoreFile(ctx context.Context, filePath string
 				if err != nil && ctx.Err() == nil {
 					e.log.Warn("Post-data failed", "statement", indexName, "duration", duration, "error", err)
 					if options.ContinueOnError {
-						// Already logged
+						// Already logged above; continue processing remaining statements
+						_ = err
 					}
 				} else if err == nil {
 					atomic.AddInt64(&result.IndexesCreated, 1)
@@ -1170,12 +1171,6 @@ func (e *ParallelRestoreEngine) Close() error {
 // ════════════════════════════════════════════════════════════════════
 // Tiered Restore — Priority-based RTO optimization
 // ════════════════════════════════════════════════════════════════════
-
-// preScanEntry holds metadata about a COPY block discovered during pre-scan.
-type preScanEntry struct {
-	TableName string
-	Priority  TablePriority
-}
 
 // preScanResult contains the classification of all tables found in a dump.
 type preScanResult struct {
@@ -1673,6 +1668,7 @@ func (e *ParallelRestoreEngine) executePostDataParallel(ctx context.Context, stm
 	var wg sync.WaitGroup
 	var created int64
 
+loop:
 	for _, sql := range stmts {
 		if ctx.Err() != nil {
 			break
@@ -1683,7 +1679,7 @@ func (e *ParallelRestoreEngine) executePostDataParallel(ctx context.Context, stm
 		case semaphore <- struct{}{}:
 		case <-ctx.Done():
 			wg.Done()
-			break
+			break loop
 		}
 
 		go func(stmt string) {
@@ -1796,11 +1792,6 @@ type SQLStatement struct {
 	Type      StatementType
 	TableName string
 	CopyData  strings.Builder
-}
-
-// parseStatements reads and classifies all SQL statements (legacy)
-func (e *ParallelRestoreEngine) parseStatements(reader io.Reader) ([]SQLStatement, error) {
-	return e.parseStatementsWithContext(context.Background(), reader)
 }
 
 // parseStatementsWithContext is the legacy parser kept for tests.

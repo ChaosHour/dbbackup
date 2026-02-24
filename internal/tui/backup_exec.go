@@ -148,9 +148,7 @@ type BackupExecutionModel struct {
 
 	// Metadata quality tracking for tiered progress display
 	metadataSource    string              // "accurate", "extrapolated", "unknown"
-	completedBackups  []completedDBBackup // Track completed DBs for extrapolation
 	bytesPerDB        map[string]int64    // db name → final backup size
-	extrapolatedTotal int64               // Extrapolated total bytes from completed DBs
 }
 
 // completedDBBackup tracks a completed database backup for extrapolation

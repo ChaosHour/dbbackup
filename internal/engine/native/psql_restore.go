@@ -216,9 +216,7 @@ func (e *PsqlRestoreEngine) buildPsqlArgs() []string {
 		"--quiet",              // Suppress non-error messages
 	}
 
-	if e.config.SSLMode != "" {
-		// Set via environment instead
-	}
+	// SSLMode is set via PGSSLMODE environment variable rather than CLI args
 
 	return args
 }

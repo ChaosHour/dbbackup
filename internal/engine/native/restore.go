@@ -590,7 +590,6 @@ func extractMySQLTableName(stmt string) string {
 			}
 			if i < len(rest) {
 				name.WriteByte('"')
-				i++
 			}
 			break
 		} else if ch == ' ' || ch == '(' || ch == '\n' || ch == '\r' || ch == '\t' {

@@ -40,10 +40,6 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 	osUser := config.GetCurrentOSUser()
 	passwordSource := "none"
 
-	if p.cfg.Debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] PostgreSQL connection: os_user=%s db_user=%s host=%s port=%d database=%s password_set=%v\n",
-			osUser, p.cfg.User, p.cfg.Host, p.cfg.Port, p.cfg.Database, p.cfg.Password != "")
-	}
 	p.log.Debug("PostgreSQL connection attempt",
 		"os_user", osUser,
 		"db_user", p.cfg.User,
@@ -64,24 +60,14 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 		if password, found := auth.LoadPasswordFromPgpass(p.cfg); found {
 			p.cfg.Password = password
 			passwordSource = "pgpass"
-			if p.cfg.Debug {
-				fmt.Fprintf(os.Stderr, "[DEBUG] Loaded password from .pgpass file\n")
-			}
 			p.log.Debug("Loaded password from .pgpass file")
 		} else {
-			if p.cfg.Debug {
-				fmt.Fprintf(os.Stderr, "[DEBUG] No .pgpass password found — will rely on peer/trust auth or fail\n")
-			}
 			p.log.Debug("No .pgpass password found — will rely on peer/trust auth or fail")
 		}
 	}
 
 	// Detect expected authentication method
 	authMethod := auth.DetectPostgreSQLAuthMethod(p.cfg.Host, p.cfg.Port, p.cfg.User)
-	if p.cfg.Debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] Detected auth method=%s password_source=%s\n",
-			string(authMethod), passwordSource)
-	}
 	p.log.Debug("Detected PostgreSQL auth method",
 		"method", string(authMethod),
 		"password_source", passwordSource,
@@ -93,10 +79,6 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 	var mismatchWarning string
 	if mismatch, msg := auth.CheckAuthenticationMismatch(p.cfg); mismatch {
 		mismatchWarning = msg
-		if p.cfg.Debug {
-			fmt.Fprintf(os.Stderr, "[DEBUG] Auth mismatch detected (will try connection anyway): os_user=%s db_user=%s\n",
-				osUser, p.cfg.User)
-		}
 		p.log.Debug("Auth mismatch detected, will attempt connection anyway",
 			"os_user", osUser,
 			"db_user", p.cfg.User,
@@ -107,9 +89,6 @@ func (p *PostgreSQL) Connect(ctx context.Context) error {
 	dsn := p.buildPgxDSN()
 	p.dsn = dsn
 
-	if p.cfg.Debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] DSN: %s\n", sanitizeDSN(dsn))
-	}
 	p.log.Debug("Connecting to PostgreSQL with pgx", "dsn", sanitizeDSN(dsn))
 
 	// Parse config with optimizations for large databases
@@ -270,10 +249,10 @@ func validateIdentifier(name string) error {
 	}
 	// Only allow alphanumeric, underscores, and must start with letter or underscore
 	for i, c := range name {
-		if i == 0 && !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+		if i == 0 && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && c != '_' {
 			return fmt.Errorf("identifier must start with letter or underscore: %s", name)
 		}
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+		if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' {
 			return fmt.Errorf("identifier contains invalid character %q: %s", c, name)
 		}
 	}

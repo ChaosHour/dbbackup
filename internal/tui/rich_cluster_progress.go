@@ -243,9 +243,9 @@ func (v *RichClusterProgressView) renderPhaseDetails(snapshot *progress.Progress
 					spinner, truncateString(snapshot.CurrentDB, 20),
 					formatDuration(dbElapsed)))
 				if snapshot.UseNativeEngine {
-					b.WriteString(fmt.Sprintf("        └─ native Go engine in progress (pure Go, no external tools)\n"))
+					b.WriteString("        └─ native Go engine in progress (pure Go, no external tools)\n")
 				} else {
-					b.WriteString(fmt.Sprintf("        └─ pg_restore in progress (progress updates every 5s)\n"))
+					b.WriteString("        └─ pg_restore in progress (progress updates every 5s)\n")
 				}
 			}
 		}
@@ -271,7 +271,7 @@ func (v *RichClusterProgressView) renderPhaseDetails(snapshot *progress.Progress
 
 	case progress.PhaseComplete:
 		elapsed := time.Since(snapshot.StartTime)
-		b.WriteString(fmt.Sprintf("  🎉 Restore complete!\n"))
+		b.WriteString("  🎉 Restore complete!\n")
 		b.WriteString(fmt.Sprintf("     %d databases restored in %s\n",
 			snapshot.DatabasesDone, formatDuration(elapsed)))
 
@@ -339,22 +339,4 @@ func truncateString(s string, maxLen int) string {
 		return s[:maxLen]
 	}
 	return s[:maxLen-3] + "..."
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func formatNumShort(n int64) string {
-	if n >= 1e9 {
-		return fmt.Sprintf("%.1fB", float64(n)/1e9)
-	} else if n >= 1e6 {
-		return fmt.Sprintf("%.1fM", float64(n)/1e6)
-	} else if n >= 1e3 {
-		return fmt.Sprintf("%.1fK", float64(n)/1e3)
-	}
-	return fmt.Sprintf("%d", n)
 }

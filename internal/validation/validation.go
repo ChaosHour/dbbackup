@@ -306,12 +306,8 @@ func ValidateDatabaseName(name string, dbType string) error {
 		}
 	}
 
-	// Warn about reserved keywords (but allow them - they work when quoted)
-	upperName := strings.ToUpper(name)
-	if ReservedSQLKeywords[upperName] {
-		// This is a warning, not an error - reserved keywords work when quoted
-		// We could log a warning here if we had a logger
-	}
+	// Reserved SQL keywords are allowed — they work when quoted by the backup engine.
+	// No warning emitted here because we don't have a logger in the validation package.
 
 	return nil
 }

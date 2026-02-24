@@ -67,7 +67,6 @@ For help with specific commands, use: dbbackup [command] --help`,
 			var err error
 			if cfg.ConfigPath != "" {
 				localCfg, err = config.LoadLocalConfigFromPath(cfg.ConfigPath)
-				configPath = cfg.ConfigPath
 				if err != nil {
 					log.Warn("Failed to load config from specified path", "path", cfg.ConfigPath, "error", err)
 				} else if localCfg != nil {

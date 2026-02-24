@@ -46,12 +46,11 @@ func (b *BtrfsBackend) Detect(dataDir string) (bool, error) {
 		return false, nil
 	}
 
-	// Check if path is a subvolume
+	// Check if path is a subvolume.
+	// If it's not a subvolume we can still create snapshots of the parent subvolume,
+	// so we intentionally ignore the error here.
 	cmd = exec.Command("btrfs", "subvolume", "show", dataDir)
-	if err := cmd.Run(); err != nil {
-		// Path exists on btrfs but may not be a subvolume
-		// We can still create snapshots of parent subvolume
-	}
+	_ = cmd.Run()
 
 	if b.config != nil {
 		b.config.Subvolume = dataDir

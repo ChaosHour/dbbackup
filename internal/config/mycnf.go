@@ -224,7 +224,7 @@ func ApplyMyCnfCredentials(cfg *Config) string {
 	}
 	if creds.Port != "" && cfg.Port == mysqlDefaultPort {
 		if p, err := fmt.Sscanf(creds.Port, "%d", &cfg.Port); p == 0 || err != nil {
-			// ignore invalid port
+			_ = err // ignore invalid port in .my.cnf
 		}
 	}
 	if creds.Socket != "" && cfg.Socket == "" {

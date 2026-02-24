@@ -291,8 +291,7 @@ func TestListBackups(t *testing.T) {
 
 	// Create some backup metadata files
 	for i := 1; i <= 3; i++ {
-		backupFile := filepath.Join(tmpDir, "backup%d.sql.gz")
-		backupFile = filepath.Join(tmpDir, "backup"+string(rune('0'+i))+".sql.gz")
+		backupFile := filepath.Join(tmpDir, "backup"+string(rune('0'+i))+".sql.gz")
 		meta := &BackupMetadata{
 			Version:    "1.0",
 			Timestamp:  time.Now().Add(time.Duration(-i) * time.Hour),

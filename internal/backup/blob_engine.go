@@ -48,7 +48,6 @@ type BLOBEngine struct {
 	log        logger.Logger
 	workers    int
 	bundleSize int
-	mu         sync.Mutex
 
 	// Statistics
 	totalBLOBs    atomic.Int64
@@ -204,10 +203,7 @@ func (e *BLOBEngine) BackupLargeObjects(ctx context.Context, tw *tar.Writer) (*B
 	manifest.PacksWritten = int(e.packsWritten.Load())
 	manifest.StreamedBLOBs = e.blobsStreamed.Load()
 	for _, o := range oids {
-		manifest.LargeObjects = append(manifest.LargeObjects, LOManifestEntry{
-			OID:  o.OID,
-			Size: o.Size,
-		})
+		manifest.LargeObjects = append(manifest.LargeObjects, LOManifestEntry(o))
 	}
 
 	if err := e.writeManifest(tw, manifest); err != nil {

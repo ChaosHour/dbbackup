@@ -854,13 +854,13 @@ func handleGaleraCluster(ctx context.Context, sqlDB *sql.DB) error {
 
 	// Health check
 	if cfg.GaleraHealthCheck && !galeraInfo.IsHealthyForBackup() {
-		return fmt.Errorf("Galera node %s not healthy for backup: %s",
+		return fmt.Errorf("galera node %s not healthy for backup: %s",
 			galeraInfo.NodeName, galeraInfo.HealthSummary())
 	}
 
 	// Cluster size check
 	if cfg.GaleraMinClusterSize > 0 && galeraInfo.ClusterSize < cfg.GaleraMinClusterSize {
-		return fmt.Errorf("Galera cluster size %d below required minimum %d",
+		return fmt.Errorf("galera cluster size %d below required minimum %d",
 			galeraInfo.ClusterSize, cfg.GaleraMinClusterSize)
 	}
 

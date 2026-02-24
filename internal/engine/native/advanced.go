@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 
 	"dbbackup/internal/logger"
@@ -263,17 +264,47 @@ func (e *PostgreSQLAdvancedEngine) ValidateAdvancedOptions(options *AdvancedBack
 }
 
 // GetOptimalParallelJobs returns the optimal number of parallel jobs
+// based on CPU cores and PostgreSQL max_connections setting.
 func (e *PostgreSQLAdvancedEngine) GetOptimalParallelJobs() int {
-	// Base on CPU count and connection limits
-	// TODO: Query PostgreSQL for max_connections and calculate optimal
-	return 4 // Conservative default
+	cpuJobs := runtime.NumCPU()
+
+	// Query PostgreSQL for max_connections if a pool is available
+	if e.pool != nil {
+		var maxConns int
+		err := e.pool.QueryRow(context.Background(), "SHOW max_connections").Scan(&maxConns)
+		if err == nil && maxConns > 0 {
+			// Reserve 20% of connections for other clients, use at most 75% for backup
+			dbJobs := (maxConns * 3) / 4
+			if dbJobs < 1 {
+				dbJobs = 1
+			}
+			// Use the smaller of CPU cores and available DB connections
+			if dbJobs < cpuJobs {
+				cpuJobs = dbJobs
+			}
+			e.log.Debug("Calculated optimal parallel jobs",
+				"max_connections", maxConns,
+				"cpu_cores", runtime.NumCPU(),
+				"optimal_jobs", cpuJobs,
+			)
+		}
+	}
+
+	// Clamp to reasonable range: 1-16
+	if cpuJobs < 1 {
+		cpuJobs = 1
+	}
+	if cpuJobs > 16 {
+		cpuJobs = 16
+	}
+	return cpuJobs
 }
 
 // Private methods for different backup formats
 
 func (e *PostgreSQLAdvancedEngine) sqlFormatBackup(ctx context.Context, output io.Writer, options *AdvancedBackupOptions) (*BackupResult, error) {
 	// Use base engine for SQL format with enhancements
-	result, err := e.PostgreSQLNativeEngine.Backup(ctx, output)
+	result, err := e.Backup(ctx, output)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +314,7 @@ func (e *PostgreSQLAdvancedEngine) sqlFormatBackup(ctx context.Context, output i
 }
 
 func (e *PostgreSQLAdvancedEngine) customFormatBackup(ctx context.Context, output io.Writer, options *AdvancedBackupOptions) (*BackupResult, error) {
-	compression := CompressGzip
+	var compression uint8
 	compLevel := 6
 
 	switch options.Compression {
@@ -417,7 +448,7 @@ func (e *MySQLAdvancedEngine) sqlFormatBackup(ctx context.Context, output io.Wri
 	}
 
 	// Use base engine for backup
-	result, err := e.MySQLNativeEngine.Backup(ctx, output)
+	result, err := e.Backup(ctx, output)
 	if err != nil {
 		return nil, err
 	}

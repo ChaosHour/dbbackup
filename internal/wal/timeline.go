@@ -383,22 +383,22 @@ func (tm *TimelineManager) formatTimelineNode(sb *strings.Builder, history *Time
 		marker = "*"
 	}
 
-	sb.WriteString(fmt.Sprintf("%s%s Timeline %d", indent, marker, tl.TimelineID))
+	fmt.Fprintf(sb, "%s%s Timeline %d", indent, marker, tl.TimelineID)
 
 	if tl.TimelineID == history.CurrentTimeline {
 		sb.WriteString(" [CURRENT]")
 	}
 
 	if tl.SwitchPoint != "" && tl.SwitchPoint != "0/0" {
-		sb.WriteString(fmt.Sprintf(" (switched at %s)", tl.SwitchPoint))
+		fmt.Fprintf(sb, " (switched at %s)", tl.SwitchPoint)
 	}
 
 	if tl.FirstWALSegment > 0 {
-		sb.WriteString(fmt.Sprintf("\n%s   WAL segments: %d files", indent, tl.LastWALSegment-tl.FirstWALSegment+1))
+		fmt.Fprintf(sb, "\n%s   WAL segments: %d files", indent, tl.LastWALSegment-tl.FirstWALSegment+1)
 	}
 
 	if tl.Reason != "" {
-		sb.WriteString(fmt.Sprintf("\n%s   Reason: %s", indent, tl.Reason))
+		fmt.Fprintf(sb, "\n%s   Reason: %s", indent, tl.Reason)
 	}
 
 	sb.WriteString("\n")

@@ -210,10 +210,18 @@ func (e *Exporter) refreshLoop(ctx context.Context) {
 // refresh updates the cached metrics
 func (e *Exporter) refresh() error {
 	writer := NewMetricsWriterWithVersion(e.log, e.catalog, e.instance, e.version, e.gitCommit)
-	data, err := writer.GenerateMetricsString()
+
+	// Collect catalog metrics and track which databases are covered,
+	// so dedup RPO is only emitted for databases not already in the catalog.
+	catalogMetrics, err := writer.collectMetrics()
 	if err != nil {
 		return err
 	}
+	catalogDBs := make(map[string]bool, len(catalogMetrics))
+	for _, m := range catalogMetrics {
+		catalogDBs[m.Database] = true
+	}
+	data := writer.formatMetrics(catalogMetrics)
 
 	// Collect PITR metrics if available
 	pitrMetrics := e.collectPITRMetrics()
@@ -222,10 +230,15 @@ func (e *Exporter) refresh() error {
 		data += "\n" + pitrWriter.FormatPITRMetrics(pitrMetrics)
 	}
 
-	// Collect dedup metrics if available
-	dedupData := e.collectDedupMetrics()
+	// Collect dedup metrics if available.
+	// RPO is suppressed to avoid duplicate TYPE headers;
+	// dedup-only databases get their RPO appended below.
+	dedupData, dedupRPOLines := e.collectDedupMetricsMerged(catalogDBs)
 	if dedupData != "" {
 		data += "\n" + dedupData
+	}
+	if dedupRPOLines != "" {
+		data += "\n" + dedupRPOLines
 	}
 
 	e.mu.Lock()
@@ -357,20 +370,60 @@ func (e *Exporter) collectPITRMetrics() []PITRMetrics {
 	return metrics
 }
 
-// collectDedupMetrics collects deduplication metrics if dedup store exists
-func (e *Exporter) collectDedupMetrics() string {
+// collectDedupMetricsMerged collects dedup metrics. It suppresses the
+// dbbackup_rpo_seconds block (to avoid duplicate TYPE headers with catalog
+// metrics) and instead returns separate RPO lines for databases that exist
+// ONLY in dedup — not in the catalog. This gives Prometheus exactly one
+// dbbackup_rpo_seconds time series per database regardless of backup mode.
+func (e *Exporter) collectDedupMetricsMerged(catalogDBs map[string]bool) (metricsOut string, rpoOut string) {
 	// Check if dedup directory exists
 	if _, err := os.Stat(e.dedupBasePath); os.IsNotExist(err) {
-		return ""
+		return "", ""
 	}
 
-	// Try to collect dedup metrics
+	// Collect raw dedup data
 	metrics, err := dedup.CollectMetrics(e.dedupBasePath, e.dedupIndexPath)
 	if err != nil {
 		e.log.Debug("Could not collect dedup metrics", "error", err)
-		return ""
+		return "", ""
 	}
 
-	// Format as Prometheus metrics
-	return dedup.FormatPrometheusMetrics(metrics, e.instance)
+	// Format dedup metrics WITHOUT the RPO block to avoid duplicate TYPE
+	metricsOut = dedup.FormatPrometheusMetricsWithOptions(metrics, e.instance, dedup.FormatOptions{
+		SkipRPO: true,
+	})
+
+	// Emit RPO for databases that are only backed up via dedup.
+	// Databases that are in BOTH catalog and dedup already have RPO from
+	// the catalog; emitting a second series would produce conflicting values.
+	now := time.Now().Unix()
+	var rpoLines []string
+	for _, db := range metrics.ByDatabase {
+		if catalogDBs[db.Database] {
+			continue // catalog already emitted RPO for this database
+		}
+		if db.LastBackupTime.IsZero() {
+			continue
+		}
+		rpoSeconds := now - db.LastBackupTime.Unix()
+		if rpoSeconds < 0 {
+			rpoSeconds = 0
+		}
+		rpoLines = append(rpoLines, fmt.Sprintf(
+			"dbbackup_rpo_seconds{server=%q,database=%q,backup_type=%q} %d",
+			e.instance, db.Database, "dedup", rpoSeconds))
+	}
+	if len(rpoLines) > 0 {
+		// The TYPE/HELP headers are already present from the catalog block.
+		// If the catalog had zero databases (edge case), we need the headers.
+		if len(catalogDBs) == 0 {
+			rpoOut = "# HELP dbbackup_rpo_seconds Recovery Point Objective - seconds since last successful backup\n" +
+				"# TYPE dbbackup_rpo_seconds gauge\n"
+		}
+		for _, line := range rpoLines {
+			rpoOut += line + "\n"
+		}
+	}
+
+	return metricsOut, rpoOut
 }

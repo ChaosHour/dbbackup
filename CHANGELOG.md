@@ -5,6 +5,17 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.15] - 2026-02-24 — Fix Duplicate RPO Metrics & Missing Dedup Verified Metric
+
+### Fixed
+
+- **Duplicate `dbbackup_rpo_seconds` when using catalog + dedup for the same database** — The metrics exporter emitted `dbbackup_rpo_seconds` from both the catalog (SQL backups) and the dedup subsystem independently, producing two conflicting time series per database with different values. Prometheus/Grafana dashboards that query `dbbackup_rpo_seconds` would get ambiguous results or broken panels. Fixed: the exporter now merges RPO from both sources — catalog RPO takes precedence for databases present in both, and dedup RPO is only emitted for databases that exist exclusively in dedup. Exactly one `dbbackup_rpo_seconds` series per database is guaranteed.
+- **Missing `dbbackup_backup_verified` metric for dedup backups** — The dedup subsystem tracked verification timestamps in manifests (`VerifiedAt`) but never exposed them as a Prometheus metric. Switching from SQL to dedup backups caused the `DBBackupNotVerified` alert to fire permanently because the metric simply didn't exist. Added `dbbackup_dedup_backup_verified` gauge (1=verified, 0=not verified) emitted per database from dedup manifests.
+
+### Added
+
+- **`dedup.FormatOptions` / `FormatPrometheusMetricsWithOptions()`** — New API in the dedup metrics package that allows callers to suppress specific metric blocks (e.g., `SkipRPO: true`) when composing metrics from multiple sources. The existing `FormatPrometheusMetrics()` remains backward-compatible.
+
 ## [6.50.14] - 2026-02-23 — Fix Misleading Auth Mismatch Warning & Restore Troubleshooting
 
 ### Fixed

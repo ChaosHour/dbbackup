@@ -168,8 +168,22 @@ func WritePrometheusTextfile(path string, instance string, basePath string, inde
 	return nil
 }
 
-// FormatPrometheusMetrics formats dedup metrics in Prometheus exposition format
+// FormatOptions controls which metric blocks are emitted by FormatPrometheusMetrics.
+type FormatOptions struct {
+	// SkipRPO suppresses the dbbackup_rpo_seconds block so the caller
+	// (e.g. the unified exporter) can merge RPO from catalog + dedup
+	// without emitting duplicate TYPE headers.
+	SkipRPO bool
+}
+
+// FormatPrometheusMetrics formats dedup metrics in Prometheus exposition format.
+// For standalone textfile use; includes RPO and verified metrics.
 func FormatPrometheusMetrics(m *DedupMetrics, server string) string {
+	return FormatPrometheusMetricsWithOptions(m, server, FormatOptions{})
+}
+
+// FormatPrometheusMetricsWithOptions formats dedup metrics with configurable options.
+func FormatPrometheusMetricsWithOptions(m *DedupMetrics, server string, opts FormatOptions) string {
 	var b strings.Builder
 	now := time.Now().Unix()
 
@@ -261,19 +275,36 @@ func FormatPrometheusMetrics(m *DedupMetrics, server string) string {
 		}
 		b.WriteString("\n")
 
-		// Add RPO (Recovery Point Objective) metric for dedup backups - same metric name as regular backups
-		// This enables unified alerting across regular and dedup backup modes
-		b.WriteString("# HELP dbbackup_rpo_seconds Seconds since last successful backup (Recovery Point Objective)\n")
-		b.WriteString("# TYPE dbbackup_rpo_seconds gauge\n")
-		for _, db := range m.ByDatabase {
-			if !db.LastBackupTime.IsZero() {
-				rpoSeconds := now - db.LastBackupTime.Unix()
-				if rpoSeconds < 0 {
-					rpoSeconds = 0
+		// RPO (Recovery Point Objective) metric for dedup backups.
+		// When SkipRPO is set the exporter merges dedup RPO into the
+		// catalog RPO block so Prometheus never sees duplicate TYPE headers.
+		if !opts.SkipRPO {
+			b.WriteString("# HELP dbbackup_rpo_seconds Seconds since last successful backup (Recovery Point Objective)\n")
+			b.WriteString("# TYPE dbbackup_rpo_seconds gauge\n")
+			for _, db := range m.ByDatabase {
+				if !db.LastBackupTime.IsZero() {
+					rpoSeconds := now - db.LastBackupTime.Unix()
+					if rpoSeconds < 0 {
+						rpoSeconds = 0
+					}
+					b.WriteString(fmt.Sprintf("dbbackup_rpo_seconds{server=%q,database=%q} %d\n",
+						server, db.Database, rpoSeconds))
 				}
-				b.WriteString(fmt.Sprintf("dbbackup_rpo_seconds{server=%q,database=%q} %d\n",
-					server, db.Database, rpoSeconds))
 			}
+			b.WriteString("\n")
+		}
+
+		// dbbackup_backup_verified — whether the most recent dedup backup
+		// for each database has been verified (1=yes, 0=no).
+		b.WriteString("# HELP dbbackup_dedup_backup_verified Whether the last dedup backup was verified (1=yes, 0=no)\n")
+		b.WriteString("# TYPE dbbackup_dedup_backup_verified gauge\n")
+		for _, db := range m.ByDatabase {
+			verified := 0
+			if !db.LastVerified.IsZero() {
+				verified = 1
+			}
+			b.WriteString(fmt.Sprintf("dbbackup_dedup_backup_verified{server=%q,database=%q} %d\n",
+				server, db.Database, verified))
 		}
 		b.WriteString("\n")
 

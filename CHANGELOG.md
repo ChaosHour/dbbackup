@@ -5,6 +5,28 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.20] - 2026-02-24 — Test Coverage Sprint: database, backup, restore
+
+### Added
+
+- **`internal/database/database_test.go`** (NEW) — 76 unit tests covering `New()`, `BuildBackupCommand()`/`BuildRestoreCommand()` for PostgreSQL and MySQL (socket/host/parallel/compression/SSL/format options), `BuildSampleQuery()`, `GetPasswordEnvVar()`, `validateIdentifier()`/`validateMySQLIdentifier()`, `sanitizeDSN()`/`sanitizeMySQLDSN()`, `getConnectionHint()` (10 error patterns)
+- **`internal/restore/large_db_guard_test.go`** (NEW) — 23 unit tests for `buildGuardConnString()` (unix/remote/localhost), `estimateTotalSize()`, `findLargestDump()`, `TunePostgresForRestore()` (lock boost clamping 0→2048, cap→65536), `RevertPostgresSettings()`, `TuneMySQLForRestore()`/`RevertMySQLSettings()`, `ApplyStrategy()` (warns but preserves user settings), `CheckSystemMemory()`
+- **`internal/restore/dryrun_test.go`** (NEW) — 26 unit tests for `DryRunStatus.String()`/`Icon()`, `formatBytesSize()`, `checkArchiveAccess()` (not-found/empty/valid), `checkWorkDirectory()` (writable/nonexistent/file-not-dir), `checkTargetConflicts()` (empty→skip), `estimateRestoreTime()`, `DryRunResult` summary validation
+- **`internal/backup/blob_detect_test.go`** (NEW) — 12 unit tests for `BLOBStrategy.String()` (5 variants) and `classifyStrategy()` (7 cases: no-blobs/oid/mostly-small/mostly-large/large-total/moderate/mixed)
+- **`internal/backup/incremental_postgres_test.go`** (NEW) — 10 unit tests for `shouldSkipFile()` with `fakeFileInfo` struct (.tmp/.lock/postmaster.pid/pg_wal/pg_replslot/socket/regular/pg_xlog/config)
+- **`internal/backup/estimate_test.go`** (NEW) — 7 unit tests for `FormatSizeEstimate()`, `FormatClusterSizeEstimate()`, `getSpaceStatus()`
+
+### Changed
+
+- **`internal/restore/safety_test.go`** — Extended with 13 tests: `containsSQLKeywords()` table-driven (9 cases), `ValidateArchive()` edge cases (too-small/unknown-format/valid-sql/valid-pgdump)
+- **`internal/backup/engine_test.go`** — Extended with 6 tests: `formatBytes()` (0B/512B/1KB/1MB/1GB/1TB)
+
+### Coverage Impact
+
+- `internal/database`: 1.0% → **36.2%** (+35.2pp)
+- `internal/backup`: 10.1% → **11.3%** (+1.2pp)
+- `internal/restore`: 20.0% → **21.7%** (+1.7pp)
+
 ## [6.50.19] - 2026-02-24 — Tool Validation Consolidation & Engine Flag
 
 ### Added

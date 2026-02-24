@@ -445,3 +445,31 @@ func TestTimestampFormats(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// formatBytes
+// =============================================================================
+
+func TestFormatBytes(t *testing.T) {
+	tests := []struct {
+		name  string
+		bytes int64
+		want  string
+	}{
+		{"zero bytes", 0, "0 B"},
+		{"512 bytes", 512, "512 B"},
+		{"1 KB", 1024, "1.0 KB"},
+		{"1 MB", 1024 * 1024, "1.0 MB"},
+		{"1 GB", 1024 * 1024 * 1024, "1.0 GB"},
+		{"1 TB", 1024 * 1024 * 1024 * 1024, "1.0 TB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatBytes(tt.bytes)
+			if got != tt.want {
+				t.Errorf("formatBytes(%d) = %q, want %q", tt.bytes, got, tt.want)
+			}
+		})
+	}
+}

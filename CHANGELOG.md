@@ -5,6 +5,17 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.16] - 2026-02-24 — Code Quality: Resolve All Lint Findings
+
+### Fixed
+
+- **Resolve all 1,300+ lint findings across 282 files** — Enabled and satisfied five golangci-lint linters (govet, staticcheck, unused, ineffassign, errcheck) with zero remaining issues:
+  - **staticcheck**: Fixed deprecated API usage, unreachable code, and incorrect function signatures
+  - **unused**: Removed dead code (unused functions, variables, constants)
+  - **ineffassign**: Eliminated ineffectual assignments
+  - **errcheck** (1,149 findings): All unchecked error returns now properly handled — `defer Close()` wrapped in closures, `os.Remove`/`os.RemoveAll` errors explicitly discarded, SQL operations and file I/O errors properly addressed
+- **golangci-lint configuration** — Added `.golangci.yml` with errcheck exclusions for harmless patterns (fmt.Print*, strings.Builder, bytes.Buffer, hash.Hash writes, cobra flag marking)
+
 ## [6.50.15] - 2026-02-24 — Fix Duplicate RPO Metrics & Missing Dedup Verified Metric
 
 ### Fixed

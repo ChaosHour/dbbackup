@@ -5,6 +5,19 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.17] - 2026-02-24 — Refactor: Split engine.go Into Focused Modules
+
+### Changed
+
+- **Split `internal/restore/engine.go` (3,855 lines) into 7 focused files** — Purely organizational refactoring with no functional changes, no renamed functions, and no signature changes. Test coverage remains at 20.1%:
+  - `engine.go` (~280 lines) — Engine struct, constructors, RestoreSingle, previewRestore
+  - `engine_util.go` (~126 lines) — FormatBytes, formatDuration, isIgnorableError, sleepWithContext, sanitizeConnStr
+  - `engine_exec.go` (~514 lines) — Command execution, decompression pipeline
+  - `engine_tuning.go` (~455 lines) — PostgreSQL server tuning (boost/reset), superuser check, SQL validation
+  - `engine_mysql.go` (~167 lines) — MySQL restore methods (single, native, parallel)
+  - `engine_postgresql.go` (~749 lines) — PostgreSQL restore methods, adaptive jobs, BLOB detection
+  - `engine_cluster.go` (~1,641 lines) — Cluster restore, globals, metadata, cleanup
+
 ## [6.50.16] - 2026-02-24 — Code Quality: Resolve All Lint Findings
 
 ### Fixed

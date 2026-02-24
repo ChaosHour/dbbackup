@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 
 	"dbbackup/internal/cleanup"
@@ -15,6 +14,7 @@ import (
 	"dbbackup/internal/fs"
 	"dbbackup/internal/logger"
 	"dbbackup/internal/metadata"
+	"dbbackup/internal/tools"
 )
 
 // Safety provides pre-restore validation and safety checks
@@ -411,26 +411,18 @@ func (s *Safety) CheckDiskSpaceAt(archivePath string, checkDir string, multiplie
 
 // VerifyTools checks if required restore tools are available
 func (s *Safety) VerifyTools(dbType string) error {
-	var tools []string
+	var reqs []tools.ToolRequirement
 
-	if dbType == "postgres" {
-		tools = []string{"pg_restore", "psql"}
-	} else if dbType == "mysql" || dbType == "mariadb" {
-		tools = []string{"mysql"}
+	switch dbType {
+	case "postgres":
+		reqs = tools.PostgresRestoreTools()
+	case "mysql", "mariadb":
+		reqs = tools.MySQLRestoreTools()
 	}
 
-	missing := []string{}
-	for _, tool := range tools {
-		if _, err := exec.LookPath(tool); err != nil {
-			missing = append(missing, tool)
-		}
-	}
-
-	if len(missing) > 0 {
-		return fmt.Errorf("missing required tools: %s", strings.Join(missing, ", "))
-	}
-
-	return nil
+	v := tools.NewValidator(s.log)
+	_, err := v.ValidateTools(reqs)
+	return err
 }
 
 // CheckDatabaseExists verifies if target database exists

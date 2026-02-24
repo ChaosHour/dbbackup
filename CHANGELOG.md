@@ -5,6 +5,28 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.19] - 2026-02-24 — Tool Validation Consolidation & Engine Flag
+
+### Added
+
+- **Central `internal/tools.Validator`** — Single entry point for all external tool validation with `ToolRequirement`, `ToolStatus`, `LookPathFunc` test seam, and pre-defined requirement sets (PostgresBackup, PostgresRestore, MySQLBackup, MySQLRestore, Diagnose)
+- **`--engine` flag** — New persistent flag: `--engine=native` (default, pure Go) or `--engine=tools` (external pg_dump/mysqldump). Replaces `--native`/`--native-engine` which are now deprecated
+- **`EngineMode` config field** — `config.go` field with `ResolveEngineMode()` synchronizing `EngineMode` ↔ `UseNativeEngine`, backward-compatible with legacy `--native=false`
+- **`engine_mode` config persistence** — New key in `[engine]` section of `.dbbackup.conf`, backward-compatible with `native_engine` key
+
+### Removed
+
+- **`ValidateBackupTools()` from `Database` interface** — Removed from `interface.go`, `postgresql.go`, `mysql.go`, and all mocks
+- **Legacy `checkRequiredTools()` in `cmd/placeholder.go`** — Replaced hardcoded `/usr/bin/` path checks with `tools.Validator`
+
+### Changed
+
+- **8 scattered tool-validation functions consolidated** — `cmd/status.go`, `cmd/validate.go`, `cmd/diagnose.go`, `cmd/placeholder.go`, `internal/restore/safety.go`, `internal/restore/dryrun.go`, `internal/checks/preflight.go` now delegate to `tools.Validator`
+- **Native engine skip in preflight checks** — `checkRequiredTools()` in `preflight.go` returns early with "Native engine — no external tools required" when `UseNativeEngine` is true
+- **Updated error messages** — `ToolMissing()` remediation and all suggestion texts now say "The native engine (pure Go) is the default" instead of "use --native flag"
+- **`--native` / `--native-engine` flags deprecated** — Still functional, now emit "use --engine=native instead" warning
+- **Native Engine Roadmap** — Phase 4 Legacy Code Removal marked as COMPLETE
+
 ## [6.50.18] - 2026-02-24 — MySQL PITR Binlog Filtering & Performance Benchmarks
 
 ### Added

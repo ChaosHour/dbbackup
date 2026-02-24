@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"dbbackup/internal/config"
+	"dbbackup/internal/tools"
 
 	"github.com/spf13/cobra"
 )
@@ -325,28 +326,29 @@ func validateTools(cfg *config.Config, result *ValidationResult) {
 		return
 	}
 
-	// Check for database tools
-	var requiredTools []string
-	if cfg.DatabaseType == "postgres" {
-		requiredTools = []string{"pg_dump", "pg_restore", "psql"}
-	} else if cfg.DatabaseType == "mysql" || cfg.DatabaseType == "mariadb" {
-		requiredTools = []string{"mysqldump", "mysql"}
+	var reqs []tools.ToolRequirement
+	if cfg.IsPostgreSQL() {
+		reqs = tools.PostgresBackupTools()
+	} else if cfg.IsMySQL() {
+		reqs = tools.MySQLBackupTools()
 	}
 
-	for _, tool := range requiredTools {
-		check := ValidationCheck{Name: fmt.Sprintf("Tool: %s", tool)}
-		path, err := exec.LookPath(tool)
-		if err != nil {
+	v := tools.NewValidator(log)
+	statuses, _ := v.ValidateTools(reqs)
+
+	for _, s := range statuses {
+		check := ValidationCheck{Name: fmt.Sprintf("Tool: %s", s.Name)}
+		if !s.Available {
 			check.Status = "fail"
 			check.Message = "Not found in PATH"
 			result.Issues = append(result.Issues, ValidationIssue{
 				Category:    "tools",
-				Description: fmt.Sprintf("Required tool not found: %s", tool),
-				Suggestion:  fmt.Sprintf("Install %s or use --native flag", tool),
+				Description: fmt.Sprintf("Required tool not found: %s", s.Name),
+				Suggestion:  "The native Go engine is the default and requires no external tools. Use --engine=tools only if you specifically need external tool-based backup.",
 			})
 		} else {
 			check.Status = "pass"
-			check.Message = path
+			check.Message = s.Path
 		}
 		result.Checks = append(result.Checks, check)
 	}

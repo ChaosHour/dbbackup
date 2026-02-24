@@ -13,6 +13,7 @@ import (
 	"dbbackup/internal/cleanup"
 	"dbbackup/internal/config"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/tools"
 )
 
 // DryRunCheck represents a single dry-run check result
@@ -464,34 +465,42 @@ func (r *RestoreDryRun) checkRequiredTools() DryRunCheck {
 		Critical: true,
 	}
 
-	var required []string
+	var reqs []tools.ToolRequirement
 	switch r.cfg.DatabaseType {
 	case "postgres":
-		required = []string{"pg_restore", "psql", "createdb"}
+		reqs = tools.PostgresRestoreTools()
 	case "mysql", "mariadb":
-		required = []string{"mysql", "mysqldump"}
+		reqs = tools.MySQLRestoreTools()
 	default:
 		check.Status = DryRunSkipped
 		check.Message = "Unknown database type"
 		return check
 	}
 
-	missing := []string{}
-	for _, tool := range required {
-		if _, err := LookPath(tool); err != nil {
-			missing = append(missing, tool)
+	v := tools.NewValidator(r.log)
+	v.LookPathFunc = LookPath // preserve test seam
+	statuses, err := v.ValidateTools(reqs)
+	if err != nil {
+		var missing []string
+		for _, s := range statuses {
+			if !s.Available {
+				missing = append(missing, s.Name)
+			}
 		}
-	}
-
-	if len(missing) > 0 {
 		check.Status = DryRunFailed
 		check.Message = fmt.Sprintf("Missing tools: %s", strings.Join(missing, ", "))
-		check.Details = "Install the database client tools package"
+		check.Details = "The native Go engine is the default and requires no external tools. Use --engine=tools only if you specifically need external tool-based restore."
 		return check
 	}
 
+	var names []string
+	for _, s := range statuses {
+		if s.Available {
+			names = append(names, s.Name)
+		}
+	}
 	check.Status = DryRunPassed
-	check.Message = fmt.Sprintf("All tools available: %s", strings.Join(required, ", "))
+	check.Message = fmt.Sprintf("All tools available: %s", strings.Join(names, ", "))
 	return check
 }
 

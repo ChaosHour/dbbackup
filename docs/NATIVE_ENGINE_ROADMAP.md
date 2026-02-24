@@ -145,10 +145,10 @@
 - [ ] **Update PITR**: Native binary log processing (partial)
 - [x] **Update verification**: Native dump file analysis
 
-#### Legacy Code Removal - DEFERRED
-- [ ] **Remove tool validation**: Keep ValidateBackupTools() for fallback mode
-- [ ] **Remove subprocess execution**: Keep exec.Command for fallback mode
-- [ ] **Remove tool-specific error handling**: Maintain for compatibility
+#### Legacy Code Removal - COMPLETE
+- [x] **Remove tool validation**: ValidateBackupTools() removed from Database interface; centralized in internal/tools.Validator
+- [x] **Consolidate tool checks**: 8 scattered validation functions consolidated into single Validator
+- [x] **Update engine selection**: --engine flag introduced (native/tools), --native deprecated
 - [x] **Update documentation**: Native engine docs complete
 
 ### Phase 5: Testing & Validation (4-6 weeks) - COMPLETE

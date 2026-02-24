@@ -43,9 +43,6 @@ type Database interface {
 	// to external commands (e.g., MYSQL_PWD, PGPASSWORD). Returns empty if password
 	// should be passed differently (e.g., via .pgpass file) or is not set.
 	GetPasswordEnvVar() string
-
-	// Validation
-	ValidateBackupTools() error
 }
 
 // BackupOptions holds options for backup operations

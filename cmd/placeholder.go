@@ -13,6 +13,7 @@ import (
 	"dbbackup/internal/auth"
 	"dbbackup/internal/catalog"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/tools"
 	"dbbackup/internal/tui"
 
 	"github.com/klauspost/compress/zstd"
@@ -286,8 +287,11 @@ func runPreflight(ctx context.Context) error {
 	}
 
 	// 2. Required tools check
-	fmt.Print("[2] Required tools (pg_dump/pg_restore)... ")
-	if err := checkRequiredTools(); err != nil {
+	fmt.Print("[2] Required tools... ")
+	if cfg.UseNativeEngine {
+		fmt.Println("[OK] Native engine — no external tools required")
+		checksPassed++
+	} else if err := checkRequiredToolsValidation(); err != nil {
 		fmt.Printf("[FAIL] FAILED: %v\n", err)
 	} else {
 		fmt.Println("[OK] PASSED")
@@ -354,20 +358,17 @@ func testDatabaseConnection() error {
 	return nil
 }
 
-func checkRequiredTools() error {
-	tools := []string{"pg_dump", "pg_restore"}
-	if cfg.DatabaseType == "mysql" {
-		tools = []string{"mysqldump", "mysql"}
+func checkRequiredToolsValidation() error {
+	var reqs []tools.ToolRequirement
+	if cfg.IsPostgreSQL() {
+		reqs = tools.PostgresBackupTools()
+	} else {
+		reqs = tools.MySQLBackupTools()
 	}
 
-	for _, tool := range tools {
-		if _, err := os.Stat("/usr/bin/" + tool); os.IsNotExist(err) {
-			if _, err := os.Stat("/usr/local/bin/" + tool); os.IsNotExist(err) {
-				return fmt.Errorf("required tool not found: %s", tool)
-			}
-		}
-	}
-	return nil
+	v := tools.NewValidator(log)
+	_, err := v.ValidateTools(reqs)
+	return err
 }
 
 func checkBackupDirectory() error {

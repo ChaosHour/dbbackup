@@ -86,6 +86,7 @@ type Config struct {
 	BackupFormat       string // PostgreSQL dump format: custom, plain, directory, tar (default: custom for pg_dump)
 
 	// Native engine options
+	EngineMode        string   // "native" or "tools" (default: "native")
 	UseNativeEngine   bool     // Use pure Go native engines instead of external tools (default: true)
 	FallbackToTools   bool     // Fallback to external tools if native engine fails
 	NativeEngineDebug bool     // Enable detailed native engine debugging
@@ -483,6 +484,7 @@ func New() *Config {
 		TransactionBatchSize: getEnvInt("TRANSACTION_BATCH_SIZE", 0),
 		BufferSize:         getEnvInt("BUFFER_SIZE", 262144),
 
+		EngineMode:       getEnvString("ENGINE_MODE", "native"),
 		UseNativeEngine:  getEnvBool("USE_NATIVE_ENGINE", true),
 		FallbackToTools:  getEnvBool("FALLBACK_TO_TOOLS", true),
 		RestoreFsyncMode: getEnvString("RESTORE_FSYNC_MODE", "on"),
@@ -542,8 +544,30 @@ func (c *Config) UpdateFromEnvironment() {
 	}
 }
 
+// ResolveEngineMode synchronizes EngineMode and UseNativeEngine.
+// When --engine=tools is set, UseNativeEngine is forced to false.
+// When --engine=native (or unset), UseNativeEngine is forced to true.
+// When the legacy --native=false flag was used, EngineMode is updated to match.
+func (c *Config) ResolveEngineMode() {
+	switch c.EngineMode {
+	case "tools":
+		c.UseNativeEngine = false
+	case "native":
+		// If someone explicitly set --native=false with the old flag,
+		// UseNativeEngine is already false. Sync EngineMode accordingly.
+		if !c.UseNativeEngine {
+			c.EngineMode = "tools"
+		}
+	default:
+		c.EngineMode = "native"
+		c.UseNativeEngine = true
+	}
+}
+
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	c.ResolveEngineMode()
+
 	if err := c.SetDatabaseType(c.DatabaseType); err != nil {
 		return fmt.Errorf("invalid database type: %w", err)
 	}

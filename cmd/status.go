@@ -13,6 +13,7 @@ import (
 
 	"dbbackup/internal/database"
 	"dbbackup/internal/progress"
+	"dbbackup/internal/tools"
 )
 
 // backupSummary holds per-database backup information for the dashboard.
@@ -413,12 +414,23 @@ func testConnection(ctx context.Context) error {
 	defer func() { _ = db.Close() }()
 
 	// Test tool availability
-	indicator.Start("Checking required tools...")
-	if err := db.ValidateBackupTools(); err != nil {
-		indicator.Fail(fmt.Sprintf("Tool validation failed: %v", err))
-		return err
+	if !cfg.UseNativeEngine {
+		indicator.Start("Checking required tools...")
+		v := tools.NewValidator(log)
+		var reqs []tools.ToolRequirement
+		if cfg.IsPostgreSQL() {
+			reqs = tools.PostgresBackupTools()
+		} else {
+			reqs = tools.MySQLBackupTools()
+		}
+		if _, err := v.ValidateTools(reqs); err != nil {
+			indicator.Fail(fmt.Sprintf("Tool validation failed: %v", err))
+			return err
+		}
+		indicator.Complete("Required tools available")
+	} else {
+		indicator.Complete("Native engine — no external tools required")
 	}
-	indicator.Complete("Required tools available")
 
 	// Test connection
 	indicator.Start(fmt.Sprintf("Connecting to %s...", cfg.DatabaseType))

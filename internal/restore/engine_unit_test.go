@@ -43,8 +43,7 @@ type mockDatabase struct {
 	rowCountErr   error
 	restoreCmd    []string
 	backupCmd     []string
-	passwordEnv   string
-	validateErr   error
+	passwordEnv string
 
 	// Call tracking
 	createDBCalls []string
@@ -91,7 +90,6 @@ func (m *mockDatabase) BuildRestoreCommand(_, _ string, _ database.RestoreOption
 }
 func (m *mockDatabase) BuildSampleQuery(_, _ string, _ database.SampleStrategy) string { return "" }
 func (m *mockDatabase) GetPasswordEnvVar() string { return m.passwordEnv }
-func (m *mockDatabase) ValidateBackupTools() error { return m.validateErr }
 
 // ---------------------------------------------------------------------------
 // Test helpers

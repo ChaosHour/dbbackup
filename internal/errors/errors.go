@@ -298,18 +298,18 @@ func ToolMissing(tool string, purpose string) *BackupError {
 		Details:  fmt.Sprintf("Purpose: %s", purpose),
 		Remediation: fmt.Sprintf(`To fix:
   1. Install %s using your package manager:
-     
+
      Ubuntu/Debian:
        sudo apt install %s
-     
+
      RHEL/CentOS:
        sudo yum install %s
-     
+
      macOS:
        brew install %s
-  
-  2. Or use the native engine (no external tools required):
-     dbbackup backup --native`, tool, getPackageName(tool), getPackageName(tool), getPackageName(tool)),
+
+  2. The native engine (pure Go) is the default and requires no external tools.
+     Use --engine=tools only if you specifically need external tool-based backup.`, tool, getPackageName(tool), getPackageName(tool), getPackageName(tool)),
 	}
 }
 

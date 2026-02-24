@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -566,19 +565,6 @@ func (p *PostgreSQL) BuildSampleQuery(database, table string, strategy SampleStr
 	default:
 		return fmt.Sprintf("SELECT * FROM %s LIMIT 1000", table)
 	}
-}
-
-// ValidateBackupTools checks if required PostgreSQL tools are available
-func (p *PostgreSQL) ValidateBackupTools() error {
-	tools := []string{"pg_dump", "pg_restore", "pg_dumpall", "psql"}
-
-	for _, tool := range tools {
-		if _, err := exec.LookPath(tool); err != nil {
-			return fmt.Errorf("required tool not found: %s", tool)
-		}
-	}
-
-	return nil
 }
 
 // GetPasswordEnvVar returns the PGPASSWORD environment variable string.

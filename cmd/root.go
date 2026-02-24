@@ -206,9 +206,15 @@ func Execute(ctx context.Context, config *config.Config, logger logger.Logger) e
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoSaveConfig, "no-save-config", false, "Don't save configuration after successful operations")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NoLoadConfig, "no-config", false, "Don't load configuration from .dbbackup.conf")
 
-	// Native engine flags
+	// Engine selection
+	rootCmd.PersistentFlags().StringVar(&cfg.EngineMode, "engine", cfg.EngineMode, "Backup engine: native (default, pure Go) or tools (external pg_dump/mysqldump)")
+
+	// Deprecated native engine flags (kept for backward compatibility)
 	rootCmd.PersistentFlags().BoolVar(&cfg.UseNativeEngine, "native", cfg.UseNativeEngine, "Use pure Go native engines (no external tools)")
 	rootCmd.PersistentFlags().BoolVar(&cfg.UseNativeEngine, "native-engine", cfg.UseNativeEngine, "Use pure Go native engines (alias for --native)")
+	_ = rootCmd.PersistentFlags().MarkDeprecated("native", "use --engine=native instead")
+	_ = rootCmd.PersistentFlags().MarkDeprecated("native-engine", "use --engine=native instead")
+
 	rootCmd.PersistentFlags().BoolVar(&cfg.FallbackToTools, "fallback-tools", cfg.FallbackToTools, "Fallback to external tools if native engine fails")
 	rootCmd.PersistentFlags().BoolVar(&cfg.NativeEngineDebug, "native-debug", cfg.NativeEngineDebug, "Enable detailed native engine debugging")
 

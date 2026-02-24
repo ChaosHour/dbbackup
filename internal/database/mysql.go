@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -441,19 +440,6 @@ func (m *MySQL) BuildSampleQuery(database, table string, strategy SampleStrategy
 	default:
 		return fmt.Sprintf("SELECT * FROM %s.%s LIMIT 1000", database, table)
 	}
-}
-
-// ValidateBackupTools checks if required MySQL tools are available
-func (m *MySQL) ValidateBackupTools() error {
-	tools := []string{"mysqldump", "mysql"}
-
-	for _, tool := range tools {
-		if _, err := exec.LookPath(tool); err != nil {
-			return fmt.Errorf("required tool not found: %s", tool)
-		}
-	}
-
-	return nil
 }
 
 // GetPasswordEnvVar returns the MYSQL_PWD environment variable string.

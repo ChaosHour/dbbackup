@@ -16,6 +16,7 @@ import (
 	"dbbackup/internal/catalog"
 	"dbbackup/internal/database"
 	"dbbackup/internal/restore"
+	"dbbackup/internal/tools"
 
 	"github.com/spf13/cobra"
 )
@@ -304,46 +305,32 @@ func diagnoseTools() DiagnoseResult {
 		Status: DiagnoseOK,
 	}
 
-	type tool struct {
-		name     string
-		forDB    string
-		required bool
-	}
-
-	tools := []tool{
-		{"pg_dump", "postgres", true},
-		{"pg_restore", "postgres", true},
-		{"psql", "postgres", false},
-		{"mysqldump", "mysql", true},
-		{"mysql", "mysql", true},
-		{"gzip", "", false},
-		{"zstd", "", false},
-	}
-
-	var missing []string
-	var found []string
-	var optional []string
-
 	dbType := ""
 	if cfg != nil {
 		dbType = cfg.DatabaseType
 	}
 
-	for _, t := range tools {
-		// Skip tools for other database types
-		if t.forDB != "" && dbType != "" && t.forDB != dbType {
-			continue
-		}
+	reqs := tools.DiagnoseTools(dbType)
+	v := tools.NewValidator(log)
+	statuses, _ := v.ValidateTools(reqs)
 
-		path, err := exec.LookPath(t.name)
-		if err != nil {
-			if t.required && (dbType == "" || t.forDB == "" || t.forDB == dbType) {
-				missing = append(missing, t.name)
-			} else {
-				optional = append(optional, t.name)
-			}
+	var missing []string
+	var found []string
+	var optional []string
+
+	// Build a map of required tools from reqs
+	reqMap := make(map[string]bool)
+	for _, r := range reqs {
+		reqMap[r.Name] = r.Required
+	}
+
+	for _, s := range statuses {
+		if s.Available {
+			found = append(found, fmt.Sprintf("%s (%s)", s.Name, s.Path))
+		} else if reqMap[s.Name] {
+			missing = append(missing, s.Name)
 		} else {
-			found = append(found, fmt.Sprintf("%s (%s)", t.name, path))
+			optional = append(optional, s.Name)
 		}
 	}
 
@@ -353,7 +340,7 @@ func diagnoseTools() DiagnoseResult {
 		result.Fixes = []string{
 			"Install PostgreSQL client: apt install postgresql-client",
 			"Install MySQL client: apt install mysql-client",
-			"Or use native engine: --native (no external tools needed)",
+			"The native Go engine is the default and requires no external tools.",
 		}
 	} else {
 		result.Message = fmt.Sprintf("%d tools available", len(found))

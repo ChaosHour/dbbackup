@@ -230,6 +230,10 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 			}
 		case "engine":
 			switch key {
+			case "engine_mode":
+				if value == "native" || value == "tools" {
+					cfg.UseNativeEngine = value == "native"
+				}
 			case "native_engine":
 				cfg.UseNativeEngine = value == "true" || value == "1"
 			case "fallback_tools":
@@ -473,6 +477,11 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 
 	// Engine section
 	sb.WriteString("[engine]\n")
+	if cfg.UseNativeEngine {
+		sb.WriteString("engine_mode = native\n")
+	} else {
+		sb.WriteString("engine_mode = tools\n")
+	}
 	sb.WriteString(fmt.Sprintf("native_engine = %t\n", cfg.UseNativeEngine))
 	sb.WriteString(fmt.Sprintf("fallback_tools = %t\n", cfg.FallbackToTools))
 	sb.WriteString("\n")

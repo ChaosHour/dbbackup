@@ -11,6 +11,7 @@ import (
 	"dbbackup/internal/config"
 	"dbbackup/internal/database"
 	"dbbackup/internal/logger"
+	"dbbackup/internal/tools"
 )
 
 // PreflightCheck represents a single preflight check result
@@ -270,37 +271,44 @@ func (p *PreflightChecker) checkRequiredTools() PreflightCheck {
 		Name: "Required Tools",
 	}
 
-	var requiredTools []string
+	// Native engine needs no external tools
+	if p.cfg.UseNativeEngine {
+		check.Status = StatusPassed
+		check.Message = "Native engine — no external tools required"
+		return check
+	}
+
+	var reqs []tools.ToolRequirement
 	if p.cfg.IsPostgreSQL() {
-		requiredTools = []string{"pg_dump", "pg_dumpall"}
+		reqs = tools.PostgresBackupTools()
 	} else if p.cfg.IsMySQL() {
-		requiredTools = []string{"mysqldump"}
+		reqs = tools.MySQLBackupTools()
+	}
+
+	v := tools.NewValidator(p.log)
+	statuses, err := v.ValidateTools(reqs)
+	if err != nil {
+		var missing []string
+		for _, s := range statuses {
+			if !s.Available {
+				missing = append(missing, s.Name)
+			}
+		}
+		check.Status = StatusFailed
+		check.Message = fmt.Sprintf("Missing tools: %s", strings.Join(missing, ", "))
+		check.Details = "The native Go engine is the default and requires no external tools. Use --engine=tools only if you specifically need external tool-based backup."
+		return check
 	}
 
 	var found []string
-	var missing []string
 	var versions []string
-
-	for _, tool := range requiredTools {
-		path, err := exec.LookPath(tool)
-		if err != nil {
-			missing = append(missing, tool)
-		} else {
-			found = append(found, tool)
-			// Try to get version
-			version := getToolVersion(tool)
-			if version != "" {
-				versions = append(versions, fmt.Sprintf("%s %s", tool, version))
+	for _, s := range statuses {
+		if s.Available {
+			found = append(found, s.Name)
+			if s.Version != "" {
+				versions = append(versions, fmt.Sprintf("%s %s", s.Name, s.Version))
 			}
 		}
-		_ = path // silence unused
-	}
-
-	if len(missing) > 0 {
-		check.Status = StatusFailed
-		check.Message = fmt.Sprintf("Missing tools: %s", strings.Join(missing, ", "))
-		check.Details = "Install required database tools and ensure they're in PATH"
-		return check
 	}
 
 	check.Status = StatusPassed

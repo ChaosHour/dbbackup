@@ -5,6 +5,35 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.21] - 2026-02-24 — HMAC File Server Backend (Phase 1)
+
+### Added
+
+- **`internal/cloud/hmac.go`** (NEW) — `HMACBackend` implementing `cloud.Backend` interface for self-hosted [hmac-file-server](https://github.com/PlusOne/hmac-file-server) over HTTPS with HMAC-SHA256 authentication
+  - `Upload()` — PUT with HMAC v2 signature (`filePath + \x00 + fileSize`), Content-Length, retry, bandwidth throttling
+  - `Download()` — GET with streaming body, progress tracking, bandwidth throttling
+  - `List()` — Admin API with pagination (`/admin/files?page=N&limit=100`), Bearer token auth, prefix filtering
+  - `Delete()` — Admin API DELETE with Bearer token auth, file ID resolution
+  - `Exists()` / `GetSize()` — HEAD requests (200/404 detection, Content-Length parsing)
+- **`internal/cloud/hmac_test.go`** (NEW) — 19 unit tests using `httptest.Server`: HMAC computation, validation, URL construction, progress callbacks, context cancellation, pagination, auth headers, error handling
+- **CLI flags**: `--hmac-secret` (`DBBACKUP_HMAC_SECRET`), `--hmac-admin-token` (`DBBACKUP_HMAC_ADMIN_TOKEN`), `--hmac-insecure` on all cloud commands
+- **URI schema**: `hmac://endpoint/prefix` (e.g., `hmac://backup.example.com/backups/myhost`)
+- **Config persistence**: `hmac_secret`, `hmac_admin_token`, `hmac_insecure` in `[cloud]` section of `.dbbackup.conf`
+
+### Changed
+
+- **`internal/cloud/interface.go`** — Added `HMACSecret`, `HMACAdminToken`, `HMACInsecure` to `Config`; `"hmac"` case in `NewBackend()` factory; `Validate()` skips bucket requirement for hmac provider
+- **`internal/cloud/uri.go`** — `hmac://` in `validProviders`, `IsCloudURI()`, HMAC-specific parsing (host→endpoint, path→prefix)
+- **`internal/cloud/retry.go`** — Added `"not found"` to permanent error patterns (prevents useless retries on 404)
+- **`internal/config/config.go`** — Added `CloudHMACSecret`, `CloudHMACAdminToken`, `CloudHMACInsecure` fields
+- **`internal/config/persist.go`** — `LocalConfig` extended, load/save/apply for HMAC fields
+- **`cmd/cloud.go`** — HMAC flags, `getCloudBackend()` wiring, bucket validation skip for hmac
+
+### Notes
+
+- 6th cloud provider — purely additive, no breaking changes to existing S3/MinIO/B2/Azure/GCS backends
+- Phase 1 only (core backend + config + CLI). Phase 2 (auto-upload integration, TUI) planned separately
+
 ## [6.50.20] - 2026-02-24 — Test Coverage Sprint: database, backup, restore
 
 ### Added

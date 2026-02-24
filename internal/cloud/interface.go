@@ -64,6 +64,11 @@ type Config struct {
 	ObjectLockEnabled bool   // Enable S3 Object Lock on uploaded objects
 	ObjectLockMode    string // "GOVERNANCE" or "COMPLIANCE"
 	ObjectLockDays    int    // Retention period in days (default: 30)
+
+	// HMAC file server settings
+	HMACSecret     string // HMAC signing secret
+	HMACAdminToken string // Admin API bearer token
+	HMACInsecure   bool   // Skip TLS verification
 }
 
 // NewBackend creates a new cloud storage backend based on the provider
@@ -89,8 +94,10 @@ func NewBackend(cfg *Config) (Backend, error) {
 		return NewAzureBackend(cfg)
 	case "gs", "gcs", "google":
 		return NewGCSBackend(cfg)
+	case "hmac":
+		return NewHMACBackend(cfg)
 	default:
-		return nil, fmt.Errorf("unsupported cloud provider: %s (supported: s3, minio, b2, azure, gcs)", cfg.Provider)
+		return nil, fmt.Errorf("unsupported cloud provider: %s (supported: s3, minio, b2, azure, gcs, hmac)", cfg.Provider)
 	}
 }
 
@@ -125,7 +132,8 @@ func (c *Config) Validate() error {
 	if c.Provider == "" {
 		return fmt.Errorf("provider is required")
 	}
-	if c.Bucket == "" {
+	// HMAC backend doesn't use buckets
+	if c.Provider != "hmac" && c.Bucket == "" {
 		return fmt.Errorf("bucket name is required")
 	}
 	if c.Provider == "s3" || c.Provider == "aws" {

@@ -146,7 +146,7 @@ func IsPermanentError(err error) bool {
 
 	errStr := strings.ToLower(err.Error())
 
-	// Authentication/authorization errors - don't retry
+	// Authentication/authorization errors and client errors - don't retry
 	permanentPatterns := []string{
 		"access denied",
 		"forbidden",
@@ -159,6 +159,7 @@ func IsPermanentError(err error) bool {
 		"container not found",
 		"nosuchbucket",
 		"nosuchkey",
+		"not found",
 		"invalid argument",
 		"malformed",
 		"invalid request",

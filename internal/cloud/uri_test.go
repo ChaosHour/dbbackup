@@ -73,6 +73,31 @@ func TestParseCloudURI(t *testing.T) {
 			wantProvider: "b2",
 			wantErr:      false,
 		},
+		// HMAC URIs
+		{
+			name:         "hmac uri with prefix",
+			uri:          "hmac://backup.example.com/backups/myhost",
+			wantBucket:   "",
+			wantPath:     "backups/myhost",
+			wantProvider: "hmac",
+			wantErr:      false,
+		},
+		{
+			name:         "hmac uri without prefix",
+			uri:          "hmac://backup.example.com/",
+			wantBucket:   "",
+			wantPath:     "",
+			wantProvider: "hmac",
+			wantErr:      false,
+		},
+		{
+			name:         "hmac uri deep prefix",
+			uri:          "hmac://backup.example.com/backups/host/postgres",
+			wantBucket:   "",
+			wantPath:     "backups/host/postgres",
+			wantProvider: "hmac",
+			wantErr:      false,
+		},
 		// Error cases
 		{
 			name:    "empty uri",
@@ -137,6 +162,7 @@ func TestIsCloudURI(t *testing.T) {
 		{"gcs uri", "gcs://bucket/path", true},
 		{"minio uri", "minio://bucket/path", true},
 		{"b2 uri", "b2://bucket/path", true},
+		{"hmac uri", "hmac://backup.example.com/prefix", true},
 		{"local path", "/var/backups/db.dump", false},
 		{"relative path", "./backups/db.dump", false},
 		{"http uri", "http://example.com/file", false},
@@ -151,6 +177,38 @@ func TestIsCloudURI(t *testing.T) {
 				t.Errorf("IsCloudURI(%q) = %v, want %v", tt.uri, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestParseCloudURI_HMAC tests HMAC-specific URI parsing details
+func TestParseCloudURI_HMAC(t *testing.T) {
+	result, err := ParseCloudURI("hmac://backup.example.com/backups/myhost")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Provider != "hmac" {
+		t.Errorf("Provider = %q, want %q", result.Provider, "hmac")
+	}
+	if result.Endpoint != "https://backup.example.com" {
+		t.Errorf("Endpoint = %q, want %q", result.Endpoint, "https://backup.example.com")
+	}
+	if result.Path != "backups/myhost" {
+		t.Errorf("Path = %q, want %q", result.Path, "backups/myhost")
+	}
+	if result.Bucket != "" {
+		t.Errorf("Bucket = %q, want empty", result.Bucket)
+	}
+
+	// ToConfig should set provider and endpoint correctly
+	cfg := result.ToConfig()
+	if cfg.Provider != "hmac" {
+		t.Errorf("Config.Provider = %q, want %q", cfg.Provider, "hmac")
+	}
+	if cfg.Endpoint != "https://backup.example.com" {
+		t.Errorf("Config.Endpoint = %q, want %q", cfg.Endpoint, "https://backup.example.com")
+	}
+	if cfg.Prefix != "backups/myhost" {
+		t.Errorf("Config.Prefix = %q, want %q", cfg.Prefix, "backups/myhost")
 	}
 }
 

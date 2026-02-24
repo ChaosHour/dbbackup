@@ -50,14 +50,31 @@ func ParseCloudURI(uri string) (*CloudURI, error) {
 		"gs":    true,
 		"gcs":   true,
 		"b2":    true,
+		"hmac":  true,
 	}
 	if !validProviders[provider] {
-		return nil, fmt.Errorf("unsupported provider: %s (supported: s3, minio, azure, gs, gcs, b2)", provider)
+		return nil, fmt.Errorf("unsupported provider: %s (supported: s3, minio, azure, gs, gcs, b2, hmac)", provider)
 	}
 
 	// Normalize provider names
 	if provider == "gcs" {
 		provider = "gs"
+	}
+
+	// HMAC URIs: hmac://endpoint/prefix — host is the endpoint, path is the prefix
+	if provider == "hmac" {
+		host := parsed.Host
+		if host == "" {
+			return nil, fmt.Errorf("URI must specify an endpoint (e.g., hmac://backup.example.com/prefix)")
+		}
+		prefix := strings.TrimPrefix(parsed.Path, "/")
+		return &CloudURI{
+			Provider: "hmac",
+			Bucket:   "",
+			Path:     prefix,
+			Endpoint: "https://" + host,
+			FullURI:  uri,
+		}, nil
 	}
 
 	// Extract bucket and path
@@ -133,7 +150,8 @@ func IsCloudURI(s string) bool {
 		strings.HasPrefix(s, "azure://") ||
 		strings.HasPrefix(s, "gs://") ||
 		strings.HasPrefix(s, "gcs://") ||
-		strings.HasPrefix(s, "b2://")
+		strings.HasPrefix(s, "b2://") ||
+		strings.HasPrefix(s, "hmac://")
 }
 
 // String returns the string representation of the URI
@@ -184,6 +202,8 @@ func (u *CloudURI) ToConfig() *Config {
 		cfg.PathStyle = true
 	case "b2":
 		cfg.PathStyle = true
+	case "hmac":
+		cfg.Prefix = u.Path // For HMAC, the full path is the prefix
 	}
 
 	return cfg

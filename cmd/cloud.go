@@ -123,6 +123,11 @@ var (
 	cloudObjectLock     bool
 	cloudObjectLockMode string
 	cloudObjectLockDays int
+
+	// HMAC file server
+	hmacSecret     string
+	hmacAdminToken string
+	hmacInsecure   bool
 )
 
 func init() {
@@ -140,6 +145,11 @@ func init() {
 		cmd.Flags().StringVar(&cloudPrefix, "cloud-prefix", getEnv("DBBACKUP_CLOUD_PREFIX", ""), "Key prefix")
 		cmd.Flags().StringVar(&cloudBandwidthLimit, "bandwidth-limit", getEnv("DBBACKUP_BANDWIDTH_LIMIT", ""), "Bandwidth limit (e.g., 10MB/s, 100Mbps, 50MiB/s)")
 		cmd.Flags().BoolVarP(&cloudVerbose, "verbose", "v", false, "Verbose output")
+
+		// HMAC file server flags
+		cmd.Flags().StringVar(&hmacSecret, "hmac-secret", getEnv("DBBACKUP_HMAC_SECRET", ""), "HMAC signing secret for hmac-file-server")
+		cmd.Flags().StringVar(&hmacAdminToken, "hmac-admin-token", getEnv("DBBACKUP_HMAC_ADMIN_TOKEN", ""), "Admin API bearer token for hmac-file-server")
+		cmd.Flags().BoolVar(&hmacInsecure, "hmac-insecure", false, "Skip TLS verification for hmac-file-server")
 	}
 
 	// Object Lock flags (upload-specific — also available on other commands for validation)
@@ -193,9 +203,13 @@ func getCloudBackend() (cloud.Backend, error) {
 		ObjectLockEnabled: cloudObjectLock,
 		ObjectLockMode:    cloudObjectLockMode,
 		ObjectLockDays:    cloudObjectLockDays,
+		HMACSecret:        hmacSecret,
+		HMACAdminToken:    hmacAdminToken,
+		HMACInsecure:      hmacInsecure,
 	}
 
-	if cfg.Bucket == "" {
+	// HMAC backend doesn't use buckets
+	if cfg.Provider != "hmac" && cfg.Bucket == "" {
 		return nil, fmt.Errorf("bucket name is required (use --cloud-bucket or DBBACKUP_CLOUD_BUCKET)")
 	}
 

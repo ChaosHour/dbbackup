@@ -279,6 +279,11 @@ type Config struct {
 	CloudPrefix     string // Key/object prefix
 	CloudAutoUpload bool   // Automatically upload after backup
 
+	// HMAC file server options
+	CloudHMACSecret     string // HMAC signing secret for hmac-file-server
+	CloudHMACAdminToken string // Admin bearer token for hmac-file-server
+	CloudHMACInsecure   bool   // Skip TLS verify for hmac-file-server
+
 	// Notification options
 	NotifyEnabled       bool     // Enable notifications
 	NotifyOnSuccess     bool     // Send notifications on successful operations

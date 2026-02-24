@@ -90,6 +90,11 @@ type LocalConfig struct {
 	CloudSecretKey string
 	CloudAutoUpload bool
 
+	// HMAC file server settings
+	CloudHMACSecret     string
+	CloudHMACAdminToken string
+	CloudHMACInsecure   bool
+
 	// Security settings
 	RetentionDays int
 	MinBackups    int
@@ -401,6 +406,12 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.CloudSecretKey = value
 			case "auto_upload":
 				cfg.CloudAutoUpload = value == "true" || value == "1"
+			case "hmac_secret":
+				cfg.CloudHMACSecret = value
+			case "hmac_admin_token":
+				cfg.CloudHMACAdminToken = value
+			case "hmac_insecure":
+				cfg.CloudHMACInsecure = value == "true" || value == "1"
 			}
 		case "blob":
 			switch key {
@@ -637,6 +648,15 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 			sb.WriteString(fmt.Sprintf("secret_key = %s\n", cfg.CloudSecretKey))
 		}
 		sb.WriteString(fmt.Sprintf("auto_upload = %t\n", cfg.CloudAutoUpload))
+		if cfg.CloudHMACSecret != "" {
+			sb.WriteString(fmt.Sprintf("hmac_secret = %s\n", cfg.CloudHMACSecret))
+		}
+		if cfg.CloudHMACAdminToken != "" {
+			sb.WriteString(fmt.Sprintf("hmac_admin_token = %s\n", cfg.CloudHMACAdminToken))
+		}
+		if cfg.CloudHMACInsecure {
+			sb.WriteString(fmt.Sprintf("hmac_insecure = %t\n", cfg.CloudHMACInsecure))
+		}
 		sb.WriteString("\n")
 	}
 
@@ -895,6 +915,15 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	if local.CloudAutoUpload {
 		cfg.CloudAutoUpload = true
 	}
+	if local.CloudHMACSecret != "" {
+		cfg.CloudHMACSecret = local.CloudHMACSecret
+	}
+	if local.CloudHMACAdminToken != "" {
+		cfg.CloudHMACAdminToken = local.CloudHMACAdminToken
+	}
+	if local.CloudHMACInsecure {
+		cfg.CloudHMACInsecure = true
+	}
 
 	// BLOB optimization settings
 	if local.DetectBLOBTypes {
@@ -1000,6 +1029,9 @@ func ConfigFromConfig(cfg *Config) *LocalConfig {
 		CloudAccessKey:          cfg.CloudAccessKey,
 		CloudSecretKey:          cfg.CloudSecretKey,
 		CloudAutoUpload:         cfg.CloudAutoUpload,
+		CloudHMACSecret:         cfg.CloudHMACSecret,
+		CloudHMACAdminToken:     cfg.CloudHMACAdminToken,
+		CloudHMACInsecure:       cfg.CloudHMACInsecure,
 		RetentionDays:           cfg.RetentionDays,
 		MinBackups:              cfg.MinBackups,
 		MaxRetries:              cfg.MaxRetries,

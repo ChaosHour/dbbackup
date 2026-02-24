@@ -574,7 +574,7 @@ func (m *MySQLPITR) Restore(ctx context.Context, backup *PITRBackupInfo, target 
 		return nil
 	}
 
-	// Step 4: Replay binlogs
+	// Step 4: Replay binlogs using filtered replay
 	replayOpts := ReplayOptions{
 		BinlogFiles:   filesToReplay,
 		StartPosition: &startPos,
@@ -584,6 +584,8 @@ func (m *MySQLPITR) Restore(ctx context.Context, backup *PITRBackupInfo, target 
 		MySQLUser:     m.config.User,
 		MySQLPass:     m.config.Password,
 		StopOnError:   target.StopOnErr,
+		DisableBinlog: true,        // Don't re-log replay events
+		UseGTIDMode:   m.gtidMode,
 	}
 
 	if target.Type == RestoreTargetTime && target.Time != nil {
@@ -597,7 +599,16 @@ func (m *MySQLPITR) Restore(ctx context.Context, backup *PITRBackupInfo, target 
 		replayOpts.Output = os.Stdout
 	}
 
-	return m.binlogManager.ReplayBinlogs(ctx, replayOpts)
+	result, err := m.binlogManager.ReplayBinlogsFiltered(ctx, replayOpts)
+	if err != nil {
+		return fmt.Errorf("binlog replay failed: %w", err)
+	}
+
+	if result != nil && !result.Success() {
+		return fmt.Errorf("binlog replay completed with errors: %s", result.Summary())
+	}
+
+	return nil
 }
 
 // restoreBaseBackup restores the base MySQL backup

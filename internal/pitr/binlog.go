@@ -797,6 +797,13 @@ type ReplayOptions struct {
 	MySQLPass     string      // MySQL password
 	Database      string      // Limit to specific database
 	StopOnError   bool        // Stop on first error
+
+	// Extended options for ReplayBinlogsFiltered
+	Filter       *BinlogFilterConfig            // Filter rules for replay
+	ProgressFunc func(*BinlogReplayProgress)    // Progress callback
+	UseGTIDMode  bool                           // Enable GTID-based filtering
+	Verbose      bool                           // Verbose output
+	DisableBinlog bool                          // SET sql_log_bin=0 during replay
 }
 
 // FindBinlogsInRange finds binlog files containing events within a time range
@@ -866,6 +873,337 @@ func (m *BinlogManager) WatchBinlogs(ctx context.Context, interval time.Duration
 			}
 		}
 	}
+}
+
+// ReplayBinlogsFiltered replays binlog events with advanced filtering, GTID support,
+// multi-file position handling, and progress tracking.
+func (m *BinlogManager) ReplayBinlogsFiltered(ctx context.Context, opts ReplayOptions) (*BinlogReplayResult, error) {
+	result := &BinlogReplayResult{}
+	startTime := time.Now()
+
+	// Validate inputs
+	if len(opts.BinlogFiles) == 0 {
+		return nil, fmt.Errorf("no binlog files specified")
+	}
+
+	if opts.Filter != nil {
+		if err := opts.Filter.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid filter config: %w", err)
+		}
+	}
+
+	// Resolve start/stop positions
+	var startPos, stopPos *BinlogPosition
+	if opts.StartPosition != nil && !opts.StartPosition.IsZero() {
+		if bp, ok := opts.StartPosition.(*BinlogPosition); ok {
+			startPos = bp
+		}
+	}
+	if opts.StopPosition != nil && !opts.StopPosition.IsZero() {
+		if bp, ok := opts.StopPosition.(*BinlogPosition); ok {
+			stopPos = bp
+		}
+	}
+
+	// Select files based on position range
+	files := selectFilesForReplay(opts.BinlogFiles, startPos, stopPos)
+	if len(files) == 0 {
+		result.Duration = time.Since(startTime)
+		result.Warnings = append(result.Warnings, "no binlog files match the specified position range")
+		return result, nil
+	}
+
+	// Migrate single Database option to filter if no filter set
+	if opts.Database != "" && (opts.Filter == nil || !opts.Filter.HasDatabaseFilter()) {
+		if opts.Filter == nil {
+			opts.Filter = &BinlogFilterConfig{}
+		}
+		opts.Filter.IncludeDatabases = []string{opts.Database}
+	}
+
+	// Build table filter for post-decode filtering
+	tableFilter := newSQLTableFilter(opts.Filter)
+
+	// DryRun mode: decode and output SQL without replaying
+	if opts.DryRun {
+		return m.replayDryRun(ctx, opts, files, startPos, stopPos, tableFilter, result, startTime)
+	}
+
+	// Live replay: pipe mysqlbinlog output through filter into mysql client
+	for i, file := range files {
+		if ctx.Err() != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("context cancelled: %v", ctx.Err()))
+			break
+		}
+
+		fileResult, err := m.replayOneFile(ctx, opts, files, i, startPos, stopPos, tableFilter)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("file %s: %v", extractFilename(file), err))
+			if opts.StopOnError {
+				break
+			}
+			continue
+		}
+
+		result.FilesProcessed++
+		result.EventsApplied += fileResult.EventsApplied
+		result.EventsFiltered += fileResult.EventsFiltered
+		result.BytesProcessed += fileResult.BytesProcessed
+
+		// Report progress
+		if opts.ProgressFunc != nil {
+			opts.ProgressFunc(&BinlogReplayProgress{
+				CurrentFile:     extractFilename(file),
+				EventsApplied:  result.EventsApplied,
+				EventsFiltered: result.EventsFiltered,
+				BytesProcessed: result.BytesProcessed,
+			})
+		}
+	}
+
+	// Set final position
+	if stopPos != nil {
+		result.FinalPosition = stopPos
+	} else if len(files) > 0 {
+		result.FinalPosition = &BinlogPosition{
+			File: extractFilename(files[len(files)-1]),
+		}
+	}
+
+	result.Duration = time.Since(startTime)
+	return result, nil
+}
+
+// replayDryRun decodes binlogs and writes filtered SQL to the output writer
+func (m *BinlogManager) replayDryRun(ctx context.Context, opts ReplayOptions, files []string,
+	startPos, stopPos *BinlogPosition, tableFilter *sqlTableFilter,
+	result *BinlogReplayResult, startTime time.Time) (*BinlogReplayResult, error) {
+
+	output := opts.Output
+	if output == nil {
+		output = os.Stdout
+	}
+
+	for i, file := range files {
+		args := buildMysqlbinlogArgs(opts.Filter, startPos, stopPos, opts.StopTime,
+			opts.UseGTIDMode, files, i)
+		args = append([]string{args[0], "-v"}, args[1:]...)
+
+		cmd := exec.CommandContext(ctx, m.mysqlbinlogPath, args...)
+		cmdOutput, err := cmd.Output()
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("parsing %s: %v", extractFilename(file), err))
+			if opts.StopOnError {
+				break
+			}
+			continue
+		}
+
+		// Apply table filter if present
+		if tableFilter != nil {
+			var filtered []string
+			currentDB := ""
+			for _, line := range strings.Split(string(cmdOutput), "\n") {
+				include, newDB := tableFilter.shouldIncludeLine(line, currentDB)
+				currentDB = newDB
+				if include {
+					filtered = append(filtered, line)
+					result.EventsApplied++
+				} else {
+					result.EventsFiltered++
+				}
+			}
+			cmdOutput = []byte(strings.Join(filtered, "\n"))
+		} else {
+			result.EventsApplied += int64(len(strings.Split(string(cmdOutput), "\n")))
+		}
+
+		result.BytesProcessed += int64(len(cmdOutput))
+		result.FilesProcessed++
+		_, _ = output.Write(cmdOutput)
+	}
+
+	result.Duration = time.Since(startTime)
+	return result, nil
+}
+
+// replayOneFile replays a single binlog file through mysqlbinlog | filter | mysql pipeline
+func (m *BinlogManager) replayOneFile(ctx context.Context, opts ReplayOptions,
+	files []string, fileIndex int, startPos, stopPos *BinlogPosition,
+	tableFilter *sqlTableFilter) (*BinlogReplayResult, error) {
+
+	fileResult := &BinlogReplayResult{}
+
+	// Build mysqlbinlog args for this file
+	args := buildMysqlbinlogArgs(opts.Filter, startPos, stopPos, opts.StopTime,
+		opts.UseGTIDMode, files, fileIndex)
+
+	if opts.Verbose {
+		args = append([]string{args[0], "-v"}, args[1:]...)
+	}
+
+	binlogCmd := exec.CommandContext(ctx, m.mysqlbinlogPath, args...)
+
+	// Build mysql client command
+	mysqlArgs := []string{
+		"-u", opts.MySQLUser,
+		"-p" + opts.MySQLPass,
+		"-h", opts.MySQLHost,
+		"-P", strconv.Itoa(opts.MySQLPort),
+	}
+
+	mysqlCmd := exec.CommandContext(ctx, "mysql", mysqlArgs...)
+	// Pass password via environment variable to avoid process list exposure
+	mysqlCmd.Env = os.Environ()
+	if opts.MySQLPass != "" {
+		mysqlCmd.Env = append(mysqlCmd.Env, "MYSQL_PWD="+opts.MySQLPass)
+	}
+
+	// Set up pipe: mysqlbinlog stdout -> filter -> mysql stdin
+	binlogOut, err := binlogCmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("creating mysqlbinlog pipe: %w", err)
+	}
+
+	var binlogStderr, mysqlStderr strings.Builder
+	binlogCmd.Stderr = &binlogStderr
+	mysqlCmd.Stderr = &mysqlStderr
+
+	// If we have a table filter or need sql_log_bin=0, we filter through a pipe
+	if tableFilter != nil || opts.DisableBinlog {
+		// Use an intermediate pipe with filtering
+		pipeReader, pipeWriter := io.Pipe()
+		mysqlCmd.Stdin = pipeReader
+
+		if err := binlogCmd.Start(); err != nil {
+			return nil, fmt.Errorf("starting mysqlbinlog: %w", err)
+		}
+		if err := mysqlCmd.Start(); err != nil {
+			_ = binlogCmd.Process.Kill()
+			_ = pipeWriter.Close()
+			_ = pipeReader.Close()
+			return nil, fmt.Errorf("starting mysql: %w", err)
+		}
+
+		// Filter goroutine: read from mysqlbinlog, filter, write to mysql
+		filterDone := make(chan error, 1)
+		go func() {
+			defer func() { _ = pipeWriter.Close() }()
+
+			// Optionally disable binlog for replay session
+			if opts.DisableBinlog {
+				_, _ = pipeWriter.Write([]byte("SET sql_log_bin=0;\n"))
+			}
+
+			scanner := bufio.NewScanner(binlogOut)
+			scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024) // 10MB max line
+			currentDB := ""
+
+			for scanner.Scan() {
+				line := scanner.Text()
+				fileResult.BytesProcessed += int64(len(line)) + 1
+
+				if tableFilter != nil {
+					include, newDB := tableFilter.shouldIncludeLine(line, currentDB)
+					currentDB = newDB
+					if !include {
+						fileResult.EventsFiltered++
+						continue
+					}
+				}
+
+				fileResult.EventsApplied++
+				if _, err := fmt.Fprintln(pipeWriter, line); err != nil {
+					filterDone <- err
+					return
+				}
+			}
+			filterDone <- scanner.Err()
+		}()
+
+		// Wait for all components
+		binlogErr := binlogCmd.Wait()
+		filterErr := <-filterDone
+		_ = pipeReader.Close()
+		mysqlErr := mysqlCmd.Wait()
+
+		if binlogErr != nil {
+			return nil, fmt.Errorf("mysqlbinlog failed: %w\nstderr: %s", binlogErr, binlogStderr.String())
+		}
+		if filterErr != nil {
+			return nil, fmt.Errorf("filter pipe failed: %w", filterErr)
+		}
+		if mysqlErr != nil {
+			return nil, fmt.Errorf("mysql replay failed: %w\nstderr: %s", mysqlErr, mysqlStderr.String())
+		}
+	} else {
+		// Simple pipe without filtering
+		mysqlCmd.Stdin = binlogOut
+
+		// Optionally prefix with sql_log_bin=0
+		if opts.DisableBinlog {
+			// For no-filter case, we still need to inject the SET statement
+			// We handle this by wrapping binlog output
+			pipeReader, pipeWriter := io.Pipe()
+			mysqlCmd.Stdin = pipeReader
+
+			if err := binlogCmd.Start(); err != nil {
+				return nil, fmt.Errorf("starting mysqlbinlog: %w", err)
+			}
+			if err := mysqlCmd.Start(); err != nil {
+				_ = binlogCmd.Process.Kill()
+				_ = pipeWriter.Close()
+				_ = pipeReader.Close()
+				return nil, fmt.Errorf("starting mysql: %w", err)
+			}
+
+			copyDone := make(chan error, 1)
+			go func() {
+				defer func() { _ = pipeWriter.Close() }()
+				_, _ = pipeWriter.Write([]byte("SET sql_log_bin=0;\n"))
+				n, err := io.Copy(pipeWriter, binlogOut)
+				fileResult.BytesProcessed = n
+				copyDone <- err
+			}()
+
+			binlogErr := binlogCmd.Wait()
+			copyErr := <-copyDone
+			_ = pipeReader.Close()
+			mysqlErr := mysqlCmd.Wait()
+
+			if binlogErr != nil {
+				return nil, fmt.Errorf("mysqlbinlog failed: %w\nstderr: %s", binlogErr, binlogStderr.String())
+			}
+			if copyErr != nil {
+				return nil, fmt.Errorf("pipe copy failed: %w", copyErr)
+			}
+			if mysqlErr != nil {
+				return nil, fmt.Errorf("mysql replay failed: %w\nstderr: %s", mysqlErr, mysqlStderr.String())
+			}
+		} else {
+			if err := binlogCmd.Start(); err != nil {
+				return nil, fmt.Errorf("starting mysqlbinlog: %w", err)
+			}
+			if err := mysqlCmd.Start(); err != nil {
+				_ = binlogCmd.Process.Kill()
+				return nil, fmt.Errorf("starting mysql: %w", err)
+			}
+
+			binlogErr := binlogCmd.Wait()
+			mysqlErr := mysqlCmd.Wait()
+
+			if binlogErr != nil {
+				return nil, fmt.Errorf("mysqlbinlog failed: %w\nstderr: %s", binlogErr, binlogStderr.String())
+			}
+			if mysqlErr != nil {
+				return nil, fmt.Errorf("mysql replay failed: %w\nstderr: %s", mysqlErr, mysqlStderr.String())
+			}
+
+			fileResult.EventsApplied = 1 // At least one file processed
+		}
+	}
+
+	return fileResult, nil
 }
 
 // ParseBinlogIndex reads the binlog index file

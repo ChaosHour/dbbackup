@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -44,6 +45,21 @@ var (
 	mysqlArchiveInterval  string
 	mysqlRequireRowFormat bool
 	mysqlRequireGTID      bool
+
+	// MySQL restore flags
+	mysqlRestoreBaseBackup    string
+	mysqlRestoreTargetTime    string
+	mysqlRestoreStartPosition string
+	mysqlRestoreStopPosition  string
+	mysqlRestoreIncludeGTIDs  string
+	mysqlRestoreExcludeGTIDs  string
+	mysqlRestoreIncludeDBs    string
+	mysqlRestoreExcludeDBs    string
+	mysqlRestoreIncludeTables string
+	mysqlRestoreExcludeTables string
+	mysqlRestoreDryRun        bool
+	mysqlRestoreStopOnError   bool
+	mysqlRestoreVerbose       bool
 )
 
 // pitrCmd represents the pitr command group
@@ -320,6 +336,40 @@ Example:
 	RunE: runMySQLPITRStatus,
 }
 
+// mysqlPitrRestoreCmd performs a MySQL point-in-time restore
+var mysqlPitrRestoreCmd = &cobra.Command{
+	Use:   "mysql-restore",
+	Short: "Perform MySQL/MariaDB point-in-time restore",
+	Long: `Restore a MySQL/MariaDB database to a specific point in time.
+
+This command restores a base backup and then replays binary logs up to
+the specified target time or position, with optional filtering.
+
+The restore process:
+1. Restore the base backup (mysqldump SQL file)
+2. Replay binary logs from the backup position to the target
+3. Apply filters (database, table, GTID) during replay
+
+Examples:
+  # Restore to a specific time
+  dbbackup pitr mysql-restore --base-backup /backups/mysql_pitr_20240115.sql.gz \
+    --target-time "2024-01-15 14:30:00" --archive-dir /backups/binlog
+
+  # Restore to a specific position
+  dbbackup pitr mysql-restore --base-backup /backups/mysql_pitr_20240115.sql.gz \
+    --stop-position "mysql-bin.000042:1234" --binlog-dir /var/lib/mysql
+
+  # Restore with GTID filtering
+  dbbackup pitr mysql-restore --base-backup /backups/mysql_pitr_20240115.sql.gz \
+    --include-gtids "3E11FA47-71CA-11E1-9E33-C80AA9429562:1-100"
+
+  # Dry-run to see what would be replayed
+  dbbackup pitr mysql-restore --base-backup /backups/mysql_pitr_20240115.sql.gz \
+    --target-time "2024-01-15 14:30:00" --dry-run
+`,
+	RunE: runMySQLPITRRestore,
+}
+
 // mysqlPitrEnableCmd enables MySQL PITR
 var mysqlPitrEnableCmd = &cobra.Command{
 	Use:   "mysql-enable",
@@ -355,6 +405,7 @@ func init() {
 	pitrCmd.AddCommand(pitrStatusCmd)
 	pitrCmd.AddCommand(mysqlPitrStatusCmd)
 	pitrCmd.AddCommand(mysqlPitrEnableCmd)
+	pitrCmd.AddCommand(mysqlPitrRestoreCmd)
 
 	// WAL subcommands (PostgreSQL)
 	walCmd.AddCommand(walArchiveCmd)
@@ -417,6 +468,24 @@ func init() {
 	mysqlPitrEnableCmd.Flags().BoolVar(&mysqlRequireRowFormat, "require-row-format", true, "Require ROW binlog format")
 	mysqlPitrEnableCmd.Flags().BoolVar(&mysqlRequireGTID, "require-gtid", false, "Require GTID mode enabled")
 	mysqlPitrEnableCmd.MarkFlagRequired("archive-dir")
+
+	// MySQL PITR restore flags
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreBaseBackup, "base-backup", "", "Path to base backup file")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreTargetTime, "target-time", "", "Target time for recovery (format: 2006-01-02 15:04:05)")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreStartPosition, "start-position", "", "Start binlog position (file:pos)")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreStopPosition, "stop-position", "", "Stop binlog position (file:pos)")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreIncludeGTIDs, "include-gtids", "", "GTID set to include")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreExcludeGTIDs, "exclude-gtids", "", "GTID set to exclude")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreIncludeDBs, "include-databases", "", "Comma-separated database list to include")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreExcludeDBs, "exclude-databases", "", "Comma-separated database list to exclude")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreIncludeTables, "include-tables", "", "Comma-separated table list (db.table format)")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlRestoreExcludeTables, "exclude-tables", "", "Comma-separated table list to exclude (db.table format)")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlArchiveDir, "archive-dir", "", "Binlog archive directory")
+	mysqlPitrRestoreCmd.Flags().StringVar(&mysqlBinlogDir, "binlog-dir", "", "Binlog source directory")
+	mysqlPitrRestoreCmd.Flags().BoolVar(&mysqlRestoreDryRun, "dry-run", false, "Only show what would be done")
+	mysqlPitrRestoreCmd.Flags().BoolVar(&mysqlRestoreStopOnError, "stop-on-error", true, "Stop on first error")
+	mysqlPitrRestoreCmd.Flags().BoolVar(&mysqlRestoreVerbose, "verbose", false, "Verbose output")
+	mysqlPitrRestoreCmd.MarkFlagRequired("base-backup")
 }
 
 // Command implementations
@@ -1321,6 +1390,159 @@ func runMySQLPITREnable(cmd *cobra.Command, args []string) error {
 	log.Info("  dbbackup restore pitr <backup> --target-time '2024-01-15 14:30:00'")
 
 	return nil
+}
+
+func runMySQLPITRRestore(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	if !cfg.IsMySQL() {
+		return fmt.Errorf("this command is only for MySQL/MariaDB (detected: %s)", cfg.DisplayDatabaseType())
+	}
+
+	// Connect to MySQL
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/",
+		cfg.User, cfg.Password, cfg.Host, cfg.Port)
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return fmt.Errorf("connecting to MySQL: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	if err := db.PingContext(ctx); err != nil {
+		return fmt.Errorf("pinging MySQL: %w", err)
+	}
+
+	// Build PITR config
+	pitrConfig := pitr.MySQLPITRConfig{
+		Host:       cfg.Host,
+		Port:       cfg.Port,
+		User:       cfg.User,
+		Password:   cfg.Password,
+		BinlogDir:  mysqlBinlogDir,
+		ArchiveDir: mysqlArchiveDir,
+	}
+
+	mysqlPitrProvider, err := pitr.NewMySQLPITR(db, pitrConfig)
+	if err != nil {
+		return fmt.Errorf("initializing MySQL PITR: %w", err)
+	}
+
+	// Load backup metadata
+	metadataPath := mysqlRestoreBaseBackup + ".meta"
+	var backup pitr.PITRBackupInfo
+
+	if metaData, err := os.ReadFile(metadataPath); err == nil {
+		if jsonErr := json.Unmarshal(metaData, &backup); jsonErr != nil {
+			return fmt.Errorf("parsing backup metadata: %w", jsonErr)
+		}
+	} else {
+		// Try to extract position from the dump file itself
+		extractedPos, extractErr := pitr.ExtractBinlogPositionFromDump(mysqlRestoreBaseBackup)
+		if extractErr != nil {
+			return fmt.Errorf("no metadata file and cannot extract position from dump: %w", extractErr)
+		}
+		posJSON, _ := json.Marshal(extractedPos)
+		backup = pitr.PITRBackupInfo{
+			BackupFile:   mysqlRestoreBaseBackup,
+			DatabaseType: pitr.DatabaseMySQL,
+			PositionJSON: string(posJSON),
+		}
+	}
+	backup.BackupFile = mysqlRestoreBaseBackup
+
+	// Build restore target
+	target := pitr.RestoreTarget{
+		DryRun:    mysqlRestoreDryRun,
+		StopOnErr: mysqlRestoreStopOnError,
+	}
+
+	// Determine target type
+	if mysqlRestoreTargetTime != "" {
+		targetTime, err := time.Parse("2006-01-02 15:04:05", mysqlRestoreTargetTime)
+		if err != nil {
+			return fmt.Errorf("invalid target-time format (expected 2006-01-02 15:04:05): %w", err)
+		}
+		target.Type = pitr.RestoreTargetTime
+		target.Time = &targetTime
+	} else if mysqlRestoreStopPosition != "" {
+		pos, err := pitr.ParseBinlogPosition(mysqlRestoreStopPosition)
+		if err != nil {
+			return fmt.Errorf("invalid stop-position: %w", err)
+		}
+		target.Type = pitr.RestoreTargetPosition
+		target.Position = pos
+	} else {
+		target.Type = pitr.RestoreTargetImmediate
+	}
+
+	// Build filter config
+	filter := &pitr.BinlogFilterConfig{}
+	hasFilter := false
+
+	if mysqlRestoreIncludeDBs != "" {
+		filter.IncludeDatabases = splitAndTrim(mysqlRestoreIncludeDBs)
+		hasFilter = true
+	}
+	if mysqlRestoreExcludeDBs != "" {
+		filter.ExcludeDatabases = splitAndTrim(mysqlRestoreExcludeDBs)
+		hasFilter = true
+	}
+	if mysqlRestoreIncludeTables != "" {
+		filter.IncludeTables = splitAndTrim(mysqlRestoreIncludeTables)
+		hasFilter = true
+	}
+	if mysqlRestoreExcludeTables != "" {
+		filter.ExcludeTables = splitAndTrim(mysqlRestoreExcludeTables)
+		hasFilter = true
+	}
+	if mysqlRestoreIncludeGTIDs != "" {
+		filter.IncludeGTIDs = mysqlRestoreIncludeGTIDs
+		hasFilter = true
+	}
+	if mysqlRestoreExcludeGTIDs != "" {
+		filter.ExcludeGTIDs = mysqlRestoreExcludeGTIDs
+		hasFilter = true
+	}
+
+	if hasFilter {
+		if err := filter.Validate(); err != nil {
+			return fmt.Errorf("invalid filter configuration: %w", err)
+		}
+	}
+
+	// Log restore plan
+	log.Info("Starting MySQL point-in-time restore",
+		"base_backup", mysqlRestoreBaseBackup,
+		"target_type", string(target.Type),
+		"dry_run", mysqlRestoreDryRun)
+
+	if target.Time != nil {
+		log.Info("Target time", "time", target.Time.Format("2006-01-02 15:04:05"))
+	}
+	if target.Position != nil {
+		log.Info("Target position", "position", target.Position.String())
+	}
+
+	if err := mysqlPitrProvider.Restore(ctx, &backup, target); err != nil {
+		return fmt.Errorf("restore failed: %w", err)
+	}
+
+	log.Info("[OK] MySQL point-in-time restore completed successfully")
+	return nil
+}
+
+// splitAndTrim splits a comma-separated string and trims whitespace from each element
+func splitAndTrim(s string) []string {
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 // extractArchiveDirFromCommand attempts to extract the archive directory

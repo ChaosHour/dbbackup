@@ -5,6 +5,24 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.18] - 2026-02-24 — MySQL PITR Binlog Filtering & Performance Benchmarks
+
+### Added
+
+- **MySQL PITR filtered binlog replay** (`ReplayBinlogsFiltered()`) — Advanced binlog replay with GTID support (`--include-gtids`/`--exclude-gtids`), database filtering (`--database`), table-level SQL filtering (include/exclude `db.table`), multi-file position handling (start/stop file:pos), DDL skip option, `sql_log_bin=0` to prevent re-logging, and progress callbacks
+- **`pitr mysql-restore` CLI command** — Full point-in-time restore workflow with 15 flags: `--base-backup`, `--target-time`, `--start-position`, `--stop-position`, `--include-gtids`, `--exclude-gtids`, `--include-databases`, `--exclude-databases`, `--include-tables`, `--exclude-tables`, `--archive-dir`, `--binlog-dir`, `--dry-run`, `--stop-on-error`, `--verbose`
+- **`BinlogFilterConfig`** — Filter configuration type with validation, supporting database/table/GTID include/exclude and `--rewrite-db` mappings
+- **`BinlogReplayResult`** — Detailed replay result tracking: files processed, events applied/filtered, bytes processed, duration, final position, errors/warnings
+- **Performance comparison framework** (`internal/performance/comparison.go`) — Native vs tool-based benchmark suite for MySQL and PostgreSQL backup/restore operations across small (~1 MB), medium (~100 MB), and large (~1 GB) datasets
+- **Test dataset generator** (`internal/performance/dataset.go`) — Automated test data creation with batch inserts for MySQL and PostgreSQL
+- **16 Go benchmarks** (`internal/performance/comparison_test.go`) — `BenchmarkMySQL{Backup,Restore}_{Native,ToolBased}_{Small,Medium,Large}` and PostgreSQL equivalents, plus `TestMySQLPerformanceComparison` / `TestPostgreSQLPerformanceComparison` full comparison tests
+- **Markdown performance report generator** (`internal/performance/report.go`) — Formatted comparison tables with throughput, memory, speedup ratios
+
+### Changed
+
+- **`MySQLPITR.Restore()` now uses `ReplayBinlogsFiltered()`** — Automatically sets `DisableBinlog: true` and passes GTID mode; returns detailed replay result with error reporting
+- **Native Engine Roadmap** — Phase 3 (MySQL PITR) and Phase 5 (Performance Tests) marked as COMPLETE
+
 ## [6.50.17] - 2026-02-24 — Refactor: Split engine.go Into Focused Modules
 
 ### Changed

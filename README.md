@@ -36,6 +36,7 @@ High-performance database backup and restore utility for PostgreSQL, MySQL, and 
 - [Troubleshooting](#troubleshooting)
 - [Requirements](#requirements)
 - [Documentation](#documentation)
+- [Enterprise & Consulting](#enterprise--consulting)
 - [License](#license)
 
 ## Quick Start (30 seconds)
@@ -811,6 +812,23 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for extended diagnostics.
 - [CHANGELOG.md](CHANGELOG.md) -- Version history
 - [docs/tui-features.md](docs/tui-features.md) -- TUI feature reference
 
+## Enterprise & Consulting
+
+dbbackup is open source and free to use. Behind it stands [UUXO](https://uuxo.net) — a team with years of hands-on experience as IT administrators, database operators, and consultants across enterprise environments. dbbackup was born from real-world pain: fragile backup scripts, silent failures discovered too late, and disaster recovery plans that existed only on paper. Every feature in this tool addresses a problem we encountered in production.
+
+**What we offer:**
+
+| Service | Description |
+|---------|-------------|
+| **Backup Strategy & DR Planning** | Architecture review, RTO/RPO analysis, disaster recovery planning, backup validation workflows |
+| **Deployment & Integration** | dbbackup setup, Ansible/Systemd integration, Prometheus monitoring, cloud storage configuration |
+| **Support Contracts** | SLA-based support, priority bugfixes, direct communication, upgrade assistance |
+| **Training** | Hands-on workshops for operations teams, backup best practices, compliance preparation |
+
+We have seen what goes wrong when backups are an afterthought — corrupted dumps nobody tested, retention policies that deleted the only good copy, restore procedures that took 10x longer than expected. If your databases matter, your backup strategy deserves the same attention as your application code.
+
+**Contact:** [info@uuxo.net](mailto:info@uuxo.net)
+
 ## License
 
-Apache License 2.0 - see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE). Free for everyone: individuals, startups, enterprises. No restrictions on commercial use.

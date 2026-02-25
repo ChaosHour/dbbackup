@@ -1569,6 +1569,7 @@ func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 	}
 
 	// Read output in goroutine
+	// IMPORTANT: Pipe must be fully drained BEFORE cmd.Wait() — Wait() closes the pipe.
 	var output []byte
 	var readErr error
 	readDone := make(chan struct{})
@@ -1577,24 +1578,19 @@ func (e *Engine) backupGlobals(ctx context.Context, tempDir string) error {
 		output, readErr = io.ReadAll(stdout)
 	}()
 
-	// Wait for command with proper context handling
-	cmdDone := make(chan error, 1)
-	go func() {
-		cmdDone <- cmd.Wait()
-	}()
-
-	var cmdErr error
+	// Wait for pipe drain first, then call Wait()
 	select {
-	case cmdErr = <-cmdDone:
-		// Command completed normally
+	case <-readDone:
+		// Pipe fully drained, safe to call Wait()
 	case <-ctx.Done():
 		e.log.Warn("Globals backup cancelled - killing pg_dumpall process group")
 		_ = cleanup.KillCommandGroup(cmd)
-		<-cmdDone
+		<-readDone
+		_ = cmd.Wait()
 		return ctx.Err()
 	}
 
-	<-readDone
+	cmdErr := cmd.Wait()
 
 	if cmdErr != nil {
 		return fmt.Errorf("pg_dumpall failed: %w", cmdErr)
@@ -1645,6 +1641,7 @@ func (e *Engine) backupMySQLGlobals(ctx context.Context, tempDir string) error {
 		return fmt.Errorf("failed to start mysqldump for globals: %w", err)
 	}
 
+	// IMPORTANT: Pipe must be fully drained BEFORE cmd.Wait() — Wait() closes the pipe.
 	var output []byte
 	var readErr error
 	readDone := make(chan struct{})
@@ -1653,22 +1650,19 @@ func (e *Engine) backupMySQLGlobals(ctx context.Context, tempDir string) error {
 		output, readErr = io.ReadAll(stdout)
 	}()
 
-	cmdDone := make(chan error, 1)
-	go func() {
-		cmdDone <- cmd.Wait()
-	}()
-
-	var cmdErr error
+	// Wait for pipe drain first, then call Wait()
 	select {
-	case cmdErr = <-cmdDone:
+	case <-readDone:
+		// Pipe fully drained, safe to call Wait()
 	case <-ctx.Done():
 		e.log.Warn("Globals backup cancelled - killing mysqldump process group")
 		_ = cleanup.KillCommandGroup(cmd)
-		<-cmdDone
+		<-readDone
+		_ = cmd.Wait()
 		return ctx.Err()
 	}
 
-	<-readDone
+	cmdErr := cmd.Wait()
 
 	if cmdErr != nil {
 		// mysqldump of 'mysql' schema may fail with warnings on some systems.

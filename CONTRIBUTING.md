@@ -56,7 +56,7 @@ We welcome feature requests! Please include:
 
 ```bash
 # Required
-- Go 1.21 or later
+- Go 1.24 or later
 - PostgreSQL 9.5+ (for testing)
 - MySQL 5.7+ or MariaDB 10.3+ (for testing)
 - Docker (optional, for integration tests)

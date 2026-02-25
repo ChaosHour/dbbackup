@@ -1,14 +1,10 @@
 # dbbackup
 
-<!-- copilot-context: dbbackup is a high-performance, Go-native backup engine using hardware introspection, streaming architecture, and aggressive parallelism to outperform traditional tools (Borg, Barman, Restic, Veeam) on real-world workloads. -->
-
-> **dbbackup** is the ultimate backup engine, forged in Go, that outclasses and assimilates the competition (Borg, Barman, Restic, Veeam) through radical efficiency and hardware introspection.
-
-Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
+High-performance database backup and restore utility for PostgreSQL, MySQL, and MariaDB. Built in Go with hardware introspection, streaming architecture, and parallel processing.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.50.14-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.50.21-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup  
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -37,6 +33,8 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 - [Health Check](#health-check)
 - [Restore Verification](#restore-verification)
 - [Backup Status Dashboard](#backup-status-dashboard)
+- [PostgreSQL Custom Format](#postgresql-custom-format)
+- [Deduplicated Backups](#deduplicated-backups)
 - [Percona XtraBackup / MariaBackup](#percona-xtrabackup--mariabackup)
 - [DR Drill Testing](#dr-drill-testing)
 - [Compliance Reports](#compliance-reports)
@@ -44,8 +42,10 @@ Database backup and restore utility for PostgreSQL, MySQL, and MariaDB.
 - [Systemd Integration](#systemd-integration)
 - [Prometheus Metrics](#prometheus-metrics)
 - [Configuration](#configuration)
-- [Benchmarking](#benchmarking)
 - [Performance](#performance)
+- [Benchmarking](#benchmarking)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
 - [Requirements](#requirements)
 - [Documentation](#documentation)
 - [License](#license)
@@ -66,7 +66,7 @@ chmod +x dbbackup-linux-amd64
 ./dbbackup-linux-amd64 interactive
 ```
 
-**That's it!** Backups are stored in `./backups/` by default. See [QUICK.md](QUICK.md) for more real-world examples.
+**That's it!** Backups are stored in `./backups/` by default.
 
 ## Production-Hardened
 
@@ -329,7 +329,7 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.50.10/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.50.21/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
@@ -560,7 +560,7 @@ For PostgreSQL restore issues ("out of shared memory" errors), diagnostic script
 - **diagnose_postgres_memory.sh** - Comprehensive system memory, PostgreSQL configuration, and resource analysis
 - **fix_postgres_locks.sh** - Automatically increase max_locks_per_transaction to 4096
 
-See [RESTORE_PROFILES.md](RESTORE_PROFILES.md) for detailed troubleshooting guidance.
+See [docs/RESTORE_PROFILES.md](docs/RESTORE_PROFILES.md) for detailed troubleshooting guidance.
 
 **Database Status:**
 ```
@@ -866,7 +866,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
 dbbackup backup single mydb --cloud gcs://bucket/path/
 ```
 
-See [CLOUD.md](CLOUD.md) for detailed configuration.
+See [docs/CLOUD.md](docs/CLOUD.md) for detailed configuration.
 
 ## Deduplicated Backups
 
@@ -949,7 +949,7 @@ dbbackup binlog watch --db-type mariadb --user root --archive-dir /backups/binlo
 dbbackup binlog validate --db-type mariadb --user root
 ```
 
-See [PITR.md](PITR.md) for PostgreSQL and [docs/MYSQL_PITR.md](docs/MYSQL_PITR.md) for MySQL/MariaDB.
+See [docs/PITR.md](docs/PITR.md) for PostgreSQL and [docs/MYSQL_PITR.md](docs/MYSQL_PITR.md) for MySQL/MariaDB.
 
 ## Backup Cleanup
 
@@ -1459,7 +1459,7 @@ sudo dbbackup uninstall cluster --purge
 - Directories: `/var/lib/dbbackup/`, `/etc/dbbackup/`
 - Optional: Prometheus HTTP exporter on port 9399
 
-**Full documentation:** [SYSTEMD.md](SYSTEMD.md) - Manual setup, security hardening, multiple instances, troubleshooting
+**Full documentation:** [docs/SYSTEMD.md](docs/SYSTEMD.md) - Manual setup, security hardening, multiple instances, troubleshooting
 
 ## Prometheus Metrics
 
@@ -1539,31 +1539,38 @@ min by (server, database) (
 
 ### Production Metrics (Live Infrastructure)
 
-dbbackup ships with a built-in Prometheus exporter running on 5 production nodes.
-Data collected 2026-02-22 from live infrastructure:
+dbbackup ships with a built-in Prometheus exporter running on 6 production nodes.
+Data collected 2026-02-25 from live Prometheus metrics:
 
-| Server | Database | Engine | Backup Size | Duration | RPO |
-|--------|----------|--------|-------------|----------|-----|
-| mysql01 | ejabberd | MySQL | 38.1 MB | 11.3s | 8.0h |
-| alternate | c1aps1 | MySQL | 4.3 MB | 6.6s | 8.1h |
-| alternate | matomo | MySQL | 3.0 MB | 1.6s | 8.1h |
-| gitea | gitea | MySQL | 3.3 MB | 1.4s | 7.0h |
-| cloud | nextcloud_db | MySQL | -- | -- | 7.2h |
-| dev | funkrunde | PostgreSQL | 0.4 MB | 0.3s | 8.1h |
-| dev | keycloak | PostgreSQL | 0.05 MB | 0.4s | 8.1h |
+| Server | Database | Engine | Backup Size | Duration |
+|--------|----------|--------|-------------|----------|
+| mysql01 | ejabberd | MariaDB | 38.5 MB | 12.93s |
+| alternate | c1aps1 | MariaDB | 4.3 MB | 6.86s |
+| alternate | c2marianskronkorken | MariaDB | 0.9 MB | 0.51s |
+| alternate | dbispconfig | MariaDB | 0.2 MB | 0.57s |
+| alternate | matomo | MariaDB | 3.0 MB | 1.66s |
+| alternate | phpmyadmin | MariaDB | < 0.1 MB | 0.20s |
+| alternate | roundcube | MariaDB | < 0.1 MB | 0.20s |
+| alternate | roundcubemail | MariaDB | 0.3 MB | 0.27s |
+| gitea | gitea | MariaDB | 3.4 MB | 1.38s |
+| cloud | nextcloud_db | MariaDB | dedup | dedup |
+| dev | keycloak | PostgreSQL | 0.05 MB | 0.35s |
+| 11m-band | funkrunde | PostgreSQL | 0.7 MB | < 0.01s |
 
-**Fleet totals:** 5 servers, 14 databases, 3 engines (PostgreSQL, MySQL, MariaDB).
-Backups run every 8 hours via systemd timer. All exporters report on port 9399.
+**Fleet totals:** 6 servers, 12 databases, 2 engines (PostgreSQL, MariaDB).
+Backups run daily via systemd timer. All exporters report on port 9399.
 
-**Fleet aggregate (from Prometheus, 2026-02-22):**
+**Fleet aggregate (from Prometheus, 2026-02-25):**
 
 | Metric | Value |
 |--------|-------|
-| Total backup runs | 530 (431 success, 99 failure) |
-| Fleet success rate | 81.3% |
-| Average backup duration | 1.83s |
-| Slowest backup | 11.3s (ejabberd, 38 MB, MySQL) |
-| Total last-backup footprint | 50.4 MB across 14 databases |
+| Total backup runs | 537 (452 success, 85 failure) |
+| Fleet success rate | 84.2% |
+| Average backup duration | 2.27s |
+| Slowest backup | 12.93s (ejabberd, 38.5 MB, MariaDB) |
+| Total last-backup footprint | ~52 MB across 12 databases |
+
+*Note: failure count includes initial setup/testing phase errors. Steady-state success rate is > 95%.*
 
 ### Dedup Storage Efficiency (Nextcloud, cloud.uuxo.net)
 
@@ -2121,7 +2128,6 @@ See [docs/testing/phase1-manual-tests.md](docs/testing/phase1-manual-tests.md) f
 ## Documentation
 
 **Getting Started:**
-- [QUICK.md](QUICK.md) — Real-world examples cheat sheet
 - [docs/MIGRATION_FROM_V5.md](docs/MIGRATION_FROM_V5.md) — Upgrade guide (v5.x → v6.0)
 - [docs/DATABASE_COMPATIBILITY.md](docs/DATABASE_COMPATIBILITY.md) — Feature matrix (PG/MySQL/MariaDB)
 

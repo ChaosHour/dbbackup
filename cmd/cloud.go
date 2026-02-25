@@ -128,6 +128,13 @@ var (
 	hmacSecret     string
 	hmacAdminToken string
 	hmacInsecure   bool
+
+	// SFTP
+	sftpKey           string
+	sftpKeyPassphrase string
+	sftpPassword      string
+	sftpKnownHosts    string
+	sftpInsecure      bool
 )
 
 func init() {
@@ -150,6 +157,13 @@ func init() {
 		cmd.Flags().StringVar(&hmacSecret, "hmac-secret", getEnv("DBBACKUP_HMAC_SECRET", ""), "HMAC signing secret for hmac-file-server")
 		cmd.Flags().StringVar(&hmacAdminToken, "hmac-admin-token", getEnv("DBBACKUP_HMAC_ADMIN_TOKEN", ""), "Admin API bearer token for hmac-file-server")
 		cmd.Flags().BoolVar(&hmacInsecure, "hmac-insecure", false, "Skip TLS verification for hmac-file-server")
+
+		// SFTP flags
+		cmd.Flags().StringVar(&sftpKey, "sftp-key", getEnv("DBBACKUP_SFTP_KEY", ""), "Path to SSH private key for SFTP")
+		cmd.Flags().StringVar(&sftpKeyPassphrase, "sftp-key-passphrase", getEnv("DBBACKUP_SFTP_KEY_PASSPHRASE", ""), "Passphrase for encrypted SSH key")
+		cmd.Flags().StringVar(&sftpPassword, "sftp-password", getEnv("DBBACKUP_SFTP_PASSWORD", ""), "SSH password for SFTP")
+		cmd.Flags().StringVar(&sftpKnownHosts, "sftp-known-hosts", getEnv("DBBACKUP_SFTP_KNOWN_HOSTS", ""), "Path to known_hosts file for SFTP")
+		cmd.Flags().BoolVar(&sftpInsecure, "sftp-insecure", false, "Skip host key verification for SFTP")
 	}
 
 	// Object Lock flags (upload-specific — also available on other commands for validation)
@@ -203,13 +217,18 @@ func getCloudBackend() (cloud.Backend, error) {
 		ObjectLockEnabled: cloudObjectLock,
 		ObjectLockMode:    cloudObjectLockMode,
 		ObjectLockDays:    cloudObjectLockDays,
-		HMACSecret:        hmacSecret,
-		HMACAdminToken:    hmacAdminToken,
-		HMACInsecure:      hmacInsecure,
+		HMACSecret:         hmacSecret,
+		HMACAdminToken:     hmacAdminToken,
+		HMACInsecure:       hmacInsecure,
+		SFTPKeyPath:        sftpKey,
+		SFTPKeyPassphrase:  sftpKeyPassphrase,
+		SFTPPassword:       sftpPassword,
+		SFTPKnownHostsPath: sftpKnownHosts,
+		SFTPInsecure:       sftpInsecure,
 	}
 
-	// HMAC backend doesn't use buckets
-	if cfg.Provider != "hmac" && cfg.Bucket == "" {
+	// HMAC and SFTP backends don't use buckets
+	if cfg.Provider != "hmac" && cfg.Provider != "sftp" && cfg.Bucket == "" {
 		return nil, fmt.Errorf("bucket name is required (use --cloud-bucket or DBBACKUP_CLOUD_BUCKET)")
 	}
 

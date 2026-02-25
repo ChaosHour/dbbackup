@@ -4,7 +4,7 @@ High-performance database backup and restore utility for PostgreSQL, MySQL, and 
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://golang.org/)
-[![Release](https://img.shields.io/badge/Release-v6.50.22-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
+[![Release](https://img.shields.io/badge/Release-v6.50.23-green.svg)](https://github.com/PlusOne/dbbackup/releases/latest)
 
 **Repository:** https://git.uuxo.net/UUXO/dbbackup
 **Mirror:** https://github.com/PlusOne/dbbackup
@@ -78,7 +78,7 @@ chmod +x dbbackup-linux-amd64
 - **Backup modes**: Single database, cluster (all DBs), sample data
 - **AES-256-GCM encryption** with key rotation support
 - **Incremental backups** (LSN-based for XtraBackup)
-- **Cloud storage**: S3, MinIO, B2, Azure Blob, Google Cloud Storage
+- **Cloud storage**: S3, MinIO, B2, Azure Blob, Google Cloud Storage, SFTP
 - **Point-in-Time Recovery**: WAL archiving (PostgreSQL), binlog archiving (MySQL/MariaDB)
 - **GFS retention policies**: Grandfather-Father-Son backup rotation
 - **Content-addressed dedup**: Bloom filter + SHA-256 chunking (50-90% storage reduction)
@@ -147,7 +147,7 @@ Download from [releases](https://git.uuxo.net/UUXO/dbbackup/releases):
 
 ```bash
 # Linux x86_64
-wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.50.22/dbbackup-linux-amd64
+wget https://git.uuxo.net/UUXO/dbbackup/releases/download/v6.50.23/dbbackup-linux-amd64
 chmod +x dbbackup-linux-amd64
 sudo mv dbbackup-linux-amd64 /usr/local/bin/dbbackup
 ```
@@ -359,7 +359,7 @@ dbbackup backup single mydb --backup-type incremental --base-backup mydb_base.ta
 
 ## Cloud Storage
 
-Supported providers: AWS S3, MinIO, Backblaze B2, Azure Blob Storage, Google Cloud Storage.
+Supported providers: AWS S3, MinIO, Backblaze B2, Azure Blob Storage, Google Cloud Storage, SFTP.
 
 ```bash
 # AWS S3
@@ -375,6 +375,10 @@ dbbackup backup single mydb --cloud azure://container/path/
 # Google Cloud Storage
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
 dbbackup backup single mydb --cloud gcs://bucket/path/
+
+# SFTP (SSH key or password)
+dbbackup backup single mydb --cloud sftp://user@host/backups/ --sftp-key ~/.ssh/id_ed25519 --sftp-insecure
+dbbackup cloud list --cloud sftp://user@host:2222/backups/ --sftp-password secret --sftp-insecure
 ```
 
 See [docs/CLOUD.md](docs/CLOUD.md) for detailed configuration.

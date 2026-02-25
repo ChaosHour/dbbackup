@@ -95,6 +95,13 @@ type LocalConfig struct {
 	CloudHMACAdminToken string
 	CloudHMACInsecure   bool
 
+	// SFTP settings
+	CloudSFTPKeyPath        string
+	CloudSFTPKeyPassphrase  string
+	CloudSFTPPassword       string
+	CloudSFTPKnownHostsPath string
+	CloudSFTPInsecure       bool
+
 	// Security settings
 	RetentionDays int
 	MinBackups    int
@@ -412,6 +419,16 @@ func LoadLocalConfigFromPath(configPath string) (*LocalConfig, error) {
 				cfg.CloudHMACAdminToken = value
 			case "hmac_insecure":
 				cfg.CloudHMACInsecure = value == "true" || value == "1"
+			case "sftp_key":
+				cfg.CloudSFTPKeyPath = value
+			case "sftp_key_passphrase":
+				cfg.CloudSFTPKeyPassphrase = value
+			case "sftp_password":
+				cfg.CloudSFTPPassword = value
+			case "sftp_known_hosts":
+				cfg.CloudSFTPKnownHostsPath = value
+			case "sftp_insecure":
+				cfg.CloudSFTPInsecure = value == "true" || value == "1"
 			}
 		case "blob":
 			switch key {
@@ -656,6 +673,21 @@ func SaveLocalConfigToPath(cfg *LocalConfig, configPath string) error {
 		}
 		if cfg.CloudHMACInsecure {
 			sb.WriteString(fmt.Sprintf("hmac_insecure = %t\n", cfg.CloudHMACInsecure))
+		}
+		if cfg.CloudSFTPKeyPath != "" {
+			sb.WriteString(fmt.Sprintf("sftp_key = %s\n", cfg.CloudSFTPKeyPath))
+		}
+		if cfg.CloudSFTPKeyPassphrase != "" {
+			sb.WriteString(fmt.Sprintf("sftp_key_passphrase = %s\n", cfg.CloudSFTPKeyPassphrase))
+		}
+		if cfg.CloudSFTPPassword != "" {
+			sb.WriteString(fmt.Sprintf("sftp_password = %s\n", cfg.CloudSFTPPassword))
+		}
+		if cfg.CloudSFTPKnownHostsPath != "" {
+			sb.WriteString(fmt.Sprintf("sftp_known_hosts = %s\n", cfg.CloudSFTPKnownHostsPath))
+		}
+		if cfg.CloudSFTPInsecure {
+			sb.WriteString(fmt.Sprintf("sftp_insecure = %t\n", cfg.CloudSFTPInsecure))
 		}
 		sb.WriteString("\n")
 	}
@@ -923,6 +955,21 @@ func ApplyLocalConfig(cfg *Config, local *LocalConfig) {
 	}
 	if local.CloudHMACInsecure {
 		cfg.CloudHMACInsecure = true
+	}
+	if local.CloudSFTPKeyPath != "" {
+		cfg.CloudSFTPKeyPath = local.CloudSFTPKeyPath
+	}
+	if local.CloudSFTPKeyPassphrase != "" {
+		cfg.CloudSFTPKeyPassphrase = local.CloudSFTPKeyPassphrase
+	}
+	if local.CloudSFTPPassword != "" {
+		cfg.CloudSFTPPassword = local.CloudSFTPPassword
+	}
+	if local.CloudSFTPKnownHostsPath != "" {
+		cfg.CloudSFTPKnownHostsPath = local.CloudSFTPKnownHostsPath
+	}
+	if local.CloudSFTPInsecure {
+		cfg.CloudSFTPInsecure = true
 	}
 
 	// BLOB optimization settings

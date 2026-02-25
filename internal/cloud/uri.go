@@ -51,9 +51,10 @@ func ParseCloudURI(uri string) (*CloudURI, error) {
 		"gcs":   true,
 		"b2":    true,
 		"hmac":  true,
+		"sftp":  true,
 	}
 	if !validProviders[provider] {
-		return nil, fmt.Errorf("unsupported provider: %s (supported: s3, minio, azure, gs, gcs, b2, hmac)", provider)
+		return nil, fmt.Errorf("unsupported provider: %s (supported: s3, minio, azure, gs, gcs, b2, hmac, sftp)", provider)
 	}
 
 	// Normalize provider names
@@ -73,6 +74,34 @@ func ParseCloudURI(uri string) (*CloudURI, error) {
 			Bucket:   "",
 			Path:     prefix,
 			Endpoint: "https://" + host,
+			FullURI:  uri,
+		}, nil
+	}
+
+	// SFTP URIs: sftp://user@host:port/path — user info + host:port as endpoint, path as prefix
+	if provider == "sftp" {
+		host := parsed.Hostname()
+		if host == "" {
+			return nil, fmt.Errorf("URI must specify a host (e.g., sftp://user@host/path)")
+		}
+		user := ""
+		if parsed.User != nil {
+			user = parsed.User.Username()
+		}
+		if user == "" {
+			return nil, fmt.Errorf("URI must specify a user (e.g., sftp://user@host/path)")
+		}
+		port := parsed.Port()
+		if port == "" {
+			port = "22"
+		}
+		endpoint := user + "@" + host + ":" + port
+		prefix := strings.TrimPrefix(parsed.Path, "/")
+		return &CloudURI{
+			Provider: "sftp",
+			Bucket:   "",
+			Path:     prefix,
+			Endpoint: endpoint,
 			FullURI:  uri,
 		}, nil
 	}
@@ -151,7 +180,8 @@ func IsCloudURI(s string) bool {
 		strings.HasPrefix(s, "gs://") ||
 		strings.HasPrefix(s, "gcs://") ||
 		strings.HasPrefix(s, "b2://") ||
-		strings.HasPrefix(s, "hmac://")
+		strings.HasPrefix(s, "hmac://") ||
+		strings.HasPrefix(s, "sftp://")
 }
 
 // String returns the string representation of the URI
@@ -204,6 +234,8 @@ func (u *CloudURI) ToConfig() *Config {
 		cfg.PathStyle = true
 	case "hmac":
 		cfg.Prefix = u.Path // For HMAC, the full path is the prefix
+	case "sftp":
+		cfg.Prefix = u.Path // For SFTP, the full path is the remote directory prefix
 	}
 
 	return cfg

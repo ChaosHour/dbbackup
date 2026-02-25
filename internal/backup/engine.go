@@ -2061,17 +2061,25 @@ func (e *Engine) uploadToCloud(ctx context.Context, backupFile string, tracker *
 
 	// Create cloud backend
 	cloudCfg := &cloud.Config{
-		Provider:   e.cfg.CloudProvider,
-		Bucket:     e.cfg.CloudBucket,
-		Region:     e.cfg.CloudRegion,
-		Endpoint:   e.cfg.CloudEndpoint,
-		AccessKey:  e.cfg.CloudAccessKey,
-		SecretKey:  e.cfg.CloudSecretKey,
-		Prefix:     e.cfg.CloudPrefix,
-		UseSSL:     true,
-		PathStyle:  e.cfg.CloudProvider == "minio",
-		Timeout:    300,
-		MaxRetries: 3,
+		Provider:           e.cfg.CloudProvider,
+		Bucket:             e.cfg.CloudBucket,
+		Region:             e.cfg.CloudRegion,
+		Endpoint:           e.cfg.CloudEndpoint,
+		AccessKey:          e.cfg.CloudAccessKey,
+		SecretKey:          e.cfg.CloudSecretKey,
+		Prefix:             e.cfg.CloudPrefix,
+		UseSSL:             true,
+		PathStyle:          e.cfg.CloudProvider == "minio",
+		Timeout:            300,
+		MaxRetries:         3,
+		HMACSecret:         e.cfg.CloudHMACSecret,
+		HMACAdminToken:     e.cfg.CloudHMACAdminToken,
+		HMACInsecure:       e.cfg.CloudHMACInsecure,
+		SFTPKeyPath:        e.cfg.CloudSFTPKeyPath,
+		SFTPKeyPassphrase:  e.cfg.CloudSFTPKeyPassphrase,
+		SFTPPassword:       e.cfg.CloudSFTPPassword,
+		SFTPKnownHostsPath: e.cfg.CloudSFTPKnownHostsPath,
+		SFTPInsecure:       e.cfg.CloudSFTPInsecure,
 	}
 
 	backend, err := cloud.NewBackend(cloudCfg)

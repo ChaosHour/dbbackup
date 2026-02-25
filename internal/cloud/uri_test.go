@@ -98,6 +98,28 @@ func TestParseCloudURI(t *testing.T) {
 			wantProvider: "hmac",
 			wantErr:      false,
 		},
+		// SFTP URIs
+		{
+			name:         "sftp uri with path",
+			uri:          "sftp://backup@nas.local/mnt/backups",
+			wantBucket:   "",
+			wantPath:     "mnt/backups",
+			wantProvider: "sftp",
+			wantErr:      false,
+		},
+		{
+			name:         "sftp uri with custom port",
+			uri:          "sftp://root@10.0.0.5:2222/path",
+			wantBucket:   "",
+			wantPath:     "path",
+			wantProvider: "sftp",
+			wantErr:      false,
+		},
+		{
+			name:    "sftp uri missing user",
+			uri:     "sftp://nas.local/mnt/backups",
+			wantErr: true,
+		},
 		// Error cases
 		{
 			name:    "empty uri",
@@ -163,6 +185,7 @@ func TestIsCloudURI(t *testing.T) {
 		{"minio uri", "minio://bucket/path", true},
 		{"b2 uri", "b2://bucket/path", true},
 		{"hmac uri", "hmac://backup.example.com/prefix", true},
+		{"sftp uri", "sftp://user@host/path", true},
 		{"local path", "/var/backups/db.dump", false},
 		{"relative path", "./backups/db.dump", false},
 		{"http uri", "http://example.com/file", false},
@@ -209,6 +232,51 @@ func TestParseCloudURI_HMAC(t *testing.T) {
 	}
 	if cfg.Prefix != "backups/myhost" {
 		t.Errorf("Config.Prefix = %q, want %q", cfg.Prefix, "backups/myhost")
+	}
+}
+
+// TestParseCloudURI_SFTP tests SFTP-specific URI parsing details
+func TestParseCloudURI_SFTP(t *testing.T) {
+	// Basic SFTP URI
+	result, err := ParseCloudURI("sftp://backup@nas.local/mnt/backups")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Provider != "sftp" {
+		t.Errorf("Provider = %q, want %q", result.Provider, "sftp")
+	}
+	if result.Endpoint != "backup@nas.local:22" {
+		t.Errorf("Endpoint = %q, want %q", result.Endpoint, "backup@nas.local:22")
+	}
+	if result.Path != "mnt/backups" {
+		t.Errorf("Path = %q, want %q", result.Path, "mnt/backups")
+	}
+	if result.Bucket != "" {
+		t.Errorf("Bucket = %q, want empty", result.Bucket)
+	}
+
+	// SFTP with custom port
+	result2, err := ParseCloudURI("sftp://root@10.0.0.5:2222/data/backups")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result2.Endpoint != "root@10.0.0.5:2222" {
+		t.Errorf("Endpoint = %q, want %q", result2.Endpoint, "root@10.0.0.5:2222")
+	}
+	if result2.Path != "data/backups" {
+		t.Errorf("Path = %q, want %q", result2.Path, "data/backups")
+	}
+
+	// ToConfig should set provider and endpoint correctly
+	cfg := result.ToConfig()
+	if cfg.Provider != "sftp" {
+		t.Errorf("Config.Provider = %q, want %q", cfg.Provider, "sftp")
+	}
+	if cfg.Endpoint != "backup@nas.local:22" {
+		t.Errorf("Config.Endpoint = %q, want %q", cfg.Endpoint, "backup@nas.local:22")
+	}
+	if cfg.Prefix != "mnt/backups" {
+		t.Errorf("Config.Prefix = %q, want %q", cfg.Prefix, "mnt/backups")
 	}
 }
 

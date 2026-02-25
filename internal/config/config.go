@@ -284,6 +284,13 @@ type Config struct {
 	CloudHMACAdminToken string // Admin bearer token for hmac-file-server
 	CloudHMACInsecure   bool   // Skip TLS verify for hmac-file-server
 
+	// SFTP options
+	CloudSFTPKeyPath        string // Path to SSH private key
+	CloudSFTPKeyPassphrase  string // Passphrase for encrypted SSH key
+	CloudSFTPPassword       string // SSH password
+	CloudSFTPKnownHostsPath string // Path to known_hosts file
+	CloudSFTPInsecure       bool   // Skip host key verification
+
 	// Notification options
 	NotifyEnabled       bool     // Enable notifications
 	NotifyOnSuccess     bool     // Send notifications on successful operations

@@ -5,6 +5,39 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.23] - 2026-02-25 — SFTP Cloud Storage Backend
+
+### Added
+
+- **`internal/cloud/sftp.go`** (NEW) — `SFTPBackend` implementing `cloud.Backend` interface for remote backup-to-server via SSH/SFTP
+  - `Upload()` — Streaming upload with auto-mkdir on remote, retry, bandwidth throttling, progress tracking
+  - `Download()` — Streaming download with context cancellation, bandwidth throttling
+  - `List()` — `sftp.ReadDir()` with prefix filtering, skips directories
+  - `Delete()` — `sftp.Remove()` with path prefix
+  - `Exists()` / `GetSize()` — `sftp.Stat()` with `os.IsNotExist()` handling
+  - Lazy SSH+SFTP connection (first operation triggers connect)
+  - SSH auth chain: explicit key → default keys (~/.ssh/id_ed25519, id_rsa, id_ecdsa) → password
+  - Host key verification via known_hosts or `--sftp-insecure` to skip
+- **`internal/cloud/sftp_test.go`** (NEW) — Unit tests: validation, `buildFilePath`, `parseSFTPEndpoint`, `buildSSHAuthMethods`, `buildHostKeyCallback`
+- **CLI flags**: `--sftp-key` (`DBBACKUP_SFTP_KEY`), `--sftp-key-passphrase`, `--sftp-password`, `--sftp-known-hosts`, `--sftp-insecure` on all cloud commands
+- **URI schema**: `sftp://user@host:port/path` (e.g., `sftp://backup@nas.local/mnt/backups`)
+- **Config persistence**: `sftp_key`, `sftp_key_passphrase`, `sftp_password`, `sftp_known_hosts`, `sftp_insecure` in `[cloud]` section of `.dbbackup.conf`
+
+### Changed
+
+- **`internal/cloud/interface.go`** — Added `SFTPKeyPath`, `SFTPKeyPassphrase`, `SFTPPassword`, `SFTPKnownHostsPath`, `SFTPInsecure` to `Config`; `"sftp"` case in `NewBackend()` factory; `Validate()` skips bucket requirement for sftp provider
+- **`internal/cloud/uri.go`** — `sftp://` in `validProviders`, `IsCloudURI()`, SFTP-specific parsing (user@host:port from URI userinfo+host, path as prefix)
+- **`internal/config/config.go`** — Added `CloudSFTP*` fields
+- **`internal/config/persist.go`** — `LocalConfig` extended, load/save/apply for SFTP fields
+- **`cmd/cloud.go`** — SFTP flags, `getCloudBackend()` wiring, bucket validation skip for sftp
+- **`internal/backup/engine.go`** — `uploadToCloud()` now passes HMAC and SFTP config fields to `cloud.Config` (was missing for both)
+
+### Notes
+
+- 7th cloud provider — purely additive, no breaking changes to existing S3/MinIO/B2/Azure/GCS/HMAC backends
+- Only requires SSH credentials — no S3/NFS/SMB infrastructure needed
+- Dependency added: `github.com/pkg/sftp` v1.13.10 (uses existing `golang.org/x/crypto/ssh`)
+
 ## [6.50.22] - 2026-02-25 — Systemd catalog fix, Prometheus exporter fix, docs overhaul
 
 ### Fixed

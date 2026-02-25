@@ -181,6 +181,12 @@ func (m *MetricsWriter) collectMetrics() ([]BackupMetrics, error) {
 			metrics.PITRBaseCount++
 		}
 
+		// Skip deleted/archived entries — these are normal lifecycle events
+		// (retention cleanup), not failures
+		if e.Status == catalog.StatusDeleted || e.Status == catalog.StatusArchived {
+			continue
+		}
+
 		isSuccess := e.Status == catalog.StatusCompleted || e.Status == catalog.StatusVerified
 		if isSuccess {
 			metrics.SuccessCount++

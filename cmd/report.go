@@ -133,7 +133,10 @@ func runReportGenerate(cmd *cobra.Command, args []string) error {
 	// Get catalog path
 	catalogPath := reportCatalog
 	if catalogPath == "" {
-		homeDir, _ := os.UserHomeDir()
+		homeDir, err := os.UserHomeDir()
+		if err != nil || homeDir == "/" {
+			homeDir = "/root"
+		}
 		catalogPath = filepath.Join(homeDir, ".dbbackup", "catalog.db")
 	}
 
@@ -208,7 +211,10 @@ func runReportSummary(cmd *cobra.Command, args []string) error {
 	// Get catalog path
 	catalogPath := reportCatalog
 	if catalogPath == "" {
-		homeDir, _ := os.UserHomeDir()
+		homeDir, err := os.UserHomeDir()
+		if err != nil || homeDir == "/" {
+			homeDir = "/root"
+		}
 		catalogPath = filepath.Join(homeDir, ".dbbackup", "catalog.db")
 	}
 

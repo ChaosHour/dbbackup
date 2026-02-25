@@ -636,9 +636,11 @@ func runVerify(ctx context.Context, archiveName string) error {
 // updateCatalogVerification marks a backup as verified in the catalog so that
 // the Prometheus exporter reports dbbackup_backup_verified=1.
 func updateCatalogVerification(ctx context.Context, archivePath string, valid bool) {
-	home := os.Getenv("HOME")
-	if home == "" {
-		home = "/root" // fallback for systemd services where HOME may not be set
+	// Use os.UserHomeDir() which reads /etc/passwd (reliable), not $HOME
+	// which may be "/" in systemd services (PID 1 sets HOME=/)
+	home, err := os.UserHomeDir()
+	if err != nil || home == "/" {
+		home = "/root"
 	}
 	catalogDB := filepath.Join(home, ".dbbackup", "catalog.db")
 	if catalogDBPath != "" {

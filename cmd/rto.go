@@ -337,7 +337,10 @@ func runRTOCheck(cmd *cobra.Command, args []string) error {
 func openRTOCatalog() (*catalog.SQLiteCatalog, error) {
 	catalogPath := rtoCatalog
 	if catalogPath == "" {
-		homeDir, _ := os.UserHomeDir()
+		homeDir, err := os.UserHomeDir()
+		if err != nil || homeDir == "/" {
+			homeDir = "/root"
+		}
 		catalogPath = filepath.Join(homeDir, ".dbbackup", "catalog.db")
 	}
 

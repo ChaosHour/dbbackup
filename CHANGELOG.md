@@ -5,6 +5,18 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.22] - 2026-02-25 — Systemd catalog fix, Prometheus exporter fix, docs overhaul
+
+### Fixed
+
+- **Systemd `HOME=/` catalog bug** — `updateCatalogVerification()` in `cmd/placeholder.go` used `os.Getenv("HOME")` which returns `/` (not empty) under systemd PID 1. Verify wrote to rogue `/.dbbackup/catalog.db` instead of `/root/.dbbackup/catalog.db`. Fixed by switching to `os.UserHomeDir()` with `home == "/"` guard. Same fix applied to `cmd/catalog.go`, `cmd/report.go`, `cmd/rto.go`
+- **Prometheus exporter counted deleted entries as failures** — `internal/prometheus/textfile.go` classified `status=deleted` (normal retention cleanup) as failures. Now skips deleted/archived entries before success/failure classification
+
+### Changed
+
+- **README refactored** — Cut from 2166 to 812 lines (-62%). Extracted Benchmarking/HugePages/sysctl to `docs/BENCHMARKING.md` (346 lines). Removed TUI ASCII mockups, condensed Features/Prometheus/Performance sections with links to dedicated docs
+- **Documentation cleanup** — Fixed stale metrics, broken links, outdated version references across README
+
 ## [6.50.21] - 2026-02-24 — HMAC File Server Backend (Phase 1)
 
 ### Added

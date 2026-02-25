@@ -5,6 +5,20 @@ All notable changes to dbbackup will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.50.24] - 2026-02-25 — Pipe race condition fix, Enterprise section
+
+### Fixed
+
+- **Pipe race condition in globals backup** — `cmd.Wait()` closes the stdout pipe; if `io.ReadAll()` hasn't finished reading, it crashes with `read |0: file already closed`. Fixed by draining the pipe completely BEFORE calling `Wait()`. Affected both `backupGlobals` (PostgreSQL/pg_dumpall) and `backupMySQLGlobals` (mysqldump). Triggered on mysql01 where mysqldump exits quickly due to LOCK TABLES warning on ejabberd database.
+
+### Added
+
+- **Enterprise & Consulting section** in README — UUXO background, service offerings (backup strategy, DR planning, deployment, support contracts, training), contact info
+
+### Changed
+
+- **License section** clarified — Apache 2.0, explicitly free for everyone including enterprises
+
 ## [6.50.23] - 2026-02-25 — SFTP Cloud Storage Backend
 
 ### Added
